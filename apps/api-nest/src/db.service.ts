@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { AXES, DRIVING_ORIGINAL_TEMPLATE_IDS, type AxisName, type JobKind } from "./constants.js";
+import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DRIVING_ORIGINAL_TEMPLATE_IDS, type AxisName, type JobKind } from "./constants.js";
 
 // node:sqlite is available in the project's Node 25 runtime and keeps the Nest port dependency-light.
 const sqlite = await import("node:sqlite" as string) as any;
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS domains (
   brand_color TEXT DEFAULT '#0066ff',
   logo_url TEXT,
   templates_enabled TEXT NOT NULL DEFAULT '["T01","T03","T04","T05","T06","T07","T08","T09","T10","T11","T12","T13","T14","T15"]',
-  design_template_id TEXT NOT NULL DEFAULT 'editorial',
+  design_template_id TEXT NOT NULL DEFAULT 'local-guide',
   custom_design_templates TEXT,
   content_brief TEXT,
   daily_limit INTEGER NOT NULL DEFAULT 30,
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS posts (
   body_markdown TEXT NOT NULL,
   meta_description TEXT,
   images TEXT,
-  design_template_id TEXT NOT NULL DEFAULT 'editorial',
+  design_template_id TEXT NOT NULL DEFAULT 'local-guide',
   status TEXT NOT NULL DEFAULT 'published' CHECK (status IN ('published','noindex','deleted')),
   provider TEXT,
   model TEXT,
@@ -168,7 +168,7 @@ export class DbService implements OnModuleInit {
 
   private migrate(): void {
     const domainCols = new Set(this.all("PRAGMA table_info(domains)").map((r) => r.name));
-    if (!domainCols.has("design_template_id")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'editorial'");
+    if (!domainCols.has("design_template_id")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
     if (!domainCols.has("custom_design_templates")) this.db.exec("ALTER TABLE domains ADD COLUMN custom_design_templates TEXT");
     if (!domainCols.has("content_brief")) this.db.exec("ALTER TABLE domains ADD COLUMN content_brief TEXT");
     this.run(`UPDATE domains SET templates_enabled=?
@@ -176,8 +176,8 @@ export class DbService implements OnModuleInit {
     const postCols = new Set(this.all("PRAGMA table_info(posts)").map((r) => r.name));
     if (!postCols.has("images")) this.db.exec("ALTER TABLE posts ADD COLUMN images TEXT");
     if (!postCols.has("design_template_id")) {
-      this.db.exec("ALTER TABLE posts ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'editorial'");
-      this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM domains t WHERE t.domain = posts.domain), 'editorial')");
+      this.db.exec("ALTER TABLE posts ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
+      this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM domains t WHERE t.domain = posts.domain), 'local-guide')");
     }
     const academyCols = new Set(this.all("PRAGMA table_info(academies)").map((r) => r.name));
     const academyMigrations: Array<[string, string]> = [
@@ -366,7 +366,7 @@ export class DbService implements OnModuleInit {
     this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, generated_at=CURRENT_TIMESTAMP`,
-      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || "editorial", input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0]);
+      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0]);
     return id;
   }
   deletePost(postId: string): void { this.run("DELETE FROM posts WHERE id=?", [postId]); }

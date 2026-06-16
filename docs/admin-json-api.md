@@ -1,6 +1,6 @@
 # Admin JSON API for Next.js
 
-NestJS exposes the JSON admin surface under `/api/admin/*` for the Next.js admin UI while keeping the existing SQLite data.
+NestJS exposes the JSON admin surface under `/api/admin/*` for the Next.js admin UI while keeping SQLite data. This company build is optimized for driving-license/driving-school domains.
 
 ## Auth
 
@@ -12,9 +12,9 @@ If `ADMIN_PASSWORD` is set, every admin JSON endpoint accepts one of:
 
 ## Core endpoints
 
-- `GET /api/admin/options` — vertical/theme/template/provider/preset/indexing options.
+- `GET /api/admin/options` — driving-only vertical, theme/template/provider/preset/indexing options.
 - `GET /api/admin/domains` — domain list with counts.
-- `POST /api/admin/domains` — create domain.
+- `POST /api/admin/domains` — create a driving domain. Defaults to driving preset + local-guide design.
 - `GET /api/admin/domains/{domain}?include=slots,posts,academies,jobs` — domain detail, axes, slot counts, optional tab data.
 - `PATCH /api/admin/domains/{domain}` — update settings, enabled templates, design template, and content brief.
 - `DELETE /api/admin/domains/{domain}` — delete domain.
@@ -22,8 +22,8 @@ If `ADMIN_PASSWORD` is set, every admin JSON endpoint accepts one of:
 ## Axes and slots
 
 - `PUT /api/admin/domains/{domain}/axes/{axis}` — replace one axis with `{ "values": [...] }`.
-- `POST /api/admin/domains/{domain}/axes/preset` — apply `{ "preset_key": "..." }`.
-- `POST /api/admin/domains/{domain}/axes/ai-fill` — applies the matching preset in the Nest runtime; a future provider can swap this for true LLM axis expansion.
+- `POST /api/admin/domains/{domain}/axes/preset` — apply `{ "preset_key": "driving" }`.
+- `POST /api/admin/domains/{domain}/axes/ai-fill` — reapplies the driving preset in the Nest runtime; a future provider can swap this for true LLM axis expansion.
 - `GET /api/admin/domains/{domain}/slots?status=&template=&limit=` — list slots.
 - `POST /api/admin/domains/{domain}/slots/generate` — generate slots (`max_per_template`).
 - `DELETE /api/admin/domains/{domain}/slots/{slot_id}` — delete slot.

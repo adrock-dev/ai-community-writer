@@ -39,7 +39,7 @@ export default function DashboardClient() {
           display_name: String(fd.get("display_name") || "").trim(),
           vertical: String(fd.get("vertical") || "").trim(),
           theme: String(fd.get("theme") || "clean"),
-          brand_color: String(fd.get("brand_color") || "#5132d7"),
+          brand_color: String(fd.get("brand_color") || "#2563eb"),
           daily_limit: Number(fd.get("daily_limit") || 30),
           apply_preset: fd.get("apply_preset") === "on",
         }),
@@ -58,7 +58,7 @@ export default function DashboardClient() {
         <div>
           <p className="eyebrow">Adrock 사내 운영</p>
           <h1>대시보드</h1>
-          <p className="muted">회사 도메인의 콘텐츠 생성·발행 작업을 운영하는 내부 관리자 화면입니다.</p>
+          <p className="muted">운전면허·운전학원 도메인의 콘텐츠 생성·발행 작업을 운영하는 내부 관리자 화면입니다.</p>
         </div>
         <button className="btn primary" onClick={() => setOpen((v) => !v)}>+ 새 도메인</button>
       </div>
@@ -68,17 +68,16 @@ export default function DashboardClient() {
       {open && (
         <form onSubmit={createDomain} className="card card-pad grid" style={{ maxWidth: 720, marginBottom: 20 }}>
           <div className="grid grid-2">
-            <Field label="도메인"><input className="input" name="domain" placeholder="academy.example.com" required pattern="[a-z0-9.\-]+" /></Field>
-            <Field label="표시 이름"><input className="input" name="display_name" placeholder="강남 운전학원" required /></Field>
+            <Field label="도메인"><input className="input" name="domain" placeholder="drive.example.com" required pattern="[a-z0-9.\-]+" /></Field>
+            <Field label="표시 이름"><input className="input" name="display_name" placeholder="강남 운전면허센터" required /></Field>
           </div>
-          <Field label="업종"><input className="input" name="vertical" list="verticals" placeholder="강남 치과, 분당 헬스장, 운전면허학원..." required /></Field>
-          <datalist id="verticals">{options?.verticals.map((v) => <option key={v} value={v} />)}</datalist>
+          <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v} value={v}>{v === "driving" ? "운전면허/운전학원" : v}</option>)}</select></Field>
           <div className="grid grid-3">
             <Field label="테마"><select className="select" name="theme">{options?.themes.map((v) => <option key={v}>{v}</option>)}</select></Field>
-            <Field label="브랜드 컬러"><input className="input" name="brand_color" type="color" defaultValue="#5132d7" /></Field>
+            <Field label="브랜드 컬러"><input className="input" name="brand_color" type="color" defaultValue="#2563eb" /></Field>
             <Field label="일일 한도"><input className="input" name="daily_limit" type="number" defaultValue={30} min={1} max={500} /></Field>
           </div>
-          <label className="row small"><input type="checkbox" name="apply_preset" defaultChecked /> 프리셋 이름 매칭 시 자동 적용</label>
+          <label className="row small"><input type="checkbox" name="apply_preset" defaultChecked /> 운전학원 지역/키워드 프리셋 자동 적용</label>
           <div className="row"><button className="btn primary" disabled={busy}>{busy ? "생성 중..." : "생성"}</button><button type="button" className="btn" onClick={() => setOpen(false)}>닫기</button></div>
         </form>
       )}
@@ -92,7 +91,7 @@ export default function DashboardClient() {
       {domains.length === 0 ? (
         <div className="card card-pad" style={{ textAlign: "center", padding: 52 }}>
           <h2>아직 도메인이 없습니다</h2>
-          <p className="muted">회사 도메인을 만들고 기획 → 디자인 → 축 → 슬롯 → 작성 순서로 진행하세요.</p>
+          <p className="muted">운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 기획 → 디자인 → 축 → 슬롯 → 작성 순서로 진행하세요.</p>
         </div>
       ) : (
         <div className="grid grid-3">
@@ -115,7 +114,7 @@ export default function DashboardClient() {
         <div className="table-wrap">
           <table><thead><tr><th>도메인</th><th>종류</th><th>상태</th><th>예약</th><th>완료</th></tr></thead><tbody>
             {jobs.length === 0 && <tr><td colSpan={5} className="muted">작업 없음</td></tr>}
-            {jobs.map((j) => <tr key={j.id}><td className="mono small">{(j.domain ?? j.domain ?? "")}</td><td>{j.kind}</td><td><Status status={j.status} /></td><td className="small muted">{formatDateTime(j.scheduled_at)}</td><td className="small muted">{formatDateTime(j.finished_at)}</td></tr>)}
+            {jobs.map((j) => <tr key={j.id}><td className="mono small">{j.domain ?? ""}</td><td>{j.kind}</td><td><Status status={j.status} /></td><td className="small muted">{formatDateTime(j.scheduled_at)}</td><td className="small muted">{formatDateTime(j.finished_at)}</td></tr>)}
           </tbody></table>
         </div>
       </section>

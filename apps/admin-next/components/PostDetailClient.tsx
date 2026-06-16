@@ -124,7 +124,7 @@ function parseImages(value: PostDetail["images"]): Record<string, string> {
 function escapeHtml(s: string) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!)); }
 function escapeAttr(s: string) { return escapeHtml(s).replace(/'/g, "&#39;"); }
 function resolveDesign(value: string | null | undefined): DesignTemplateId {
-  return value && value in DESIGN_SPECS ? value as DesignTemplateId : "editorial";
+  return value && value in DESIGN_SPECS ? value as DesignTemplateId : "local-guide";
 }
 function publicBrandName(value: string): string {
   return value.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || value;

@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request } from "express";
 import { DbService, domainOut, jobOut, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { DESIGN_TEMPLATES, PRESETS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_CONTENT_BRIEF, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 
@@ -21,13 +21,13 @@ export class AdminController {
   options(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers);
     return {
-      verticals: ["driving", "car-mapping", "gym", "academy", "general"],
+      verticals: [...DRIVING_VERTICALS],
       themes: ["clean", "modern", "pro"],
       templates: Object.keys(TEMPLATE_SPECS),
       template_specs: TEMPLATE_SPECS,
       design_templates: DESIGN_TEMPLATES,
       providers: ["codex", "claude"],
-      preset_options: Object.keys(PRESETS),
+      preset_options: [DEFAULT_DRIVING_VERTICAL],
       indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() }
     };
   }
@@ -44,11 +44,13 @@ export class AdminController {
     checkAuth(req, headers);
     const domain = String(body.domain || "").trim().toLowerCase();
     const display_name = String(body.display_name || "").trim();
-    const vertical = String(body.vertical || "").trim();
-    if (!domain || !display_name || !vertical) throw new HttpException("domain, display_name, vertical required", 400);
+    const vertical = String(body.vertical || DEFAULT_DRIVING_VERTICAL).trim();
+    if (!domain || !display_name) throw new HttpException("domain, display_name required", 400);
+    if (!DRIVING_VERTICALS.includes(vertical as any)) throw new HttpException("Adrock 회사용 운영본은 driving 도메인만 지원합니다", 400);
     if (this.db.getDomain(domain)) throw new HttpException("domain already exists", 409);
-    this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color, daily_limit: body.daily_limit });
-    if (body.apply_preset) this.slots.applyPreset(domain, vertical);
+    this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit });
+    this.db.updateDomain(domain, { design_template_id: DEFAULT_DRIVING_DESIGN_TEMPLATE, content_brief: body.content_brief || DEFAULT_DRIVING_CONTENT_BRIEF });
+    if (body.apply_preset !== false) this.slots.applyPreset(domain, vertical);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }
 
@@ -111,7 +113,7 @@ export class AdminController {
   aiFill(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
     checkAuth(req, headers); const domainConfig = this.requireDomain(domain);
     // Nest runtime no longer shells through Python ai_axes; keep endpoint explicit and safe.
-    const summary = this.slots.applyPreset(domain, domainConfig.vertical || "general");
+    const summary = this.slots.applyPreset(domain, domainConfig.vertical || DEFAULT_DRIVING_VERTICAL);
     return { ok: true, summary: { applied_preset: domainConfig.vertical, ...summary }, axes: this.db.listAxes(domain) };
   }
 

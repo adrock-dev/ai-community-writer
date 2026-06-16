@@ -50,7 +50,7 @@ export class WorkerService {
 
   private async processGenerate(domain: string, payload: Row): Promise<Row> {
     const domainMeta = this.db.getDomain(domain) || {};
-    const designTemplateId = payload.design_template_id || domainMeta.design_template_id || "editorial";
+    const designTemplateId = payload.design_template_id || domainMeta.design_template_id || "local-guide";
     const slotIds = Array.isArray(payload.slot_ids) ? payload.slot_ids : [];
     let ok = 0, fail = 0;
     const per_slot: Row[] = [];
@@ -780,7 +780,7 @@ function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: st
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 
 브랜드: ${brand}
-업종: ${domain.vertical || "general"}
+업종: ${domain.vertical || "driving"}
 디자인 템플릿: ${designTemplateId}
 디자인 작성 지침: ${designWritingGuide(designTemplateId)}
 템플릿 필수 구조:
@@ -857,7 +857,7 @@ function designWritingGuide(designTemplateId: string): string {
     conversion: "예약 전환형. 상담, 예약, 비용 문의로 이어지되 원본처럼 과장보다 구체적인 확인 질문과 후보 사진을 강조한다.",
     custom: "사용자 지정형. 저장된 기획 메모와 템플릿 구조를 우선 따르되, 섹션을 명확히 나눠 작성한다.",
   };
-  return guides[designTemplateId] || guides.editorial!;
+  return guides[designTemplateId] || guides["local-guide"] || guides.editorial!;
 }
 
 function originalArticlePatternGuide(slot: Row): string {
@@ -966,7 +966,7 @@ function designStructureGuide(designTemplateId: string): string {
       "3) 메모가 없으면 editorial 구조를 따른다",
     ],
   };
-  return (guides[designTemplateId] || guides.editorial!).map((line) => `- ${line}`).join("\n");
+  return (guides[designTemplateId] || guides["local-guide"] || guides.editorial!).map((line) => `- ${line}`).join("\n");
 }
 
 function originalTemplateGuide(templateId: string): string {

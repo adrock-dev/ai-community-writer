@@ -1,6 +1,6 @@
 # Adrock Next.js 사내 관리자 앱
 
-NestJS `apps/api-nest` 서버를 API 백엔드로 사용하는 Adrock 사내 콘텐츠 운영 UI입니다.
+NestJS `apps/api-nest` 서버를 API 백엔드로 사용하는 Adrock 운전면허·운전학원 콘텐츠 운영 UI입니다.
 
 ## 실행
 
@@ -32,7 +32,7 @@ Next 앱은 `/api/admin/*` route handler로 Nest API의 `/api/admin/*`를 프록
 
 ## 포함 화면
 
-- 대시보드: 도메인 생성, 도메인 카드, 최근 작업
+- 대시보드: 운전 도메인 생성, 도메인 카드, 최근 작업
 - 도메인 상세: 개요, 기획, 글유형/디자인, 축, 학원자료, 슬롯, 글, 설정
 - 작업 큐: 3초 폴링, 상태/진행바, payload/result 확인
 - 글 상세: 렌더 HTML 미리보기, Markdown/HTML 다운로드

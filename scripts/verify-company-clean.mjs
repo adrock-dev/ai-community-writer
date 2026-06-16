@@ -23,6 +23,11 @@ const forbidden = [
   join("Programmatic", " SEO", " Admin"),
   join("SEO", " Admin"),
   join("사업", "준비"),
+  join("car", "-", "mapping"),
+  join("E", "C", "U"),
+  join("튜", "닝"),
+  join("헬", "스"),
+  join("치", "과"),
 ];
 const allowedFiles = new Set([
   // Package manager lockfiles can include third-party optional peer dependency metadata.
