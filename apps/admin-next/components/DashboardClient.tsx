@@ -7,7 +7,7 @@ import { formatDateTime } from "@/lib/date";
 import type { AdminOptions, Job, DomainConfig } from "@/lib/types";
 
 export default function DashboardClient() {
-  const [tenants, setTenants] = useState<DomainConfig[]>([]);
+  const [domains, setDomains] = useState<DomainConfig[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [options, setOptions] = useState<AdminOptions | null>(null);
   const [open, setOpen] = useState(false);
@@ -15,19 +15,19 @@ export default function DashboardClient() {
   const [error, setError] = useState("");
 
   async function refresh() {
-    const [opts, tenantRes, jobRes] = await Promise.all([
+    const [opts, domainRes, jobRes] = await Promise.all([
       getOptions(),
       listDomains(),
       api<{ count: number; items: Job[] }>("/jobs?limit=8"),
     ]);
     setOptions(opts);
-    setTenants(tenantRes.items);
+    setDomains(domainRes.items);
     setJobs(jobRes.items);
   }
 
   useEffect(() => { refresh().catch((e) => setError(e.message)); }, []);
 
-  async function createTenant(e: FormEvent<HTMLFormElement>) {
+  async function createDomain(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true); setError("");
     const fd = new FormData(e.currentTarget);
@@ -66,7 +66,7 @@ export default function DashboardClient() {
       {error && <p className="toast-error">{error}</p>}
 
       {open && (
-        <form onSubmit={createTenant} className="card card-pad grid" style={{ maxWidth: 720, marginBottom: 20 }}>
+        <form onSubmit={createDomain} className="card card-pad grid" style={{ maxWidth: 720, marginBottom: 20 }}>
           <div className="grid grid-2">
             <Field label="도메인"><input className="input" name="domain" placeholder="academy.example.com" required pattern="[a-z0-9.\-]+" /></Field>
             <Field label="표시 이름"><input className="input" name="display_name" placeholder="강남 운전학원" required /></Field>
@@ -84,19 +84,19 @@ export default function DashboardClient() {
       )}
 
       <div className="grid grid-3" style={{ marginBottom: 22 }}>
-        <Stat label="도메인" value={tenants.length} />
-        <Stat label="전체 슬롯" value={tenants.reduce((a, t) => a + (t.slot_count ?? 0), 0)} />
-        <Stat label="발행 글" value={tenants.reduce((a, t) => a + (t.published_count ?? 0), 0)} accent />
+        <Stat label="도메인" value={domains.length} />
+        <Stat label="전체 슬롯" value={domains.reduce((a, t) => a + (t.slot_count ?? 0), 0)} />
+        <Stat label="발행 글" value={domains.reduce((a, t) => a + (t.published_count ?? 0), 0)} accent />
       </div>
 
-      {tenants.length === 0 ? (
+      {domains.length === 0 ? (
         <div className="card card-pad" style={{ textAlign: "center", padding: 52 }}>
           <h2>아직 도메인이 없습니다</h2>
           <p className="muted">회사 도메인을 만들고 기획 → 디자인 → 축 → 슬롯 → 작성 순서로 진행하세요.</p>
         </div>
       ) : (
         <div className="grid grid-3">
-          {tenants.map((t) => (
+          {domains.map((t) => (
             <Link href={`/t/${encodeURIComponent(t.domain)}`} className="card card-pad" key={t.domain}>
               <div className="spread"><h3>{t.display_name}</h3><span className="badge">{t.vertical}</span></div>
               <p className="muted mono small">{t.domain}</p>
@@ -115,7 +115,7 @@ export default function DashboardClient() {
         <div className="table-wrap">
           <table><thead><tr><th>도메인</th><th>종류</th><th>상태</th><th>예약</th><th>완료</th></tr></thead><tbody>
             {jobs.length === 0 && <tr><td colSpan={5} className="muted">작업 없음</td></tr>}
-            {jobs.map((j) => <tr key={j.id}><td className="mono small">{(j.domain ?? j.tenant ?? "")}</td><td>{j.kind}</td><td><Status status={j.status} /></td><td className="small muted">{formatDateTime(j.scheduled_at)}</td><td className="small muted">{formatDateTime(j.finished_at)}</td></tr>)}
+            {jobs.map((j) => <tr key={j.id}><td className="mono small">{(j.domain ?? j.domain ?? "")}</td><td>{j.kind}</td><td><Status status={j.status} /></td><td className="small muted">{formatDateTime(j.scheduled_at)}</td><td className="small muted">{formatDateTime(j.finished_at)}</td></tr>)}
           </tbody></table>
         </div>
       </section>

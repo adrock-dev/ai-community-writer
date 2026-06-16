@@ -41,27 +41,27 @@ export class WorkerService {
 
   async process(job: Row): Promise<Row> {
     const payload = job.payload_obj || safeJson(job.payload, {});
-    if (job.kind === "generate") return this.processGenerate(job.tenant, payload);
-    if (job.kind === "dedup") return this.processDedup(job.tenant, payload);
-    if (job.kind === "prune") return this.processPrune(job.tenant, payload);
-    if (job.kind === "indexing") return this.processIndexing(job.tenant, payload);
+    if (job.kind === "generate") return this.processGenerate(job.domain, payload);
+    if (job.kind === "dedup") return this.processDedup(job.domain, payload);
+    if (job.kind === "prune") return this.processPrune(job.domain, payload);
+    if (job.kind === "indexing") return this.processIndexing(job.domain, payload);
     throw new Error(`unknown job kind: ${job.kind}`);
   }
 
-  private async processGenerate(tenant: string, payload: Row): Promise<Row> {
-    const tenantMeta = this.db.getTenant(tenant) || {};
-    const designTemplateId = payload.design_template_id || tenantMeta.design_template_id || "editorial";
+  private async processGenerate(domain: string, payload: Row): Promise<Row> {
+    const domainMeta = this.db.getDomain(domain) || {};
+    const designTemplateId = payload.design_template_id || domainMeta.design_template_id || "editorial";
     const slotIds = Array.isArray(payload.slot_ids) ? payload.slot_ids : [];
     let ok = 0, fail = 0;
     const per_slot: Row[] = [];
     for (const [index, sid] of slotIds.entries()) {
       const slot = this.db.getSlot(sid);
-      if (!slot || slot.tenant !== tenant) { fail++; per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
+      if (!slot || slot.domain !== domain) { fail++; per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
       this.db.updateSlotStatus(sid, "in_progress");
       try {
-        const facts = this.buildFacts(tenant, slot);
-        const images = { ...this.imagesForSlot(tenant, slot), ...facts.images };
-        const prompt = buildPrompt(tenantMeta, slot, facts.text, designTemplateId);
+        const facts = this.buildFacts(domain, slot);
+        const images = { ...this.imagesForSlot(domain, slot), ...facts.images };
+        const prompt = buildPrompt(domainMeta, slot, facts.text, designTemplateId);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         const result = await runLlm(prompt, llmOpts);
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
@@ -75,7 +75,7 @@ export class WorkerService {
         let model = result.model;
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
-          const repair = await runLlm(buildRepairPrompt(tenantMeta, slot, facts.text, designTemplateId, markdown, qualityIssues), llmOpts);
+          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, facts.text, designTemplateId, markdown, qualityIssues), llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
           inputTokens += repair.input_tokens || 0;
@@ -92,9 +92,9 @@ export class WorkerService {
         markdown = rewriteH1Title(markdown, title);
         const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, candidateCountFromFacts(facts.text));
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
-        const slug = this.db.uniqueSlug(tenant, slugify(title), sid);
+        const slug = this.db.uniqueSlug(domain, slugify(title), sid);
         this.db.insertPost({
-          tenant, slot_id: sid, slug, title, body_markdown: markdown,
+          domain, slot_id: sid, slug, title, body_markdown: markdown,
           meta_description: metaDescription(markdown), images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId,
           provider: result.provider, model, session_id: sessionId, cost_usd: costUsd,
           duration_sec: durationSec, input_tokens: inputTokens, output_tokens: outputTokens
@@ -109,13 +109,13 @@ export class WorkerService {
       }
       if (index < slotIds.length - 1) await sleep(Number(payload.cooldown_sec || 60) * 1000);
     }
-    return { ok, fail, generation_gate_version: "drivingteacher-surface-v8", per_slot };
+    return { ok, fail, generation_gate_version: "adrock-domain-surface-v1", per_slot };
   }
 
-  private buildFacts(tenant: string, slot: Row): GenerationFacts {
+  private buildFacts(domain: string, slot: Row): GenerationFacts {
     if (!slot.region) return { text: "", images: {} };
     const region = String(slot.region);
-    const academies = this.pickAcademiesForRegion(tenant, region, 5);
+    const academies = this.pickAcademiesForRegion(domain, region, 5);
     const images: Record<string, string> = {};
     const body = academies.map((a, i) => {
       const imageKeys = firstImageKeys(a, i + 1, 2);
@@ -129,9 +129,9 @@ export class WorkerService {
       if (imageKeys.length) parts.push(`사진 슬롯: ${imageKeys.map((imageKey) => `[IMAGE:${imageKey.key}]`).join(", ")}`);
       return parts.join(" / ");
     }).join("\n");
-    const related = this.relatedPostsForSlot(tenant, slot);
+    const related = this.relatedPostsForSlot(domain, slot);
     const relatedText = related.length
-      ? ["관련 글 후보(실제 내부 링크, 필요 시 2~4개만 자연스럽게 연결):", ...related.map((post) => `- ${post.title}: https://${tenant}/community/${post.slug}`)].join("\n")
+      ? ["관련 글 후보(실제 내부 링크, 필요 시 2~4개만 자연스럽게 연결):", ...related.map((post) => `- ${post.title}: https://${domain}/community/${post.slug}`)].join("\n")
       : "";
     const header = [
       `작성 주제 지역: ${region}`,
@@ -144,21 +144,21 @@ export class WorkerService {
     return { text: [header, body, relatedText].filter(Boolean).join("\n\n"), images };
   }
 
-  private imagesForSlot(tenant: string, slot: Row): Record<string, string> {
+  private imagesForSlot(domain: string, slot: Row): Record<string, string> {
     if (!slot.region) return {};
     const images: Record<string, string> = {};
-    for (const [i, academy] of this.pickAcademiesForRegion(tenant, String(slot.region), 5).entries()) {
+    for (const [i, academy] of this.pickAcademiesForRegion(domain, String(slot.region), 5).entries()) {
       for (const imageKey of firstImageKeys(academy, i + 1, 2)) images[imageKey.key] = imageKey.url;
     }
     return images;
   }
 
-  private relatedPostsForSlot(tenant: string, slot: Row): Row[] {
+  private relatedPostsForSlot(domain: string, slot: Row): Row[] {
     const region = String(slot.region || "").trim();
     const keyword = String(slot.primary_keyword || "").replace(region, "").trim();
     const terms = [region, keyword].filter((term) => term.length >= 2).slice(0, 2);
-    if (!terms.length) return this.db.all("SELECT title, slug FROM posts WHERE tenant=? AND status='published' ORDER BY generated_at DESC LIMIT 5", [tenant]);
-    const rows = this.db.all("SELECT title, slug FROM posts WHERE tenant=? AND status='published' ORDER BY generated_at DESC LIMIT 80", [tenant]);
+    if (!terms.length) return this.db.all("SELECT title, slug FROM posts WHERE domain=? AND status='published' ORDER BY generated_at DESC LIMIT 5", [domain]);
+    const rows = this.db.all("SELECT title, slug FROM posts WHERE domain=? AND status='published' ORDER BY generated_at DESC LIMIT 80", [domain]);
     return rows
       .map((post) => ({ ...post, score: terms.reduce((sum, term) => sum + (String(post.title || "").includes(term) ? 2 : 0) + (String(post.slug || "").includes(term.replace(/\s+/g, "-")) ? 1 : 0), 0) }))
       .sort((a, b) => b.score - a.score)
@@ -166,11 +166,11 @@ export class WorkerService {
       .slice(0, 5);
   }
 
-  private pickAcademiesForRegion(tenant: string, region: string, limit: number): Row[] {
-    const exact = this.db.listAcademies(tenant, { region, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
+  private pickAcademiesForRegion(domain: string, region: string, limit: number): Row[] {
+    const exact = this.db.listAcademies(domain, { region, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
     if (exact.length) return exact.slice(0, limit);
-    const all = this.db.listAcademies(tenant, { limit: 5000 }).filter(isUsableAcademy);
-    const targetRegion = this.db.getSeoRegion(tenant, region);
+    const all = this.db.listAcademies(domain, { limit: 5000 }).filter(isUsableAcademy);
+    const targetRegion = this.db.getSeoRegion(domain, region);
     const targetLat = finiteNumber(targetRegion?.latitude);
     const targetLng = finiteNumber(targetRegion?.longitude);
     const directMatches = all.map((a) => {
@@ -202,10 +202,10 @@ export class WorkerService {
       .map((r) => r.distanceKm === null ? r.academy : { ...r.academy, distance_km: Math.round((r.distanceKm ?? 0) * 10) / 10 });
   }
 
-  private processDedup(tenant: string, payload: Row): Row {
+  private processDedup(domain: string, payload: Row): Row {
     const threshold = Number(payload.threshold ?? 0.75);
     const dryRun = Boolean(payload.dry_run);
-    const posts = this.db.listPostsForDedup(tenant, false);
+    const posts = this.db.listPostsForDedup(domain, false);
     const pairs: Row[] = [];
     for (let i = 0; i < posts.length; i++) for (let j = i + 1; j < posts.length; j++) {
       const left = posts[i]!;
@@ -220,14 +220,14 @@ export class WorkerService {
     return { threshold, dry_run: dryRun, pairs, changed: dryRun ? 0 : new Set(pairs.map((p) => p.noindex)).size };
   }
 
-  private processPrune(tenant: string, payload: Row): Row {
+  private processPrune(domain: string, payload: Row): Row {
     const minChars = Number(payload.min_body_chars ?? 2600);
     const dryRun = Boolean(payload.dry_run);
-    const rows = this.db.all("SELECT id, slot_id, title, body_markdown, images, length(body_markdown) AS chars FROM posts WHERE tenant=? AND status='published'", [tenant]);
+    const rows = this.db.all("SELECT id, slot_id, title, body_markdown, images, length(body_markdown) AS chars FROM posts WHERE domain=? AND status='published'", [domain]);
     const targets: Row[] = [];
     for (const r of rows) {
       const slot = r.slot_id ? this.db.getSlot(String(r.slot_id)) : null;
-      const candidateCount = slot?.region ? this.pickAcademiesForRegion(tenant, String(slot.region), 5).length : 0;
+      const candidateCount = slot?.region ? this.pickAcademiesForRegion(domain, String(slot.region), 5).length : 0;
       const issues = postSurfaceQualityIssues(r, minChars, candidateCount);
       if (issues.length) targets.push({ id: r.id, title: r.title, chars: r.chars, issues });
     }
@@ -235,11 +235,11 @@ export class WorkerService {
     return { min_body_chars: minChars, quality_gate: true, dry_run: dryRun, candidates: targets, changed: dryRun ? 0 : targets.length };
   }
 
-  private processIndexing(tenant: string, payload: Row): Row {
+  private processIndexing(domain: string, payload: Row): Row {
     const max = Number(payload.max ?? 200);
     const tpl = this.db.getSetting("indexing_url_template") || "https://{domain}/community/{slug}";
-    const posts = this.db.listPosts(tenant, { status: "published", limit: max });
-    const urls = posts.map((p) => tpl.replace("{domain}", tenant).replace("{slug}", p.slug));
+    const posts = this.db.listPosts(domain, { status: "published", limit: max });
+    const urls = posts.map((p) => tpl.replace("{domain}", domain).replace("{slug}", p.slug));
     return { configured: Boolean(this.db.getSetting("google_sa_json")), submitted: 0, urls, note: "Nest worker collected URLs. Google Indexing submission is intentionally skipped unless a service account integration is added." };
   }
 }
@@ -337,12 +337,12 @@ function isUsableAcademy(row: Row): boolean {
 function reviewFactsForAcademy(row: Row): string[] {
   const facts: string[] = [];
   const reviews = safeJson(row.review_json, []);
-  const legacyReview = String(row.review || "").trim();
+  const reviewText = String(row.review || "").trim();
   if (Array.isArray(reviews) && reviews.length) {
     const summary = reviewEvidenceSummary(reviews.map((review) => review?.content), reviews.map((review) => review?.point));
     if (summary) facts.push(`긍정 수강생 리뷰 보충자료: ${summary}`);
-  } else if (legacyReview) {
-    const summary = reviewEvidenceSummary(legacyReview.split(/\n+/), []);
+  } else if (reviewText) {
+    const summary = reviewEvidenceSummary(reviewText.split(/\n+/), []);
     if (summary) facts.push(`긍정 수강생 리뷰 보충자료: ${summary}`);
   }
   const blogReviews = safeJson(row.blog_reviews, []);
@@ -723,8 +723,8 @@ function isAnyMarkdownTable(markdown: string): boolean {
   return lines.some((line, index) => line.includes("|") && /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(lines[index + 1] || "") && (lines[index + 2] || "").includes("|"));
 }
 
-function buildRepairPrompt(tenant: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[]): string {
-  const brand = publicBrandName(tenant);
+function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[]): string {
+  const brand = publicBrandName(domain);
   return `아래 Markdown 글은 품질 게이트를 통과하지 못했다. 확인된 콘텐츠 재료만 사용해서 같은 주제의 완성형 글로 다시 작성하라.
 
 브랜드: ${brand}
@@ -775,12 +775,12 @@ ${facts || "없음"}
 ${markdown}`;
 }
 
-function buildPrompt(tenant: Row, slot: Row, facts: string, designTemplateId: string): string {
-  const brand = publicBrandName(tenant);
+function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string): string {
+  const brand = publicBrandName(domain);
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 
 브랜드: ${brand}
-업종: ${tenant.vertical || "general"}
+업종: ${domain.vertical || "general"}
 디자인 템플릿: ${designTemplateId}
 디자인 작성 지침: ${designWritingGuide(designTemplateId)}
 템플릿 필수 구조:
@@ -795,7 +795,7 @@ ${originalArticlePatternGuide(slot)}
 페르소나: ${slot.persona || ""}
 의도: ${slot.intent || ""}
 수식어: ${[slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
-브랜드/작성 메모: ${tenant.content_brief || "없음"}
+브랜드/작성 메모: ${domain.content_brief || "없음"}
 
 확인된 콘텐츠 재료:
 ${facts || "없음"}
@@ -892,7 +892,7 @@ function originalArticlePatternGuide(slot: Row): string {
 function loadArticlePatternSummary(): ArticlePatternSummary {
   const cached = (loadArticlePatternSummary as any).cache as ArticlePatternSummary | undefined;
   if (cached) return cached;
-  const file = resolve(PROJECT_DIR, "data/keyword_extract/summaries/summary_all_article_patterns.json");
+  const file = resolve(PROJECT_DIR, "data/article-patterns/summary.json");
   try {
     const parsed = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
     const summary = parsed && typeof parsed === "object" ? parsed as ArticlePatternSummary : {};
@@ -1024,8 +1024,8 @@ function originalTemplateGuide(templateId: string): string {
   };
   return (guides[templateId] || guides.T03!).map((line) => `- ${line}`).join("\n");
 }
-function publicBrandName(tenant: Row): string {
-  return String(tenant.display_name || tenant.domain || "서비스").replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || "서비스";
+function publicBrandName(domain: Row): string {
+  return String(domain.display_name || domain.domain || "서비스").replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || "서비스";
 }
 function extractTitle(md: string, fallback: string) {
   return cleanGeneratedTitle(md.split(/\r?\n/).map((l) => l.trim()).find((l) => l.startsWith("# "))?.slice(2).trim() || fallback);

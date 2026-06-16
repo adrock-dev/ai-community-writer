@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
@@ -15,9 +13,8 @@ export class SlotService {
     const presetKey = VERTICAL_TO_PRESET[key] || key;
     const preset = PRESETS[presetKey];
     if (!preset) return {};
-    const enrichedPreset = presetKey === "driving" ? enrichDrivingPresetFromExtractedKeywords(preset) : preset;
     const summary: Record<string, number> = {};
-    for (const [axis, values] of Object.entries(enrichedPreset) as [AxisName, Row[]][]) {
+    for (const [axis, values] of Object.entries(preset) as [AxisName, Row[]][]) {
       if (!values.length) continue;
       this.db.bulkReplaceAxis(domain, axis, values);
       summary[axis] = values.length;
@@ -25,11 +22,11 @@ export class SlotService {
     return summary;
   }
 
-  generateSlotsForTenant(domain: string, opts: { templates?: string[]; maxPerTemplate?: number; seed?: number } = {}): Record<string, number> {
-    const tenant = this.db.getTenant(domain);
-    if (!tenant) throw new Error(`unknown tenant: ${domain}`);
+  generateSlotsForDomain(domain: string, opts: { templates?: string[]; maxPerTemplate?: number; seed?: number } = {}): Record<string, number> {
+    const domainConfig = this.db.getDomain(domain);
+    if (!domainConfig) throw new Error(`unknown domain: ${domain}`);
     const axes = this.db.listAxes(domain);
-    const enabled = opts.templates?.length ? opts.templates : safeJson(tenant.templates_enabled, []);
+    const enabled = opts.templates?.length ? opts.templates : safeJson(domainConfig.templates_enabled, []);
     const templateIds = enabled.length ? enabled : Object.keys(TEMPLATE_SPECS);
     const maxPerTemplate = opts.maxPerTemplate ?? 200;
     const summary: Record<string, number> = {};
@@ -59,7 +56,7 @@ export class SlotService {
         for (const persona of personaValues) for (const intent of intentValues) for (const [m1, m2] of modifierCombos) {
           const parts = [pv.value || "", persona.value || "", intent.value || "", m1 || "", m2 || ""];
           primaryRows.push({
-            slot_id: slotId(tid, parts), tenant: domain, template_id: tid, primary_keyword: primaryKeyword,
+            slot_id: slotId(tid, parts), domain: domain, template_id: tid, primary_keyword: primaryKeyword,
             region: primaryAxis === "region" ? pv.value : null, persona: persona.value ?? null, intent: intent.value ?? null,
             modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(sv, numberOrNull(pv.competition_kd), spec.weight)
           });
@@ -108,49 +105,6 @@ function pickKeyword(keywords: Row[], pattern: RegExp, fallback: string): string
 
 function formatRegionKeyword(region: string, keyword: string): string {
   return `${String(region || "").trim()} ${String(keyword || "").trim()}`.replace(/\s+/g, " ").trim();
-}
-
-function enrichDrivingPresetFromExtractedKeywords(preset: Record<AxisName, Row[]>): Record<AxisName, Row[]> {
-  const keywords = readDrivingTeacherKeywords(350);
-  if (!keywords.length) return preset;
-  const seen = new Set<string>();
-  const merged = [...preset.keyword, ...keywords]
-    .map((row) => ({ ...row, value: String(row.value || row.keyword || "").trim() }))
-    .filter((row) => {
-      if (!row.value || seen.has(row.value)) return false;
-      seen.add(row.value);
-      return !/운전선생/u.test(row.value);
-    })
-    .slice(0, 400);
-  return { ...preset, keyword: merged };
-}
-
-function readDrivingTeacherKeywords(limit: number): Row[] {
-  const jsonFile = resolve(process.cwd(), "data/keyword_extract/keywords/drivingteacher_keywords_recommended_clean.json");
-  if (!existsSync(jsonFile)) return [];
-  try {
-    const rows = JSON.parse(readFileSync(jsonFile, "utf8"));
-    return Array.isArray(rows) ? rowsToAxisKeywords(rows, limit) : [];
-  } catch {
-    return [];
-  }
-}
-
-function rowsToAxisKeywords(rows: Row[], limit: number): Row[] {
-  const out: Row[] = [];
-  for (const row of rows) {
-    const keyword = String(row.keyword || row.value || "").trim();
-    if (!keyword || /운전선생/u.test(keyword) || keyword.length > 40) continue;
-    const score = Number(row.score || 0);
-    out.push({
-      value: keyword,
-      weight: Math.max(3, Math.min(10, Math.round(Math.log10(score + 10) * 2))),
-      monthly_search_volume: Math.max(100, Math.min(20000, Math.round(score / 6))),
-      competition_kd: null,
-    });
-    if (out.length >= limit) break;
-  }
-  return out;
 }
 
 function slotId(templateId: string, parts: string[]): string {

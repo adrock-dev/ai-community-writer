@@ -35,7 +35,7 @@ export class AdminController {
   @Get("domains")
   listDomains(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers);
-    const items = this.db.listTenants().map(domainOut);
+    const items = this.db.listDomains().map(domainOut);
     return { count: items.length, items };
   }
 
@@ -46,8 +46,8 @@ export class AdminController {
     const display_name = String(body.display_name || "").trim();
     const vertical = String(body.vertical || "").trim();
     if (!domain || !display_name || !vertical) throw new HttpException("domain, display_name, vertical required", 400);
-    if (this.db.getTenant(domain)) throw new HttpException("domain already exists", 409);
-    this.db.createTenant({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color, daily_limit: body.daily_limit });
+    if (this.db.getDomain(domain)) throw new HttpException("domain already exists", 409);
+    this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color, daily_limit: body.daily_limit });
     if (body.apply_preset) this.slots.applyPreset(domain, vertical);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }
@@ -67,7 +67,7 @@ export class AdminController {
     if (include.has("slots")) payload.slots = this.db.listSlots(domain, { status: query.slot_status || undefined, template: query.slot_template || undefined, q: query.slot_q || undefined, limit });
     if (include.has("posts")) payload.posts = this.db.listPosts(domain, { limit });
     if (include.has("academies")) payload.academies = this.db.listAcademies(domain, { limit });
-    if (include.has("jobs")) payload.jobs = this.db.listJobs({ tenant: domain, limit }).map(jobOut);
+    if (include.has("jobs")) payload.jobs = this.db.listJobs({ domain: domain, limit }).map(jobOut);
     return payload;
   }
 
@@ -77,13 +77,13 @@ export class AdminController {
     this.requireDomain(domain);
     const fields = { ...body };
     if (Array.isArray(fields.templates_enabled)) fields.templates_enabled = JSON.stringify(fields.templates_enabled);
-    this.db.updateTenant(domain, fields);
+    this.db.updateDomain(domain, fields);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }
 
   @Delete("domains/:domain")
   deleteDomain(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
-    checkAuth(req, headers); this.requireDomain(domain); this.db.deleteTenant(domain); return { ok: true };
+    checkAuth(req, headers); this.requireDomain(domain); this.db.deleteDomain(domain); return { ok: true };
   }
 
   @Put("domains/:domain/axes/:axis")
@@ -126,7 +126,7 @@ export class AdminController {
   @Post("domains/:domain/slots/generate")
   generateSlots(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const summary = this.slots.generateSlotsForTenant(domain, { maxPerTemplate: Math.max(1, Number(body.max_per_template || 200)) });
+    const summary = this.slots.generateSlotsForDomain(domain, { maxPerTemplate: Math.max(1, Number(body.max_per_template || 200)) });
     return { ok: true, summary, slot_counts: this.db.countSlots(domain) };
   }
 
@@ -138,7 +138,7 @@ export class AdminController {
   @Post("domains/:domain/slots/:slotId/reset")
   resetSlot(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("slotId") slotId: string) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const slot = this.db.getSlot(slotId); if (!slot || slot.tenant !== domain) throw new HttpException("slot not found", 404);
+    const slot = this.db.getSlot(slotId); if (!slot || slot.domain !== domain) throw new HttpException("slot not found", 404);
     this.db.updateSlotStatus(slotId, "planned", null); return { ok: true, slot: this.db.getSlot(slotId) };
   }
 
@@ -152,7 +152,7 @@ export class AdminController {
   @Get("domains/:domain/posts/:postId")
   getPost(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("postId") postId: string, @Query("include_rendered") rendered = "") {
     checkAuth(req, headers); this.requireDomain(domain);
-    const post = this.db.getPost(postId); if (!post || post.tenant !== domain) throw new HttpException("post not found", 404);
+    const post = this.db.getPost(postId); if (!post || post.domain !== domain) throw new HttpException("post not found", 404);
     const dbImages = safeJson(post.images, {});
     const mergedImages = { ...fallbackImagesForPost(this.db, domain, post), ...(dbImages && typeof dbImages === "object" ? dbImages : {}) };
     const bodyMarkdown = ensureImageSlotsForRender(stripPseudoSlotsForRender(post.body_markdown || ""), mergedImages);
@@ -165,7 +165,7 @@ export class AdminController {
   @Delete("domains/:domain/posts/:postId")
   deletePost(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("postId") postId: string) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const post = this.db.getPost(postId); if (!post || post.tenant !== domain) throw new HttpException("post not found", 404);
+    const post = this.db.getPost(postId); if (!post || post.domain !== domain) throw new HttpException("post not found", 404);
     this.db.deletePost(postId); return { ok: true };
   }
 
@@ -254,7 +254,7 @@ export class AdminController {
   @Get("jobs")
   listJobs(@Req() req: Request, @Headers() headers: Record<string, string>, @Query() query: Row) {
     checkAuth(req, headers);
-    const items = this.db.listJobs({ tenant: query.domain || query.tenant || undefined, status: query.status || undefined, limit: clampInt(query.limit, 200, 1, 1000) }).map(jobOut);
+    const items = this.db.listJobs({ domain: query.domain || undefined, status: query.status || undefined, limit: clampInt(query.limit, 200, 1, 1000) }).map(jobOut);
     return { count: items.length, items };
   }
 
@@ -272,7 +272,7 @@ export class AdminController {
     return { ok: true, has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() };
   }
 
-  private requireDomain(domain: string): Row { const domainConfig = this.db.getTenant(domain); if (!domainConfig) throw new HttpException("domain not found", 404); return domainConfig; }
+  private requireDomain(domain: string): Row { const domainConfig = this.db.getDomain(domain); if (!domainConfig) throw new HttpException("domain not found", 404); return domainConfig; }
   private indexingUrlTemplate() { return this.db.getSetting("indexing_url_template") || "https://{domain}/community/{slug}"; }
 }
 

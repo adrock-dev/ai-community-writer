@@ -8,7 +8,7 @@ const dbPath = args.find((arg) => arg !== '--all') || 'data/admin.db';
 const db = new DatabaseSync(dbPath);
 const where = includeAll ? "status != 'deleted'" : "status = 'published'";
 const rows = db.prepare(`select p.id, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id,
-  (select count(*) from academies a join slots s2 on s2.slot_id=p.slot_id where a.tenant=p.tenant and s2.region is not null and a.region=s2.region) as exact_academy_count
+  (select count(*) from academies a join slots s2 on s2.slot_id=p.slot_id where a.domain=p.domain and s2.region is not null and a.region=s2.region) as exact_academy_count
   from posts p where p.${where} order by p.generated_at desc`).all();
 
 function issuesFor(row) {

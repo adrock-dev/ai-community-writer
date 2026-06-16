@@ -112,7 +112,6 @@ export interface Academy {
 export interface Job {
   id: string;
   domain: string;
-  tenant?: string;
   kind: JobKind;
   payload: string;
   payload_obj: Record<string, unknown> & { slot_ids?: string[]; provider?: string; model?: string; cooldown_sec?: number; timeout_sec?: number };

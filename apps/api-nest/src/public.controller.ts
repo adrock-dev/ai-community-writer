@@ -14,7 +14,7 @@ export class PublicController {
     this.requireDomain(domain);
     const limit = clampInt(query.limit, 50, 1, 100);
     const offset = Math.max(0, Number(query.offset || 0));
-    const rows = this.db.all(`SELECT id, tenant, slot_id, slug, title, meta_description, images, design_template_id, generated_at, length(body_markdown) AS body_chars FROM posts WHERE tenant=? AND status='published' ORDER BY generated_at DESC LIMIT ? OFFSET ?`, [domain, limit, offset]);
+    const rows = this.db.all(`SELECT id, domain, slot_id, slug, title, meta_description, images, design_template_id, generated_at, length(body_markdown) AS body_chars FROM posts WHERE domain=? AND status='published' ORDER BY generated_at DESC LIMIT ? OFFSET ?`, [domain, limit, offset]);
     return { count: rows.length, items: rows.map(publicPostSummary) };
   }
 
@@ -58,7 +58,7 @@ export class PublicController {
     return { ok: true, upserted: this.db.upsertAcademies(domain, rows) };
   }
 
-  private requireDomain(domain: string) { const d = this.db.getTenant(domain); if (!d) throw new HttpException("domain not found", 404); return d; }
+  private requireDomain(domain: string) { const d = this.db.getDomain(domain); if (!d) throw new HttpException("domain not found", 404); return d; }
 }
 
 function publicPostSummary(row: Row): Row {

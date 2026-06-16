@@ -17,7 +17,7 @@ const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
-CREATE TABLE IF NOT EXISTS tenants (
+CREATE TABLE IF NOT EXISTS domains (
   domain TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
   vertical TEXT NOT NULL,
@@ -32,18 +32,18 @@ CREATE TABLE IF NOT EXISTS tenants (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS axes (
-  tenant TEXT NOT NULL,
+  domain TEXT NOT NULL,
   axis TEXT NOT NULL CHECK (axis IN ('region','keyword','intent','persona','modifier')),
   value TEXT NOT NULL,
   weight INTEGER NOT NULL DEFAULT 3,
   monthly_search_volume INTEGER,
   competition_kd INTEGER,
-  PRIMARY KEY (tenant, axis, value),
-  FOREIGN KEY (tenant) REFERENCES tenants(domain) ON DELETE CASCADE
+  PRIMARY KEY (domain, axis, value),
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
 CREATE TABLE IF NOT EXISTS slots (
   slot_id TEXT PRIMARY KEY,
-  tenant TEXT NOT NULL,
+  domain TEXT NOT NULL,
   template_id TEXT NOT NULL,
   primary_keyword TEXT NOT NULL,
   region TEXT,
@@ -56,12 +56,12 @@ CREATE TABLE IF NOT EXISTS slots (
   status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','in_progress','published','failed','pruned')),
   last_error TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (tenant) REFERENCES tenants(domain) ON DELETE CASCADE
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_slots_tenant_status ON slots(tenant, status, priority_score DESC);
+CREATE INDEX IF NOT EXISTS idx_slots_domain_status ON slots(domain, status, priority_score DESC);
 CREATE TABLE IF NOT EXISTS posts (
   id TEXT PRIMARY KEY,
-  tenant TEXT NOT NULL,
+  domain TEXT NOT NULL,
   slot_id TEXT,
   slug TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -78,13 +78,13 @@ CREATE TABLE IF NOT EXISTS posts (
   input_tokens INTEGER DEFAULT 0,
   output_tokens INTEGER DEFAULT 0,
   generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (tenant, slug),
-  FOREIGN KEY (tenant) REFERENCES tenants(domain) ON DELETE CASCADE,
+  UNIQUE (domain, slug),
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE,
   FOREIGN KEY (slot_id) REFERENCES slots(slot_id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS jobs (
   id TEXT PRIMARY KEY,
-  tenant TEXT NOT NULL,
+  domain TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('generate','dedup','indexing','prune')),
   payload TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','done','failed')),
@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   finished_at TEXT,
   error TEXT,
   result TEXT,
-  FOREIGN KEY (tenant) REFERENCES tenants(domain) ON DELETE CASCADE
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_status_sched ON jobs(status, scheduled_at);
 CREATE TABLE IF NOT EXISTS app_settings (
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 );
 CREATE TABLE IF NOT EXISTS academies (
   id TEXT PRIMARY KEY,
-  tenant TEXT NOT NULL,
+  domain TEXT NOT NULL,
   external_id TEXT,
   region TEXT,
   name TEXT NOT NULL,
@@ -130,22 +130,22 @@ CREATE TABLE IF NOT EXISTS academies (
   source_url TEXT,
   synced_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE (tenant, region, name),
-  FOREIGN KEY (tenant) REFERENCES tenants(domain) ON DELETE CASCADE
+  UNIQUE (domain, region, name),
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_academies_tenant_region ON academies(tenant, region);
+CREATE INDEX IF NOT EXISTS idx_academies_domain_region ON academies(domain, region);
 CREATE TABLE IF NOT EXISTS seo_regions (
-  tenant TEXT NOT NULL,
+  domain TEXT NOT NULL,
   level INTEGER NOT NULL,
   region TEXT NOT NULL,
   latitude REAL,
   longitude REAL,
   source_name TEXT,
   synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (tenant, level, region),
-  FOREIGN KEY (tenant) REFERENCES tenants(domain) ON DELETE CASCADE
+  PRIMARY KEY (domain, level, region),
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
-CREATE INDEX IF NOT EXISTS idx_seo_regions_tenant_region ON seo_regions(tenant, region);
+CREATE INDEX IF NOT EXISTS idx_seo_regions_domain_region ON seo_regions(domain, region);
 	`;
 
 @Injectable()
@@ -167,17 +167,17 @@ export class DbService implements OnModuleInit {
   }
 
   private migrate(): void {
-    const tenantCols = new Set(this.all("PRAGMA table_info(tenants)").map((r) => r.name));
-    if (!tenantCols.has("design_template_id")) this.db.exec("ALTER TABLE tenants ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'editorial'");
-    if (!tenantCols.has("custom_design_templates")) this.db.exec("ALTER TABLE tenants ADD COLUMN custom_design_templates TEXT");
-    if (!tenantCols.has("content_brief")) this.db.exec("ALTER TABLE tenants ADD COLUMN content_brief TEXT");
-    this.run(`UPDATE tenants SET templates_enabled=?
+    const domainCols = new Set(this.all("PRAGMA table_info(domains)").map((r) => r.name));
+    if (!domainCols.has("design_template_id")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'editorial'");
+    if (!domainCols.has("custom_design_templates")) this.db.exec("ALTER TABLE domains ADD COLUMN custom_design_templates TEXT");
+    if (!domainCols.has("content_brief")) this.db.exec("ALTER TABLE domains ADD COLUMN content_brief TEXT");
+    this.run(`UPDATE domains SET templates_enabled=?
        WHERE vertical='driving' AND templates_enabled IN ('["T01","T03","T05","T07"]', '["T01","T03","T04","T05","T06","T07"]')`, [JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)]);
     const postCols = new Set(this.all("PRAGMA table_info(posts)").map((r) => r.name));
     if (!postCols.has("images")) this.db.exec("ALTER TABLE posts ADD COLUMN images TEXT");
     if (!postCols.has("design_template_id")) {
       this.db.exec("ALTER TABLE posts ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'editorial'");
-      this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM tenants t WHERE t.domain = posts.tenant), 'editorial')");
+      this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM domains t WHERE t.domain = posts.domain), 'editorial')");
     }
     const academyCols = new Set(this.all("PRAGMA table_info(academies)").map((r) => r.name));
     const academyMigrations: Array<[string, string]> = [
@@ -196,19 +196,19 @@ export class DbService implements OnModuleInit {
       ["synced_at", "ALTER TABLE academies ADD COLUMN synced_at TEXT"],
     ];
     for (const [col, sql] of academyMigrations) if (!academyCols.has(col)) this.db.exec(sql);
-    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_tenant_external_id ON academies(tenant, external_id) WHERE external_id IS NOT NULL");
+    this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
     this.db.exec(`CREATE TABLE IF NOT EXISTS seo_regions (
-      tenant TEXT NOT NULL,
+      domain TEXT NOT NULL,
       level INTEGER NOT NULL,
       region TEXT NOT NULL,
       latitude REAL,
       longitude REAL,
       source_name TEXT,
       synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (tenant, level, region),
-      FOREIGN KEY (tenant) REFERENCES tenants(domain) ON DELETE CASCADE
+      PRIMARY KEY (domain, level, region),
+      FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
     )`);
-    this.db.exec("CREATE INDEX IF NOT EXISTS idx_seo_regions_tenant_region ON seo_regions(tenant, region)");
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_seo_regions_domain_region ON seo_regions(domain, region)");
   }
 
   all(sql: string, params: any[] = []): Row[] { return this.db.prepare(sql).all(...params) as Row[]; }
@@ -221,53 +221,53 @@ export class DbService implements OnModuleInit {
     catch (error) { this.exec("ROLLBACK"); throw error; }
   }
 
-  listTenants(): Row[] {
+  listDomains(): Row[] {
     return this.all(`SELECT t.*,
-      (SELECT COUNT(*) FROM slots s WHERE s.tenant = t.domain) AS slot_count,
-      (SELECT COUNT(*) FROM slots s WHERE s.tenant = t.domain AND s.status='planned') AS planned_count,
-      (SELECT COUNT(*) FROM posts p WHERE p.tenant = t.domain AND p.status='published') AS published_count
-      FROM tenants t ORDER BY t.created_at DESC`);
+      (SELECT COUNT(*) FROM slots s WHERE s.domain = t.domain) AS slot_count,
+      (SELECT COUNT(*) FROM slots s WHERE s.domain = t.domain AND s.status='planned') AS planned_count,
+      (SELECT COUNT(*) FROM posts p WHERE p.domain = t.domain AND p.status='published') AS published_count
+      FROM domains t ORDER BY t.created_at DESC`);
   }
-  getTenant(domain: string): Row | undefined { return this.get("SELECT * FROM tenants WHERE domain=?", [domain]); }
-  createTenant(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number }): void {
-    this.run(`INSERT INTO tenants (domain, display_name, vertical, theme, brand_color, daily_limit) VALUES (?, ?, ?, ?, ?, ?)`,
+  getDomain(domain: string): Row | undefined { return this.get("SELECT * FROM domains WHERE domain=?", [domain]); }
+  createDomain(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number }): void {
+    this.run(`INSERT INTO domains (domain, display_name, vertical, theme, brand_color, daily_limit) VALUES (?, ?, ?, ?, ?, ?)`,
       [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 30]);
   }
-  updateTenant(domain: string, fields: Row): void {
+  updateDomain(domain: string, fields: Row): void {
     const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "custom_design_templates", "content_brief"]);
     const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
     if (!entries.length) return;
-    this.run(`UPDATE tenants SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
+    this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
   }
-  deleteTenant(domain: string): void { this.run("DELETE FROM tenants WHERE domain=?", [domain]); }
+  deleteDomain(domain: string): void { this.run("DELETE FROM domains WHERE domain=?", [domain]); }
 
-  listAxes(tenant: string): Record<AxisName, Row[]> {
+  listAxes(domain: string): Record<AxisName, Row[]> {
     const out = Object.fromEntries(AXES.map((a) => [a, []])) as unknown as Record<AxisName, Row[]>;
-    for (const row of this.all("SELECT * FROM axes WHERE tenant=? ORDER BY axis, weight DESC, value", [tenant])) out[row.axis as AxisName]?.push(row);
+    for (const row of this.all("SELECT * FROM axes WHERE domain=? ORDER BY axis, weight DESC, value", [domain])) out[row.axis as AxisName]?.push(row);
     return out;
   }
-  bulkReplaceAxis(tenant: string, axis: AxisName, values: Row[]): void {
+  bulkReplaceAxis(domain: string, axis: AxisName, values: Row[]): void {
     this.transaction(() => {
-      this.run("DELETE FROM axes WHERE tenant=? AND axis=?", [tenant, axis]);
+      this.run("DELETE FROM axes WHERE domain=? AND axis=?", [domain, axis]);
       for (const v of values) {
-        this.run(`INSERT INTO axes (tenant, axis, value, weight, monthly_search_volume, competition_kd) VALUES (?, ?, ?, ?, ?, ?)`,
-          [tenant, axis, v.value, Number(v.weight ?? 3), v.monthly_search_volume ?? null, v.competition_kd ?? null]);
+        this.run(`INSERT INTO axes (domain, axis, value, weight, monthly_search_volume, competition_kd) VALUES (?, ?, ?, ?, ?, ?)`,
+          [domain, axis, v.value, Number(v.weight ?? 3), v.monthly_search_volume ?? null, v.competition_kd ?? null]);
       }
     });
   }
 
-  listSlots(tenant: string, opts: { status?: string; template?: string; q?: string; limit?: number; offset?: number } = {}): Row[] {
-    const { where, args } = this.slotFilterClause(tenant, opts);
+  listSlots(domain: string, opts: { status?: string; template?: string; q?: string; limit?: number; offset?: number } = {}): Row[] {
+    const { where, args } = this.slotFilterClause(domain, opts);
     const limit = Math.max(1, Math.min(2000, Math.trunc(Number(opts.limit ?? 200))));
     const offset = Math.max(0, Math.trunc(Number(opts.offset ?? 0)));
     return this.all(`SELECT * FROM slots ${where} ORDER BY priority_score DESC, slot_id LIMIT ? OFFSET ?`, [...args, limit, offset]);
   }
-  countSlotsFiltered(tenant: string, opts: { status?: string; template?: string; q?: string } = {}): number {
-    const { where, args } = this.slotFilterClause(tenant, opts);
+  countSlotsFiltered(domain: string, opts: { status?: string; template?: string; q?: string } = {}): number {
+    const { where, args } = this.slotFilterClause(domain, opts);
     return Number(this.get(`SELECT COUNT(*) AS n FROM slots ${where}`, args)?.n ?? 0);
   }
-  private slotFilterClause(tenant: string, opts: { status?: string; template?: string; q?: string }): { where: string; args: any[] } {
-    let where = "WHERE tenant=?"; const args: any[] = [tenant];
+  private slotFilterClause(domain: string, opts: { status?: string; template?: string; q?: string }): { where: string; args: any[] } {
+    let where = "WHERE domain=?"; const args: any[] = [domain];
     if (opts.status) { where += " AND status=?"; args.push(opts.status); }
     if (opts.template) { where += " AND template_id=?"; args.push(opts.template); }
     const q = String(opts.q || "").trim().toLowerCase();
@@ -283,8 +283,8 @@ export class DbService implements OnModuleInit {
     }
     return { where, args };
   }
-  selectSlotsForBatch(tenant: string, opts: { q?: string; template?: string; limit?: number; balanced?: boolean } = {}): Row[] {
-    const { where, args } = this.slotFilterClause(tenant, { status: "planned", template: opts.template, q: opts.q });
+  selectSlotsForBatch(domain: string, opts: { q?: string; template?: string; limit?: number; balanced?: boolean } = {}): Row[] {
+    const { where, args } = this.slotFilterClause(domain, { status: "planned", template: opts.template, q: opts.q });
     const candidates = this.all(`SELECT slot_id, region, template_id, primary_keyword, priority_score FROM slots ${where} ORDER BY priority_score DESC, slot_id LIMIT ?`, [...args, 10000]);
     const limit = Math.max(1, Math.min(500, Math.trunc(Number(opts.limit ?? 10))));
     const groups = new Map<string, Row[]>();
@@ -315,18 +315,18 @@ export class DbService implements OnModuleInit {
     }
     return picked;
   }
-  countSlots(tenant: string): Record<string, number> {
+  countSlots(domain: string): Record<string, number> {
     const out: Record<string, number> = { planned: 0, in_progress: 0, published: 0, failed: 0, pruned: 0 };
-    for (const r of this.all("SELECT status, COUNT(*) AS n FROM slots WHERE tenant=? GROUP BY status", [tenant])) out[r.status] = r.n;
+    for (const r of this.all("SELECT status, COUNT(*) AS n FROM slots WHERE domain=? GROUP BY status", [domain])) out[r.status] = r.n;
     return out;
   }
   bulkUpsertSlots(rows: Row[]): number {
     let inserted = 0;
     for (const s of rows) {
-      const res = this.run(`INSERT INTO slots (slot_id, tenant, template_id, primary_keyword, region, persona, intent, modifier_1, modifier_2, entity_id, priority_score)
+      const res = this.run(`INSERT INTO slots (slot_id, domain, template_id, primary_keyword, region, persona, intent, modifier_1, modifier_2, entity_id, priority_score)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(slot_id) DO UPDATE SET primary_keyword=excluded.primary_keyword, priority_score=excluded.priority_score`,
-        [s.slot_id, s.tenant, s.template_id, s.primary_keyword, s.region ?? null, s.persona ?? null, s.intent ?? null, s.modifier_1 ?? null, s.modifier_2 ?? null, s.entity_id ?? null, s.priority_score ?? null]);
+        [s.slot_id, s.domain, s.template_id, s.primary_keyword, s.region ?? null, s.persona ?? null, s.intent ?? null, s.modifier_1 ?? null, s.modifier_2 ?? null, s.entity_id ?? null, s.priority_score ?? null]);
       if (res.changes) inserted += 1;
     }
     return inserted;
@@ -336,44 +336,44 @@ export class DbService implements OnModuleInit {
     if (error !== undefined) this.run("UPDATE slots SET status=?, last_error=? WHERE slot_id=?", [status, error, slotId]);
     else this.run("UPDATE slots SET status=? WHERE slot_id=?", [status, slotId]);
   }
-  deleteSlot(tenant: string, slotId: string): number { return this.run("DELETE FROM slots WHERE slot_id=? AND tenant=?", [slotId, tenant]).changes ?? 0; }
+  deleteSlot(domain: string, slotId: string): number { return this.run("DELETE FROM slots WHERE slot_id=? AND domain=?", [slotId, domain]).changes ?? 0; }
 
-  listPosts(tenant: string, opts: { status?: string; limit?: number } = {}): Row[] {
-    let sql = `SELECT id, tenant, slot_id, slug, title, meta_description, status, design_template_id, provider, model, cost_usd, duration_sec, generated_at, length(body_markdown) AS body_chars FROM posts WHERE tenant=?`;
-    const args: any[] = [tenant];
+  listPosts(domain: string, opts: { status?: string; limit?: number } = {}): Row[] {
+    let sql = `SELECT id, domain, slot_id, slug, title, meta_description, status, design_template_id, provider, model, cost_usd, duration_sec, generated_at, length(body_markdown) AS body_chars FROM posts WHERE domain=?`;
+    const args: any[] = [domain];
     if (opts.status) { sql += " AND status=?"; args.push(opts.status); }
     sql += " ORDER BY generated_at DESC LIMIT ?"; args.push(opts.limit ?? 200);
     return this.all(sql, args);
   }
   getPost(postId: string): Row | undefined { return this.get("SELECT * FROM posts WHERE id=?", [postId]); }
-  getPostBySlug(tenant: string, slug: string, status?: string): Row | undefined {
-    return this.get(`SELECT * FROM posts WHERE tenant=? AND slug=?${status ? " AND status=?" : ""}`, status ? [tenant, slug, status] : [tenant, slug]);
+  getPostBySlug(domain: string, slug: string, status?: string): Row | undefined {
+    return this.get(`SELECT * FROM posts WHERE domain=? AND slug=?${status ? " AND status=?" : ""}`, status ? [domain, slug, status] : [domain, slug]);
   }
-  uniqueSlug(tenant: string, base: string, slotId?: string | null): string {
+  uniqueSlug(domain: string, base: string, slotId?: string | null): string {
     if (slotId) {
-      const existingForSlot = this.get("SELECT slug FROM posts WHERE tenant=? AND slot_id=? AND status!='deleted' ORDER BY generated_at DESC LIMIT 1", [tenant, slotId]);
+      const existingForSlot = this.get("SELECT slug FROM posts WHERE domain=? AND slot_id=? AND status!='deleted' ORDER BY generated_at DESC LIMIT 1", [domain, slotId]);
       if (existingForSlot?.slug) return existingForSlot.slug;
     }
     let cand = (base || "post").replace(/^-+|-+$/g, "") || "post"; let i = 2;
     while (true) {
-      const row = this.get("SELECT slot_id FROM posts WHERE tenant=? AND slug=?", [tenant, cand]);
+      const row = this.get("SELECT slot_id FROM posts WHERE domain=? AND slug=?", [domain, cand]);
       if (!row || row.slot_id === slotId) return cand;
       cand = `${base}-${i++}`;
     }
   }
   insertPost(input: Row): string {
     const id = randomUUID();
-    this.run(`INSERT INTO posts (id, tenant, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens)
+    this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(tenant, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, generated_at=CURRENT_TIMESTAMP`,
-      [id, input.tenant, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || "editorial", input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0]);
+      ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, generated_at=CURRENT_TIMESTAMP`,
+      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || "editorial", input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0]);
     return id;
   }
   deletePost(postId: string): void { this.run("DELETE FROM posts WHERE id=?", [postId]); }
   updatePostStatus(postId: string, status: string): void { this.run("UPDATE posts SET status=? WHERE id=?", [status, postId]); }
-  listPostsForDedup(tenant: string, includeNoindex = false): Row[] {
+  listPostsForDedup(domain: string, includeNoindex = false): Row[] {
     const statuses = includeNoindex ? "('published','noindex')" : "('published')";
-    return this.all(`SELECT p.id, p.slug, p.title, p.body_markdown, p.status, p.generated_at, s.priority_score AS priority_score FROM posts p LEFT JOIN slots s ON s.slot_id = p.slot_id WHERE p.tenant=? AND p.status IN ${statuses} ORDER BY p.generated_at ASC`, [tenant]);
+    return this.all(`SELECT p.id, p.slug, p.title, p.body_markdown, p.status, p.generated_at, s.priority_score AS priority_score FROM posts p LEFT JOIN slots s ON s.slot_id = p.slot_id WHERE p.domain=? AND p.status IN ${statuses} ORDER BY p.generated_at ASC`, [domain]);
   }
 
   getSetting(key: string): string | null { return this.get("SELECT value FROM app_settings WHERE key=?", [key])?.value ?? null; }
@@ -381,23 +381,23 @@ export class DbService implements OnModuleInit {
     this.run(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP`, [key, value]);
   }
 
-  upsertAcademies(tenant: string, rows: Row[]): number {
+  upsertAcademies(domain: string, rows: Row[]): number {
     let n = 0;
     for (const r of rows) {
       const name = String(r.name || "").trim(); if (!name) continue;
       const extra = typeof r.extra === "object" && r.extra !== null ? JSON.stringify(r.extra) : (r.extra ?? null);
-      this.run(`INSERT INTO academies (id, tenant, external_id, region, name, address, price, shuttle, hours, pass_rate, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
+      this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, price, shuttle, hours, pass_rate, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(tenant, region, name) DO UPDATE SET address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, pass_rate=excluded.pass_rate, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at`,
-        [randomUUID(), tenant, r.external_id ?? null, String(r.region || "").trim(), name, r.address ?? null, r.price ?? null, r.shuttle ?? null, r.hours ?? null, r.pass_rate ?? null, r.phone ?? null, r.vphone ?? null, r.review ?? null, encodeJson(r.review_json ?? r.reviews), encodeJson(r.blog_reviews), r.seo_title ?? null, r.seo_keywords ?? null, r.seo_description ?? null, r.latitude ?? null, r.longitude ?? null, r.thumb_url ?? null, encodeJson(r.photos), r.academy_type ?? null, extra, r.source_name ?? null, r.source_url ?? null, r.synced_at ?? null]);
+        ON CONFLICT(domain, region, name) DO UPDATE SET address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, pass_rate=excluded.pass_rate, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at`,
+        [randomUUID(), domain, r.external_id ?? null, String(r.region || "").trim(), name, r.address ?? null, r.price ?? null, r.shuttle ?? null, r.hours ?? null, r.pass_rate ?? null, r.phone ?? null, r.vphone ?? null, r.review ?? null, encodeJson(r.review_json ?? r.reviews), encodeJson(r.blog_reviews), r.seo_title ?? null, r.seo_keywords ?? null, r.seo_description ?? null, r.latitude ?? null, r.longitude ?? null, r.thumb_url ?? null, encodeJson(r.photos), r.academy_type ?? null, extra, r.source_name ?? null, r.source_url ?? null, r.synced_at ?? null]);
       n += 1;
     }
     return n;
   }
-  upsertDrivingplusAcademies(tenant: string, rows: Row[]): { fetched: number; upserted: number; skipped: number; warnings: string[] } {
+  upsertDrivingplusAcademies(domain: string, rows: Row[]): { fetched: number; upserted: number; skipped: number; warnings: string[] } {
     let upserted = 0, skipped = 0;
     const warnings: string[] = [];
-    const regions = this.listSeoRegions(tenant);
+    const regions = this.listSeoRegions(domain);
     const syncedAt = nowSql();
     this.transaction(() => {
       for (const row of rows) {
@@ -411,38 +411,38 @@ export class DbService implements OnModuleInit {
         const reviews = normalizeDrivingplusReviews(row.reviews);
         const blogReviews = normalizeDrivingplusBlogReviews(row.blogReviews);
         const reviewText = reviewSummaryText(reviews);
-        const existing = this.get("SELECT id FROM academies WHERE tenant=? AND external_id=?", [tenant, externalId]);
+        const existing = this.get("SELECT id FROM academies WHERE domain=? AND external_id=?", [domain, externalId]);
         if (existing) {
-          this.run(`UPDATE academies SET region=?, name=?, address=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND tenant=?`,
-            [region, name, address, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), JSON.stringify({ drivingplus_id: externalId, review_count: reviews.length, blog_review_count: blogReviews.length }), "DrivingPlus", `https://api-dev.drivingplus.me:18104/v1/academy/get-all-academy`, syncedAt, existing.id, tenant]);
+          this.run(`UPDATE academies SET region=?, name=?, address=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND domain=?`,
+            [region, name, address, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), JSON.stringify({ drivingplus_id: externalId, review_count: reviews.length, blog_review_count: blogReviews.length }), "DrivingPlus", `https://api-dev.drivingplus.me:18104/v1/academy/get-all-academy`, syncedAt, existing.id, domain]);
         } else {
-          this.run(`INSERT INTO academies (id, tenant, external_id, region, name, address, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
+          this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(tenant, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
+            ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
             WHERE academies.external_id IS NULL OR academies.external_id=excluded.external_id`,
-            [randomUUID(), tenant, externalId, region, name, address, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), JSON.stringify({ drivingplus_id: externalId, review_count: reviews.length, blog_review_count: blogReviews.length }), "DrivingPlus", `https://api-dev.drivingplus.me:18104/v1/academy/get-all-academy`, syncedAt]);
+            [randomUUID(), domain, externalId, region, name, address, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), JSON.stringify({ drivingplus_id: externalId, review_count: reviews.length, blog_review_count: blogReviews.length }), "DrivingPlus", `https://api-dev.drivingplus.me:18104/v1/academy/get-all-academy`, syncedAt]);
         }
         upserted++;
       }
     });
     return { fetched: rows.length, upserted, skipped, warnings: warnings.slice(0, 50) };
   }
-  listAcademies(tenant: string, opts: { region?: string; limit?: number } = {}): Row[] {
-    let sql = "SELECT * FROM academies WHERE tenant=?"; const args: any[] = [tenant];
+  listAcademies(domain: string, opts: { region?: string; limit?: number } = {}): Row[] {
+    let sql = "SELECT * FROM academies WHERE domain=?"; const args: any[] = [domain];
     if (opts.region) { sql += " AND region=?"; args.push(opts.region); }
     sql += " ORDER BY name LIMIT ?"; args.push(opts.limit ?? 20);
     return this.all(sql, args);
   }
-  getSeoRegion(tenant: string, region: string): Row | undefined {
-    return this.get("SELECT * FROM seo_regions WHERE tenant=? AND region=? ORDER BY level DESC LIMIT 1", [tenant, region]);
+  getSeoRegion(domain: string, region: string): Row | undefined {
+    return this.get("SELECT * FROM seo_regions WHERE domain=? AND region=? ORDER BY level DESC LIMIT 1", [domain, region]);
   }
-  listSeoRegions(tenant: string, opts: { level?: number; limit?: number } = {}): Row[] {
-    let sql = "SELECT * FROM seo_regions WHERE tenant=?"; const args: any[] = [tenant];
+  listSeoRegions(domain: string, opts: { level?: number; limit?: number } = {}): Row[] {
+    let sql = "SELECT * FROM seo_regions WHERE domain=?"; const args: any[] = [domain];
     if (opts.level) { sql += " AND level=?"; args.push(opts.level); }
     sql += " ORDER BY level, region LIMIT ?"; args.push(opts.limit ?? 10000);
     return this.all(sql, args);
   }
-  upsertSeoRegions(tenant: string, rows: Row[], sourceName = "DrivingPlus"): { fetched: number; upserted: number; skipped: number } {
+  upsertSeoRegions(domain: string, rows: Row[], sourceName = "DrivingPlus"): { fetched: number; upserted: number; skipped: number } {
     let upserted = 0, skipped = 0;
     const syncedAt = nowSql();
     this.transaction(() => {
@@ -450,23 +450,23 @@ export class DbService implements OnModuleInit {
         const level = Number(row.level);
         const region = String(row.region || "").trim();
         if (!Number.isFinite(level) || !region) { skipped++; continue; }
-        this.run(`INSERT INTO seo_regions (tenant, level, region, latitude, longitude, source_name, synced_at)
+        this.run(`INSERT INTO seo_regions (domain, level, region, latitude, longitude, source_name, synced_at)
           VALUES (?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(tenant, level, region) DO UPDATE SET latitude=excluded.latitude, longitude=excluded.longitude, source_name=excluded.source_name, synced_at=excluded.synced_at`,
-          [tenant, level, region, nullableNumber(row.latitude), nullableNumber(row.longitude), sourceName, syncedAt]);
+          ON CONFLICT(domain, level, region) DO UPDATE SET latitude=excluded.latitude, longitude=excluded.longitude, source_name=excluded.source_name, synced_at=excluded.synced_at`,
+          [domain, level, region, nullableNumber(row.latitude), nullableNumber(row.longitude), sourceName, syncedAt]);
         upserted++;
       }
     });
     return { fetched: rows.length, upserted, skipped };
   }
-  deleteAcademy(tenant: string, id: string): number { return this.run("DELETE FROM academies WHERE id=? AND tenant=?", [id, tenant]).changes ?? 0; }
-  deleteAcademies(tenant: string, region?: string): number {
-    return this.run(`DELETE FROM academies WHERE tenant=?${region ? " AND region=?" : ""}`, region ? [tenant, region] : [tenant]).changes ?? 0;
+  deleteAcademy(domain: string, id: string): number { return this.run("DELETE FROM academies WHERE id=? AND domain=?", [id, domain]).changes ?? 0; }
+  deleteAcademies(domain: string, region?: string): number {
+    return this.run(`DELETE FROM academies WHERE domain=?${region ? " AND region=?" : ""}`, region ? [domain, region] : [domain]).changes ?? 0;
   }
 
-  enqueueJob(tenant: string, kind: JobKind, payload: Row): string {
+  enqueueJob(domain: string, kind: JobKind, payload: Row): string {
     const id = randomUUID();
-    this.run("INSERT INTO jobs (id, tenant, kind, payload, status) VALUES (?, ?, ?, ?, 'queued')", [id, tenant, kind, JSON.stringify(payload)]);
+    this.run("INSERT INTO jobs (id, domain, kind, payload, status) VALUES (?, ?, ?, ?, 'queued')", [id, domain, kind, JSON.stringify(payload)]);
     return id;
   }
   claimNextJob(): Row | undefined {
@@ -481,9 +481,9 @@ export class DbService implements OnModuleInit {
   completeJob(jobId: string, ok: boolean, result?: Row, error?: string): void {
     this.run("UPDATE jobs SET status=?, finished_at=?, result=?, error=? WHERE id=?", [ok ? "done" : "failed", nowSql(), result ? JSON.stringify(result) : null, error ?? null, jobId]);
   }
-  listJobs(opts: { tenant?: string; status?: string; limit?: number } = {}): Row[] {
+  listJobs(opts: { domain?: string; status?: string; limit?: number } = {}): Row[] {
     let sql = "SELECT * FROM jobs WHERE 1=1"; const args: any[] = [];
-    if (opts.tenant) { sql += " AND tenant=?"; args.push(opts.tenant); }
+    if (opts.domain) { sql += " AND domain=?"; args.push(opts.domain); }
     if (opts.status) { sql += " AND status=?"; args.push(opts.status); }
     sql += " ORDER BY scheduled_at DESC LIMIT ?"; args.push(opts.limit ?? 100);
     return this.all(sql, args);
@@ -497,8 +497,7 @@ export function safeJson(value: any, fallback: any): any {
 }
 
 export function domainOut(row: Row): Row { return { ...row, templates_enabled: safeJson(row.templates_enabled, []) }; }
-export function tenantOut(row: Row): Row { return domainOut(row); }
-export function jobOut(row: Row): Row { return { ...row, domain: row.tenant, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
+export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
 export function nowSql(): string { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 
 function encodeJson(value: unknown): string | null {

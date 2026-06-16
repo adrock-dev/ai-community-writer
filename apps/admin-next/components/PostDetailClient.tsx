@@ -17,30 +17,30 @@ const DESIGN_SPECS: Record<DesignTemplateId, { accent: string; soft: string; pag
 
 export default function PostDetailClient({ domain, postId }: { domain: string; postId: string }) {
   const [post, setPost] = useState<PostDetail | null>(null);
-  const [tenant, setTenant] = useState<DomainConfig | null>(null);
+  const [domainConfig, setDomainConfig] = useState<DomainConfig | null>(null);
   const [bodyHtml, setBodyHtml] = useState("");
   const [publishedHtml, setPublishedHtml] = useState("");
   const [error, setError] = useState("");
   useEffect(() => { (async () => {
     try {
-      const [detail, tenantDetail] = await Promise.all([
+      const [detail, domainDetail] = await Promise.all([
         api<{ post: PostDetail; body_html?: string; published_html?: string }>(`/domains/${encodeURIComponent(domain)}/posts/${postId}?include_rendered=true`),
         api<{ domain: DomainConfig }>(`/domains/${encodeURIComponent(domain)}`),
       ]);
-      setPost(detail.post); setBodyHtml(detail.body_html ?? ""); setPublishedHtml(detail.published_html ?? ""); setTenant(tenantDetail.domain);
+      setPost(detail.post); setBodyHtml(detail.body_html ?? ""); setPublishedHtml(detail.published_html ?? ""); setDomainConfig(domainDetail.domain);
     } catch (e) { setError((e as Error).message); }
   })(); }, [domain, postId]);
   if (error) return <p className="toast-error">{error}</p>;
   if (!post) return <div className="card card-pad">로딩 중...</div>;
   const renderedHtml = publishedHtml || bodyHtml || fallbackMarkdown(post.body_markdown, parseImages(post.images));
-  const designId = resolveDesign(post.design_template_id ?? tenant?.design_template_id);
+  const designId = resolveDesign(post.design_template_id ?? domainConfig?.design_template_id);
   const design = DESIGN_SPECS[designId];
-  const brand = publicBrandName(tenant?.display_name ?? domain);
+  const brand = publicBrandName(domainConfig?.display_name ?? domain);
   const articleStyle = { ["--accent" as string]: design.accent, ["--accent-soft" as string]: design.soft, ["--primary" as string]: design.accent, background: design.pageBg };
   const contentHtml = toPreviewBlocks(prepareBodyHtml(renderedHtml, post.title, null));
   const chips = designChips(designId);
   return <div>
-    <div className="page-head"><div><Link href={`/t/${encodeURIComponent(domain)}`} className="eyebrow">← {domain}</Link><h1>{post.title}</h1><p className="muted mono">{post.slug}</p></div><div className="row"><button className="btn" onClick={() => navigator.clipboard.writeText(post.body_markdown)}>Markdown 복사</button><button className="btn" onClick={() => download(`${post.slug}.md`, post.body_markdown, "text/markdown")}>Markdown 다운로드</button><button className="btn primary" onClick={() => download(`${post.slug}.html`, renderStandaloneHtml({ post, tenant, domain, designId, bodyHtml: renderedHtml }), "text/html;charset=utf-8")}>HTML 다운로드</button></div></div>
+    <div className="page-head"><div><Link href={`/t/${encodeURIComponent(domain)}`} className="eyebrow">← {domain}</Link><h1>{post.title}</h1><p className="muted mono">{post.slug}</p></div><div className="row"><button className="btn" onClick={() => navigator.clipboard.writeText(post.body_markdown)}>Markdown 복사</button><button className="btn" onClick={() => download(`${post.slug}.md`, post.body_markdown, "text/markdown")}>Markdown 다운로드</button><button className="btn primary" onClick={() => download(`${post.slug}.html`, renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml: renderedHtml }), "text/html;charset=utf-8")}>HTML 다운로드</button></div></div>
     <div className="grid post-detail-layout" style={{ gridTemplateColumns: "minmax(0, 1fr) 320px", alignItems: "start" }}>
       <article className={`preview-phone preview-phone-fluid design-${designId}`} style={articleStyle}>
         <div className="preview-top"><div><b>{brand}</b><p>{design.label}</p></div><span className="preview-cta">{design.topCta}</span></div>
@@ -195,9 +195,9 @@ function designChips(designId: DesignTemplateId): string[] {
   return chips[designId];
 }
 function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-function renderStandaloneHtml({ post, tenant, domain, designId, bodyHtml }: { post: PostDetail; tenant: DomainConfig | null; domain: string; designId: DesignTemplateId; bodyHtml: string }) {
+function renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml }: { post: PostDetail; domainConfig: DomainConfig | null; domain: string; designId: DesignTemplateId; bodyHtml: string }) {
   const design = DESIGN_SPECS[designId];
-  const brand = publicBrandName(tenant?.display_name ?? domain);
+  const brand = publicBrandName(domainConfig?.display_name ?? domain);
   const title = post.title || brand;
   const contentHtml = toPreviewBlocks(prepareBodyHtml(bodyHtml, post.title, null));
   const chips = designChips(designId);

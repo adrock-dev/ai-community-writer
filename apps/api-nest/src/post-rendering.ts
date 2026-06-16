@@ -29,14 +29,14 @@ export function ensureImageSlotsForRender(markdown: string, images: Record<strin
   return blocks.join("\n\n").trim();
 }
 
-export function fallbackImagesForPost(db: DbService, tenant: string, post: Row): Record<string, string> {
+export function fallbackImagesForPost(db: DbService, domain: string, post: Row): Record<string, string> {
   const slot = post.slot_id ? db.getSlot(post.slot_id) : null;
   if (!slot?.region) return {};
   const images: Record<string, string> = {};
   const region = String(slot.region);
-  let academies = db.listAcademies(tenant, { region, limit: 5 });
+  let academies = db.listAcademies(domain, { region, limit: 5 });
   if (!academies.length) {
-    academies = db.listAcademies(tenant, { limit: 5000 }).filter((academy) => String(academy.region || "") === region || String(academy.address || "").includes(region)).slice(0, 5);
+    academies = db.listAcademies(domain, { limit: 5000 }).filter((academy) => String(academy.region || "") === region || String(academy.address || "").includes(region)).slice(0, 5);
   }
   for (const [i, academy] of academies.entries()) {
     const url = firstAcademyImageUrl(academy);
