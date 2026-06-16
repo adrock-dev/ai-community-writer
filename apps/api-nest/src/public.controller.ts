@@ -11,7 +11,7 @@ export class PublicController {
 
   @Get("posts")
   posts(@Param("domain") domain: string, @Query() query: Row) {
-    this.requireTenant(domain);
+    this.requireDomain(domain);
     const limit = clampInt(query.limit, 50, 1, 100);
     const offset = Math.max(0, Number(query.offset || 0));
     const rows = this.db.all(`SELECT id, tenant, slot_id, slug, title, meta_description, images, design_template_id, generated_at, length(body_markdown) AS body_chars FROM posts WHERE tenant=? AND status='published' ORDER BY generated_at DESC LIMIT ? OFFSET ?`, [domain, limit, offset]);
@@ -20,7 +20,7 @@ export class PublicController {
 
   @Get("posts/:slug")
   post(@Param("domain") domain: string, @Param("slug") slug: string, @Query("include_rendered") rendered = "") {
-    this.requireTenant(domain);
+    this.requireDomain(domain);
     const post = this.db.getPostBySlug(domain, slug, "published");
     if (!post) throw new HttpException("post not found", 404);
     const normalized = normalizePostForPublicRender(this.db, domain, post);
@@ -32,7 +32,7 @@ export class PublicController {
   @Get("sitemap.xml")
   @Header("content-type", "application/xml; charset=utf-8")
   sitemap(@Param("domain") domain: string, @Query("base_url") baseUrl = "") {
-    this.requireTenant(domain);
+    this.requireDomain(domain);
     const base = (baseUrl || `https://${domain}`).replace(/\/$/, "");
     const posts = this.db.listPosts(domain, { status: "published", limit: 5000 });
     const urls = posts.map((p) => `  <url><loc>${escapeXml(`${base}/community/${p.slug}`)}</loc><lastmod>${String(p.generated_at || "").slice(0, 10)}</lastmod></url>`).join("\n");
@@ -41,14 +41,14 @@ export class PublicController {
 
   @Get("academies")
   academies(@Param("domain") domain: string, @Query() query: Row) {
-    this.requireTenant(domain);
+    this.requireDomain(domain);
     const items = this.db.listAcademies(domain, { region: query.region || undefined, limit: clampInt(query.limit, 50, 1, 1000) });
     return { count: items.length, items };
   }
 
   @Post("academies")
   upsertAcademies(@Param("domain") domain: string, @Req() req: Request, @Query("token") token = "", @Body() body: any) {
-    this.requireTenant(domain);
+    this.requireDomain(domain);
     const expected = process.env.PUBLIC_WRITE_TOKEN || "";
     const headerToken = req.headers["x-public-write-token"] || "";
     if (expected && token !== expected && headerToken !== expected) throw new HttpException("Unauthorized", 401);
@@ -58,7 +58,7 @@ export class PublicController {
     return { ok: true, upserted: this.db.upsertAcademies(domain, rows) };
   }
 
-  private requireTenant(domain: string) { const t = this.db.getTenant(domain); if (!t) throw new HttpException("tenant not found", 404); return t; }
+  private requireDomain(domain: string) { const d = this.db.getTenant(domain); if (!d) throw new HttpException("domain not found", 404); return d; }
 }
 
 function publicPostSummary(row: Row): Row {

@@ -15,14 +15,14 @@ export default function JobsClient() {
   async function refresh() {
     const qs = new URLSearchParams();
     if (status) qs.set("status", status);
-    if (tenant) qs.set("tenant", tenant);
+    if (tenant) qs.set("domain", tenant);
     qs.set("limit", "300");
     const res = await api<{ count: number; items: Job[] }>(`/jobs?${qs}`);
     setJobs(res.items);
   }
   useEffect(() => { refresh().catch((e) => setError(e.message)); const id = setInterval(() => refresh().catch(() => undefined), 3000); return () => clearInterval(id); }, [status, tenant]);
 
-  const tenants = useMemo(() => Array.from(new Set(jobs.map((j) => j.tenant))).sort(), [jobs]);
+  const tenants = useMemo(() => Array.from(new Set(jobs.map((j) => (j.domain ?? j.tenant ?? "")))).sort(), [jobs]);
   return <div>
     <div className="page-head"><div><p className="eyebrow">3초마다 자동 새로고침</p><h1>작업 큐</h1><p className="muted">worker가 처리하는 generate/dedup/prune/indexing 작업 상태입니다.</p></div><button className="btn" onClick={refresh}>새로고침</button></div>
     {error && <p className="toast-error">{error}</p>}
@@ -36,7 +36,7 @@ function JobCard({ job }: { job: Job }) {
   const done = Number(job.result_obj?.ok ?? 0) + Number(job.result_obj?.fail ?? 0);
   const percent = job.status === "done" ? 100 : job.status === "failed" ? 100 : job.status === "running" ? Math.max(20, Math.min(90, Math.round((done / total) * 100) || 35)) : 5;
   return <details className="card" open={job.status === "running" || job.status === "failed"}>
-    <summary className="spread" style={{ padding: 16, cursor: "pointer" }}><div className="row"><Status status={job.status} /><b>{job.kind}</b><Link href={`/t/${encodeURIComponent(job.tenant)}`} className="mono small">{job.tenant}</Link></div><span className="muted small">{formatDateTime(job.scheduled_at)}</span></summary>
+    <summary className="spread" style={{ padding: 16, cursor: "pointer" }}><div className="row"><Status status={job.status} /><b>{job.kind}</b><Link href={`/t/${encodeURIComponent((job.domain ?? job.tenant ?? ""))}`} className="mono small">{(job.domain ?? job.tenant ?? "")}</Link></div><span className="muted small">{formatDateTime(job.scheduled_at)}</span></summary>
     <div className="card-pad" style={{ borderTop: "1px solid var(--line)" }}>
       <div className="progress"><span style={{ width: `${percent}%` }} /></div>
       <p className="muted small">진행률 {percent}% · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)}</p>

@@ -6,7 +6,7 @@ export type JobKind = "generate" | "dedup" | "indexing" | "prune";
 export type Provider = "claude" | "codex";
 export type DesignTemplateId = "editorial" | "comparison" | "local-guide" | "checklist" | "conversion" | "custom";
 
-export interface Tenant {
+export interface DomainConfig {
   domain: string;
   display_name: string;
   vertical: string;
@@ -25,7 +25,7 @@ export interface Tenant {
 }
 
 export interface AxisValue {
-  tenant?: string;
+  domain?: string;
   axis?: Axis;
   value: string;
   weight: number;
@@ -38,7 +38,7 @@ export type SlotCounts = Record<SlotStatus, number>;
 
 export interface Slot {
   slot_id: string;
-  tenant: string;
+  domain: string;
   template_id: string;
   primary_keyword: string;
   region: string | null;
@@ -55,7 +55,7 @@ export interface Slot {
 
 export interface PostSummary {
   id: string;
-  tenant: string;
+  domain: string;
   slot_id: string | null;
   slug: string;
   title: string;
@@ -80,7 +80,7 @@ export interface PostDetail extends PostSummary {
 
 export interface Academy {
   id: string;
-  tenant: string;
+  domain: string;
   external_id?: string | null;
   region: string | null;
   name: string;
@@ -111,7 +111,8 @@ export interface Academy {
 
 export interface Job {
   id: string;
-  tenant: string;
+  domain: string;
+  tenant?: string;
   kind: JobKind;
   payload: string;
   payload_obj: Record<string, unknown> & { slot_ids?: string[]; provider?: string; model?: string; cooldown_sec?: number; timeout_sec?: number };
@@ -146,8 +147,8 @@ export interface AdminOptions {
   indexing: { has_key: boolean; url_template: string };
 }
 
-export interface TenantDetailPayload {
-  tenant: Tenant;
+export interface DomainDetailPayload {
+  domain: DomainConfig;
   axes: AxesMap;
   slot_counts: SlotCounts;
   settings: { indexing_has_key: boolean; indexing_url_template: string };

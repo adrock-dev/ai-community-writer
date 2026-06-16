@@ -496,8 +496,9 @@ export function safeJson(value: any, fallback: any): any {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
-export function tenantOut(row: Row): Row { return { ...row, templates_enabled: safeJson(row.templates_enabled, []) }; }
-export function jobOut(row: Row): Row { return { ...row, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
+export function domainOut(row: Row): Row { return { ...row, templates_enabled: safeJson(row.templates_enabled, []) }; }
+export function tenantOut(row: Row): Row { return domainOut(row); }
+export function jobOut(row: Row): Row { return { ...row, domain: row.tenant, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
 export function nowSql(): string { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 
 function encodeJson(value: unknown): string | null {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDateTime, formatShortDate } from "@/lib/date";
-import type { DesignTemplateId, PostDetail, Tenant } from "@/lib/types";
+import type { DesignTemplateId, PostDetail, DomainConfig } from "@/lib/types";
 
 const DESIGN_SPECS: Record<DesignTemplateId, { accent: string; soft: string; pageBg: string; topCta: string; bottomCta: string; label: string }> = {
   editorial: { accent: "#5132d7", soft: "#f2efff", pageBg: "#ffffff", topCta: "지금 바로 비교·예약", bottomCta: "상담/예약하러 가기", label: "브랜드 매거진" },
@@ -17,17 +17,17 @@ const DESIGN_SPECS: Record<DesignTemplateId, { accent: string; soft: string; pag
 
 export default function PostDetailClient({ domain, postId }: { domain: string; postId: string }) {
   const [post, setPost] = useState<PostDetail | null>(null);
-  const [tenant, setTenant] = useState<Tenant | null>(null);
+  const [tenant, setTenant] = useState<DomainConfig | null>(null);
   const [bodyHtml, setBodyHtml] = useState("");
   const [publishedHtml, setPublishedHtml] = useState("");
   const [error, setError] = useState("");
   useEffect(() => { (async () => {
     try {
       const [detail, tenantDetail] = await Promise.all([
-        api<{ post: PostDetail; body_html?: string; published_html?: string }>(`/tenants/${encodeURIComponent(domain)}/posts/${postId}?include_rendered=true`),
-        api<{ tenant: Tenant }>(`/tenants/${encodeURIComponent(domain)}`),
+        api<{ post: PostDetail; body_html?: string; published_html?: string }>(`/domains/${encodeURIComponent(domain)}/posts/${postId}?include_rendered=true`),
+        api<{ domain: DomainConfig }>(`/domains/${encodeURIComponent(domain)}`),
       ]);
-      setPost(detail.post); setBodyHtml(detail.body_html ?? ""); setPublishedHtml(detail.published_html ?? ""); setTenant(tenantDetail.tenant);
+      setPost(detail.post); setBodyHtml(detail.body_html ?? ""); setPublishedHtml(detail.published_html ?? ""); setTenant(tenantDetail.domain);
     } catch (e) { setError((e as Error).message); }
   })(); }, [domain, postId]);
   if (error) return <p className="toast-error">{error}</p>;
@@ -195,7 +195,7 @@ function designChips(designId: DesignTemplateId): string[] {
   return chips[designId];
 }
 function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-function renderStandaloneHtml({ post, tenant, domain, designId, bodyHtml }: { post: PostDetail; tenant: Tenant | null; domain: string; designId: DesignTemplateId; bodyHtml: string }) {
+function renderStandaloneHtml({ post, tenant, domain, designId, bodyHtml }: { post: PostDetail; tenant: DomainConfig | null; domain: string; designId: DesignTemplateId; bodyHtml: string }) {
   const design = DESIGN_SPECS[designId];
   const brand = publicBrandName(tenant?.display_name ?? domain);
   const title = post.title || brand;

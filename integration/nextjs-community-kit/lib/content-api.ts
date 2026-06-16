@@ -7,7 +7,7 @@
  *
  * 환경변수:
  *   CONTENT_API_BASE   예) https://admin.yourserver.com   (admin 서버 주소)
- *   CONTENT_API_DOMAIN 예) academy.drivingplus.me         (이 사이트의 테넌트 도메인)
+ *   CONTENT_API_DOMAIN 예) academy.drivingplus.me         (이 사이트의 도메인 도메인)
  *   CONTENT_REVALIDATE 초 단위 ISR 재검증 주기(기본 3600)
  */
 

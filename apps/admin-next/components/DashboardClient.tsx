@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { api, getOptions, listTenants } from "@/lib/api";
+import { api, getOptions, listDomains } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
-import type { AdminOptions, Job, Tenant } from "@/lib/types";
+import type { AdminOptions, Job, DomainConfig } from "@/lib/types";
 
 export default function DashboardClient() {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenants, setTenants] = useState<DomainConfig[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [options, setOptions] = useState<AdminOptions | null>(null);
   const [open, setOpen] = useState(false);
@@ -17,7 +17,7 @@ export default function DashboardClient() {
   async function refresh() {
     const [opts, tenantRes, jobRes] = await Promise.all([
       getOptions(),
-      listTenants(),
+      listDomains(),
       api<{ count: number; items: Job[] }>("/jobs?limit=8"),
     ]);
     setOptions(opts);
@@ -32,7 +32,7 @@ export default function DashboardClient() {
     setBusy(true); setError("");
     const fd = new FormData(e.currentTarget);
     try {
-      await api("/tenants", {
+      await api("/domains", {
         method: "POST",
         body: JSON.stringify({
           domain: String(fd.get("domain") || "").trim(),
@@ -115,7 +115,7 @@ export default function DashboardClient() {
         <div className="table-wrap">
           <table><thead><tr><th>도메인</th><th>종류</th><th>상태</th><th>예약</th><th>완료</th></tr></thead><tbody>
             {jobs.length === 0 && <tr><td colSpan={5} className="muted">작업 없음</td></tr>}
-            {jobs.map((j) => <tr key={j.id}><td className="mono small">{j.tenant}</td><td>{j.kind}</td><td><Status status={j.status} /></td><td className="small muted">{formatDateTime(j.scheduled_at)}</td><td className="small muted">{formatDateTime(j.finished_at)}</td></tr>)}
+            {jobs.map((j) => <tr key={j.id}><td className="mono small">{(j.domain ?? j.tenant ?? "")}</td><td>{j.kind}</td><td><Status status={j.status} /></td><td className="small muted">{formatDateTime(j.scheduled_at)}</td><td className="small muted">{formatDateTime(j.finished_at)}</td></tr>)}
           </tbody></table>
         </div>
       </section>

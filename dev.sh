@@ -25,13 +25,27 @@ export ADMIN_HOST="${ADMIN_HOST:-127.0.0.1}"
 export ADMIN_PORT="${ADMIN_PORT:-8765}"
 export SEO_API_BASE_URL="${SEO_API_BASE_URL:-http://${ADMIN_HOST}:${ADMIN_PORT}}"
 export API_WORKER="${API_WORKER:-1}"
+export NEXT_HOST="${NEXT_HOST:-localhost}"
+export NEXT_PORT="${NEXT_PORT:-3001}"
+
+is_port_busy() {
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+if is_port_busy "$NEXT_PORT"; then
+  original_port="$NEXT_PORT"
+  while is_port_busy "$NEXT_PORT"; do
+    NEXT_PORT=$((NEXT_PORT + 1))
+  done
+  echo "[dev] Next 포트 ${original_port} 사용 중 → ${NEXT_PORT}로 자동 변경"
+fi
 
 echo "[dev] Nest API 기동 → ${SEO_API_BASE_URL}"
 (cd apps/api-nest && npm run dev) &
 API=$!
 
-echo "[dev] Next 사내 관리자 기동 → http://localhost:3001"
-(cd apps/admin-next && SEO_API_BASE_URL="$SEO_API_BASE_URL" npm run dev) &
+echo "[dev] Next 사내 관리자 기동 → http://${NEXT_HOST}:${NEXT_PORT}"
+(cd apps/admin-next && SEO_API_BASE_URL="$SEO_API_BASE_URL" NEXT_HOST="$NEXT_HOST" NEXT_PORT="$NEXT_PORT" npm run dev) &
 NEXT=$!
 
 cleanup() {
