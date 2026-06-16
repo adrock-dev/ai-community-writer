@@ -1,0 +1,26 @@
+# Adrock 콘텐츠 운영 서버 — NestJS API(+워커)와 DB 볼륨.
+#
+#   docker compose up --build
+#
+# 생성(LLM)을 쓰려면 호스트의 claude/codex 인증을 마운트해야 한다(아래 volumes 주석 해제).
+
+services:
+  api:
+    build: .
+    image: adrock-api-nest:latest
+    env_file: [.env]
+    environment:
+      SEO_DB_PATH: /data/admin.db
+      ADMIN_HOST: 0.0.0.0
+      API_WORKER: "1"
+    ports:
+      - "${ADMIN_PORT:-8765}:8765"
+    volumes:
+      - adrock-db:/data
+      # 생성용 인증(필요 시 주석 해제):
+      # - ${HOME}/.claude:/root/.claude:ro
+      # - ${HOME}/.codex:/root/.codex:ro
+    restart: unless-stopped
+
+volumes:
+  adrock-db:
