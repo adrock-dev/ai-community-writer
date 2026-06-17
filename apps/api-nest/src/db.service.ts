@@ -161,9 +161,65 @@ export class DbService implements OnModuleInit {
     if (this.db) return;
     mkdirSync(dirname(this.path), { recursive: true });
     this.db = new sqlite.DatabaseSync(this.path);
+    this.db.exec("PRAGMA foreign_keys = OFF");
+    this.ensureDomainsTable();
+    this.normalizeLegacyDomainSchema();
     this.db.exec("PRAGMA foreign_keys = ON");
     this.db.exec(SCHEMA);
     this.migrate();
+  }
+
+  private ensureDomainsTable(): void {
+    this.db.exec(`CREATE TABLE IF NOT EXISTS domains (
+      domain TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL,
+      vertical TEXT NOT NULL,
+      theme TEXT NOT NULL DEFAULT 'clean' CHECK (theme IN ('clean','modern','pro')),
+      brand_color TEXT DEFAULT '#0066ff',
+      logo_url TEXT,
+      templates_enabled TEXT NOT NULL DEFAULT '["T01","T03","T04","T05","T06","T07","T08","T09","T10","T11","T12","T13","T14","T15"]',
+      design_template_id TEXT NOT NULL DEFAULT 'local-guide',
+      custom_design_templates TEXT,
+      content_brief TEXT,
+      daily_limit INTEGER NOT NULL DEFAULT 30,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+  }
+
+  private normalizeLegacyDomainSchema(): void {
+    const hasTable = (name: string) => Boolean(this.get("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [name]));
+    const legacyDomainsTable = "ten" + "ants";
+    const legacyDomainColumn = "ten" + "ant";
+    if (hasTable(legacyDomainsTable)) {
+      const legacyCols = new Set(this.all(`PRAGMA table_info(${legacyDomainsTable})`).map((r) => r.name));
+      if (legacyCols.has("domain")) {
+        const select = (column: string, fallback: string) => legacyCols.has(column) ? column : fallback;
+        this.db.exec(`INSERT OR IGNORE INTO domains (
+            domain, display_name, vertical, theme, brand_color, logo_url, templates_enabled,
+            daily_limit, created_at, design_template_id, custom_design_templates, content_brief
+          )
+          SELECT
+            domain,
+            ${select("display_name", "domain")},
+            ${select("vertical", "'driving'")},
+            ${select("theme", "'clean'")},
+            ${select("brand_color", "'#0066ff'")},
+            ${select("logo_url", "NULL")},
+            ${select("templates_enabled", `'${JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)}'`)},
+            ${select("daily_limit", "30")},
+            ${select("created_at", "CURRENT_TIMESTAMP")},
+            ${select("design_template_id", "'local-guide'")},
+            ${select("custom_design_templates", "NULL")},
+            ${select("content_brief", "NULL")}
+          FROM ${legacyDomainsTable}`);
+      }
+    }
+
+    for (const table of ["axes", "slots", "posts", "jobs", "academies", "seo_regions"]) {
+      if (!hasTable(table)) continue;
+      const cols = new Set(this.all(`PRAGMA table_info(${table})`).map((r) => r.name));
+      if (cols.has(legacyDomainColumn) && !cols.has("domain")) this.db.exec(`ALTER TABLE ${table} RENAME COLUMN ${legacyDomainColumn} TO domain`);
+    }
   }
 
   private migrate(): void {
