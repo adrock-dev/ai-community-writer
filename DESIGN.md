@@ -42,8 +42,8 @@
 
 ## Components
 - Existing components to reuse: `card`, `btn`, `badge`, `workflow`, `tabs`, `writer-hint`, `table-wrap`.
-- New/changed components: dashboard flow starter cards, domain flow starter cards, guided tutorial overlay in `DomainClient`, using `data-tour` targets and a reusable spotlight tooltip.
-- Variants and states: basic generation, advanced slot generation, review/export, start/next/back/finish, missing target fallback, highlighted target, overlay, mobile positioning.
+- New/changed components: dashboard flow starter cards, detailed step launchers, domain flow starter cards, guided tutorial overlay in `DomainClient`, using `data-tour` targets and a reusable spotlight tooltip.
+- Variants and states: basic generation, advanced slot generation, review/export, deep-link step focus, start/next/back/finish, missing target fallback, highlighted target, overlay, mobile positioning.
 - Token/component ownership: global CSS in `apps/admin-next/app/globals.css`; route-specific logic in `DomainClient.tsx`.
 
 ## Accessibility
@@ -69,7 +69,7 @@
 ## Content voice
 - Tone: concise Korean operator guidance.
 - Terminology: prefer “기본 글 생성”, “고급 슬롯 생성”, “검수/내보내기”, “글 후보”, “테스트 작성”, “작업 상태”, “완성 글” over raw technical terms where possible.
-- Microcopy rules: each step should say objective, exact action, and what changes after action.
+- Microcopy rules: each step should say objective, exact action, and what changes after action; labels should expose numbered substeps like 기본 1, 고급 2, 검수 1.
 
 ## Implementation constraints
 - Framework/styling system: Next.js App Router, React client components, plain CSS in `globals.css`.

@@ -142,6 +142,7 @@ export default function DashboardClient() {
 }
 
 type FlowMode = "basic" | "advanced" | "review";
+type FlowFocus = "source" | "slot-create" | "test-write" | "jobs" | "posts" | "plan" | "template-design" | "academy-types" | "slot-filter";
 
 function DashboardFlowStarter({ domain }: { domain: DomainConfig }) {
   return <section className="flow-start" aria-labelledby="dashboard-flow-start">
@@ -175,6 +176,7 @@ function DashboardFlowStarter({ domain }: { domain: DomainConfig }) {
         cta="검수 흐름 시작"
       />
     </div>
+    <DashboardStepLauncher domain={domain.domain} />
   </section>;
 }
 
@@ -186,9 +188,42 @@ function DashboardFlowCard({ href, title, badge, body, cta, tone }: { href: stri
   </Link>;
 }
 
-function domainHref(domain: string, flow?: FlowMode) {
+function DashboardStepLauncher({ domain }: { domain: string }) {
+  const steps: Array<{ flow: FlowMode; focus: FlowFocus; no: string; title: string; desc: string; tone?: "primary" }> = [
+    { flow: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 동기화", tone: "primary" },
+    { flow: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "슬롯 후보 생성" },
+    { flow: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 전 안전 확인" },
+    { flow: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "방향과 금지어" },
+    { flow: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 구조 선택" },
+    { flow: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "원천 타입 정책" },
+    { flow: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터", desc: "후보 조건 좁히기" },
+    { flow: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "큐/실패 확인" },
+    { flow: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "export/indexing" },
+  ];
+  return <div className="step-launch-panel">
+    <div className="spread">
+      <div>
+        <p className="eyebrow">세부 단계 바로 시작</p>
+        <h3>처음부터가 아니라 필요한 단계에서 바로 시작</h3>
+      </div>
+      <span className="badge info">9단계</span>
+    </div>
+    <div className="step-launch-grid">
+      {steps.map((step) => <Link key={`${step.flow}-${step.focus}`} className={`step-launch ${step.tone === "primary" ? "primary" : ""}`} href={domainHref(domain, step.flow, step.focus)}>
+        <span className="step-no">{step.no}</span>
+        <b>{step.title}</b>
+        <small>{step.desc}</small>
+      </Link>)}
+    </div>
+  </div>;
+}
+
+function domainHref(domain: string, flow?: FlowMode, focus?: FlowFocus) {
   const base = `/t/${encodeURIComponent(domain)}`;
-  return flow ? `${base}?flow=${flow}` : base;
+  if (!flow) return base;
+  const params = new URLSearchParams({ flow });
+  if (focus) params.set("focus", focus);
+  return `${base}?${params.toString()}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="label">{label}</span>{children}</label>; }

@@ -27,6 +27,7 @@ const TABS = [
 ] as const;
 
 type TourMode = "basic" | "advanced" | "review";
+type TourFocus = "workflow" | "source" | "slot-create" | "test-write" | "jobs" | "posts" | "plan" | "template-type" | "template-design" | "academy-types" | "slot-filter";
 
 const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: string }> = {
   basic: { label: "기본 글 생성", short: "기본", desc: "원천 데이터 → 후보 → 테스트 작성 → 검수만 따라가는 가장 쉬운 시작" },
@@ -167,11 +168,12 @@ export default function DomainClient({ domain }: { domain: string }) {
     refresh().catch((e) => setError(e.message));
   }, [domain]);
 
-  function startTour(mode: TourMode = "basic") {
+  function startTour(mode: TourMode = "basic", focus?: TourFocus) {
     const nextSteps = buildOperatorTourSteps(mode, payload?.slot_counts);
+    const startIndex = focus ? Math.max(0, nextSteps.findIndex((step) => step.focus === focus || step.target === focus)) : 0;
     setTourMode(mode);
-    setTab(nextSteps[0]?.tab ?? "overview");
-    setTourStep(0);
+    setTab(nextSteps[startIndex]?.tab ?? nextSteps[0]?.tab ?? "overview");
+    setTourStep(startIndex);
   }
 
   useEffect(() => {
@@ -179,9 +181,11 @@ export default function DomainClient({ domain }: { domain: string }) {
     const params = new URLSearchParams(window.location.search);
     const flow = params.get("flow");
     if (!isTourMode(flow)) return;
+    const focus = params.get("focus");
     handledFlowParam.current = true;
-    startTour(flow);
+    startTour(flow, isTourFocus(focus) ? focus : undefined);
     params.delete("flow");
+    params.delete("focus");
     const query = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   }, [payload]);
@@ -240,6 +244,7 @@ export default function DomainClient({ domain }: { domain: string }) {
 }
 
 type TourStep = {
+  focus: TourFocus;
   tab: string;
   target: string;
   title: string;
@@ -251,15 +256,19 @@ function isTourMode(value: string | null): value is TourMode {
   return value === "basic" || value === "advanced" || value === "review";
 }
 
+function isTourFocus(value: string | null): value is TourFocus {
+  return value === "workflow" || value === "source" || value === "slot-create" || value === "test-write" || value === "jobs" || value === "posts" || value === "plan" || value === "template-type" || value === "template-design" || value === "academy-types" || value === "slot-filter";
+}
+
 function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[] {
   const hasSlots = Boolean(counts && Object.values(counts).reduce((sum, value) => sum + value, 0) > 0);
   const hasPosts = Boolean(counts && counts.published > 0);
-  const sharedStart: TourStep = { tab: "overview", target: "workflow", title: `${TOUR_MODE_COPY[mode].label} 흐름을 먼저 봅니다`, body: `지금은 ${TOUR_MODE_COPY[mode].desc}입니다. 초록은 끝난 단계, 강조된 카드는 현재 단계라서 어디서 시작할지 바로 알 수 있습니다.`, action: "포커스되는 영역만 순서대로 따라가면 됩니다." };
-  const sourceSync: TourStep = { tab: "academies", target: "academies-sync", title: "원천 데이터를 먼저 준비", body: "지역과 학원 데이터를 가져와야 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다.", action: "데이터가 이미 있으면 다음 단계로 넘어가도 됩니다." };
-  const slotGenerate: TourStep = { tab: "slots", target: "slots-generator", title: hasSlots ? "후보를 확인하고 테스트 작성" : "먼저 글 후보를 만듭니다", body: hasSlots ? "후보가 준비되어 있으니 곧바로 1개 테스트 작성부터 시작하면 됩니다. 고급 옵션은 기본값을 유지해도 됩니다." : "아직 후보가 없다면 재료로 글 후보 만들기를 먼저 실행하세요. 후보는 지역·검색어·의도 조합으로 만들어집니다.", action: hasSlots ? "다음 포커스에서 테스트 작성 버튼을 누릅니다." : "‘재료로 글 후보 만들기’를 누른 뒤 슬롯 목록이 생겼는지 확인하세요." };
-  const testWrite: TourStep = { tab: "slots", target: hasSlots ? "slots-test" : "slots-create", title: hasSlots ? "1개 테스트 작성으로 안전하게 시작" : "후보 생성 실행", body: hasSlots ? "처음부터 10개/100개를 만들지 말고 테스트 1개를 먼저 큐에 넣습니다. 작업 탭으로 이동해 진행 상황을 확인합니다." : "후보가 생긴 다음 같은 시작 버튼을 다시 누르면 1개 테스트 작성 단계로 이어집니다.", action: hasSlots ? "버튼을 누르면 작업 탭으로 이동합니다." : "후보 생성 후 ‘1개 테스트 작성’을 진행하세요." };
-  const jobsBoard: TourStep = { tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 글 탭에서 결과를 검수합니다." };
-  const postsReview: TourStep = { tab: "posts", target: "posts-review", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: "이 흐름이 안정적이면 현재 검색 10개, 이후 100개로 확장하세요." };
+  const sharedStart: TourStep = { focus: "workflow", tab: "overview", target: "workflow", title: `${TOUR_MODE_COPY[mode].label} 흐름을 먼저 봅니다`, body: `지금은 ${TOUR_MODE_COPY[mode].desc}입니다. 초록은 끝난 단계, 강조된 카드는 현재 단계라서 어디서 시작할지 바로 알 수 있습니다.`, action: "포커스되는 영역만 순서대로 따라가면 됩니다." };
+  const sourceSync: TourStep = { focus: "source", tab: "academies", target: "academies-sync", title: "원천 데이터를 먼저 준비", body: "지역과 학원 데이터를 가져와야 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다.", action: "데이터가 이미 있으면 다음 단계로 넘어가도 됩니다." };
+  const slotGenerate: TourStep = { focus: "slot-create", tab: "slots", target: "slots-generator", title: hasSlots ? "후보를 확인하고 테스트 작성" : "먼저 글 후보를 만듭니다", body: hasSlots ? "후보가 준비되어 있으니 곧바로 1개 테스트 작성부터 시작하면 됩니다. 고급 옵션은 기본값을 유지해도 됩니다." : "아직 후보가 없다면 재료로 글 후보 만들기를 먼저 실행하세요. 후보는 지역·검색어·의도 조합으로 만들어집니다.", action: hasSlots ? "다음 포커스에서 테스트 작성 버튼을 누릅니다." : "‘재료로 글 후보 만들기’를 누른 뒤 슬롯 목록이 생겼는지 확인하세요." };
+  const testWrite: TourStep = { focus: "test-write", tab: "slots", target: hasSlots ? "slots-test" : "slots-create", title: hasSlots ? "1개 테스트 작성으로 안전하게 시작" : "후보 생성 실행", body: hasSlots ? "처음부터 10개/100개를 만들지 말고 테스트 1개를 먼저 큐에 넣습니다. 작업 탭으로 이동해 진행 상황을 확인합니다." : "후보가 생긴 다음 같은 시작 버튼을 다시 누르면 1개 테스트 작성 단계로 이어집니다.", action: hasSlots ? "버튼을 누르면 작업 탭으로 이동합니다." : "후보 생성 후 ‘1개 테스트 작성’을 진행하세요." };
+  const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 글 탭에서 결과를 검수합니다." };
+  const postsReview: TourStep = { focus: "posts", tab: "posts", target: "posts-review", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: "이 흐름이 안정적이면 현재 검색 10개, 이후 100개로 확장하세요." };
 
   if (mode === "basic") return [
     sharedStart,
@@ -278,13 +287,13 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
 
   return [
     sharedStart,
-    { tab: "plan", target: "plan-brief", title: "글 방향과 제외어를 저장", body: "어떤 글을 만들지, 절대 넣지 말아야 할 키워드는 무엇인지 먼저 정합니다. 이 내용이 뒤의 후보 생성과 프롬프트에 계속 반영됩니다.", action: "입력 후 ‘기획 저장’을 누르고 다음으로 이동하세요." },
-    { tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
-    { tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "완성 글이 어떤 형태로 보일지 미리 고릅니다. 오른쪽 미리보기가 실제 상세 화면의 톤과 구조를 이해시키는 기준입니다.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
+    { focus: "plan", tab: "plan", target: "plan-brief", title: "글 방향과 제외어를 저장", body: "어떤 글을 만들지, 절대 넣지 말아야 할 키워드는 무엇인지 먼저 정합니다. 이 내용이 뒤의 후보 생성과 프롬프트에 계속 반영됩니다.", action: "입력 후 ‘기획 저장’을 누르고 다음으로 이동하세요." },
+    { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
+    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "완성 글이 어떤 형태로 보일지 미리 고릅니다. 오른쪽 미리보기가 실제 상세 화면의 톤과 구조를 이해시키는 기준입니다.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
     sourceSync,
-    { tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
+    { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
-    { tab: "slots", target: "slots-filter", title: "고급 조건으로 후보를 좁힙니다", body: "고급 슬롯 생성에서는 상태, 글 유형, 지역/검색어를 보며 어떤 후보부터 작성할지 정합니다. 필터로 대량 생성 전에 범위를 줄일 수 있습니다.", action: "현재 검색 조건으로 필요한 후보만 남긴 뒤 테스트 작성으로 넘어가세요." },
+    { focus: "slot-filter", tab: "slots", target: "slots-filter", title: "고급 조건으로 후보를 좁힙니다", body: "고급 슬롯 생성에서는 상태, 글 유형, 지역/검색어를 보며 어떤 후보부터 작성할지 정합니다. 필터로 대량 생성 전에 범위를 줄일 수 있습니다.", action: "현재 검색 조건으로 필요한 후보만 남긴 뒤 테스트 작성으로 넘어가세요." },
     testWrite,
     jobsBoard,
     postsReview,
@@ -384,7 +393,7 @@ function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; cou
   return <div className="workflow" data-tour="workflow" style={{ marginBottom: 20 }}>{steps.map((s, i) => <button key={s.tab} className={`step ${s.done ? "done" : ""} ${active === s.tab ? "active" : ""}`} onClick={() => onTab(s.tab)}><b>{i + 1}. {s.title}</b><p className="muted small">{s.count}</p></button>)}</div>;
 }
 
-function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig; counts: SlotCounts; onTab: (v: string) => void; onStartFlow: (mode: TourMode) => void }) {
+function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig; counts: SlotCounts; onTab: (v: string) => void; onStartFlow: (mode: TourMode, focus?: TourFocus) => void }) {
   return <div className="grid">
     <section className="flow-start" aria-labelledby="flow-start-title">
       <div>
@@ -398,6 +407,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
         <FlowStartCard title="검수/내보내기" badge="마감" body="작업 큐와 완성 글만 빠르게 확인해서 Markdown/HTML export와 색인 요청으로 넘깁니다." cta="검수 흐름 시작" onClick={() => onStartFlow("review")} />
       </div>
     </section>
+    <StepLaunchPanel onStartFlow={onStartFlow} />
     <div className="grid grid-4">
       <Stat label="대기 슬롯" value={counts.planned} /><Stat label="진행" value={counts.in_progress} /><Stat label="발행" value={counts.published} accent /><Stat label="실패" value={counts.failed} />
     </div>
@@ -415,6 +425,34 @@ function FlowStartCard({ title, badge, body, cta, tone, onClick }: { title: stri
     <p className="muted">{body}</p>
     <button className={`btn ${tone === "primary" ? "primary" : ""}`} onClick={onClick}>{cta}</button>
   </article>;
+}
+
+function StepLaunchPanel({ onStartFlow }: { onStartFlow: (mode: TourMode, focus?: TourFocus) => void }) {
+  const steps: Array<{ mode: TourMode; focus: TourFocus; no: string; title: string; desc: string; tone?: "primary" }> = [
+    { mode: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 자료부터 동기화", tone: "primary" },
+    { mode: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "재료로 슬롯 후보 생성" },
+    { mode: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
+    { mode: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "생성 방향과 금지어 정리" },
+    { mode: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 종류와 화면 구상 선택" },
+    { mode: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
+    { mode: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터/확장", desc: "조건을 좁혀 후보 운영" },
+    { mode: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "대기·진행·실패 확인" },
+    { mode: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "미리보기/export/indexing" },
+  ];
+  return <section className="card card-pad step-launch-panel" aria-labelledby="step-launch-title">
+    <div>
+      <p className="eyebrow">세부 단계 바로 시작</p>
+      <h2 id="step-launch-title">큰 흐름 안에서도 필요한 작업만 바로 열 수 있습니다</h2>
+      <p className="muted">운영자가 이미 중간까지 진행했다면 처음부터 다시 보지 않고, 필요한 단계 버튼만 누르면 됩니다.</p>
+    </div>
+    <div className="step-launch-grid">
+      {steps.map((step) => <button key={`${step.mode}-${step.focus}`} className={`step-launch ${step.tone === "primary" ? "primary" : ""}`} onClick={() => onStartFlow(step.mode, step.focus)}>
+        <span className="step-no">{step.no}</span>
+        <b>{step.title}</b>
+        <small>{step.desc}</small>
+      </button>)}
+    </div>
+  </section>;
 }
 
 function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
