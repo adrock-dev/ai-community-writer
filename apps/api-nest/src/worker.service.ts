@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DbService, safeJson } from "./db.service.js";
+import { ImageGenerationService } from "./image-generation.service.js";
+import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
 
 type Row = Record<string, any>;
 
@@ -16,7 +18,10 @@ const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 @Injectable()
 export class WorkerService {
   private running = false;
-  constructor(@Inject(DbService) private readonly db: DbService) {}
+  constructor(
+    @Inject(DbService) private readonly db: DbService,
+    @Inject(ImageGenerationService) private readonly imageGeneration: ImageGenerationService,
+  ) {}
 
   startLoop(): void {
     if (this.running) return;
@@ -52,21 +57,46 @@ export class WorkerService {
     const domainMeta = this.db.getDomain(domain) || {};
     const designTemplateId = payload.design_template_id || domainMeta.design_template_id || "local-guide";
     const slotIds = Array.isArray(payload.slot_ids) ? payload.slot_ids : [];
-    let ok = 0, fail = 0;
+    const exclusionTerms = parseExclusionTerms(domainMeta.excluded_keywords);
+    let ok = 0, fail = 0, skipped = 0;
     const per_slot: Row[] = [];
     for (const [index, sid] of slotIds.entries()) {
       const slot = this.db.getSlot(sid);
       if (!slot || slot.domain !== domain) { fail++; per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
+      const slotMatches = findSlotExclusionTerms(slot, exclusionTerms);
+      if (slotMatches.length) {
+        const message = `excluded by domain rule: ${slotMatches.join(", ")}`;
+        this.db.updateSlotStatus(sid, "pruned", message);
+        skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
+        continue;
+      }
       this.db.updateSlotStatus(sid, "in_progress");
       try {
         const facts = this.buildFacts(domain, slot);
+        const factsMatches = findMatchedExclusionTerms(facts.text, exclusionTerms);
+        if (factsMatches.length) {
+          const message = `excluded by domain rule in facts: ${factsMatches.join(", ")}`;
+          this.db.updateSlotStatus(sid, "pruned", message);
+          skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
+          continue;
+        }
         const images = { ...this.imagesForSlot(domain, slot), ...facts.images };
-        const prompt = buildPrompt(domainMeta, slot, facts.text, designTemplateId);
+        const generatedImages = await this.imageGeneration.generateForSlot(domain, slot, facts.text, {
+          enabled: Boolean(payload.enable_image_generation),
+          required: Boolean(payload.image_generation_required),
+          count: clampInt(payload.image_count, 1, 1, 3),
+          size: String(payload.image_size || "1024x1024"),
+          model: String(payload.image_model || process.env.CODEX_IMAGEGEN_MODEL || "").trim() || undefined,
+          provider: String(payload.image_provider || process.env.CODEX_IMAGEGEN_PROVIDER || "private-codex").trim() || undefined,
+        });
+        Object.assign(images, generatedImages.images);
+        const factsText = appendGeneratedImageFacts(facts.text, generatedImages.images, generatedImages.warnings);
+        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         const result = await runLlm(prompt, llmOpts);
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
         let markdown = normalizeGeneratedMarkdown(result.summary, images);
-        let qualityIssues = articleQualityIssues(markdown, facts.text, images);
+        let qualityIssues = articleQualityIssues(markdown, factsText, images);
         let durationSec = result.duration_sec;
         let costUsd = result.cost_usd || 0;
         let inputTokens = result.input_tokens || 0;
@@ -75,7 +105,7 @@ export class WorkerService {
         let model = result.model;
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
-          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, facts.text, designTemplateId, markdown, qualityIssues), llmOpts);
+          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, markdown, qualityIssues), llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
           inputTokens += repair.input_tokens || 0;
@@ -84,13 +114,20 @@ export class WorkerService {
           model = repair.model || model;
           if (repair.ok && repair.summary.trim()) {
             markdown = normalizeGeneratedMarkdown(repair.summary, images);
-            qualityIssues = articleQualityIssues(markdown, facts.text, images);
+            qualityIssues = articleQualityIssues(markdown, factsText, images);
           }
         }
         if (qualityIssues.length) throw new Error(`generated article quality gate failed: ${qualityIssues.join(", ")}`);
         const title = extractTitle(markdown, slot.primary_keyword);
         markdown = rewriteH1Title(markdown, title);
-        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, candidateCountFromFacts(facts.text));
+        const generatedMatches = findMatchedExclusionTerms(`${title}\n${markdown}`, exclusionTerms);
+        if (generatedMatches.length) {
+          const message = `excluded by domain rule in generated article: ${generatedMatches.join(", ")}`;
+          this.db.updateSlotStatus(sid, "pruned", message);
+          skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
+          continue;
+        }
+        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, candidateCountFromFacts(factsText));
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
         const slug = this.db.uniqueSlug(domain, slugify(title), sid);
         this.db.insertPost({
@@ -101,7 +138,7 @@ export class WorkerService {
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);
-        ok++; per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId });
+        ok++; per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(generatedImages.images).length, image_warnings: generatedImages.warnings });
       } catch (error: any) {
         const message = error?.message || String(error);
         this.db.updateSlotStatus(sid, "failed", message);
@@ -109,7 +146,7 @@ export class WorkerService {
       }
       if (index < slotIds.length - 1) await sleep(Number(payload.cooldown_sec || 60) * 1000);
     }
-    return { ok, fail, generation_gate_version: "adrock-domain-surface-v1", per_slot };
+    return { ok, fail, skipped, academy_type_filter: this.db.academyTypeFilter(domain), generation_gate_version: "adrock-domain-surface-v1", per_slot };
   }
 
   private buildFacts(domain: string, slot: Row): GenerationFacts {
@@ -167,9 +204,11 @@ export class WorkerService {
   }
 
   private pickAcademiesForRegion(domain: string, region: string, limit: number): Row[] {
-    const exact = this.db.listAcademies(domain, { region, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
+    const academyTypes = this.db.academyTypeFilter(domain);
+    const typeFilter = academyTypes.length ? { academy_types: academyTypes } : {};
+    const exact = this.db.listAcademies(domain, { region, ...typeFilter, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
     if (exact.length) return exact.slice(0, limit);
-    const all = this.db.listAcademies(domain, { limit: 5000 }).filter(isUsableAcademy);
+    const all = this.db.listAcademies(domain, { ...typeFilter, limit: 5000 }).filter(isUsableAcademy);
     const targetRegion = this.db.getSeoRegion(domain, region);
     const targetLat = finiteNumber(targetRegion?.latitude);
     const targetLng = finiteNumber(targetRegion?.longitude);
@@ -246,7 +285,7 @@ export class WorkerService {
 
 export async function runWorkerOnceForCli(): Promise<void> {
   const db = new DbService(); db.init();
-  const worker = new WorkerService(db);
+  const worker = new WorkerService(db, new ImageGenerationService());
   const job = db.claimNextJob();
   if (!job) { console.log("no queued job"); return; }
   try { db.completeJob(job.id, true, await worker.process(job)); }
@@ -447,6 +486,15 @@ function administrativeTokens(value: string): string[] {
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   const n = Number(value);
   return Math.max(min, Math.min(max, Number.isFinite(n) ? Math.trunc(n) : fallback));
+}
+
+function appendGeneratedImageFacts(facts: string, images: Record<string, string>, warnings: string[]): string {
+  const keys = Object.keys(images);
+  const imageText = keys.length
+    ? `생성 이미지 슬롯: ${keys.map((key) => `[IMAGE:${key}]`).join(", ")} / 글 흐름에 자연스럽게 1회 이상 배치한다.`
+    : "";
+  const warningText = warnings.length ? `이미지 생성 경고: ${warnings.join(" | ")} / 사용 가능한 생성 이미지가 없으면 기존 사진만 활용한다.` : "";
+  return [facts, imageText, warningText].filter(Boolean).join("\n\n");
 }
 
 function normalizeGeneratedMarkdown(summary: string, images: Record<string, string>): string {

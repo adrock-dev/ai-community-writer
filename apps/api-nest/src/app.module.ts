@@ -5,9 +5,10 @@ import { DbService } from "./db.service.js";
 import { DrivingplusApiService } from "./drivingplus-api.service.js";
 import { SlotService } from "./slot.service.js";
 import { WorkerService } from "./worker.service.js";
+import { ImageGenerationService } from "./image-generation.service.js";
 
 @Module({
   controllers: [AdminController, PublicController],
-  providers: [DbService, DrivingplusApiService, SlotService, WorkerService],
+  providers: [DbService, DrivingplusApiService, SlotService, WorkerService, ImageGenerationService],
 })
 export class AppModule {}

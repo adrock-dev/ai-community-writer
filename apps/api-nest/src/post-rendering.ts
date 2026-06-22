@@ -34,9 +34,11 @@ export function fallbackImagesForPost(db: DbService, domain: string, post: Row):
   if (!slot?.region) return {};
   const images: Record<string, string> = {};
   const region = String(slot.region);
-  let academies = db.listAcademies(domain, { region, limit: 5 });
+  const academyTypes = db.academyTypeFilter(domain);
+  const typeFilter = academyTypes.length ? { academy_types: academyTypes } : {};
+  let academies = db.listAcademies(domain, { region, ...typeFilter, limit: 5 });
   if (!academies.length) {
-    academies = db.listAcademies(domain, { limit: 5000 }).filter((academy) => String(academy.region || "") === region || String(academy.address || "").includes(region)).slice(0, 5);
+    academies = db.listAcademies(domain, { ...typeFilter, limit: 5000 }).filter((academy) => String(academy.region || "") === region || String(academy.address || "").includes(region)).slice(0, 5);
   }
   for (const [i, academy] of academies.entries()) {
     const url = firstAcademyImageUrl(academy);

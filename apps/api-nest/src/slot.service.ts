@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
+import { filterExcludedSlots } from "./exclusions.js";
 
 type Row = Record<string, any>;
 
@@ -68,7 +69,9 @@ export class SlotService {
       summary[tid] = distributed.length;
     }
     rows.sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0));
-    summary._inserted_total = this.db.bulkUpsertSlots(rows);
+    const filtered = filterExcludedSlots(rows, domainConfig.excluded_keywords);
+    summary._excluded_total = filtered.excluded.length;
+    summary._inserted_total = this.db.bulkUpsertSlots(filtered.kept);
     return summary;
   }
 }

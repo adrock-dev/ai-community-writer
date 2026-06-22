@@ -17,6 +17,8 @@ export interface DomainConfig {
   design_template_id?: DesignTemplateId;
   custom_design_templates?: string | null;
   content_brief?: string | null;
+  excluded_keywords?: string | null;
+  academy_type_filter?: string[];
   daily_limit: number;
   created_at: string;
   slot_count?: number;
@@ -109,12 +111,29 @@ export interface Academy {
   created_at: string;
 }
 
+export interface AcademyListPayload {
+  count: number;
+  items: Academy[];
+  academy_types?: Array<{ value: string; count: number }>;
+}
+
 export interface Job {
   id: string;
   domain: string;
   kind: JobKind;
   payload: string;
-  payload_obj: Record<string, unknown> & { slot_ids?: string[]; provider?: string; model?: string; cooldown_sec?: number; timeout_sec?: number };
+  payload_obj: Record<string, unknown> & {
+    slot_ids?: string[];
+    provider?: string;
+    model?: string;
+    cooldown_sec?: number;
+    timeout_sec?: number;
+    enable_image_generation?: boolean;
+    image_size?: string;
+    image_count?: number;
+    image_provider?: string;
+    image_model?: string;
+  };
   status: JobStatus;
   scheduled_at: string;
   started_at: string | null;

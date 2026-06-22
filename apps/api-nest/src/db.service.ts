@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DRIVING_ORIGINAL_TEMPLATE_IDS, type AxisName, type JobKind } from "./constants.js";
+import { parseExclusionTerms, slotExclusionSql } from "./exclusions.js";
 
 // node:sqlite is available in the project's Node 25 runtime and keeps the Nest port dependency-light.
 const sqlite = await import("node:sqlite" as string) as any;
@@ -28,6 +29,8 @@ CREATE TABLE IF NOT EXISTS domains (
   design_template_id TEXT NOT NULL DEFAULT 'local-guide',
   custom_design_templates TEXT,
   content_brief TEXT,
+  excluded_keywords TEXT,
+  academy_type_filter TEXT,
   daily_limit INTEGER NOT NULL DEFAULT 30,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -181,6 +184,8 @@ export class DbService implements OnModuleInit {
       design_template_id TEXT NOT NULL DEFAULT 'local-guide',
       custom_design_templates TEXT,
       content_brief TEXT,
+      excluded_keywords TEXT,
+      academy_type_filter TEXT,
       daily_limit INTEGER NOT NULL DEFAULT 30,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
@@ -227,6 +232,8 @@ export class DbService implements OnModuleInit {
     if (!domainCols.has("design_template_id")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
     if (!domainCols.has("custom_design_templates")) this.db.exec("ALTER TABLE domains ADD COLUMN custom_design_templates TEXT");
     if (!domainCols.has("content_brief")) this.db.exec("ALTER TABLE domains ADD COLUMN content_brief TEXT");
+    if (!domainCols.has("excluded_keywords")) this.db.exec("ALTER TABLE domains ADD COLUMN excluded_keywords TEXT");
+    if (!domainCols.has("academy_type_filter")) this.db.exec("ALTER TABLE domains ADD COLUMN academy_type_filter TEXT");
     this.run(`UPDATE domains SET templates_enabled=?
        WHERE vertical='driving' AND templates_enabled IN ('["T01","T03","T05","T07"]', '["T01","T03","T04","T05","T06","T07"]')`, [JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)]);
     const postCols = new Set(this.all("PRAGMA table_info(posts)").map((r) => r.name));
@@ -285,12 +292,17 @@ export class DbService implements OnModuleInit {
       FROM domains t ORDER BY t.created_at DESC`);
   }
   getDomain(domain: string): Row | undefined { return this.get("SELECT * FROM domains WHERE domain=?", [domain]); }
+  academyTypeFilter(domain: string): string[] {
+    return safeJson(this.getDomain(domain)?.academy_type_filter, [])
+      .map((value: any) => String(value || "").trim())
+      .filter(Boolean);
+  }
   createDomain(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number }): void {
     this.run(`INSERT INTO domains (domain, display_name, vertical, theme, brand_color, daily_limit) VALUES (?, ?, ?, ?, ?, ?)`,
       [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 30]);
   }
   updateDomain(domain: string, fields: Row): void {
-    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "custom_design_templates", "content_brief"]);
+    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "custom_design_templates", "content_brief", "excluded_keywords", "academy_type_filter"]);
     const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
     if (!entries.length) return;
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
@@ -336,6 +348,14 @@ export class DbService implements OnModuleInit {
         OR lower(COALESCE(entity_id,'')) LIKE ?
       )`;
       args.push(like, like, like, like, like, like, like, like);
+    }
+    const exclusionTerms = parseExclusionTerms(this.get("SELECT excluded_keywords FROM domains WHERE domain=?", [domain])?.excluded_keywords);
+    if (exclusionTerms.length) {
+      const exclusion = slotExclusionSql("");
+      for (const term of exclusionTerms) {
+        where += ` AND ${exclusion.predicate}`;
+        args.push(...exclusion.argsForTerm(term));
+      }
     }
     return { where, args };
   }
@@ -483,11 +503,35 @@ export class DbService implements OnModuleInit {
     });
     return { fetched: rows.length, upserted, skipped, warnings: warnings.slice(0, 50) };
   }
-  listAcademies(domain: string, opts: { region?: string; limit?: number } = {}): Row[] {
+  listAcademies(domain: string, opts: { region?: string; academy_type?: string; academy_types?: string[]; q?: string; has_photos?: boolean; limit?: number } = {}): Row[] {
     let sql = "SELECT * FROM academies WHERE domain=?"; const args: any[] = [domain];
-    if (opts.region) { sql += " AND region=?"; args.push(opts.region); }
+    if (opts.region) { sql += " AND region LIKE ?"; args.push(`%${opts.region}%`); }
+    if (opts.academy_type) { sql += " AND academy_type=?"; args.push(opts.academy_type); }
+    if (opts.academy_types?.length) {
+      sql += ` AND academy_type IN (${opts.academy_types.map(() => "?").join(",")})`;
+      args.push(...opts.academy_types);
+    }
+    if (opts.has_photos) sql += " AND (thumb_url IS NOT NULL OR (photos IS NOT NULL AND photos NOT IN ('', '[]', 'null')))";
+    const q = String(opts.q || "").trim().toLowerCase();
+    if (q) {
+      const like = `%${q}%`;
+      sql += ` AND (
+        lower(name) LIKE ? OR lower(COALESCE(address,'')) LIKE ? OR lower(COALESCE(region,'')) LIKE ?
+        OR lower(COALESCE(external_id,'')) LIKE ? OR lower(COALESCE(phone,'')) LIKE ?
+        OR lower(COALESCE(vphone,'')) LIKE ? OR lower(COALESCE(seo_title,'')) LIKE ?
+        OR lower(COALESCE(seo_keywords,'')) LIKE ? OR lower(COALESCE(seo_description,'')) LIKE ?
+      )`;
+      args.push(like, like, like, like, like, like, like, like, like);
+    }
     sql += " ORDER BY name LIMIT ?"; args.push(opts.limit ?? 20);
     return this.all(sql, args);
+  }
+  listAcademyTypes(domain: string): Row[] {
+    return this.all(`SELECT academy_type AS value, COUNT(*) AS count
+      FROM academies
+      WHERE domain=? AND academy_type IS NOT NULL AND academy_type!=''
+      GROUP BY academy_type
+      ORDER BY count DESC, academy_type`, [domain]);
   }
   getSeoRegion(domain: string, region: string): Row | undefined {
     return this.get("SELECT * FROM seo_regions WHERE domain=? AND region=? ORDER BY level DESC LIMIT 1", [domain, region]);
@@ -552,7 +596,7 @@ export function safeJson(value: any, fallback: any): any {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
-export function domainOut(row: Row): Row { return { ...row, templates_enabled: safeJson(row.templates_enabled, []) }; }
+export function domainOut(row: Row): Row { return { ...row, templates_enabled: safeJson(row.templates_enabled, []), academy_type_filter: safeJson(row.academy_type_filter, []) }; }
 export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
 export function nowSql(): string { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 

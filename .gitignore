@@ -40,3 +40,4 @@ output/
 
 # Next.js
 .next/
+.playwright-mcp/

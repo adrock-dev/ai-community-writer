@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { api, enqueueGenerate, getOptions, getDomainDetail, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
+import { api, downloadPostExport, enqueueGenerate, getOptions, getDomainDetail, listAcademies, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import type { Academy, AdminOptions, Axis, AxisValue, Job, PostSummary, Provider, Slot, SlotCounts, DomainConfig, DomainDetailPayload } from "@/lib/types";
 
@@ -25,6 +25,12 @@ const TABS = [
   ["overview", "개요"], ["plan", "기획"], ["templates", "글유형/디자인"], ["axes", "축"],
   ["academies", "학원자료"], ["slots", "슬롯"], ["jobs", "작업"], ["posts", "글"], ["settings", "설정"],
 ] as const;
+
+const ACADEMY_TYPE_COPY: Record<string, { label: string; desc: string; tone: "success" | "warn" | "danger" | "info" }> = {
+  exam_academy: { label: "운전면허시험/전문학원", desc: "지역 운전면허 학원 BEST 글에 우선 사용하는 타입", tone: "success" },
+  academy: { label: "일반 자동차학원", desc: "실제 학원 후보로 함께 넣어도 되는 보조 타입", tone: "info" },
+  indoor_academy: { label: "실내운전연습장", desc: "사용자가 원치 않으면 글 생성에서 빼야 하는 타입", tone: "danger" },
+};
 
 const PREVIEW_DESIGN_SPECS: Record<string, { topCta: string; bottomCta: string }> = {
   editorial: { topCta: "지금 바로 비교·예약", bottomCta: "상담/예약하러 가기" },
@@ -183,7 +189,7 @@ export default function DomainClient({ domain }: { domain: string }) {
       {tab === "plan" && <Plan domain={domainConfig} axes={payload.axes} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
       {tab === "templates" && <Templates domain={domainConfig} options={options} busy={busy} onSave={saveDomain} />}
       {tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
-      {tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} onRefresh={refresh} />}
+      {tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
       {tab === "jobs" && <Jobs domain={domainConfig} jobs={payload.jobs ?? []} onRefresh={refresh} />}
       {tab === "posts" && <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />}
@@ -219,18 +225,20 @@ function Overview({ domain, counts, onTab }: { domain: DomainConfig; counts: Slo
 
 function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
   const [brief, setBrief] = useState(domain.content_brief ?? "");
+  const [excludedKeywords, setExcludedKeywords] = useState(domain.excluded_keywords ?? "");
   const [texts, setTexts] = useState<Record<Axis, string>>(() => Object.fromEntries(AXES.map((a) => [a, axes[a]?.map((v) => v.value).join("\n") ?? ""])) as Record<Axis, string>);
   async function save() {
     await Promise.all(AXES.map((axis) => {
       const values = parseLines(texts[axis]).map((value) => ({ value, weight: 3, monthly_search_volume: null, competition_kd: null }));
       return values.length ? replaceAxis(domain.domain, axis, values) : Promise.resolve();
     }));
-    await onSave({ content_brief: brief.trim() });
+    await onSave({ content_brief: brief.trim(), excluded_keywords: excludedKeywords.trim() });
     await onRefresh();
   }
   return <div className="card card-pad grid">
     <h2>생성할 글 기획</h2>
     <Field label="이번에 생성할 글의 방향 / 검증된 자료"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="수도권 직장인이 빠르게 운전면허를 따기 위해 지역별 학원, 비용, 셔틀 여부를 비교하는 글을 만든다." /></Field>
+    <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 슬롯 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
     <div className="grid grid-2">{AXES.map((axis) => <Field key={axis} label={AXIS_LABEL[axis]}><textarea className="textarea" value={texts[axis]} onChange={(e) => setTexts((p) => ({ ...p, [axis]: e.target.value }))} placeholder={AXIS_PLACEHOLDER[axis]} /></Field>)}</div>
     <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "기획 저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형 고르기</button><button className="btn" onClick={() => onTab("slots")}>글 후보 만들기</button></div>
   </div>;
@@ -297,20 +305,59 @@ function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes
   </div>;
 }
 
-function Academies({ domain, academies, onRefresh }: { domain: DomainConfig; academies: Academy[]; onRefresh: () => Promise<void> }) {
+function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: DomainConfig; academies: Academy[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [syncBusy, setSyncBusy] = useState("");
   const [regionLevel, setRegionLevel] = useState<"2" | "3" | "all">("2");
   const [replaceRegionAxis, setReplaceRegionAxis] = useState(true);
   const [syncResult, setSyncResult] = useState("");
+  const [q, setQ] = useState("");
+  const [region, setRegion] = useState("");
+  const [academyType, setAcademyType] = useState("");
+  const [hasPhotos, setHasPhotos] = useState(false);
+  const [remoteAcademies, setRemoteAcademies] = useState(academies);
+  const [remoteTotal, setRemoteTotal] = useState(academies.length);
+  const [academyTypes, setAcademyTypes] = useState<Array<{ value: string; count: number }>>([]);
+  const [generationTypes, setGenerationTypes] = useState(new Set(domain.academy_type_filter ?? []));
+  const [loading, setLoading] = useState(false);
+  const [filterError, setFilterError] = useState("");
+  useEffect(() => { setRemoteAcademies(academies); setRemoteTotal(academies.length); }, [academies]);
+  useEffect(() => { setGenerationTypes(new Set(domain.academy_type_filter ?? [])); }, [domain.academy_type_filter]);
+  async function loadAcademies() {
+    setLoading(true); setFilterError("");
+    try {
+      const payload = await listAcademies(domain.domain, { q, region, academy_type: academyType, has_photos: hasPhotos, limit: 1000 });
+      setRemoteAcademies(payload.items);
+      setRemoteTotal(payload.count);
+      setAcademyTypes(payload.academy_types ?? []);
+    } catch (err) { setFilterError(err instanceof Error ? err.message : String(err)); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => {
+    let cancelled = false;
+    const handle = window.setTimeout(async () => {
+      setLoading(true); setFilterError("");
+      try {
+        const payload = await listAcademies(domain.domain, { q, region, academy_type: academyType, has_photos: hasPhotos, limit: 1000 });
+        if (!cancelled) {
+          setRemoteAcademies(payload.items);
+          setRemoteTotal(payload.count);
+          setAcademyTypes(payload.academy_types ?? []);
+        }
+      } catch (err) { if (!cancelled) setFilterError(err instanceof Error ? err.message : String(err)); }
+      finally { if (!cancelled) setLoading(false); }
+    }, 250);
+    return () => { cancelled = true; window.clearTimeout(handle); };
+  }, [domain.domain, q, region, academyType, hasPhotos]);
   async function add(form: HTMLFormElement) { const fd = Object.fromEntries(new FormData(form).entries()); await api(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "POST", body: JSON.stringify(fd) }); form.reset(); await onRefresh(); }
   async function bulk(form: HTMLFormElement) { const text = String(new FormData(form).get("json") || ""); await api(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "POST", body: text }); form.reset(); await onRefresh(); }
-  async function del(id: string) { if (!confirm("삭제할까요?")) return; await api(`/domains/${encodeURIComponent(domain.domain)}/academies/${id}`, { method: "DELETE" }); await onRefresh(); }
+  async function del(id: string) { if (!confirm("삭제할까요?")) return; await api(`/domains/${encodeURIComponent(domain.domain)}/academies/${id}`, { method: "DELETE" }); await onRefresh(); await loadAcademies(); }
   async function syncAcademies() {
     setSyncBusy("academies");
     try {
       const res = await syncDrivingplusAcademies(domain.domain, { include_blog_reviews: true, blog_review_limit: 3 });
       setSyncResult(`학원/리뷰 ${res.fetched}개 조회 · ${res.upserted}개 반영 · ${res.skipped}개 제외${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
       await onRefresh();
+      await loadAcademies();
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
@@ -323,9 +370,25 @@ function Academies({ domain, academies, onRefresh }: { domain: DomainConfig; aca
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
+  function toggleGenerationType(type: string) {
+    setGenerationTypes((prev) => {
+      const next = new Set(prev);
+      next.has(type) ? next.delete(type) : next.add(type);
+      return next;
+    });
+  }
+  async function saveGenerationTypes() {
+    await onSave({ academy_type_filter: Array.from(generationTypes) });
+    await onRefresh();
+  }
+  const knownTypeValues = academyTypes.map((type) => type.value);
+  const includedTypes = generationTypes.size ? knownTypeValues.filter((type) => generationTypes.has(type)) : knownTypeValues;
+  const excludedTypes = generationTypes.size ? knownTypeValues.filter((type) => !generationTypes.has(type)) : [];
+  const generationRuleText = generationTypes.size ? `${includedTypes.map(typeLabel).join(", ")}만 사용` : "전체 타입 사용";
+  const recommendedTypes = knownTypeValues.filter((type) => type !== "indoor_academy");
   return <div className="grid">
     <div className="card card-pad grid">
-      <div className="spread"><div><h2>DrivingPlus 원천 데이터 동기화</h2><p className="muted">Swagger API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 사용합니다.</p></div><span className="badge info">{academies.length}개 학원</span></div>
+      <div className="spread"><div><h2>DrivingPlus 원천 데이터 동기화</h2><p className="muted">Swagger API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 사용합니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
       <div className="grid grid-3">
         <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
         <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>
@@ -335,13 +398,44 @@ function Academies({ domain, academies, onRefresh }: { domain: DomainConfig; aca
       <p className="muted small">권장 순서: 지역 동기화(level=2, 축 교체) → 학원 동기화(사진·별점리뷰·블로그 리뷰 포함) → 슬롯 탭에서 후보 생성.</p>
     </div>
     <div className="card card-pad"><p className="muted">슬롯 지역과 일치하거나 가까운 원천 자료가 생성 프롬프트에 주입됩니다. 외부 원천 API 자료는 SEO 설명, vphone, 사진 URL, 별점 리뷰, 블로그 리뷰글도 함께 사용됩니다.</p></div>
+    <div className="card card-pad grid">
+      <div className="spread"><h2>학원자료 필터</h2><span className="muted small">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
+      <p className="muted small">아래 필터는 표에서 자료를 찾아보는 용도입니다. 글 생성 기준을 바꾸려면 다음 카드의 “글 생성 사용 타입”을 저장하세요.</p>
+      <div className="grid grid-4">
+        <Field label="검색"><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명, 주소, SEO 설명" /></Field>
+        <Field label="지역"><input className="input" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="서울, 부산, 강남구" /></Field>
+        <Field label="API 타입"><select className="select" value={academyType} onChange={(e) => setAcademyType(e.target.value)}><option value="">전체 타입</option>{academyTypes.map((type) => <option key={type.value} value={type.value}>{type.value} ({type.count})</option>)}</select></Field>
+        <Field label="사진"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={hasPhotos} onChange={(e) => setHasPhotos(e.target.checked)} /> 사진 있는 학원만</label></Field>
+      </div>
+      {filterError && <p className="small" style={{ color: "var(--danger)" }}>필터 오류: {filterError}</p>}
+    </div>
+    <div className="card card-pad grid">
+      <div className="spread"><div><h2>글 생성 사용 타입</h2><p className="muted small">저장한 타입만 글 생성 프롬프트의 학원 후보로 들어갑니다. 실내운전연습장을 빼고 싶으면 추천 설정을 쓰면 됩니다.</p></div><button className="btn primary" onClick={saveGenerationTypes} disabled={busy || !academyTypes.length}>{busy ? "저장 중..." : "생성 타입 저장"}</button></div>
+      <div className="writer-hint"><b>현재 생성 기준</b><span>{generationRuleText}</span>{excludedTypes.length > 0 && <span>제외: {excludedTypes.map(typeLabel).join(", ")}</span>}</div>
+      <div className="row">
+        <button className="btn" onClick={() => setGenerationTypes(new Set(recommendedTypes))} disabled={!recommendedTypes.length}>추천 적용: 실내운전연습장 제외</button>
+        <button className="btn" onClick={() => setGenerationTypes(new Set(["exam_academy"].filter((type) => knownTypeValues.includes(type))))} disabled={!knownTypeValues.includes("exam_academy")}>전문학원만</button>
+        <button className="btn" onClick={() => setGenerationTypes(new Set())}>전체 타입 사용</button>
+      </div>
+      <div className="grid grid-3">{academyTypes.map((type) => {
+        const copy = ACADEMY_TYPE_COPY[type.value] ?? { label: type.value, desc: "DrivingPlus API에서 받은 원천 타입", tone: "info" as const };
+        const active = generationTypes.size ? generationTypes.has(type.value) : true;
+        return <button key={type.value} className={`option-card ${active ? "active" : ""}`} onClick={() => toggleGenerationType(type.value)}>
+          <div className="spread"><b>{copy.label}</b><span className={`badge ${copy.tone}`}>{type.count}개</span></div>
+          <p className="muted small">{copy.desc}</p>
+          <p className="muted small mono">{type.value}</p>
+          <span className={`badge ${active ? "success" : "danger"}`}>{active ? "글 생성에 포함" : "글 생성에서 제외"}</span>
+        </button>;
+      })}</div>
+      {!academyTypes.length && <p className="muted small">먼저 학원 동기화를 실행하면 API 타입 목록이 표시됩니다.</p>}
+    </div>
     <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h2>학원 1곳 추가</h2><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">추가</button></form>
     <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h2>JSON 일괄 업로드</h2><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">업로드</button></form>
-    <div className="table-wrap"><table><thead><tr><th>지역</th><th>학원명</th><th>전화/사진</th><th>SEO 설명</th><th>출처</th><th></th></tr></thead><tbody>{academies.map((a) => {
+    <div className="table-wrap"><table><thead><tr><th>지역</th><th>학원명</th><th>API 타입</th><th>전화/사진</th><th>SEO 설명</th><th>출처</th><th></th></tr></thead><tbody>{remoteAcademies.map((a) => {
       const photoCount = parsePhotoCount(a.photos);
       const reviewCount = parseJsonCount(a.review_json);
       const blogReviewCount = parseJsonCount(a.blog_reviews);
-      return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.academy_type || ""}{a.external_id ? ` · #${a.external_id}` : ""}</p></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => del(a.id)}>삭제</button></td></tr>;
+      return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => del(a.id)}>삭제</button></td></tr>;
     })}</tbody></table></div>
   </div>;
 }
@@ -356,6 +450,8 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const [cooldown, setCooldown] = useState(60);
   const [timeout, setTimeout] = useState(600);
   const [web, setWeb] = useState(true);
+  const [imageGen, setImageGen] = useState(false);
+  const [imageSize, setImageSize] = useState("1024x1024");
   const [max, setMax] = useState(200);
   const [remoteSlots, setRemoteSlots] = useState(slots);
   const [remoteTotal, setRemoteTotal] = useState(slots.length);
@@ -388,7 +484,8 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const filtered = remoteSlots;
   const expectedMinutes = Math.max(1, Math.ceil(((selected.size || 1) * (cooldown + 30)) / 60));
   const selectedAllVisible = filtered.length > 0 && filtered.every((s) => selected.has(s.slot_id));
-  const writerPayload = { provider, model, design_template_id: domain.design_template_id, use_web_research: web, cooldown_sec: cooldown, timeout_sec: timeout };
+  const writerPayload = { provider, model, design_template_id: domain.design_template_id, use_web_research: web, cooldown_sec: cooldown, timeout_sec: timeout, enable_image_generation: imageGen, image_size: imageSize, image_count: 1, image_provider: "private-codex" };
+  const exclusionLines = parseLines(domain.excluded_keywords ?? "");
 
   async function gen() { await api(`/domains/${encodeURIComponent(domain.domain)}/slots/generate`, { method: "POST", body: JSON.stringify({ max_per_template: max }) }); await onRefresh(); await loadCurrentSlots(); }
   async function queue(ids: string[]) { if (!ids.length) return; const r = await enqueueGenerate(domain.domain, { slot_ids: ids, ...writerPayload }); alert(`작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 탭에서 진행상태를 확인하세요.`); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs"); }
@@ -402,7 +499,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   async function delSelected() { if (!confirm(`${selected.size}개 삭제?`)) return; for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/slots/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); }
   function toggleAllVisible() { setSelected((prev) => { if (selectedAllVisible) return new Set(); const next = new Set(prev); for (const s of filtered) next.add(s.slot_id); return next; }); }
 
-  return <div className="grid"><div className="card card-pad grid"><h2>글 후보 만들기/작성</h2><div className="grid grid-4"><Field label="템플릿당 최대"><input className="input" type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} /></Field><Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field><Field label="모델"><input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="비우면 기본 codex" /></Field><Field label="제한시간"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field></div><div className="row"><button className="btn primary" onClick={gen}>재료로 글 후보 만들기</button><button className="btn" onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>1개 테스트 작성</button><button className="btn" onClick={() => smartQueue("현재 검색 10개 작성", { max: 10, q, template })}>현재 검색 10개 작성</button><button className="btn" onClick={() => smartQueue("전국 골고루 100개 작성", { max: 100, balanced: true })}>전국 골고루 100개 작성</button><label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label><Field label="대량 대기시간"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field></div><div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {domain.design_template_id ?? "local-guide"}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span></div><p className="muted small">추천 흐름: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞어 특정 지역 쏠림을 줄입니다.</p></div><div className="row"><select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select><select className="select" style={{ width: 150 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{options.templates.map((t) => <option key={t}>{t}</option>)}</select><input className="input" style={{ width: 320 }} placeholder="지역/키워드/슬롯 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />{["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}<span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span><button className="btn primary" disabled={!selected.size} onClick={() => queue(Array.from(selected))}>선택 글 작성</button><button className="btn danger" disabled={!selected.size} onClick={delSelected}>삭제</button></div><p className="muted small">슬롯은 전체 후보에서 서버 검색합니다. “현재 검색 10개 작성”은 검색어/유형 조건 안에서 주제가 겹치지 않게 선별합니다.</p>{slotError && <p className="small" style={{ color: "var(--danger)" }}>슬롯 검색 오류: {slotError}</p>}<div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>상태</th></tr></thead><tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><Status status={s.status} /></td></tr>)}</tbody></table></div></div>;
+  return <div className="grid"><div className="card card-pad grid"><h2>글 후보 만들기/작성</h2><div className="grid grid-4"><Field label="템플릿당 최대"><input className="input" type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} /></Field><Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field><Field label="모델"><input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="비우면 기본 codex" /></Field><Field label="제한시간"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field></div><div className="row"><button className="btn primary" onClick={gen}>재료로 글 후보 만들기</button><button className="btn" onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>1개 테스트 작성</button><button className="btn" onClick={() => smartQueue("현재 검색 10개 작성", { max: 10, q, template })}>현재 검색 10개 작성</button><button className="btn" onClick={() => smartQueue("전국 골고루 100개 작성", { max: 100, balanced: true })}>전국 골고루 100개 작성</button><label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label><label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => setImageGen(e.target.checked)} /> Codex 이미지 생성</label><Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field><Field label="대량 대기시간"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field></div><div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {domain.design_template_id ?? "local-guide"}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span>{exclusionLines.length > 0 && <span>제외 {exclusionLines.length}개</span>}</div><p className="muted small">추천 흐름: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞어 특정 지역 쏠림을 줄입니다.</p>{exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}</div><div className="row"><select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select><select className="select" style={{ width: 150 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{options.templates.map((t) => <option key={t}>{t}</option>)}</select><input className="input" style={{ width: 320 }} placeholder="지역/키워드/슬롯 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />{["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}<span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span><button className="btn primary" disabled={!selected.size} onClick={() => queue(Array.from(selected))}>선택 글 작성</button><button className="btn danger" disabled={!selected.size} onClick={delSelected}>삭제</button></div><p className="muted small">슬롯은 전체 후보에서 서버 검색합니다. “현재 검색 10개 작성”은 검색어/유형 조건 안에서 주제가 겹치지 않게 선별합니다.</p>{slotError && <p className="small" style={{ color: "var(--danger)" }}>슬롯 검색 오류: {slotError}</p>}<div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>상태</th></tr></thead><tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><Status status={s.status} /></td></tr>)}</tbody></table></div></div>;
 }
 
 function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; onRefresh: () => Promise<void> }) {
@@ -449,7 +546,7 @@ function DomainJobCard({ job, domain }: { job: Job; domain: DomainConfig }) {
     <div className="card-pad grid" style={{ borderTop: "1px solid var(--line)" }}>
       <div className="progress"><span style={{ width: `${percent}%` }} /></div>
       <div className="grid grid-4"><Stat label="대상" value={total} /><Stat label="성공" value={ok} accent /><Stat label="실패" value={fail} /><Stat label="진행률" value={percent} /></div>
-      <div className="writer-hint"><b>작업 옵션</b><span>엔진 {String(job.payload_obj?.provider ?? "codex")}</span><span>모델 {String(job.payload_obj?.model || "기본")}</span><span>디자인 {String(job.payload_obj?.design_template_id ?? domain.design_template_id ?? "local-guide")}</span><span>웹자료 {job.payload_obj?.use_web_research === false ? "미사용" : "사용"}</span></div>
+      <div className="writer-hint"><b>작업 옵션</b><span>엔진 {String(job.payload_obj?.provider ?? "codex")}</span><span>모델 {String(job.payload_obj?.model || "기본")}</span><span>디자인 {String(job.payload_obj?.design_template_id ?? domain.design_template_id ?? "local-guide")}</span><span>웹자료 {job.payload_obj?.use_web_research === false ? "미사용" : "사용"}</span><span>이미지 {job.payload_obj?.enable_image_generation ? `생성 / ${String(job.payload_obj?.image_size || "1024x1024")}` : "미사용"}</span></div>
       <p className="muted small">예약 {formatDateTime(job.scheduled_at)} · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)} · 대기 {String(job.payload_obj?.cooldown_sec ?? "-")}초 · 제한 {String(job.payload_obj?.timeout_sec ?? "-")}초</p>
       {slotIds.length > 0 && <p className="muted small mono">슬롯 {slotIds.slice(0, 8).join(", ")}{slotIds.length > 8 ? ` 외 ${slotIds.length - 8}개` : ""}</p>}
       {job.error && <p className="toast-error">{job.error}</p>}
@@ -464,8 +561,11 @@ function Posts({ domain, posts, onRefresh }: { domain: DomainConfig; posts: Post
   const filtered = posts.filter((p) => !q || `${p.title} ${p.slug}`.toLowerCase().includes(q.toLowerCase()));
   async function job(kind: "dedup" | "prune" | "indexing") { const path = kind === "indexing" ? "indexing" : kind; await api(`/domains/${encodeURIComponent(domain.domain)}/jobs/${path}`, { method: "POST", body: JSON.stringify(kind === "dedup" ? { threshold: 0.75 } : kind === "prune" ? { min_body_chars: 700, stale_noindex_days: 90 } : { max: 200 }) }); alert(`${kind} 작업 등록`); }
   async function delSelected() { if (!confirm(`${selected.size}개 삭제?`)) return; for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/posts/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); }
-  function downloadMarkdown() { const chosen = posts.filter((p) => selected.has(p.id)); const text = chosen.map((p) => `# ${p.title}\n\nslug: ${p.slug}\n`).join("\n---\n"); const url = URL.createObjectURL(new Blob([text], { type: "text/markdown" })); const a = document.createElement("a"); a.href = url; a.download = `${domain.domain}-posts.md`; a.click(); URL.revokeObjectURL(url); }
-  return <div className="grid"><div className="row"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span><button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length}>색인 요청</button><button className="btn" onClick={downloadMarkdown} disabled={!selected.size}>Markdown Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size}>삭제</button></div><div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>provider</th><th>$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.provider}</td><td>{p.cost_usd ? p.cost_usd.toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
+  async function exportSelected(format: "markdown" | "html") {
+    const blob = await downloadPostExport(domain.domain, { post_ids: Array.from(selected), format });
+    downloadBlob(blob, `${domain.domain}-posts-${format}.zip`);
+  }
+  return <div className="grid"><div className="row"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span><button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length}>색인 요청</button><button className="btn" onClick={() => exportSelected("markdown")} disabled={!selected.size}>Markdown Export</button><button className="btn primary" onClick={() => exportSelected("html")} disabled={!selected.size}>HTML Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size}>삭제</button></div><div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>provider</th><th>$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.provider}</td><td>{p.cost_usd ? p.cost_usd.toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
 }
 
 function Settings({ domain, options, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
@@ -512,7 +612,16 @@ function PreviewBlock({ block }: { block: typeof DESIGN_BLUEPRINTS[string]["bloc
 function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) { return <div className="card stat"><div className="muted small">{label}</div><div className="num" style={{ color: accent ? "var(--success)" : undefined }}>{value}</div></div>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="label">{label}</span>{children}</label>; }
 function Status({ status }: { status: string }) { const cls = status === "published" || status === "done" ? "success" : status === "failed" ? "danger" : status === "running" || status === "in_progress" ? "info" : status === "planned" || status === "queued" ? "warn" : ""; return <span className={`badge ${cls}`}>{status}</span>; }
+function typeLabel(type: string): string { return ACADEMY_TYPE_COPY[type]?.label ?? type; }
 function num(value: unknown): number { const n = Number(value); return Number.isFinite(n) ? n : 0; }
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 function jobTotal(job: Job): number {
   if (Array.isArray(job.payload_obj?.slot_ids)) return job.payload_obj.slot_ids.length;
   return num(job.result_obj?.total_posts ?? job.result_obj?.total ?? job.payload_obj?.max) || 1;

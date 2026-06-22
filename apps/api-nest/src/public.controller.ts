@@ -1,6 +1,8 @@
-import { Body, Controller, Get, Header, HttpException, Inject, Param, Post, Query, Req } from "@nestjs/common";
-import type { Request } from "express";
+import { Body, Controller, Get, Header, HttpException, Inject, Param, Post, Query, Req, Res } from "@nestjs/common";
+import type { Request, Response } from "express";
+import { createReadStream, existsSync } from "node:fs";
 import { DbService } from "./db.service.js";
+import { generatedImageFilePath, safeImageFilename } from "./image-generation.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 
 type Row = Record<string, any>;
@@ -27,6 +29,17 @@ export class PublicController {
     const payload: Row = { post: publicPostDetail(normalized.post) };
     if (rendered === "true" || rendered === "1") payload.body_html = renderMarkdown(normalized.bodyMarkdown, normalized.images);
     return payload;
+  }
+
+  @Get("generated-images/:file")
+  generatedImage(@Param("domain") domain: string, @Param("file") file: string, @Res() res: Response) {
+    this.requireDomain(domain);
+    if (safeImageFilename(file) !== file) throw new HttpException("image not found", 404);
+    const path = generatedImageFilePath(domain, file);
+    if (!existsSync(path)) throw new HttpException("image not found", 404);
+    res.setHeader("content-type", "image/png");
+    res.setHeader("cache-control", "public, max-age=31536000, immutable");
+    createReadStream(path).pipe(res);
   }
 
   @Get("sitemap.xml")
