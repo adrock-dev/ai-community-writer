@@ -3,7 +3,7 @@
 ## Source of truth
 - Status: Active
 - Last refreshed: 2026-06-22
-- Primary product surfaces: Adrock Ops dashboard, domain detail workflow, slots/jobs/posts operations.
+- Primary product surfaces: Adrock Ops dashboard, dashboard flow starter, domain detail workflow, slots/jobs/posts operations.
 - Evidence reviewed: `apps/admin-next/app/globals.css`, `apps/admin-next/app/layout.tsx`, `apps/admin-next/components/AppShell.tsx`, `apps/admin-next/components/DomainClient.tsx`, `apps/admin-next/components/JobsClient.tsx`, `DEPLOY.md`, `docs/admin-json-api.md`.
 
 ## Brand
@@ -12,9 +12,9 @@
 - Avoid: consumer-like decoration that hides operational state; unexplained technical terms in primary flows.
 
 ## Product goals
-- Goals: let non-developer operators create, monitor, review, export, and index community SEO posts safely.
+- Goals: let non-developer operators choose a generation mode from the dashboard, create, monitor, review, export, and index community SEO posts safely.
 - Non-goals: replace expert editorial review; hide advanced generation options from power users.
-- Success signals: first test post can be generated without verbal onboarding; bulk generation is gated by clear context; failed jobs show next actions.
+- Success signals: first test post can be generated without verbal onboarding; operators can distinguish basic generation from advanced slot setup before entering a domain; bulk generation is gated by clear context; failed jobs show next actions.
 
 ## Personas and jobs
 - Primary personas: content operations manager, SEO operator, technical maintainer.
@@ -24,12 +24,13 @@
 ## Information architecture
 - Primary navigation: dashboard, jobs, domain detail tabs.
 - Core routes/screens: `/`, `/jobs`, `/t/[domain]`, `/t/[domain]/post/[postId]`.
-- Content hierarchy: domain status -> workflow steps -> active tab task -> detailed tables/results.
+- Content hierarchy: dashboard flow choice -> domain status -> workflow steps -> active tab task -> detailed tables/results.
 
 ## Design principles
 - Principle 1: reveal the next safe action before advanced controls.
 - Principle 2: use guided focus for multi-step generation so operators always know where to click next.
-- Tradeoffs: keep power-user controls available, but place them inside contextual cards and explain defaults.
+- Principle 3: mode first, tabs second; the operator should choose “basic generation”, “advanced slot generation”, or “review/export” before facing tab-level controls.
+- Tradeoffs: keep power-user controls available, but place them inside contextual cards and explain defaults; basic mode may skip configuration screens that advanced users can still open.
 
 ## Visual language
 - Color: existing CSS variables; purple/blue primary, green success, amber queued/warning, red danger.
@@ -41,8 +42,8 @@
 
 ## Components
 - Existing components to reuse: `card`, `btn`, `badge`, `workflow`, `tabs`, `writer-hint`, `table-wrap`.
-- New/changed components: guided tutorial overlay in `DomainClient`, using `data-tour` targets and a reusable spotlight tooltip.
-- Variants and states: start/next/back/finish, missing target fallback, highlighted target, overlay, mobile positioning.
+- New/changed components: dashboard flow starter cards, domain flow starter cards, guided tutorial overlay in `DomainClient`, using `data-tour` targets and a reusable spotlight tooltip.
+- Variants and states: basic generation, advanced slot generation, review/export, start/next/back/finish, missing target fallback, highlighted target, overlay, mobile positioning.
 - Token/component ownership: global CSS in `apps/admin-next/app/globals.css`; route-specific logic in `DomainClient.tsx`.
 
 ## Accessibility
@@ -67,7 +68,7 @@
 
 ## Content voice
 - Tone: concise Korean operator guidance.
-- Terminology: prefer “글 후보”, “테스트 작성”, “작업 상태”, “완성 글” over raw technical terms where possible.
+- Terminology: prefer “기본 글 생성”, “고급 슬롯 생성”, “검수/내보내기”, “글 후보”, “테스트 작성”, “작업 상태”, “완성 글” over raw technical terms where possible.
 - Microcopy rules: each step should say objective, exact action, and what changes after action.
 
 ## Implementation constraints

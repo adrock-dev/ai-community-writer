@@ -52,6 +52,8 @@ export default function DashboardClient() {
     } finally { setBusy(false); }
   }
 
+  const defaultDomain = domains[0];
+
   return (
     <div>
       <div className="page-head">
@@ -91,21 +93,38 @@ export default function DashboardClient() {
       {domains.length === 0 ? (
         <div className="card card-pad" style={{ textAlign: "center", padding: 52 }}>
           <h2>아직 도메인이 없습니다</h2>
-          <p className="muted">운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 기획 → 디자인 → 축 → 슬롯 → 작성 순서로 진행하세요.</p>
+          <p className="muted">운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 이후 대시보드에서 기본 글 생성, 고급 슬롯 생성, 검수 흐름을 바로 시작할 수 있습니다.</p>
+          <button className="btn primary" style={{ marginTop: 12 }} onClick={() => setOpen(true)}>첫 도메인 만들기</button>
         </div>
       ) : (
-        <div className="grid grid-3">
-          {domains.map((t) => (
-            <Link href={`/t/${encodeURIComponent(t.domain)}`} className="card card-pad" key={t.domain}>
-              <div className="spread"><h3>{t.display_name}</h3><span className="badge">{t.vertical}</span></div>
-              <p className="muted mono small">{t.domain}</p>
-              <div className="grid grid-3" style={{ gap: 8, marginTop: 16 }}>
-                <Mini label="슬롯" value={t.slot_count ?? 0} />
-                <Mini label="대기" value={t.planned_count ?? 0} />
-                <Mini label="발행" value={t.published_count ?? 0} />
+        <div className="grid">
+          <DashboardFlowStarter domain={defaultDomain} />
+          <section>
+            <div className="spread" style={{ marginBottom: 10 }}>
+              <div>
+                <h2>도메인별 시작</h2>
+                <p className="muted small">도메인을 고른 뒤 같은 방식으로 기본/고급/검수 흐름을 바로 시작합니다.</p>
               </div>
-            </Link>
-          ))}
+            </div>
+            <div className="grid grid-3">
+              {domains.map((t) => (
+                <article className="card card-pad domain-card" key={t.domain}>
+                  <div className="spread"><h3>{t.display_name}</h3><span className="badge">{t.vertical}</span></div>
+                  <p className="muted mono small">{t.domain}</p>
+                  <div className="grid grid-3" style={{ gap: 8, marginTop: 16 }}>
+                    <Mini label="슬롯" value={t.slot_count ?? 0} />
+                    <Mini label="대기" value={t.planned_count ?? 0} />
+                    <Mini label="발행" value={t.published_count ?? 0} />
+                  </div>
+                  <div className="domain-actions">
+                    <Link className="btn" href={domainHref(t.domain)}>열기</Link>
+                    <Link className="btn primary" href={domainHref(t.domain, "basic")}>기본 생성</Link>
+                    <Link className="btn" href={domainHref(t.domain, "advanced")}>고급 슬롯</Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
         </div>
       )}
 
@@ -120,6 +139,56 @@ export default function DashboardClient() {
       </section>
     </div>
   );
+}
+
+type FlowMode = "basic" | "advanced" | "review";
+
+function DashboardFlowStarter({ domain }: { domain: DomainConfig }) {
+  return <section className="flow-start" aria-labelledby="dashboard-flow-start">
+    <div>
+      <p className="eyebrow">운영 시작</p>
+      <h2 id="dashboard-flow-start">대시보드에서 바로 글 생성 흐름을 선택하세요</h2>
+      <p className="muted">가장 최근 도메인부터 시작합니다. 도메인별 카드에서도 같은 흐름을 따로 시작할 수 있습니다.</p>
+      <p className="small muted mono">기본 대상: {domain.domain}</p>
+    </div>
+    <div className="grid grid-3">
+      <DashboardFlowCard
+        href={domainHref(domain.domain, "basic")}
+        title="기본 글 생성"
+        badge="추천"
+        body="처음 운영자가 헷갈리지 않게 데이터 준비, 후보 생성, 1개 테스트 작성, 검수만 순서대로 안내합니다."
+        cta="기본 흐름 시작"
+        tone="primary"
+      />
+      <DashboardFlowCard
+        href={domainHref(domain.domain, "advanced")}
+        title="고급 슬롯 생성"
+        badge="운영자용"
+        body="기획, 글유형, 디자인, 학원 타입, 슬롯 필터를 만지며 대량 후보를 정교하게 만드는 흐름입니다."
+        cta="고급 흐름 시작"
+      />
+      <DashboardFlowCard
+        href={domainHref(domain.domain, "review")}
+        title="검수/내보내기"
+        badge="마감"
+        body="작업 큐와 완성 글만 빠르게 확인해 export, 색인 요청, 중복 점검으로 마무리합니다."
+        cta="검수 흐름 시작"
+      />
+    </div>
+  </section>;
+}
+
+function DashboardFlowCard({ href, title, badge, body, cta, tone }: { href: string; title: string; badge: string; body: string; cta: string; tone?: "primary" }) {
+  return <Link href={href} className={`flow-card ${tone === "primary" ? "primary" : ""}`}>
+    <div className="spread"><h3>{title}</h3><span className={`badge ${tone === "primary" ? "success" : "info"}`}>{badge}</span></div>
+    <p className="muted">{body}</p>
+    <span className={`btn ${tone === "primary" ? "primary" : ""}`}>{cta}</span>
+  </Link>;
+}
+
+function domainHref(domain: string, flow?: FlowMode) {
+  const base = `/t/${encodeURIComponent(domain)}`;
+  return flow ? `${base}?flow=${flow}` : base;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="label">{label}</span>{children}</label>; }
