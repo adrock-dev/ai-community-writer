@@ -142,6 +142,8 @@ export default function DomainClient({ domain }: { domain: string }) {
   const [tab, setTab] = useState("overview");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [tourStep, setTourStep] = useState<number | null>(null);
+  const tourSteps = useMemo(() => buildOperatorTourSteps(payload?.slot_counts), [payload?.slot_counts]);
 
   async function refresh() {
     const [opts, detail] = await Promise.all([getOptions(), getDomainDetail(domain)]);
@@ -153,6 +155,11 @@ export default function DomainClient({ domain }: { domain: string }) {
   if (!payload || !options) return <div className="card card-pad">로딩 중...</div>;
   const domainConfig = payload.domain;
   const counts = payload.slot_counts;
+
+  function startTour() {
+    setTab(tourSteps[0]?.tab ?? "overview");
+    setTourStep(0);
+  }
 
   async function saveDomain(fields: Record<string, unknown>) {
     setBusy(true);
@@ -175,6 +182,7 @@ export default function DomainClient({ domain }: { domain: string }) {
         <div className="row">
           <span className="badge">{domainConfig.vertical}</span>
           <span className="badge">{domainConfig.theme}</span>
+          <button className="btn primary" onClick={() => startTour()}>글 생성 튜토리얼</button>
           <Link href="/jobs" className="btn">작업 큐</Link>
         </div>
       </div>
@@ -194,8 +202,115 @@ export default function DomainClient({ domain }: { domain: string }) {
       {tab === "jobs" && <Jobs domain={domainConfig} jobs={payload.jobs ?? []} onRefresh={refresh} />}
       {tab === "posts" && <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />}
       {tab === "settings" && <Settings domain={domainConfig} options={options} onSave={saveDomain} onRefresh={refresh} />}
+      {tourStep !== null && <OperatorTour steps={tourSteps} stepIndex={tourStep} onStepChange={setTourStep} onTab={setTab} onClose={() => setTourStep(null)} />}
     </div>
   );
+}
+
+type TourStep = {
+  tab: string;
+  target: string;
+  title: string;
+  body: string;
+  action: string;
+};
+
+function buildOperatorTourSteps(counts?: SlotCounts): TourStep[] {
+  const hasSlots = Boolean(counts && Object.values(counts).reduce((sum, value) => sum + value, 0) > 0);
+  const hasPosts = Boolean(counts && counts.published > 0);
+  return [
+    { tab: "overview", target: "workflow", title: "전체 흐름을 먼저 봅니다", body: "운영자는 이 막대만 보면 지금 어디까지 준비됐는지 알 수 있습니다. 초록은 끝난 단계, 강조된 카드는 현재 단계입니다.", action: "다음은 글 방향을 정하는 기획 단계입니다." },
+    { tab: "plan", target: "plan-brief", title: "1단계 · 글 방향과 제외어를 저장", body: "어떤 글을 만들지, 절대 넣지 말아야 할 키워드는 무엇인지 먼저 정합니다. 이 내용이 뒤의 후보 생성과 프롬프트에 계속 반영됩니다.", action: "입력 후 ‘기획 저장’을 누르고 다음으로 이동하세요." },
+    { tab: "templates", target: "templates-types", title: "2단계 · 만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
+    { tab: "templates", target: "templates-design", title: "3단계 · 발행 화면 구상 저장", body: "완성 글이 어떤 형태로 보일지 미리 고릅니다. 오른쪽 미리보기가 실제 상세 화면의 톤과 구조를 이해시키는 기준입니다.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
+    { tab: "academies", target: "academies-sync", title: "4단계 · 원천 데이터 동기화", body: "지역과 학원 데이터를 가져와야 생성 글이 검증된 자료를 기반으로 작성됩니다. 먼저 지역 동기화, 다음 학원 동기화 순서를 권장합니다.", action: "데이터가 이미 있으면 다음 단계로 넘어가도 됩니다." },
+    { tab: "academies", target: "academies-types", title: "5단계 · 글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
+    { tab: "slots", target: "slots-generator", title: hasSlots ? "6단계 · 후보를 확인하고 테스트 작성" : "6단계 · 먼저 글 후보를 만듭니다", body: hasSlots ? "후보가 준비되어 있으니 곧바로 1개 테스트 작성부터 시작하면 됩니다. 고급 옵션은 기본값을 유지해도 됩니다." : "아직 후보가 없다면 재료로 글 후보 만들기를 먼저 실행하세요. 후보는 지역·검색어·의도 조합으로 만들어집니다.", action: hasSlots ? "다음 포커스에서 테스트 작성 버튼을 누릅니다." : "‘재료로 글 후보 만들기’를 누른 뒤 슬롯 목록이 생겼는지 확인하세요." },
+    { tab: "slots", target: hasSlots ? "slots-test" : "slots-create", title: hasSlots ? "7단계 · 1개 테스트 작성" : "7단계 · 후보 생성 실행", body: hasSlots ? "처음부터 10개/100개를 만들지 말고 테스트 1개를 먼저 큐에 넣습니다. 작업 탭으로 이동해 진행 상황을 확인합니다." : "후보가 생긴 다음 다시 이 튜토리얼을 실행하면 1개 테스트 작성 단계로 이어집니다.", action: hasSlots ? "버튼을 누르면 작업 탭으로 이동합니다." : "후보 생성 후 ‘1개 테스트 작성’을 진행하세요." },
+    { tab: "jobs", target: "jobs-board", title: "8단계 · 작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 글 탭에서 결과를 검수합니다." },
+    { tab: "posts", target: "posts-review", title: hasPosts ? "9단계 · 완성 글 검수/내보내기" : "9단계 · 완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: "이 흐름이 안정적이면 현재 검색 10개, 이후 100개로 확장하세요." },
+  ];
+}
+
+function OperatorTour({ steps, stepIndex, onStepChange, onTab, onClose }: { steps: TourStep[]; stepIndex: number; onStepChange: (value: number | null) => void; onTab: (value: string) => void; onClose: () => void }) {
+  const step = steps[stepIndex];
+  const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
+  const [missingTarget, setMissingTarget] = useState(false);
+
+  useEffect(() => {
+    if (!step) return;
+    onTab(step.tab);
+  }, [step?.tab, onTab]);
+
+  useEffect(() => {
+    if (!step) return;
+    let disposed = false;
+    let active: HTMLElement | null = null;
+    const update = () => {
+      if (disposed) return;
+      active?.classList.remove("tour-target-active");
+      active = document.querySelector(`[data-tour="${step.target}"]`) as HTMLElement | null;
+      if (!active) {
+        setMissingTarget(true);
+        setTargetRect(null);
+        return;
+      }
+      setMissingTarget(false);
+      active.classList.add("tour-target-active");
+      active.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      window.setTimeout(() => {
+        if (!disposed && active) setTargetRect(active.getBoundingClientRect());
+      }, 180);
+    };
+    const id = window.setTimeout(update, 80);
+    window.addEventListener("resize", update);
+    window.addEventListener("scroll", update, true);
+    return () => {
+      disposed = true;
+      window.clearTimeout(id);
+      window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", update, true);
+      active?.classList.remove("tour-target-active");
+    };
+  }, [step?.target, step?.tab]);
+
+  if (!step) return null;
+  const total = steps.length;
+  const canBack = stepIndex > 0;
+  const canNext = stepIndex < total - 1;
+  const tooltipStyle = tourTooltipStyle(targetRect);
+  return <div className="tour-layer" aria-live="polite">
+    <div className="tour-scrim" onClick={onClose} />
+    {targetRect && <div className="tour-spotlight" style={{ top: targetRect.top - 8, left: targetRect.left - 8, width: targetRect.width + 16, height: targetRect.height + 16 }} />}
+    <section className="tour-card" role="dialog" aria-modal="true" aria-label="글 생성 튜토리얼" style={tooltipStyle}>
+      <div className="spread"><span className="badge info">{stepIndex + 1} / {total}</span><button className="btn ghost" onClick={onClose} aria-label="튜토리얼 닫기">×</button></div>
+      <h2>{step.title}</h2>
+      <p className="muted">{step.body}</p>
+      <div className="writer-hint"><b>해야 할 일</b><span>{step.action}</span></div>
+      {missingTarget && <p className="small" style={{ color: "var(--warning)" }}>현재 단계의 대상 영역을 찾는 중입니다. 탭을 전환했거나 데이터가 아직 로딩 중이면 잠시 뒤 다시 표시됩니다.</p>}
+      <div className="tour-progress" aria-hidden="true">{steps.map((_, i) => <span key={i} className={i <= stepIndex ? "active" : ""} />)}</div>
+      <div className="spread">
+        <button className="btn" disabled={!canBack} onClick={() => onStepChange(stepIndex - 1)}>이전</button>
+        <div className="row">
+          <button className="btn ghost" onClick={onClose}>끝내기</button>
+          <button className="btn primary" onClick={() => canNext ? onStepChange(stepIndex + 1) : onClose()}>{canNext ? "다음" : "완료"}</button>
+        </div>
+      </div>
+    </section>
+  </div>;
+}
+
+function tourTooltipStyle(rect: DOMRect | null): React.CSSProperties {
+  if (!rect) return { top: 92, left: "50%", transform: "translateX(-50%)" };
+  const width = 380;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const below = rect.bottom + 18;
+  const above = rect.top - 18;
+  const top = below + 260 < viewportHeight ? below : Math.max(18, above - 260);
+  const rawLeft = rect.left + Math.min(40, Math.max(0, rect.width - width) / 2);
+  const left = Math.max(18, Math.min(rawLeft, viewportWidth - width - 18));
+  return { top, left, width };
 }
 
 function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; counts: SlotCounts; active: string; onTab: (v: string) => void }) {
@@ -207,7 +322,7 @@ function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; cou
     { tab: "jobs", title: "작업", done: counts.in_progress > 0 || counts.published > 0, count: counts.in_progress > 0 ? `${counts.in_progress}개 진행` : "상태 확인" },
     { tab: "posts", title: "완성", done: counts.published > 0, count: `${counts.published}개` },
   ];
-  return <div className="workflow" style={{ marginBottom: 20 }}>{steps.map((s, i) => <button key={s.tab} className={`step ${s.done ? "done" : ""} ${active === s.tab ? "active" : ""}`} onClick={() => onTab(s.tab)}><b>{i + 1}. {s.title}</b><p className="muted small">{s.count}</p></button>)}</div>;
+  return <div className="workflow" data-tour="workflow" style={{ marginBottom: 20 }}>{steps.map((s, i) => <button key={s.tab} className={`step ${s.done ? "done" : ""} ${active === s.tab ? "active" : ""}`} onClick={() => onTab(s.tab)}><b>{i + 1}. {s.title}</b><p className="muted small">{s.count}</p></button>)}</div>;
 }
 
 function Overview({ domain, counts, onTab }: { domain: DomainConfig; counts: SlotCounts; onTab: (v: string) => void }) {
@@ -219,7 +334,7 @@ function Overview({ domain, counts, onTab }: { domain: DomainConfig; counts: Slo
       <div className="card card-pad"><h2>콘텐츠 기획</h2><p className="muted">{domain.content_brief || "아직 기획 메모가 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>기획 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {domain.design_template_id ?? "local-guide"}</p><button className="btn" onClick={() => onTab("templates")}>디자인 고르기</button></div>
     </div>
-    <div className="card card-pad"><h2>빠른 시작</h2><ol className="muted"><li>기획 탭에서 글 방향과 축 값을 입력</li><li>글유형/디자인 탭에서 템플릿 선택</li><li>슬롯 탭에서 후보 생성 후 실제 글 작성</li><li>글 탭에서 확인하고 색인/중복/가지치기 실행</li></ol></div>
+    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>기획 탭에서 글 방향과 축 값을 입력</li><li>글유형/디자인 탭에서 템플릿 선택</li><li>슬롯 탭에서 후보 생성 후 실제 글 작성</li><li>글 탭에서 확인하고 색인/중복/가지치기 실행</li></ol><p className="muted small">상단의 “글 생성 튜토리얼”을 누르면 거래소 앱 온보딩처럼 필요한 영역만 순서대로 포커싱합니다.</p></div>
   </div>;
 }
 
@@ -235,7 +350,7 @@ function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: Domain
     await onSave({ content_brief: brief.trim(), excluded_keywords: excludedKeywords.trim() });
     await onRefresh();
   }
-  return <div className="card card-pad grid">
+  return <div className="card card-pad grid" data-tour="plan-brief">
     <h2>생성할 글 기획</h2>
     <Field label="이번에 생성할 글의 방향 / 검증된 자료"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="수도권 직장인이 빠르게 운전면허를 따기 위해 지역별 학원, 비용, 셔틀 여부를 비교하는 글을 만든다." /></Field>
     <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 슬롯 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
@@ -253,7 +368,7 @@ function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; op
   if (design === "custom" && custom.trim()) blueprint.lead = custom.trim();
   const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   return <div className="grid">
-    <section className="card card-pad grid">
+    <section className="card card-pad grid" data-tour="templates-types">
       <div className="spread"><div><h2>글 유형</h2><p className="muted">어떤 종류의 글을 만들지 고릅니다. 너무 많이 켜면 후보 수가 빠르게 늘어납니다.</p></div><span className="badge info">{enabled.size}개 사용 중</span></div>
       <div className="grid grid-2">{Object.entries(options.template_specs).map(([id, spec]) => <button key={id} className={`option-card ${enabled.has(id) ? "active" : ""}`} onClick={() => toggle(id)}>
         <div className="spread"><b><span className="badge">{id}</span> {spec.name}</b><span>{enabled.has(id) ? "✓" : ""}</span></div>
@@ -263,7 +378,7 @@ function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; op
     </section>
 
     <section className="grid" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 440px)", alignItems: "start" }}>
-      <div className="card card-pad grid">
+      <div className="card card-pad grid" data-tour="templates-design">
         <div><h2>화면 구상 / 디자인</h2><p className="muted">Electron에 있던 디자인 선택 화면처럼, 완성 글이 어떤 구조로 보일지 먼저 고릅니다.</p></div>
         <div className="grid grid-2">{options.design_templates.map((tpl) => {
           const bp = DESIGN_BLUEPRINTS[tpl.id] ?? DESIGN_BLUEPRINTS.editorial;
@@ -387,7 +502,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   const generationRuleText = generationTypes.size ? `${includedTypes.map(typeLabel).join(", ")}만 사용` : "전체 타입 사용";
   const recommendedTypes = knownTypeValues.filter((type) => type !== "indoor_academy");
   return <div className="grid">
-    <div className="card card-pad grid">
+    <div className="card card-pad grid" data-tour="academies-sync">
       <div className="spread"><div><h2>DrivingPlus 원천 데이터 동기화</h2><p className="muted">Swagger API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 사용합니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
       <div className="grid grid-3">
         <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
@@ -409,7 +524,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
       </div>
       {filterError && <p className="small" style={{ color: "var(--danger)" }}>필터 오류: {filterError}</p>}
     </div>
-    <div className="card card-pad grid">
+    <div className="card card-pad grid" data-tour="academies-types">
       <div className="spread"><div><h2>글 생성 사용 타입</h2><p className="muted small">저장한 타입만 글 생성 프롬프트의 학원 후보로 들어갑니다. 실내운전연습장을 빼고 싶으면 추천 설정을 쓰면 됩니다.</p></div><button className="btn primary" onClick={saveGenerationTypes} disabled={busy || !academyTypes.length}>{busy ? "저장 중..." : "생성 타입 저장"}</button></div>
       <div className="writer-hint"><b>현재 생성 기준</b><span>{generationRuleText}</span>{excludedTypes.length > 0 && <span>제외: {excludedTypes.map(typeLabel).join(", ")}</span>}</div>
       <div className="row">
@@ -499,7 +614,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   async function delSelected() { if (!confirm(`${selected.size}개 삭제?`)) return; for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/slots/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); }
   function toggleAllVisible() { setSelected((prev) => { if (selectedAllVisible) return new Set(); const next = new Set(prev); for (const s of filtered) next.add(s.slot_id); return next; }); }
 
-  return <div className="grid"><div className="card card-pad grid"><h2>글 후보 만들기/작성</h2><div className="grid grid-4"><Field label="템플릿당 최대"><input className="input" type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} /></Field><Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field><Field label="모델"><input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="비우면 기본 codex" /></Field><Field label="제한시간"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field></div><div className="row"><button className="btn primary" onClick={gen}>재료로 글 후보 만들기</button><button className="btn" onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>1개 테스트 작성</button><button className="btn" onClick={() => smartQueue("현재 검색 10개 작성", { max: 10, q, template })}>현재 검색 10개 작성</button><button className="btn" onClick={() => smartQueue("전국 골고루 100개 작성", { max: 100, balanced: true })}>전국 골고루 100개 작성</button><label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label><label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => setImageGen(e.target.checked)} /> Codex 이미지 생성</label><Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field><Field label="대량 대기시간"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field></div><div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {domain.design_template_id ?? "local-guide"}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span>{exclusionLines.length > 0 && <span>제외 {exclusionLines.length}개</span>}</div><p className="muted small">추천 흐름: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞어 특정 지역 쏠림을 줄입니다.</p>{exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}</div><div className="row"><select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select><select className="select" style={{ width: 150 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{options.templates.map((t) => <option key={t}>{t}</option>)}</select><input className="input" style={{ width: 320 }} placeholder="지역/키워드/슬롯 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />{["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}<span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span><button className="btn primary" disabled={!selected.size} onClick={() => queue(Array.from(selected))}>선택 글 작성</button><button className="btn danger" disabled={!selected.size} onClick={delSelected}>삭제</button></div><p className="muted small">슬롯은 전체 후보에서 서버 검색합니다. “현재 검색 10개 작성”은 검색어/유형 조건 안에서 주제가 겹치지 않게 선별합니다.</p>{slotError && <p className="small" style={{ color: "var(--danger)" }}>슬롯 검색 오류: {slotError}</p>}<div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>상태</th></tr></thead><tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><Status status={s.status} /></td></tr>)}</tbody></table></div></div>;
+  return <div className="grid"><div className="card card-pad grid" data-tour="slots-generator"><h2>글 후보 만들기/작성</h2><div className="grid grid-4"><Field label="템플릿당 최대"><input className="input" type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} /></Field><Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field><Field label="모델"><input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="비우면 기본 codex" /></Field><Field label="제한시간"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field></div><div className="row"><button className="btn primary" data-tour="slots-create" onClick={gen}>재료로 글 후보 만들기</button><button className="btn" data-tour="slots-test" onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>1개 테스트 작성</button><button className="btn" onClick={() => smartQueue("현재 검색 10개 작성", { max: 10, q, template })}>현재 검색 10개 작성</button><button className="btn" onClick={() => smartQueue("전국 골고루 100개 작성", { max: 100, balanced: true })}>전국 골고루 100개 작성</button><label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label><label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => setImageGen(e.target.checked)} /> Codex 이미지 생성</label><Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field><Field label="대량 대기시간"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field></div><div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {domain.design_template_id ?? "local-guide"}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span>{exclusionLines.length > 0 && <span>제외 {exclusionLines.length}개</span>}</div><p className="muted small">추천 흐름: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞어 특정 지역 쏠림을 줄입니다.</p>{exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}</div><div className="row" data-tour="slots-filter"><select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select><select className="select" style={{ width: 150 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{options.templates.map((t) => <option key={t}>{t}</option>)}</select><input className="input" style={{ width: 320 }} placeholder="지역/키워드/슬롯 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />{["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}<span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span><button className="btn primary" disabled={!selected.size} onClick={() => queue(Array.from(selected))}>선택 글 작성</button><button className="btn danger" disabled={!selected.size} onClick={delSelected}>삭제</button></div><p className="muted small">슬롯은 전체 후보에서 서버 검색합니다. “현재 검색 10개 작성”은 검색어/유형 조건 안에서 주제가 겹치지 않게 선별합니다.</p>{slotError && <p className="small" style={{ color: "var(--danger)" }}>슬롯 검색 오류: {slotError}</p>}<div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>상태</th></tr></thead><tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><Status status={s.status} /></td></tr>)}</tbody></table></div></div>;
 }
 
 function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; onRefresh: () => Promise<void> }) {
@@ -515,7 +630,7 @@ function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; 
   }, {});
   const active = (counts.queued ?? 0) + (counts.running ?? 0);
   return <div className="grid">
-    <div className="card card-pad grid">
+    <div className="card card-pad grid" data-tour="jobs-board">
       <div className="spread"><div><h2>작업 상태판</h2><p className="muted">글 작성/중복검사/가지치기/색인 작업을 이 화면에서 바로 확인합니다. 3초마다 자동 새로고침됩니다.</p></div><button className="btn" onClick={onRefresh}>새로고침</button></div>
       <div className="grid grid-4"><Stat label="대기" value={counts.queued ?? 0} /><Stat label="진행" value={counts.running ?? 0} /><Stat label="완료" value={counts.done ?? 0} accent /><Stat label="실패" value={counts.failed ?? 0} /></div>
       <div className="writer-hint"><b>운영 순서</b><span>슬롯 탭에서 작성 등록</span><span>작업 탭에서 진행 확인</span><span>완료 후 글 탭에서 검수</span><span>필요 시 npm run worker:once</span></div>
@@ -565,7 +680,7 @@ function Posts({ domain, posts, onRefresh }: { domain: DomainConfig; posts: Post
     const blob = await downloadPostExport(domain.domain, { post_ids: Array.from(selected), format });
     downloadBlob(blob, `${domain.domain}-posts-${format}.zip`);
   }
-  return <div className="grid"><div className="row"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span><button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length}>색인 요청</button><button className="btn" onClick={() => exportSelected("markdown")} disabled={!selected.size}>Markdown Export</button><button className="btn primary" onClick={() => exportSelected("html")} disabled={!selected.size}>HTML Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size}>삭제</button></div><div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>provider</th><th>$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.provider}</td><td>{p.cost_usd ? p.cost_usd.toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
+  return <div className="grid" data-tour="posts-review"><div className="row"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span><button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length}>색인 요청</button><button className="btn" onClick={() => exportSelected("markdown")} disabled={!selected.size}>Markdown Export</button><button className="btn primary" onClick={() => exportSelected("html")} disabled={!selected.size}>HTML Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size}>삭제</button></div><div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>provider</th><th>$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.provider}</td><td>{p.cost_usd ? p.cost_usd.toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
 }
 
 function Settings({ domain, options, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
