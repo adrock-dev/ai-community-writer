@@ -52,7 +52,7 @@ export default function DashboardClient() {
     } finally { setBusy(false); }
   }
 
-  const defaultDomain = domains[0];
+  const defaultDomain = pickDefaultDomain(domains);
 
   return (
     <div>
@@ -111,6 +111,7 @@ export default function DashboardClient() {
                 <article className="card card-pad domain-card" key={t.domain}>
                   <div className="spread"><h3>{t.display_name}</h3><span className="badge">{t.vertical}</span></div>
                   <p className="muted mono small">{t.domain}</p>
+                  <RecommendedDomainAction domain={t} />
                   <div className="grid grid-3" style={{ gap: 8, marginTop: 16 }}>
                     <Mini label="슬롯" value={t.slot_count ?? 0} />
                     <Mini label="대기" value={t.planned_count ?? 0} />
@@ -120,6 +121,7 @@ export default function DashboardClient() {
                     <Link className="btn" href={domainHref(t.domain)}>열기</Link>
                     <Link className="btn primary" href={domainHref(t.domain, "basic")}>기본 생성</Link>
                     <Link className="btn" href={domainHref(t.domain, "advanced")}>고급 슬롯</Link>
+                    <Link className="btn" href={domainHref(t.domain, "review")}>검수</Link>
                   </div>
                 </article>
               ))}
@@ -144,13 +146,50 @@ export default function DashboardClient() {
 type FlowMode = "basic" | "advanced" | "review";
 type FlowFocus = "source" | "slot-create" | "test-write" | "jobs" | "posts" | "plan" | "template-design" | "academy-types" | "slot-filter";
 
+const DASHBOARD_STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ flow: FlowMode; focus: FlowFocus; no: string; title: string; desc: string; tone?: "primary" }> }> = [
+  {
+    title: "기본 글 생성",
+    desc: "처음 쓰는 운영자가 가장 적게 눌러도 되는 순서",
+    steps: [
+      { flow: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 동기화", tone: "primary" },
+      { flow: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "슬롯 후보 생성" },
+      { flow: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 전 안전 확인" },
+    ],
+  },
+  {
+    title: "고급 슬롯 생성",
+    desc: "정교하게 후보를 설계하고 확장할 때",
+    steps: [
+      { flow: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "방향과 금지어" },
+      { flow: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 구조 선택" },
+      { flow: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "원천 타입 정책" },
+      { flow: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터", desc: "후보 조건 좁히기" },
+    ],
+  },
+  {
+    title: "검수/마감",
+    desc: "생성 이후 확인과 내보내기",
+    steps: [
+      { flow: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "큐/실패 확인" },
+      { flow: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "export/indexing" },
+    ],
+  },
+];
+
+function pickDefaultDomain(domains: DomainConfig[]) {
+  return domains.find((d) => (d.planned_count ?? 0) > 0)
+    ?? domains.find((d) => (d.slot_count ?? 0) === 0)
+    ?? domains.find((d) => (d.published_count ?? 0) > 0)
+    ?? domains[0];
+}
+
 function DashboardFlowStarter({ domain }: { domain: DomainConfig }) {
   return <section className="flow-start" aria-labelledby="dashboard-flow-start">
     <div>
       <p className="eyebrow">운영 시작</p>
       <h2 id="dashboard-flow-start">대시보드에서 바로 글 생성 흐름을 선택하세요</h2>
-      <p className="muted">가장 최근 도메인부터 시작합니다. 도메인별 카드에서도 같은 흐름을 따로 시작할 수 있습니다.</p>
-      <p className="small muted mono">기본 대상: {domain.domain}</p>
+      <p className="muted">진행이 필요한 도메인을 먼저 추천합니다. 도메인별 카드에서도 같은 흐름을 따로 시작할 수 있습니다.</p>
+      <RecommendedDomainAction domain={domain} large />
     </div>
     <div className="grid grid-3">
       <DashboardFlowCard
@@ -189,17 +228,6 @@ function DashboardFlowCard({ href, title, badge, body, cta, tone }: { href: stri
 }
 
 function DashboardStepLauncher({ domain }: { domain: string }) {
-  const steps: Array<{ flow: FlowMode; focus: FlowFocus; no: string; title: string; desc: string; tone?: "primary" }> = [
-    { flow: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 동기화", tone: "primary" },
-    { flow: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "슬롯 후보 생성" },
-    { flow: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 전 안전 확인" },
-    { flow: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "방향과 금지어" },
-    { flow: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 구조 선택" },
-    { flow: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "원천 타입 정책" },
-    { flow: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터", desc: "후보 조건 좁히기" },
-    { flow: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "큐/실패 확인" },
-    { flow: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "export/indexing" },
-  ];
   return <div className="step-launch-panel">
     <div className="spread">
       <div>
@@ -208,14 +236,38 @@ function DashboardStepLauncher({ domain }: { domain: string }) {
       </div>
       <span className="badge info">9단계</span>
     </div>
-    <div className="step-launch-grid">
-      {steps.map((step) => <Link key={`${step.flow}-${step.focus}`} className={`step-launch ${step.tone === "primary" ? "primary" : ""}`} href={domainHref(domain, step.flow, step.focus)}>
-        <span className="step-no">{step.no}</span>
-        <b>{step.title}</b>
-        <small>{step.desc}</small>
-      </Link>)}
+    <div className="step-launch-groups">
+      {DASHBOARD_STEP_GROUPS.map((group) => <section className="step-launch-group" key={group.title}>
+        <div><b>{group.title}</b><p className="muted small">{group.desc}</p></div>
+        <div className="step-launch-grid">
+          {group.steps.map((step) => <Link key={`${step.flow}-${step.focus}`} className={`step-launch ${step.tone === "primary" ? "primary" : ""}`} href={domainHref(domain, step.flow, step.focus)}>
+            <span className="step-no">{step.no}</span>
+            <b>{step.title}</b>
+            <small>{step.desc}</small>
+          </Link>)}
+        </div>
+      </section>)}
     </div>
   </div>;
+}
+
+function RecommendedDomainAction({ domain, large }: { domain: DomainConfig; large?: boolean }) {
+  const action = getRecommendedDomainAction(domain);
+  return <div className={`next-action ${large ? "large" : ""}`}>
+    <div>
+      <span className="badge success">추천 다음 작업</span>
+      <b>{action.title}</b>
+      <p className="muted small">{action.desc}</p>
+    </div>
+    <Link className="btn primary" href={domainHref(domain.domain, action.flow, action.focus)}>{action.cta}</Link>
+  </div>;
+}
+
+function getRecommendedDomainAction(domain: DomainConfig): { title: string; desc: string; cta: string; flow: FlowMode; focus: FlowFocus } {
+  if ((domain.slot_count ?? 0) === 0) return { title: "원천 데이터부터 준비", desc: "아직 글 후보가 없어서 데이터/후보 생성부터 시작하는 게 안전합니다.", cta: "기본 1 시작", flow: "basic", focus: "source" };
+  if ((domain.planned_count ?? 0) > 0) return { title: "1개 테스트 작성", desc: `${(domain.planned_count ?? 0).toLocaleString()}개 대기 후보 중 하나만 먼저 작성해 품질을 확인하세요.`, cta: "기본 3 시작", flow: "basic", focus: "test-write" };
+  if ((domain.published_count ?? 0) > 0) return { title: "완성 글 검수", desc: `${(domain.published_count ?? 0).toLocaleString()}개 발행 글을 미리보기/export/indexing으로 마감하세요.`, cta: "검수 2 시작", flow: "review", focus: "posts" };
+  return { title: "글 후보 만들기", desc: "운영을 시작할 후보를 먼저 만들어야 합니다.", cta: "기본 2 시작", flow: "basic", focus: "slot-create" };
 }
 
 function domainHref(domain: string, flow?: FlowMode, focus?: FlowFocus) {

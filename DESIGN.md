@@ -14,7 +14,7 @@
 ## Product goals
 - Goals: let non-developer operators choose a generation mode from the dashboard, create, monitor, review, export, and index community SEO posts safely.
 - Non-goals: replace expert editorial review; hide advanced generation options from power users.
-- Success signals: first test post can be generated without verbal onboarding; operators can distinguish basic generation from advanced slot setup before entering a domain; bulk generation is gated by clear context; failed jobs show next actions.
+- Success signals: first test post can be generated without verbal onboarding; operators can distinguish basic generation from advanced slot setup before entering a domain; each domain exposes a recommended next action; bulk generation is gated by clear context; failed jobs show next actions.
 
 ## Personas and jobs
 - Primary personas: content operations manager, SEO operator, technical maintainer.
@@ -29,7 +29,7 @@
 ## Design principles
 - Principle 1: reveal the next safe action before advanced controls.
 - Principle 2: use guided focus for multi-step generation so operators always know where to click next.
-- Principle 3: mode first, tabs second; the operator should choose “basic generation”, “advanced slot generation”, or “review/export” before facing tab-level controls.
+- Principle 3: mode first, tabs second; the operator should choose “basic generation”, “advanced slot generation”, or “review/export” before facing tab-level controls. When the system can infer a next safe action, recommend it before showing all options.
 - Tradeoffs: keep power-user controls available, but place them inside contextual cards and explain defaults; basic mode may skip configuration screens that advanced users can still open.
 
 ## Visual language
@@ -42,7 +42,7 @@
 
 ## Components
 - Existing components to reuse: `card`, `btn`, `badge`, `workflow`, `tabs`, `writer-hint`, `table-wrap`.
-- New/changed components: dashboard flow starter cards, detailed step launchers, domain flow starter cards, guided tutorial overlay in `DomainClient`, using `data-tour` targets and a reusable spotlight tooltip.
+- New/changed components: dashboard flow starter cards, recommended next-action cards, grouped detailed step launchers, domain flow starter cards, guided tutorial overlay in `DomainClient`, using `data-tour` targets and a reusable spotlight tooltip.
 - Variants and states: basic generation, advanced slot generation, review/export, deep-link step focus, start/next/back/finish, missing target fallback, highlighted target, overlay, mobile positioning.
 - Token/component ownership: global CSS in `apps/admin-next/app/globals.css`; route-specific logic in `DomainClient.tsx`.
 

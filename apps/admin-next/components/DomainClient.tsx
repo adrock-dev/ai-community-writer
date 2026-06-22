@@ -35,6 +35,36 @@ const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: str
   review: { label: "검수/내보내기", short: "검수", desc: "작업 상태와 완성 글을 확인하고 export/indexing으로 넘기는 마감 흐름" },
 };
 
+const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: TourMode; focus: TourFocus; no: string; title: string; desc: string; tone?: "primary" }> }> = [
+  {
+    title: "기본 글 생성",
+    desc: "처음 시작할 때 가장 안전한 최소 클릭 순서",
+    steps: [
+      { mode: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 자료부터 동기화", tone: "primary" },
+      { mode: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "재료로 슬롯 후보 생성" },
+      { mode: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
+    ],
+  },
+  {
+    title: "고급 슬롯 생성",
+    desc: "기획과 생성 조건을 세밀하게 잡을 때",
+    steps: [
+      { mode: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "생성 방향과 금지어 정리" },
+      { mode: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 종류와 화면 구상 선택" },
+      { mode: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
+      { mode: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터/확장", desc: "조건을 좁혀 후보 운영" },
+    ],
+  },
+  {
+    title: "검수/마감",
+    desc: "생성 이후 확인, 내보내기, 색인 요청",
+    steps: [
+      { mode: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "대기·진행·실패 확인" },
+      { mode: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "미리보기/export/indexing" },
+    ],
+  },
+];
+
 const ACADEMY_TYPE_COPY: Record<string, { label: string; desc: string; tone: "success" | "warn" | "danger" | "info" }> = {
   exam_academy: { label: "운전면허시험/전문학원", desc: "지역 운전면허 학원 BEST 글에 우선 사용하는 타입", tone: "success" },
   academy: { label: "일반 자동차학원", desc: "실제 학원 후보로 함께 넣어도 되는 보조 타입", tone: "info" },
@@ -395,6 +425,7 @@ function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; cou
 
 function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig; counts: SlotCounts; onTab: (v: string) => void; onStartFlow: (mode: TourMode, focus?: TourFocus) => void }) {
   return <div className="grid">
+    <RecommendedNextAction domain={domain} counts={counts} onStartFlow={onStartFlow} />
     <section className="flow-start" aria-labelledby="flow-start-title">
       <div>
         <p className="eyebrow">운영 시작</p>
@@ -428,31 +459,48 @@ function FlowStartCard({ title, badge, body, cta, tone, onClick }: { title: stri
 }
 
 function StepLaunchPanel({ onStartFlow }: { onStartFlow: (mode: TourMode, focus?: TourFocus) => void }) {
-  const steps: Array<{ mode: TourMode; focus: TourFocus; no: string; title: string; desc: string; tone?: "primary" }> = [
-    { mode: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 자료부터 동기화", tone: "primary" },
-    { mode: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "재료로 슬롯 후보 생성" },
-    { mode: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
-    { mode: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "생성 방향과 금지어 정리" },
-    { mode: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 종류와 화면 구상 선택" },
-    { mode: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
-    { mode: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터/확장", desc: "조건을 좁혀 후보 운영" },
-    { mode: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "대기·진행·실패 확인" },
-    { mode: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "미리보기/export/indexing" },
-  ];
   return <section className="card card-pad step-launch-panel" aria-labelledby="step-launch-title">
     <div>
       <p className="eyebrow">세부 단계 바로 시작</p>
       <h2 id="step-launch-title">큰 흐름 안에서도 필요한 작업만 바로 열 수 있습니다</h2>
       <p className="muted">운영자가 이미 중간까지 진행했다면 처음부터 다시 보지 않고, 필요한 단계 버튼만 누르면 됩니다.</p>
     </div>
-    <div className="step-launch-grid">
-      {steps.map((step) => <button key={`${step.mode}-${step.focus}`} className={`step-launch ${step.tone === "primary" ? "primary" : ""}`} onClick={() => onStartFlow(step.mode, step.focus)}>
-        <span className="step-no">{step.no}</span>
-        <b>{step.title}</b>
-        <small>{step.desc}</small>
-      </button>)}
+    <div className="step-launch-groups">
+      {STEP_GROUPS.map((group) => <section className="step-launch-group" key={group.title}>
+        <div><b>{group.title}</b><p className="muted small">{group.desc}</p></div>
+        <div className="step-launch-grid">
+          {group.steps.map((step) => <button key={`${step.mode}-${step.focus}`} className={`step-launch ${step.tone === "primary" ? "primary" : ""}`} onClick={() => onStartFlow(step.mode, step.focus)}>
+            <span className="step-no">{step.no}</span>
+            <b>{step.title}</b>
+            <small>{step.desc}</small>
+          </button>)}
+        </div>
+      </section>)}
     </div>
   </section>;
+}
+
+function RecommendedNextAction({ domain, counts, onStartFlow }: { domain: DomainConfig; counts: SlotCounts; onStartFlow: (mode: TourMode, focus?: TourFocus) => void }) {
+  const action = getRecommendedNextAction(domain, counts);
+  return <section className="next-action large" aria-labelledby="recommended-next-action">
+    <div>
+      <span className="badge success">추천 다음 작업</span>
+      <h2 id="recommended-next-action">{action.title}</h2>
+      <p className="muted">{action.desc}</p>
+    </div>
+    <button className="btn primary" onClick={() => onStartFlow(action.mode, action.focus)}>{action.cta}</button>
+  </section>;
+}
+
+function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { title: string; desc: string; cta: string; mode: TourMode; focus: TourFocus } {
+  const totalSlots = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  if (counts.failed > 0) return { title: "실패 작업부터 확인하세요", desc: `${counts.failed.toLocaleString()}개 실패가 있어 같은 조건으로 다시 만들기 전에 에러를 먼저 봐야 합니다.`, cta: "검수 1 시작", mode: "review", focus: "jobs" };
+  if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "검수 1 시작", mode: "review", focus: "jobs" };
+  if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "기본 3 시작", mode: "basic", focus: "test-write" };
+  if (totalSlots === 0) return { title: "원천 데이터를 먼저 준비하세요", desc: "아직 글 후보가 없습니다. 지역/학원 자료를 동기화하고 후보를 만드는 순서가 가장 안전합니다.", cta: "기본 1 시작", mode: "basic", focus: "source" };
+  if (!domain.content_brief) return { title: "생성 방향을 먼저 저장하세요", desc: "후보는 있지만 기획 메모가 비어 있습니다. 어떤 글을 만들지 기준을 잡으면 생성 품질이 안정됩니다.", cta: "고급 1 시작", mode: "advanced", focus: "plan" };
+  if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "검수 2 시작", mode: "review", focus: "posts" };
+  return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "기본 2 시작", mode: "basic", focus: "slot-create" };
 }
 
 function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
