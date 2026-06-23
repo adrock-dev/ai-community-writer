@@ -23,7 +23,6 @@ fi
 
 export ADMIN_HOST="${ADMIN_HOST:-127.0.0.1}"
 export ADMIN_PORT="${ADMIN_PORT:-8765}"
-export SEO_API_BASE_URL="${SEO_API_BASE_URL:-http://${ADMIN_HOST}:${ADMIN_PORT}}"
 export API_WORKER="${API_WORKER:-1}"
 export NEXT_HOST="${NEXT_HOST:-localhost}"
 export NEXT_PORT="${NEXT_PORT:-3001}"
@@ -39,6 +38,16 @@ if is_port_busy "$NEXT_PORT"; then
   done
   echo "[dev] Next 포트 ${original_port} 사용 중 → ${NEXT_PORT}로 자동 변경"
 fi
+
+if [ -z "${SEO_API_BASE_URL:-}" ] && is_port_busy "$ADMIN_PORT"; then
+  original_port="$ADMIN_PORT"
+  while is_port_busy "$ADMIN_PORT"; do
+    ADMIN_PORT=$((ADMIN_PORT + 1))
+  done
+  echo "[dev] API 포트 ${original_port} 사용 중 → ${ADMIN_PORT}로 자동 변경"
+fi
+
+export SEO_API_BASE_URL="${SEO_API_BASE_URL:-http://${ADMIN_HOST}:${ADMIN_PORT}}"
 
 echo "[dev] Nest API 기동 → ${SEO_API_BASE_URL}"
 (cd apps/api-nest && npm run dev) &

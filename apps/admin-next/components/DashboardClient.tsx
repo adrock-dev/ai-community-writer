@@ -273,6 +273,8 @@ function getRecommendedDomainAction(domain: DomainConfig): { title: string; desc
 function domainHref(domain: string, flow?: FlowMode, focus?: FlowFocus) {
   const base = `/t/${encodeURIComponent(domain)}`;
   if (!flow) return base;
+  if (flow === "basic") return `${base}/generate`;
+  if (flow === "review") return focus === "jobs" ? "/jobs" : `${base}/posts`;
   const params = new URLSearchParams({ flow });
   if (focus) params.set("focus", focus);
   return `${base}?${params.toString()}`;

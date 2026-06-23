@@ -96,6 +96,9 @@ tr:hover td { background: #fbfdff; }
 .next-action.large { padding: 18px; box-shadow: 0 14px 34px rgba(5,150,105,.10); }
 .next-action b, .next-action h2 { display: block; margin: 6px 0 2px; }
 .next-action p { margin: 0; }
+.next-action .btn { flex: 0 0 auto; white-space: nowrap; }
+.domain-card .next-action { align-items: stretch; flex-direction: column; }
+.domain-card .next-action .btn { width: fit-content; }
 .step-launch-panel { display: grid; gap: 14px; }
 .step-launch-groups { display: grid; gap: 12px; }
 .step-launch-group { display: grid; gap: 9px; border: 1px solid #edf2f7; border-radius: 16px; padding: 12px; background: rgba(255,255,255,.72); }

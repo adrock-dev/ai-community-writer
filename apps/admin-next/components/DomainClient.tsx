@@ -175,10 +175,13 @@ const DESIGN_BLUEPRINTS: Record<string, {
 };
 
 
-export default function DomainClient({ domain }: { domain: string }) {
+type DomainPageView = "overview" | "generate" | "posts";
+
+export default function DomainClient({ domain, view = "overview" }: { domain: string; view?: DomainPageView }) {
+  const initialTab = view === "generate" ? "slots" : view === "posts" ? "posts" : "overview";
   const [payload, setPayload] = useState<DomainDetailPayload | null>(null);
   const [options, setOptions] = useState<AdminOptions | null>(null);
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState(initialTab);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [tourStep, setTourStep] = useState<number | null>(null);
@@ -190,6 +193,10 @@ export default function DomainClient({ domain }: { domain: string }) {
     const [opts, detail] = await Promise.all([getOptions(), getDomainDetail(domain)]);
     setOptions(opts); setPayload(detail);
   }
+  useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
   useEffect(() => {
     handledFlowParam.current = false;
     setPayload(null);
@@ -235,39 +242,60 @@ export default function DomainClient({ domain }: { domain: string }) {
     finally { setBusy(false); }
   }
 
+  const title = view === "generate" ? "글 생성" : view === "posts" ? "검수·내보내기" : domainConfig.display_name;
+  const eyebrow = view === "overview" ? "← 대시보드" : `← ${domainConfig.display_name}`;
+  const backHref = view === "overview" ? "/" : `/t/${encodeURIComponent(domainConfig.domain)}`;
+  const focusedPage = view === "generate" || view === "posts";
+
   return (
     <div>
       <div className="page-head">
         <div>
-          <Link href="/" className="eyebrow">← 대시보드</Link>
-          <h1><span style={{ color: domainConfig.brand_color ?? "var(--primary)" }}>●</span> {domainConfig.display_name}</h1>
+          <Link href={backHref} className="eyebrow">{eyebrow}</Link>
+          <h1><span style={{ color: domainConfig.brand_color ?? "var(--primary)" }}>●</span> {title}</h1>
           <p className="muted mono">{domainConfig.domain}</p>
         </div>
         <div className="row">
           <span className="badge">{domainConfig.vertical}</span>
           <span className="badge">{domainConfig.theme}</span>
-          <button className="btn primary" onClick={() => startTour("basic")}>기본 글 생성</button>
-          <button className="btn" onClick={() => startTour("advanced")}>고급 슬롯 생성</button>
-          <button className="btn" onClick={() => startTour("review")}>검수/내보내기</button>
+          <Link className={`btn ${view === "generate" ? "primary" : ""}`} href={`/t/${encodeURIComponent(domainConfig.domain)}/generate`}>글 생성</Link>
+          <Link className={`btn ${view === "posts" ? "primary" : ""}`} href={`/t/${encodeURIComponent(domainConfig.domain)}/posts`}>검수·내보내기</Link>
           <Link href="/jobs" className="btn">작업 큐</Link>
         </div>
       </div>
 
-      <Workflow domain={domainConfig} counts={counts} active={tab} onTab={setTab} />
+      {!focusedPage && <Workflow domain={domainConfig} counts={counts} active={tab} onTab={setTab} />}
 
-      <div className="tabs">
+      {!focusedPage && <div className="tabs">
         {TABS.map(([id, label]) => <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>)}
-      </div>
+      </div>}
 
-      {tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
-      {tab === "plan" && <Plan domain={domainConfig} axes={payload.axes} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
-      {tab === "templates" && <Templates domain={domainConfig} options={options} busy={busy} onSave={saveDomain} />}
-      {tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
-      {tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
-      {tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
-      {tab === "jobs" && <Jobs domain={domainConfig} jobs={payload.jobs ?? []} onRefresh={refresh} />}
-      {tab === "posts" && <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />}
-      {tab === "settings" && <Settings domain={domainConfig} options={options} onSave={saveDomain} onRefresh={refresh} />}
+      {view === "generate" && <div className="grid">
+        <div className="card card-pad">
+          <p className="eyebrow">생성 전용 페이지</p>
+          <h2>후보 만들기부터 테스트 작성까지 여기서만 진행하세요</h2>
+          <p className="muted">처음에는 1개 테스트 작성으로 품질을 확인한 뒤 현재 검색 10개, 전국 100개 순서로 확장하는 흐름을 권장합니다.</p>
+        </div>
+        <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />
+      </div>}
+      {view === "posts" && <div className="grid">
+        <div className="card card-pad">
+          <p className="eyebrow">검수 전용 페이지</p>
+          <h2>완성 글 확인, 내보내기, 색인 요청을 한곳에서 처리하세요</h2>
+          <p className="muted">제목을 눌러 상세 미리보기를 확인하고 필요한 글만 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다.</p>
+        </div>
+        <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />
+      </div>}
+
+      {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
+      {view === "overview" && tab === "plan" && <Plan domain={domainConfig} axes={payload.axes} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
+      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} busy={busy} onSave={saveDomain} />}
+      {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
+      {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
+      {view === "overview" && tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
+      {view === "overview" && tab === "jobs" && <Jobs domain={domainConfig} jobs={payload.jobs ?? []} onRefresh={refresh} />}
+      {view === "overview" && tab === "posts" && <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />}
+      {view === "overview" && tab === "settings" && <Settings domain={domainConfig} options={options} onSave={saveDomain} onRefresh={refresh} />}
       {tourStep !== null && <OperatorTour mode={tourMode} steps={tourSteps} stepIndex={tourStep} onStepChange={setTourStep} onTab={setTab} onClose={() => setTourStep(null)} />}
     </div>
   );
