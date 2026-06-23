@@ -99,7 +99,7 @@ export default function DashboardClient() {
       ) : (
         <div className="grid">
           <DashboardFlowStarter domain={defaultDomain} />
-          <section>
+          <section id="dashboard-domains">
             <div className="spread" style={{ marginBottom: 10 }}>
               <div>
                 <h2>도메인별 시작</h2>
