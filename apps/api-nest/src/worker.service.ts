@@ -754,7 +754,7 @@ function candidateHeadingMatchCount(markdown: string, candidateNames: string[]):
   for (const name of candidateNames) {
     const normalizedName = normalizeCandidateHeading(name);
     if (!normalizedName || normalizedName.length < 3) continue;
-    if (headings.some((heading) => heading === normalizedName || heading.includes(normalizedName))) matched++;
+    if (headings.some((heading) => heading === normalizedName || heading.startsWith(normalizedName))) matched++;
   }
   return matched;
 }
