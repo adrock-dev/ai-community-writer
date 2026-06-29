@@ -65,7 +65,7 @@ export async function downloadPostExport(domain: string, body: { post_ids: strin
   }
   return res.blob();
 }
-export const syncDrivingplusAcademies = (domain: string, body: { include_blog_reviews?: boolean; blog_review_limit?: number } = { include_blog_reviews: true, blog_review_limit: 3 }) =>
-  api<{ ok: true; fetched: number; upserted: number; skipped: number; warnings?: string[] }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
+export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; include_blog_reviews?: boolean; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 }) =>
+  api<{ ok: true; fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; warnings?: string[] }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
 export const syncDrivingplusRegions = (domain: string, body: { level?: "all" | "2" | "3"; replace_axis?: boolean; max?: number }) =>
   api<{ ok: true; level: string; axis_replaced: boolean; fetched: number; upserted: number; skipped: number }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/regions`, { method: "POST", body: JSON.stringify(body) });

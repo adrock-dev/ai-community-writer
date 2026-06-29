@@ -49,9 +49,12 @@ export class AdminController {
         seo_regions: `${drivingplusBase}/v1/zipcode/search-seo?level=2`,
       },
       sync_defaults: {
+        include_reviews: true,
+        review_limit: 5,
+        review_sort: "point",
         include_blog_reviews: true,
         blog_review_limit: 3,
-        review_source_note: "일반 리뷰는 get-all-academy 응답의 reviews 필드를 저장하고, 블로그 리뷰는 학원별 blog-review API를 추가 호출합니다.",
+        review_source_note: "학원 기본 정보는 get-all-academy에서 가져오고, 일반 리뷰와 블로그 리뷰는 학원별 review/blog-review API를 추가 호출해 글 생성 보충자료로 저장합니다.",
       },
     };
   }
@@ -242,7 +245,13 @@ export class AdminController {
   @Post("domains/:domain/sync/drivingplus/academies")
   async syncDrivingplusAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row = {}) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const rows = await this.drivingplus.fetchAcademies({ includeBlogReviews: body.include_blog_reviews !== false, blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10) });
+    const rows = await this.drivingplus.fetchAcademies({
+      includeReviews: body.include_reviews !== false,
+      reviewLimit: clampInt(body.review_limit, 5, 1, 10),
+      reviewSort: body.review_sort === "new" ? "new" : "point",
+      includeBlogReviews: body.include_blog_reviews !== false,
+      blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
+    });
     return { ok: true, ...this.db.upsertDrivingplusAcademies(domain, rows) };
   }
 
@@ -270,7 +279,13 @@ export class AdminController {
     const regions = await this.drivingplus.fetchSeoRegions(level);
     const regionSummary = this.db.upsertSeoRegions(domain, regions);
     if (body.replace_axis) this.db.bulkReplaceAxis(domain, "region", regions.map((r) => ({ value: r.region, weight: r.level === 2 ? 5 : 3, monthly_search_volume: null, competition_kd: null })));
-    const academies = await this.drivingplus.fetchAcademies({ includeBlogReviews: body.include_blog_reviews !== false, blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10) });
+    const academies = await this.drivingplus.fetchAcademies({
+      includeReviews: body.include_reviews !== false,
+      reviewLimit: clampInt(body.review_limit, 5, 1, 10),
+      reviewSort: body.review_sort === "new" ? "new" : "point",
+      includeBlogReviews: body.include_blog_reviews !== false,
+      blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
+    });
     const academySummary = this.db.upsertDrivingplusAcademies(domain, academies);
     return { ok: true, regions: regionSummary, academies: academySummary, axis_replaced: Boolean(body.replace_axis), level };
   }

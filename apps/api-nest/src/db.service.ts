@@ -471,8 +471,9 @@ export class DbService implements OnModuleInit {
     }
     return n;
   }
-  upsertDrivingplusAcademies(domain: string, rows: Row[]): { fetched: number; upserted: number; skipped: number; warnings: string[] } {
+  upsertDrivingplusAcademies(domain: string, rows: Row[]): { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; warnings: string[] } {
     let upserted = 0, skipped = 0;
+    let reviewCount = 0, blogReviewCount = 0;
     const warnings: string[] = [];
     const regions = this.listSeoRegions(domain);
     const syncedAt = nowSql();
@@ -487,6 +488,8 @@ export class DbService implements OnModuleInit {
         const photos = Array.isArray(row.photos) ? row.photos.map((v) => String(v || "").trim()).filter(Boolean) : [];
         const reviews = normalizeDrivingplusReviews(row.reviews);
         const blogReviews = normalizeDrivingplusBlogReviews(row.blogReviews);
+        reviewCount += reviews.length;
+        blogReviewCount += blogReviews.length;
         const reviewText = reviewSummaryText(reviews);
         const existing = this.get("SELECT id FROM academies WHERE domain=? AND external_id=?", [domain, externalId]);
         if (existing) {
@@ -502,7 +505,7 @@ export class DbService implements OnModuleInit {
         upserted++;
       }
     });
-    return { fetched: rows.length, upserted, skipped, warnings: warnings.slice(0, 50) };
+    return { fetched: rows.length, upserted, skipped, review_count: reviewCount, blog_review_count: blogReviewCount, warnings: warnings.slice(0, 50) };
   }
   listAcademies(domain: string, opts: { region?: string; academy_type?: string; academy_types?: string[]; q?: string; has_photos?: boolean; limit?: number } = {}): Row[] {
     let sql = "SELECT * FROM academies WHERE domain=?"; const args: any[] = [domain];

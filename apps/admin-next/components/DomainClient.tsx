@@ -680,8 +680,8 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   async function syncAcademies() {
     setSyncBusy("academies");
     try {
-      const res = await syncDrivingplusAcademies(domain.domain, { include_blog_reviews: true, blog_review_limit: 3 });
-      setSyncResult(`학원/리뷰 ${res.fetched}개 조회 · ${res.upserted}개 반영 · ${res.skipped}개 제외${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
+      const res = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 });
+      setSyncResult(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
       await onRefresh();
       await loadAcademies();
     } catch (e) { alert((e as Error).message); }
@@ -722,6 +722,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
         {runtimeApis && <span>학원: <code>{runtimeApis.drivingplus_endpoints.academies}</code></span>}
         {runtimeApis && <span>일반 리뷰: <code>{runtimeApis.drivingplus_endpoints.reviews}</code></span>}
         {runtimeApis && <span>블로그 리뷰: <code>{runtimeApis.drivingplus_endpoints.blog_reviews}</code></span>}
+        {runtimeApis && <span>동기화 기본값: 일반 리뷰 {runtimeApis.sync_defaults.review_limit}개({runtimeApis.sync_defaults.review_sort}), 블로그 리뷰 {runtimeApis.sync_defaults.blog_review_limit}개</span>}
         {runtimeApis && <span className="muted small">{runtimeApis.sync_defaults.review_source_note}</span>}
       </div>
       <div className="grid grid-3">

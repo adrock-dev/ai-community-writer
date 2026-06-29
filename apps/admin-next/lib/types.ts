@@ -176,6 +176,9 @@ export interface RuntimeApis {
     seo_regions: string;
   };
   sync_defaults: {
+    include_reviews: boolean;
+    review_limit: number;
+    review_sort: "new" | "point";
     include_blog_reviews: boolean;
     blog_review_limit: number;
     review_source_note: string;

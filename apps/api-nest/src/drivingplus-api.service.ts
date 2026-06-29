@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { drivingplusApiBaseUrl } from "./runtime-config.js";
 
 export type SeoRegionLevel = "all" | "2" | "3";
+export type DrivingplusReviewSort = "new" | "point";
 
 export interface DrivingplusAcademy {
   id: number;
@@ -49,17 +50,29 @@ export class DrivingplusApiService {
   readonly baseUrl = drivingplusApiBaseUrl();
   private readonly timeoutMs = Number(process.env.DRIVINGPLUS_API_TIMEOUT_MS || 30000);
 
-  async fetchAcademies(opts: { includeBlogReviews?: boolean; blogReviewLimit?: number } = {}): Promise<DrivingplusAcademy[]> {
+  async fetchAcademies(opts: { includeReviews?: boolean; reviewLimit?: number; reviewSort?: DrivingplusReviewSort; includeBlogReviews?: boolean; blogReviewLimit?: number } = {}): Promise<DrivingplusAcademy[]> {
     const payload = await this.get<{ code?: number; message?: string; data?: unknown }>("/v1/academy/get-all-academy");
     const rows = requireArray(payload, "academy data");
     const academies = rows.map(normalizeAcademy).filter((row): row is DrivingplusAcademy => Boolean(row));
-    if (!opts.includeBlogReviews) return academies;
-    const limit = Math.max(1, Math.min(10, Math.trunc(Number(opts.blogReviewLimit ?? 3))));
+    if (!opts.includeReviews && !opts.includeBlogReviews) return academies;
+    const reviewLimit = Math.max(1, Math.min(10, Math.trunc(Number(opts.reviewLimit ?? 5))));
+    const reviewSort = opts.reviewSort === "new" ? "new" : "point";
+    const blogReviewLimit = Math.max(1, Math.min(10, Math.trunc(Number(opts.blogReviewLimit ?? 3))));
     return mapLimit(academies, 8, async (academy) => {
+      const next: DrivingplusAcademy = { ...academy };
+      if (opts.includeReviews) {
+        try {
+          const reviews = await this.fetchReviews(academy.id, reviewLimit, reviewSort);
+          next.reviews = reviews.length ? reviews : academy.reviews;
+        } catch {
+          next.reviews = academy.reviews;
+        }
+      }
+      if (!opts.includeBlogReviews) return next;
       try {
-        return { ...academy, blogReviews: await this.fetchBlogReviews(academy.id, limit) };
+        return { ...next, blogReviews: await this.fetchBlogReviews(academy.id, blogReviewLimit) };
       } catch {
-        return academy;
+        return next;
       }
     });
   }
