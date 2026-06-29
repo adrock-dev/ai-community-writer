@@ -193,7 +193,7 @@ function countFaqQuestions(body) {
 
 function hasFinalUtilitySection(body) {
   const headings = [...body.matchAll(/^##\s+(.+)$/gm)].map((m) => m[1]);
-  return headings.some((heading) => /FAQ|자주 묻는 질문|질문과 답변|체크리스트|상담|확인|마무리|요약/i.test(heading));
+  return headings.some((heading) => /FAQ|자주 묻는 질문|질문과 답변|체크리스트|상담|확인|마무리|요약|추천 대상|선택 기준|고르는 기준|이런 사람|물어보세요/i.test(heading));
 }
 
 function hasRichStructure({ tableRows, listItems, faqQuestions }) {
@@ -247,6 +247,8 @@ function markdownBlocks(markdown) {
   for (const line of String(markdown || '').split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || /^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(trimmed)) { flush(); continue; }
+    const mixedImageBlocks = splitMixedImageTokenLine(trimmed);
+    if (mixedImageBlocks) { flush(); blocks.push(...mixedImageBlocks); continue; }
     if (/^#{1,3}\s+/.test(trimmed) || /^\[IMAGE:[A-Za-z0-9_-]+\]$/.test(trimmed)) { flush(); blocks.push(trimmed); continue; }
     const kind = trimmed.includes('|') ? 'table' : isListLine(trimmed) ? 'list' : trimmed.startsWith('>') ? 'quote' : 'paragraph';
     if (currentKind && currentKind !== kind) flush();
@@ -255,6 +257,18 @@ function markdownBlocks(markdown) {
   }
   flush();
   return blocks;
+}
+
+function splitMixedImageTokenLine(line) {
+  if (!/\[IMAGE:[A-Za-z0-9_-]+\]/.test(line) || line.includes('|')) return null;
+  const tokens = [...line.matchAll(/\[IMAGE:[A-Za-z0-9_-]+\]/g)].map((match) => match[0]);
+  const text = line
+    .replace(/\[IMAGE:[A-Za-z0-9_-]+\]/g, ' ')
+    .replace(/[→|,/]+/g, ' ')
+    .replace(/(?:사진|이미지)\s*(?:순서)?\s*[:：-]?/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text ? [text, ...tokens] : tokens;
 }
 
 function renderMarkdownBlock(raw, images) {

@@ -60,6 +60,8 @@ function markdownBlocks(markdown: string): string[] {
   for (const line of markdown.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || /^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(trimmed)) { flush(); continue; }
+    const mixedImageBlocks = splitMixedImageTokenLine(trimmed);
+    if (mixedImageBlocks) { flush(); blocks.push(...mixedImageBlocks); continue; }
     if (/^#{1,3}\s+/.test(trimmed) || /^\[IMAGE:[A-Za-z0-9_-]+\]$/.test(trimmed)) { flush(); blocks.push(trimmed); continue; }
     const kind: "paragraph" | "list" | "quote" | "table" = trimmed.includes("|") ? "table" : isListLine(trimmed) ? "list" : trimmed.startsWith(">") ? "quote" : "paragraph";
     if (currentKind && currentKind !== kind) flush();
@@ -68,6 +70,18 @@ function markdownBlocks(markdown: string): string[] {
   }
   flush();
   return blocks;
+}
+
+function splitMixedImageTokenLine(line: string): string[] | null {
+  if (!/\[IMAGE:[A-Za-z0-9_-]+\]/.test(line) || line.includes("|")) return null;
+  const tokens = Array.from(line.matchAll(/\[IMAGE:[A-Za-z0-9_-]+\]/g)).map((match) => match[0]!);
+  const text = line
+    .replace(/\[IMAGE:[A-Za-z0-9_-]+\]/g, " ")
+    .replace(/[→|,/]+/g, " ")
+    .replace(/(?:사진|이미지)\s*(?:순서)?\s*[:：-]?/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text ? [text, ...tokens] : tokens;
 }
 
 function renderMarkdownBlock(raw: string, images: Record<string, string>): string {
