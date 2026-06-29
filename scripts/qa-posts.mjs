@@ -4,12 +4,33 @@ import { DatabaseSync } from 'node:sqlite';
 
 const args = process.argv.slice(2);
 const includeAll = args.includes('--all');
-const dbPath = args.find((arg) => arg !== '--all') || 'data/admin.db';
+const postId = optionValue('--post-id');
+const slotId = optionValue('--slot-id');
+const domain = optionValue('--domain');
+const dbPath = args.find((arg, index) => {
+  if (arg === '--all') return false;
+  if (arg.startsWith('--')) return false;
+  const prev = args[index - 1];
+  return !['--post-id', '--slot-id', '--domain'].includes(prev);
+}) || 'data/admin.db';
 const db = new DatabaseSync(dbPath);
-const where = includeAll ? "status != 'deleted'" : "status = 'published'";
+const filters = [includeAll ? "p.status != 'deleted'" : "p.status = 'published'"];
+const filterArgs = [];
+if (postId) { filters.push('p.id = ?'); filterArgs.push(postId); }
+if (slotId) { filters.push('p.slot_id = ?'); filterArgs.push(slotId); }
+if (domain) { filters.push('p.domain = ?'); filterArgs.push(domain); }
+const where = filters.join(' and ');
 const rows = db.prepare(`select p.id, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id,
   (select count(*) from academies a join slots s2 on s2.slot_id=p.slot_id where a.domain=p.domain and s2.region is not null and a.region=s2.region) as exact_academy_count
-  from posts p where p.${where} order by p.generated_at desc`).all();
+  from posts p where ${where} order by p.generated_at desc`).all(...filterArgs);
+const hasTargetFilter = Boolean(postId || slotId || domain);
+
+function optionValue(name) {
+  const prefixed = args.find((arg) => arg.startsWith(`${name}=`));
+  if (prefixed) return prefixed.slice(name.length + 1).trim();
+  const index = args.indexOf(name);
+  return index >= 0 ? String(args[index + 1] || '').trim() : '';
+}
 
 function issuesFor(row) {
   const body = String(row.body_markdown || '');
@@ -311,8 +332,9 @@ const reports = rows.map((row) => ({ row, ...issuesFor(row) }));
 const bad = reports.filter((r) => r.issues.length);
 const outputHtmlArtifacts = findOutputHtmlArtifacts(process.cwd());
 const detailTemplateIssues = detailTemplateQualityIssues();
-console.log(JSON.stringify({ checked: rows.length, failed: bad.length, outputHtmlArtifacts, detailTemplateIssues, failures: bad.map((r) => ({ id: r.row.id, slot_id: r.row.slot_id, status: r.row.status, chars: r.chars, h2: r.h2, h3: r.h3, tableRows: r.tableRows, listItems: r.listItems, paragraphs: r.paragraphs, faqQuestions: r.faqQuestions, images: r.imageCount, imageTokens: r.imageTokens, design_template_id: r.row.design_template_id, title: r.row.title, issues: r.issues })) }, null, 2));
-if (bad.length || outputHtmlArtifacts.length || detailTemplateIssues.length) process.exit(1);
+const selectionIssues = hasTargetFilter && rows.length === 0 ? ['no_posts_matched_filter'] : [];
+console.log(JSON.stringify({ checked: rows.length, failed: bad.length + selectionIssues.length, selectionIssues, outputHtmlArtifacts, detailTemplateIssues, failures: bad.map((r) => ({ id: r.row.id, slot_id: r.row.slot_id, status: r.row.status, chars: r.chars, h2: r.h2, h3: r.h3, tableRows: r.tableRows, listItems: r.listItems, paragraphs: r.paragraphs, faqQuestions: r.faqQuestions, images: r.imageCount, imageTokens: r.imageTokens, design_template_id: r.row.design_template_id, title: r.row.title, issues: r.issues })) }, null, 2));
+if (selectionIssues.length || bad.length || outputHtmlArtifacts.length || detailTemplateIssues.length) process.exit(1);
 
 function detailTemplateQualityIssues() {
   const issues = [];

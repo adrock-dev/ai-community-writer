@@ -575,12 +575,20 @@ export class DbService implements OnModuleInit {
   }
   claimNextJob(): Row | undefined {
     return this.transaction(() => {
+      this.failStaleRunningJobs();
       const row = this.get("SELECT * FROM jobs WHERE status='queued' ORDER BY scheduled_at LIMIT 1");
       if (!row) return undefined;
       const now = nowSql();
       this.run("UPDATE jobs SET status='running', started_at=? WHERE id=?", [now, row.id]);
       return { ...row, status: "running", started_at: now, payload_obj: safeJson(row.payload, {}) };
     });
+  }
+  failStaleRunningJobs(maxAgeMinutes = Number(process.env.WORKER_STALE_RUNNING_MINUTES || 360)): number {
+    const minutes = Math.max(15, Math.min(24 * 60, Math.trunc(Number(maxAgeMinutes) || 360)));
+    return this.run(
+      "UPDATE jobs SET status='failed', finished_at=?, error=coalesce(error, ?) WHERE status='running' AND started_at IS NOT NULL AND started_at < datetime('now', ?)",
+      [nowSql(), `stale running job exceeded ${minutes} minutes`, `-${minutes} minutes`],
+    ).changes ?? 0;
   }
   completeJob(jobId: string, ok: boolean, result?: Row, error?: string): void {
     this.run("UPDATE jobs SET status=?, finished_at=?, result=?, error=? WHERE id=?", [ok ? "done" : "failed", nowSql(), result ? JSON.stringify(result) : null, error ?? null, jobId]);
