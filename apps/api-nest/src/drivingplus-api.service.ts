@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { drivingplusApiBaseUrl } from "./runtime-config.js";
 
 export type SeoRegionLevel = "all" | "2" | "3";
 
@@ -45,7 +46,7 @@ export interface DrivingplusSeoRegion {
 
 @Injectable()
 export class DrivingplusApiService {
-  private readonly baseUrl = (process.env.DRIVINGPLUS_API_BASE_URL || "https://api-dev.drivingplus.me:18104").replace(/\/$/, "");
+  readonly baseUrl = drivingplusApiBaseUrl();
   private readonly timeoutMs = Number(process.env.DRIVINGPLUS_API_TIMEOUT_MS || 30000);
 
   async fetchAcademies(opts: { includeBlogReviews?: boolean; blogReviewLimit?: number } = {}): Promise<DrivingplusAcademy[]> {

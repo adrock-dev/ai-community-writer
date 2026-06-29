@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { api, downloadPostExport, enqueueGenerate, getOptions, getDomainDetail, listAcademies, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
+import { api, downloadPostExport, enqueueGenerate, getOptions, getDomainDetail, getRuntimeApis, listAcademies, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
-import type { Academy, AdminOptions, Axis, AxisValue, Job, PostSummary, Provider, Slot, SlotCounts, DomainConfig, DomainDetailPayload } from "@/lib/types";
+import type { Academy, AdminOptions, Axis, AxisValue, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, DomainConfig, DomainDetailPayload } from "@/lib/types";
 
 const AXES: Axis[] = ["region", "keyword", "intent", "persona", "modifier"];
 const AXIS_LABEL: Record<Axis, string> = {
@@ -636,10 +636,18 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   const [remoteTotal, setRemoteTotal] = useState(academies.length);
   const [academyTypes, setAcademyTypes] = useState<Array<{ value: string; count: number }>>([]);
   const [generationTypes, setGenerationTypes] = useState(new Set(domain.academy_type_filter ?? []));
+  const [runtimeApis, setRuntimeApis] = useState<RuntimeApis | null>(null);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
   useEffect(() => { setRemoteAcademies(academies); setRemoteTotal(academies.length); }, [academies]);
   useEffect(() => { setGenerationTypes(new Set(domain.academy_type_filter ?? [])); }, [domain.academy_type_filter]);
+  useEffect(() => {
+    let cancelled = false;
+    getRuntimeApis()
+      .then((payload) => { if (!cancelled) setRuntimeApis(payload); })
+      .catch(() => { if (!cancelled) setRuntimeApis(null); });
+    return () => { cancelled = true; };
+  }, []);
   async function loadAcademies() {
     setLoading(true); setFilterError("");
     try {
@@ -707,6 +715,15 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   return <div className="grid">
     <div className="card card-pad grid" data-tour="academies-sync">
       <div className="spread"><div><h2>DrivingPlus 원천 데이터 동기화</h2><p className="muted">Swagger API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 사용합니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
+      <div className="writer-hint">
+        <b>현재 적용 API</b>
+        <span>관리자/Nest: <code>{runtimeApis?.admin_api_base ?? "확인 중..."}</code></span>
+        <span>DrivingPlus 원천: <code>{runtimeApis?.drivingplus_api_base ?? "확인 중..."}</code></span>
+        {runtimeApis && <span>학원: <code>{runtimeApis.drivingplus_endpoints.academies}</code></span>}
+        {runtimeApis && <span>일반 리뷰: <code>{runtimeApis.drivingplus_endpoints.reviews}</code></span>}
+        {runtimeApis && <span>블로그 리뷰: <code>{runtimeApis.drivingplus_endpoints.blog_reviews}</code></span>}
+        {runtimeApis && <span className="muted small">{runtimeApis.sync_defaults.review_source_note}</span>}
+      </div>
       <div className="grid grid-3">
         <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
         <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>

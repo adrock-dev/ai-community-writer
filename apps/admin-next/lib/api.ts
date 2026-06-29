@@ -1,4 +1,4 @@
-import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload } from "./types";
+import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis } from "./types";
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/admin${path}`, {
@@ -23,6 +23,7 @@ function safeJson(text: string): any {
 }
 
 export const getOptions = () => api<AdminOptions>("/options");
+export const getRuntimeApis = () => api<RuntimeApis>("/runtime/apis");
 export const listDomains = () => api<{ count: number; items: import("./types").DomainConfig[] }>("/domains");
 export const getDomainDetail = (domain: string, include = "slots,posts,academies,jobs") =>
   api<DomainDetailPayload>(`/domains/${encodeURIComponent(domain)}?include=${include}&limit=500`);

@@ -165,6 +165,23 @@ export interface AdminOptions {
   indexing: { has_key: boolean; url_template: string };
 }
 
+export interface RuntimeApis {
+  admin_api_base: string;
+  public_api_base: string;
+  drivingplus_api_base: string;
+  drivingplus_endpoints: {
+    academies: string;
+    reviews: string;
+    blog_reviews: string;
+    seo_regions: string;
+  };
+  sync_defaults: {
+    include_blog_reviews: boolean;
+    blog_review_limit: number;
+    review_source_note: string;
+  };
+}
+
 export interface DomainDetailPayload {
   domain: DomainConfig;
   axes: AxesMap;

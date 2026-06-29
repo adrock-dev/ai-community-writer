@@ -6,6 +6,7 @@ import { DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_CONTENT_BRIEF, DEFAULT_DRI
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
+import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 
 type Row = Record<string, any>;
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
@@ -30,6 +31,28 @@ export class AdminController {
       providers: ["codex", "claude"],
       preset_options: [DEFAULT_DRIVING_VERTICAL],
       indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() }
+    };
+  }
+
+  @Get("runtime/apis")
+  runtimeApis(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers);
+    const drivingplusBase = drivingplusApiBaseUrl();
+    return {
+      admin_api_base: adminApiBaseUrl(),
+      public_api_base: adminApiBaseUrl(),
+      drivingplus_api_base: drivingplusBase,
+      drivingplus_endpoints: {
+        academies: `${drivingplusBase}/v1/academy/get-all-academy`,
+        reviews: `${drivingplusBase}/v1/review/list/:academyId?sort=point&limit=5`,
+        blog_reviews: `${drivingplusBase}/v1/blog-review/list/:academyId?limit=3`,
+        seo_regions: `${drivingplusBase}/v1/zipcode/search-seo?level=2`,
+      },
+      sync_defaults: {
+        include_blog_reviews: true,
+        blog_review_limit: 3,
+        review_source_note: "일반 리뷰는 get-all-academy 응답의 reviews 필드를 저장하고, 블로그 리뷰는 학원별 blog-review API를 추가 호출합니다.",
+      },
     };
   }
 
