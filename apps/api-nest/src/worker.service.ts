@@ -594,6 +594,9 @@ function articleQualityIssues(markdown: string, facts: string, images: Record<st
   const inflated = inflatedCandidateCountClaim(markdown, candidateCount);
   if (inflated) issues.push(`inflated_candidate_count_${inflated.claimed}_gt_${inflated.actual}`);
   if (candidateNames.length && !candidateNames.some((name) => markdown.includes(name))) issues.push("missing_real_candidate_name");
+  const requiredCandidateH3 = Math.min(candidateNames.length, 3);
+  const candidateH3Count = candidateHeadingMatchCount(markdown, candidateNames);
+  if (requiredCandidateH3 >= 2 && candidateH3Count < requiredCandidateH3) issues.push(`missing_candidate_h3_headings_${candidateH3Count}_lt_${requiredCandidateH3}`);
   if (candidateNames.length >= 2 && !candidateNames.slice(0, 4).some((name) => markdownTableText(markdown).includes(name))) issues.push("table_missing_real_candidate_name");
   if (/긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료/.test(facts) && !/(후기|리뷰|수강생|블로그)/.test(markdown)) issues.push("review_facts_unused");
   if (imageKeys.length && usedImageKeys.length === 0) issues.push("missing_available_image_slot");
@@ -744,6 +747,25 @@ function candidateNamesFromFacts(facts: string): string[] {
     .filter((name) => name.length >= 2 && !/^(?:test|테스트|sample|dummy)/i.test(name));
 }
 
+function candidateHeadingMatchCount(markdown: string, candidateNames: string[]): number {
+  const headings = Array.from(markdown.matchAll(/^###\s+(.+)$/gm))
+    .map((match) => normalizeCandidateHeading(String(match[1] || "")));
+  let matched = 0;
+  for (const name of candidateNames) {
+    const normalizedName = normalizeCandidateHeading(name);
+    if (!normalizedName || normalizedName.length < 3) continue;
+    if (headings.some((heading) => heading === normalizedName || heading.includes(normalizedName))) matched++;
+  }
+  return matched;
+}
+
+function normalizeCandidateHeading(value: string): string {
+  return String(value || "")
+    .replace(/^[\d.)\s]+/, "")
+    .replace(/[\s*_`#()（）·.,:：—\-]/g, "")
+    .toLowerCase();
+}
+
 function markdownTableText(markdown: string): string {
   return markdown.split(/\r?\n/).filter((line) => line.includes("|")).join("\n");
 }
@@ -799,7 +821,7 @@ ${facts || "없음"}
 재작성 규칙:
 - 제목/지역/후보 학원/이미지는 확인된 콘텐츠 재료와 반드시 일치시킨다.
 - 소개 가능한 후보가 1곳 이상이면 본문과 표에 실제 후보명 최소 1개를 반드시 넣는다. 후보명이 빠진 일반 가이드 글은 실패다.
-- 후보별 설명은 원본 블로그처럼 작은 카드형으로 쓴다: **후보명** → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.
+- 후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다: '### 후보명' → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.
 - 긍정 수강생 리뷰/블로그 리뷰글 보충자료가 있으면 리뷰 원문을 길게 인용하지 말고 후보 설명을 보강하는 용도로만 1~2문장 짧게 요약한다.
 - 좋은 리뷰라도 합격 보장·과장된 효능은 만들지 말고, “실제 수강후기에서는 친절/동선/설명 방식이 언급된다”처럼 보충 근거로만 쓴다.
 - 후보 수보다 큰 숫자, 다른 지역 후보, 없는 가격·합격률·셔틀·후기·3일 합격·당일 합격·합격 보장 주장을 만들지 않는다.
@@ -864,7 +886,7 @@ ${facts || "없음"}
 - 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장, 관련 내부링크 2~4개 권장, FAQ는 필수 아님.
 - 딱딱한 데이터 나열이 아니라 ${brand} 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 후보로 연결한다.
 - 원본처럼 "왜 이 후보가 이 지역/상황에 맞는지"를 구체화한다. 주소만 쓰지 말고 생활권, 셔틀 확인 포인트, 면허 종류, 상담 질문, 사진을 같이 엮는다.
-- 후보 소개는 원본 블로그의 카드형 리듬을 따른다. 후보마다 **후보명**, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.
+- 후보 소개는 원본 블로그의 카드형 리듬을 따른다. 후보마다 반드시 '### 후보명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.
 - 후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 “직접 확인 가능한 후보와 인근 선택지”처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다.
 - 가격·셔틀·합격률·후기는 검증된 자료에 있을 때만 단정한다. 없으면 "상담 때 확인"으로 처리하되, 무엇을 물어봐야 하는지 구체적인 질문으로 써서 빈말처럼 보이지 않게 한다.
 - 수강료 자료가 없으면 60만원대, 70만원대, 709,600원 같은 구체 금액을 추정하지 않는다. 비용 문단은 “상담 시 확인할 항목” 중심으로 쓴다.
