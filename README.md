@@ -80,11 +80,14 @@ npm run dev
 cd apps\admin-next
 npm install
 $env:SEO_API_BASE_URL = "http://127.0.0.1:8765"
-npm run dev
+npm run dev          # 기본 localhost:3001. 다른 포트는 $env:NEXT_PORT 로 지정
 ```
 
 cmd.exe 에서는 환경 변수 설정만 다릅니다: `set API_WORKER=1`,
 `set SEO_API_BASE_URL=http://127.0.0.1:8765`.
+
+> 관리자 앱은 `node scripts/run-next.mjs` 런처를 거쳐 `next`를 호출하므로 PowerShell·cmd에서도
+> `npm run dev`이 그대로 동작합니다. 호스트/포트는 `NEXT_HOST`/`NEXT_PORT` 환경 변수로 바꿉니다.
 
 ---
 
