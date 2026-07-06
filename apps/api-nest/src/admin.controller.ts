@@ -7,6 +7,7 @@ import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
+import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 
 type Row = Record<string, any>;
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
@@ -417,7 +418,7 @@ function renderBulkMarkdownExport(domain: string, posts: Row[]): string {
 
 function renderSingleHtmlExport(domainConfig: Row, domain: string, post: Row): string {
   const designId = resolveDesignId(post.design_template_id || domainConfig.design_template_id);
-  const design = DESIGN_EXPORT_SPECS[designId] || DESIGN_EXPORT_SPECS["local-guide"]!;
+  const design = getDesignTheme(designId, domainConfig.brand_color);
   const brand = publicBrandName(String(domainConfig.display_name || domain));
   const title = String(post.title || brand);
   const contentHtml = toPreviewBlocks(prepareBodyHtml(String(post.body_html || ""), title));
@@ -458,20 +459,6 @@ ${contentHtml}
 
 function renderBulkHtmlExport(domainConfig: Row, domain: string, posts: Row[]): string {
   return posts.map((post) => renderSingleHtmlExport(domainConfig, domain, post)).join("\n");
-}
-
-const DESIGN_EXPORT_SPECS: Record<string, { accent: string; soft: string; pageBg: string; topCta: string; bottomCta: string; label: string }> = {
-  editorial: { accent: "#5132d7", soft: "#f2efff", pageBg: "#ffffff", topCta: "지금 바로 비교·예약", bottomCta: "상담/예약하러 가기", label: "브랜드 매거진" },
-  comparison: { accent: "#2563eb", soft: "#dbeafe", pageBg: "#ffffff", topCta: "BEST 한눈에 비교", bottomCta: "내게 맞는 곳 찾기", label: "BEST 비교 블로그" },
-  "local-guide": { accent: "#059669", soft: "#dcfce7", pageBg: "#ffffff", topCta: "내 주변에서 찾기", bottomCta: "가까운 곳 예약하기", label: "지역 추천 블로그" },
-  checklist: { accent: "#ca8a04", soft: "#fef3c7", pageBg: "#ffffff", topCta: "체크리스트 저장", bottomCta: "준비 시작하기", label: "체크리스트 블로그" },
-  conversion: { accent: "#111827", soft: "#ede9fe", pageBg: "#ffffff", topCta: "비용 상담 신청", bottomCta: "지금 예약하기", label: "예약 전환 블로그" },
-  custom: { accent: "#5132d7", soft: "#f2efff", pageBg: "#ffffff", topCta: "자세히 보기", bottomCta: "문의하기", label: "커스텀" },
-};
-
-function resolveDesignId(value: unknown): string {
-  const id = String(value || "local-guide");
-  return DESIGN_EXPORT_SPECS[id] ? id : "local-guide";
 }
 
 function designChips(designId: string): string[] {

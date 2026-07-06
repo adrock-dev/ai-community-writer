@@ -31,6 +31,13 @@ export interface PostDetail extends PostListItem {
   images?: Record<string, string>;
 }
 
+export interface SiteConfig {
+  domain: string;
+  display_name: string;
+  brand_color: string | null;
+  design_template_id: string;
+}
+
 function assertConfigured(): void {
   if (!BASE || !DOMAIN) {
     throw new Error(
@@ -56,11 +63,25 @@ export async function listPosts(params: { limit?: number; offset?: number } = {}
   return data.items;
 }
 
-/** 발행글 상세(본문 포함). 없으면 null. */
-export async function getPost(slug: string): Promise<PostDetail | null> {
+/** 도메인 사이트 설정(브랜드 컬러 등). */
+export async function getSiteConfig(): Promise<SiteConfig | null> {
   try {
-    const data = await api<{ post: PostDetail; body_html?: string }>(`/posts/${encodeURIComponent(slug)}?include_rendered=true`);
-    return { ...data.post, body_html: data.body_html };
+    const data = await api<{ site: SiteConfig }>("/site");
+    return data.site;
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("404")) return null;
+    throw err;
+  }
+}
+
+/** 발행글 상세(본문 포함). 없으면 null. */
+export async function getPost(slug: string): Promise<{ post: PostDetail; site: SiteConfig | null } | null> {
+  try {
+    const data = await api<{ post: PostDetail; body_html?: string; site?: SiteConfig }>(`/posts/${encodeURIComponent(slug)}?include_rendered=true`);
+    return {
+      post: { ...data.post, body_html: data.body_html },
+      site: data.site ?? null,
+    };
   } catch (err) {
     if (err instanceof Error && err.message.includes("404")) return null;
     throw err;

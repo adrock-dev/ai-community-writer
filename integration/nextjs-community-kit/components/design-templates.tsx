@@ -3,11 +3,10 @@
  *
  * 콘텐츠(데이터)는 중앙 API에서 오고, "어떻게 보이는지"는 이 컴포넌트가 결정한다.
  * 운영 도메인마다 이 파일만 갈아끼우면 같은 콘텐츠를 각 사이트의 디자인으로 렌더할 수 있다.
- *
- * 여기서는 인라인 style 로 최소 구현했지만, 실제 사이트에서는 Tailwind/CSS 모듈로 바꿔 쓰면 된다.
  */
 
 import type { ReactNode } from "react";
+import { brandThemeStyle, normalizeHexColor } from "../lib/brand-color";
 
 export type DesignTemplateId =
   | "editorial" | "comparison" | "local-guide" | "checklist" | "conversion" | "custom";
@@ -39,6 +38,8 @@ export interface DesignLayoutProps {
   ctaHref?: string;
   /** 본문에서 사용할 브랜드명(CTA 문구에 노출). */
   brand?: string;
+  /** 도메인 브랜드 컬러. 있으면 템플릿 기본 accent를 덮어씁니다. */
+  brandColor?: string | null;
   children: ReactNode;
 }
 
@@ -46,13 +47,15 @@ export interface DesignLayoutProps {
  * 디자인 셸. 상단/하단 CTA + accent 색상을 입혀 본문을 감싼다.
  * PostRenderer 가 만든 본문을 children 으로 받는다.
  */
-export function DesignLayout({ designId, title, ctaHref = "#", brand = "운전면허플러스", children }: DesignLayoutProps): ReactNode {
+export function DesignLayout({ designId, title, ctaHref = "#", brand = "운전면허플러스", brandColor, children }: DesignLayoutProps): ReactNode {
   const publicBrand = brand.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || brand;
   const d = resolveDesign(designId);
   const spec = SPECS[d];
+  const accent = normalizeHexColor(brandColor, spec.accent);
+  const themeStyle = { background: spec.pageBg, ...brandThemeStyle(accent, spec.accent) };
   return (
-    <article className={`community-post design-${d}`} style={{ background: spec.pageBg, ["--accent" as string]: spec.accent }}>
-      <header className="post-top-cta" style={{ background: spec.accent }}>
+    <article className={`community-post design-${d}`} style={themeStyle}>
+      <header className="post-top-cta" style={{ background: accent }}>
         <span>{publicBrand} · {spec.topCta}</span>
         <a href={ctaHref} className="cta-button">바로가기 →</a>
       </header>
@@ -62,9 +65,9 @@ export function DesignLayout({ designId, title, ctaHref = "#", brand = "운전�
         {children}
       </div>
 
-      <footer className="post-bottom-cta">
+      <footer className="post-bottom-cta" style={{ background: themeStyle["--accent-soft"] }}>
         <p>{publicBrand}에서 {spec.bottomCta}</p>
-        <a href={ctaHref} className="cta-button cta-primary">{spec.bottomCta}</a>
+        <a href={ctaHref} className="cta-button cta-primary" style={{ background: accent }}>{spec.bottomCta}</a>
       </footer>
     </article>
   );

@@ -4,7 +4,10 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { api, getOptions, listDomains } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
+import { getDesignTheme } from "@/lib/design-theme";
 import type { AdminOptions, Job, DomainConfig } from "@/lib/types";
+
+const DEFAULT_BRAND_COLOR = "#2563eb";
 
 export default function DashboardClient() {
   const [domains, setDomains] = useState<DomainConfig[]>([]);
@@ -13,6 +16,8 @@ export default function DashboardClient() {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [brandColor, setBrandColor] = useState(DEFAULT_BRAND_COLOR);
+  const previewTheme = getDesignTheme("local-guide", brandColor);
 
   async function refresh() {
     const [opts, domainRes, jobRes] = await Promise.all([
@@ -27,10 +32,20 @@ export default function DashboardClient() {
 
   useEffect(() => { refresh().catch((e) => setError(e.message)); }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("create") !== "domain") return;
+    setOpen(true);
+    params.delete("create");
+    const query = params.toString();
+    window.history.replaceState(null, "", `/${query ? `?${query}` : ""}`);
+  }, []);
+
   async function createDomain(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget;
     setBusy(true); setError("");
-    const fd = new FormData(e.currentTarget);
+    const fd = new FormData(form);
     try {
       await api("/domains", {
         method: "POST",
@@ -44,8 +59,9 @@ export default function DashboardClient() {
           apply_preset: fd.get("apply_preset") === "on",
         }),
       });
+      form.reset();
+      setBrandColor(DEFAULT_BRAND_COLOR);
       setOpen(false);
-      e.currentTarget.reset();
       await refresh();
     } catch (err) {
       setError((err as Error).message);
@@ -76,11 +92,20 @@ export default function DashboardClient() {
           <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v} value={v}>{v === "driving" ? "운전면허/운전학원" : v}</option>)}</select></Field>
           <div className="grid grid-3">
             <Field label="테마"><select className="select" name="theme">{options?.themes.map((v) => <option key={v}>{v}</option>)}</select></Field>
-            <Field label="브랜드 컬러"><input className="input" name="brand_color" type="color" defaultValue="#2563eb" /></Field>
+            <Field label="브랜드 컬러">
+              <div className="row">
+                <input className="input-color" name="brand_color" type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} />
+                <code className="mono small">{brandColor}</code>
+              </div>
+            </Field>
             <Field label="일일 한도"><input className="input" name="daily_limit" type="number" defaultValue={30} min={1} max={500} /></Field>
           </div>
           <label className="row small"><input type="checkbox" name="apply_preset" defaultChecked /> 운전학원 지역/키워드 프리셋 자동 적용</label>
-          <div className="row"><button className="btn primary" disabled={busy}>{busy ? "생성 중..." : "생성"}</button><button type="button" className="btn" onClick={() => setOpen(false)}>닫기</button></div>
+          <div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}>
+            <div className="preview-top"><b>브랜드 컬러 미리보기</b><span className="preview-cta">CTA</span></div>
+            <div className="preview-bottom-cta"><b>발행 글 상단/버튼에 적용됩니다</b><button type="button" className="btn primary">버튼</button></div>
+          </div>
+          <div className="row"><button className="btn primary" disabled={busy}>{busy ? "생성 중..." : "생성"}</button><button type="button" className="btn" onClick={() => { setOpen(false); setBrandColor(DEFAULT_BRAND_COLOR); }}>닫기</button></div>
         </form>
       )}
 
@@ -91,9 +116,9 @@ export default function DashboardClient() {
       </div>
 
       {domains.length === 0 ? (
-        <div className="card card-pad" style={{ textAlign: "center", padding: 52 }}>
+        <div id="dashboard-domain-setup" className="card card-pad" style={{ textAlign: "center", padding: 52 }}>
           <h2>아직 도메인이 없습니다</h2>
-          <p className="muted">운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 이후 대시보드에서 기본 글 생성, 고급 슬롯 생성, 검수 흐름을 바로 시작할 수 있습니다.</p>
+          <p className="muted">운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 도메인이 있어야 도메인 관리, 글 생성, 검수·보내기 메뉴를 사용할 수 있습니다.</p>
           <button className="btn primary" style={{ marginTop: 12 }} onClick={() => setOpen(true)}>첫 도메인 만들기</button>
         </div>
       ) : (
