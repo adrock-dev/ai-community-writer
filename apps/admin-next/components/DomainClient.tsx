@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { getDesignTheme } from "@/lib/design-theme";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { api, downloadPostExport, enqueueGenerate, getOptions, getDomainDetail, getRuntimeApis, listAcademies, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
@@ -227,7 +228,18 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
     window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
   }, [payload]);
 
-  if (error) return <div className="toast-error">{error}</div>;
+  if (error) return (
+    <div className="card card-pad grid" style={{ maxWidth: 720 }}>
+      <p className="eyebrow">도메인을 찾을 수 없습니다</p>
+      <h2>{domain}</h2>
+      <p className="toast-error">{error}</p>
+      <p className="muted">등록되지 않은 도메인이거나 API 연결에 문제가 있을 수 있습니다. 대시보드에서 도메인을 만들거나 목록에서 다시 선택하세요.</p>
+      <div className="row">
+        <Link className="btn primary" href="/need-domain?from=manage">도메인 만들기 안내</Link>
+        <Link className="btn" href="/">대시보드로</Link>
+      </div>
+    </div>
+  );
   if (!payload || !options) return <div className="card card-pad">로딩 중...</div>;
   const domainConfig = payload.domain;
   const counts = payload.slot_counts;
@@ -601,7 +613,7 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
         </Field>
         <div className="row"><button className="btn primary" disabled={busy || enabled.size === 0} onClick={() => onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: design, custom_design_templates: custom.trim() })}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
-      <DesignPreview blueprint={blueprint} designId={design} brand={publicBrandName(domain.display_name)} title={activeDesign.name} summary={activeDesign.summary} />
+      <DesignPreview blueprint={blueprint} designId={design} brandColor={domain.brand_color} brand={publicBrandName(domain.display_name)} title={activeDesign.name} summary={activeDesign.summary} />
     </section>
   </div>;
 }
@@ -906,16 +918,19 @@ function Posts({ domain, posts, onRefresh }: { domain: DomainConfig; posts: Post
 
 function Settings({ domain, options, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [form, setForm] = useState({ display_name: domain.display_name, vertical: domain.vertical, theme: domain.theme, brand_color: domain.brand_color ?? "#2563eb", daily_limit: domain.daily_limit }); const [sa, setSa] = useState(""); const [url, setUrl] = useState(options.indexing.url_template);
+  const previewTheme = getDesignTheme(domain.design_template_id, form.brand_color);
   async function saveIndexing() { await api("/settings/indexing", { method: "PUT", body: JSON.stringify({ sa_json: sa, url_template: url }) }); setSa(""); await onRefresh(); alert("색인 설정 저장됨"); }
   async function deleteDomain() { if (!confirm("정말 삭제할까요? 모든 데이터가 삭제됩니다.")) return; await api(`/domains/${encodeURIComponent(domain.domain)}`, { method: "DELETE" }); location.href = "/"; }
-  return <div className="grid grid-2"><div className="card card-pad grid"><h2>메타 정보</h2><Field label="표시 이름"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field><div className="grid grid-2"><Field label="업종"><input className="input" value={form.vertical} onChange={(e) => setForm({ ...form, vertical: e.target.value })} /></Field><Field label="테마"><select className="select" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })}>{options.themes.map((t) => <option key={t}>{t}</option>)}</select></Field></div><div className="grid grid-2"><Field label="브랜드 컬러"><input className="input" type="color" value={form.brand_color} onChange={(e) => setForm({ ...form, brand_color: e.target.value })} /></Field><Field label="일일 한도"><input className="input" type="number" value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Number(e.target.value) })} /></Field></div><button className="btn primary" onClick={() => onSave(form)}>저장</button></div><div className="card card-pad grid"><h2>Google 색인 설정</h2><p className="muted small">현재 키 상태: {options.indexing.has_key ? "설정됨" : "미설정"}</p><Field label="서비스계정 JSON"><textarea className="textarea mono" value={sa} onChange={(e) => setSa(e.target.value)} placeholder="이미 저장됨 — 교체하려면 새 JSON 붙여넣기" /></Field><Field label="발행 URL 템플릿"><input className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} /></Field><button className="btn" onClick={saveIndexing}>색인 설정 저장</button><hr /><button className="btn danger" onClick={deleteDomain}>도메인 삭제</button></div></div>;
+  return <div className="grid grid-2"><div className="card card-pad grid"><h2>메타 정보</h2><Field label="표시 이름"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field><div className="grid grid-2"><Field label="업종"><input className="input" value={form.vertical} onChange={(e) => setForm({ ...form, vertical: e.target.value })} /></Field><Field label="테마"><select className="select" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })}>{options.themes.map((t) => <option key={t}>{t}</option>)}</select></Field></div><div className="grid grid-2"><Field label="브랜드 컬러"><div className="row"><input className="input-color" type="color" value={form.brand_color} onChange={(e) => setForm({ ...form, brand_color: e.target.value })} /><code className="mono small">{form.brand_color}</code></div></Field><Field label="일일 한도"><input className="input" type="number" value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Number(e.target.value) })} /></Field></div><div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}><div className="preview-top"><b>브랜드 컬러 미리보기</b><span className="preview-cta">CTA</span></div><div className="preview-bottom-cta"><b>하단 CTA 영역</b><button type="button" className="btn primary">버튼</button></div></div><p className="muted small">미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요.</p><button className="btn primary" onClick={() => onSave(form)}>저장</button></div><div className="card card-pad grid"><h2>Google 색인 설정</h2><p className="muted small">현재 키 상태: {options.indexing.has_key ? "설정됨" : "미설정"}</p><Field label="서비스계정 JSON"><textarea className="textarea mono" value={sa} onChange={(e) => setSa(e.target.value)} placeholder="이미 저장됨 — 교체하려면 새 JSON 붙여넣기" /></Field><Field label="발행 URL 템플릿"><input className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} /></Field><button className="btn" onClick={saveIndexing}>색인 설정 저장</button><hr /><button className="btn danger" onClick={deleteDomain}>도메인 삭제</button></div></div>;
 }
 
-function DesignPreview({ blueprint, designId, brand, title, summary }: { blueprint: typeof DESIGN_BLUEPRINTS[string]; designId: string; brand: string; title: string; summary: string }) {
+function DesignPreview({ blueprint, designId, brandColor, brand, title, summary }: { blueprint: typeof DESIGN_BLUEPRINTS[string]; designId: string; brandColor?: string | null; brand: string; title: string; summary: string }) {
   const spec = PREVIEW_DESIGN_SPECS[designId] ?? PREVIEW_DESIGN_SPECS.editorial;
+  const theme = getDesignTheme(designId, brandColor);
+  const previewStyle = { ["--accent" as string]: theme.accent, ["--accent-soft" as string]: theme.soft, ["--primary" as string]: theme.accent, background: theme.pageBg };
   return <aside className="preview-panel">
     <div className="preview-head"><div><b>디자인 미리보기</b><p className="muted small">{blueprint.label}</p></div><span className="badge info">{designId}</span></div>
-    <div className={`preview-phone design-${designId}`}>
+    <div className={`preview-phone design-${designId}`} style={previewStyle}>
       <div className="preview-top"><div><b>{brand}</b><p>{blueprint.tone}</p></div><span className="preview-cta">{spec.topCta}</span></div>
       <div className="preview-hero"><span>대표 영역</span></div>
       <div className="preview-body">

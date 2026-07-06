@@ -1,5 +1,9 @@
 # === 의존성 / 빌드 산출물 ===
 node_modules/
+.pnp.cjs
+.pnp.loader.mjs
+.yarn/
+yarn.lock
 out/
 dist/
 build/

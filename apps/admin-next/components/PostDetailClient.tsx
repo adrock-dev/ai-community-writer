@@ -4,16 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDateTime, formatShortDate } from "@/lib/date";
+import { getDesignTheme, resolveDesignId } from "@/lib/design-theme";
 import type { DesignTemplateId, PostDetail, DomainConfig } from "@/lib/types";
-
-const DESIGN_SPECS: Record<DesignTemplateId, { accent: string; soft: string; pageBg: string; topCta: string; bottomCta: string; label: string }> = {
-  editorial: { accent: "#5132d7", soft: "#f2efff", pageBg: "#ffffff", topCta: "지금 바로 비교·예약", bottomCta: "상담/예약하러 가기", label: "브랜드 매거진" },
-  comparison: { accent: "#2563eb", soft: "#dbeafe", pageBg: "#ffffff", topCta: "BEST 한눈에 비교", bottomCta: "내게 맞는 곳 찾기", label: "BEST 비교 블로그" },
-  "local-guide": { accent: "#059669", soft: "#dcfce7", pageBg: "#ffffff", topCta: "내 주변에서 찾기", bottomCta: "가까운 곳 예약하기", label: "지역 추천 블로그" },
-  checklist: { accent: "#ca8a04", soft: "#fef3c7", pageBg: "#ffffff", topCta: "체크리스트 저장", bottomCta: "준비 시작하기", label: "체크리스트 블로그" },
-  conversion: { accent: "#111827", soft: "#ede9fe", pageBg: "#ffffff", topCta: "비용 상담 신청", bottomCta: "지금 예약하기", label: "예약 전환 블로그" },
-  custom: { accent: "#5132d7", soft: "#f2efff", pageBg: "#ffffff", topCta: "자세히 보기", bottomCta: "문의하기", label: "커스텀" },
-};
 
 export default function PostDetailClient({ domain, postId }: { domain: string; postId: string }) {
   const [post, setPost] = useState<PostDetail | null>(null);
@@ -33,8 +25,8 @@ export default function PostDetailClient({ domain, postId }: { domain: string; p
   if (error) return <p className="toast-error">{error}</p>;
   if (!post) return <div className="card card-pad">로딩 중...</div>;
   const renderedHtml = publishedHtml || bodyHtml || fallbackMarkdown(post.body_markdown, parseImages(post.images));
-  const designId = resolveDesign(post.design_template_id ?? domainConfig?.design_template_id);
-  const design = DESIGN_SPECS[designId];
+  const designId = resolveDesignId(post.design_template_id ?? domainConfig?.design_template_id);
+  const design = getDesignTheme(designId, domainConfig?.brand_color);
   const brand = publicBrandName(domainConfig?.display_name ?? domain);
   const articleStyle = { ["--accent" as string]: design.accent, ["--accent-soft" as string]: design.soft, ["--primary" as string]: design.accent, background: design.pageBg };
   const contentHtml = toPreviewBlocks(prepareBodyHtml(renderedHtml, post.title, null));
@@ -137,7 +129,7 @@ function parseImages(value: PostDetail["images"]): Record<string, string> {
 function escapeHtml(s: string) { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!)); }
 function escapeAttr(s: string) { return escapeHtml(s).replace(/'/g, "&#39;"); }
 function resolveDesign(value: string | null | undefined): DesignTemplateId {
-  return value && value in DESIGN_SPECS ? value as DesignTemplateId : "local-guide";
+  return resolveDesignId(value);
 }
 function publicBrandName(value: string): string {
   return value.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || value;
@@ -209,7 +201,7 @@ function designChips(designId: DesignTemplateId): string[] {
 }
 function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml }: { post: PostDetail; domainConfig: DomainConfig | null; domain: string; designId: DesignTemplateId; bodyHtml: string }) {
-  const design = DESIGN_SPECS[designId];
+  const design = getDesignTheme(designId, domainConfig?.brand_color);
   const brand = publicBrandName(domainConfig?.display_name ?? domain);
   const title = post.title || brand;
   const contentHtml = toPreviewBlocks(prepareBodyHtml(bodyHtml, post.title, null));

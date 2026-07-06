@@ -20,8 +20,9 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
-  const post = await getPost(slug);
-  if (!post) return { title: "글을 찾을 수 없음" };
+  const result = await getPost(slug);
+  if (!result) return { title: "글을 찾을 수 없음" };
+  const { post } = result;
   return {
     title: post.title,
     description: post.meta_description ?? undefined,
@@ -31,12 +32,20 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function CommunityPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const post = await getPost(slug);
-  if (!post) notFound();
+  const result = await getPost(slug);
+  if (!result) notFound();
+  const { post, site } = result;
   const bodyHtml = stripLeadingH1(post.body_html);
+  const brand = site?.display_name?.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || undefined;
 
   return (
-    <DesignLayout designId={post.design_template_id} title={post.title} ctaHref="/contact">
+    <DesignLayout
+      designId={post.design_template_id ?? site?.design_template_id}
+      title={post.title}
+      ctaHref="/contact"
+      brand={brand}
+      brandColor={site?.brand_color}
+    >
       {bodyHtml ? <div dangerouslySetInnerHTML={{ __html: bodyHtml }} /> : <PostRenderer markdown={post.body_markdown} images={post.images ?? {}} />}
     </DesignLayout>
   );

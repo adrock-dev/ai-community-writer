@@ -11,6 +11,11 @@ type Row = Record<string, any>;
 export class PublicController {
   constructor(@Inject(DbService) private readonly db: DbService) {}
 
+  @Get("site")
+  site(@Param("domain") domain: string) {
+    return { site: publicSiteSummary(this.requireDomain(domain)) };
+  }
+
   @Get("posts")
   posts(@Param("domain") domain: string, @Query() query: Row) {
     this.requireDomain(domain);
@@ -22,11 +27,11 @@ export class PublicController {
 
   @Get("posts/:slug")
   post(@Param("domain") domain: string, @Param("slug") slug: string, @Query("include_rendered") rendered = "") {
-    this.requireDomain(domain);
+    const domainConfig = this.requireDomain(domain);
     const post = this.db.getPostBySlug(domain, slug, "published");
     if (!post) throw new HttpException("post not found", 404);
     const normalized = normalizePostForPublicRender(this.db, domain, post);
-    const payload: Row = { post: publicPostDetail(normalized.post) };
+    const payload: Row = { post: publicPostDetail(normalized.post), site: publicSiteSummary(domainConfig) };
     if (rendered === "true" || rendered === "1") payload.body_html = renderMarkdown(normalized.bodyMarkdown, normalized.images);
     return payload;
   }
@@ -72,6 +77,15 @@ export class PublicController {
   }
 
   private requireDomain(domain: string) { const d = this.db.getDomain(domain); if (!d) throw new HttpException("domain not found", 404); return d; }
+}
+
+function publicSiteSummary(row: Row): Row {
+  return {
+    domain: row.domain,
+    display_name: row.display_name,
+    brand_color: row.brand_color,
+    design_template_id: row.design_template_id,
+  };
 }
 
 function publicPostSummary(row: Row): Row {
