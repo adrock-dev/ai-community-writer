@@ -70,6 +70,9 @@ export interface PostSummary {
   duration_sec: number | null;
   generated_at: string;
   body_chars: number;
+  job_id: string | null;
+  image_count: number;
+  image_cost_usd: number;
 }
 
 export interface PostDetail extends PostSummary {
@@ -135,6 +138,8 @@ export interface Job {
     image_model?: string;
   };
   status: JobStatus;
+  paused?: number;
+  cancel_requested?: number;
   scheduled_at: string;
   started_at: string | null;
   finished_at: string | null;

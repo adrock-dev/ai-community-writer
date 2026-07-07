@@ -176,7 +176,7 @@ export class AdminController {
   @Get("domains/:domain/posts")
   listPosts(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const items = this.db.listPosts(domain, { status: query.status || undefined, limit: clampInt(query.limit, 100, 1, 500) });
+    const items = this.db.listPosts(domain, { status: query.status || undefined, jobId: query.job_id || undefined, limit: clampInt(query.limit, 100, 1, 500) });
     return { count: items.length, items };
   }
 
@@ -300,9 +300,14 @@ export class AdminController {
   enqueueGenerate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); const domainMeta = this.requireDomain(domain);
     let slotIds = Array.isArray(body.slot_ids) ? body.slot_ids.map((id: any) => String(id)).filter(Boolean) : [];
+    const batchOpts = {
+      q: body.q || undefined,
+      template: body.template || undefined,
+      limit: clampInt(body.max, 10, 1, 500),
+      balanced: Boolean(body.balanced),
+    };
     if (!slotIds.length) {
-      const picked = this.db.selectSlotsForBatch(domain, { q: body.q || undefined, template: body.template || undefined, limit: clampInt(body.max, 10, 1, 500), balanced: Boolean(body.balanced) });
-      slotIds = picked.map((s) => s.slot_id);
+      slotIds = this.db.selectSlotsForBatch(domain, batchOpts).map((s) => s.slot_id);
     } else {
       const exclusionTerms = parseExclusionTerms(domainMeta.excluded_keywords);
       if (exclusionTerms.length) {
@@ -312,7 +317,13 @@ export class AdminController {
         });
       }
     }
-    if (!slotIds.length) throw new HttpException("작성할 planned 슬롯이 없습니다. 검색어나 제외 목록을 확인하세요.", 400);
+    // 작성은 기존 planned 후보만 사용한다. 후보 생성은 '재료로 글 후보 만들기'(slots/generate) 전용이며 여기서 자동 생성하지 않는다.
+    if (!slotIds.length) {
+      throw new HttpException(
+        "작성할 planned 후보가 없습니다. 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)",
+        400,
+      );
+    }
     const job_id = this.db.enqueueJob(domain, "generate", {
       slot_ids: slotIds,
       provider: body.provider || "codex",
@@ -348,6 +359,26 @@ export class AdminController {
     checkAuth(req, headers);
     const items = this.db.listJobs({ domain: query.domain || undefined, status: query.status || undefined, limit: clampInt(query.limit, 200, 1, 1000) }).map(jobOut);
     return { count: items.length, items };
+  }
+
+  @Post("jobs/:id/cancel")
+  cancelJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return this.db.cancelJob(id);
+  }
+
+  @Post("jobs/:id/pause")
+  pauseJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return { ok: this.db.pauseJob(id) };
+  }
+
+  @Post("jobs/:id/resume")
+  resumeJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return { ok: this.db.resumeJob(id) };
+  }
+
+  @Post("jobs/:id/prioritize")
+  prioritizeJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return { ok: this.db.prioritizeJob(id) };
   }
 
   @Get("settings/indexing")

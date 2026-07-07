@@ -1,11 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { getDesignTheme } from "@/lib/design-theme";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { api, downloadPostExport, enqueueGenerate, getOptions, getDomainDetail, getRuntimeApis, listAcademies, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
+import { api, downloadPostExport, enqueueGenerate, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
-import type { Academy, AdminOptions, Axis, AxisValue, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, DomainConfig, DomainDetailPayload } from "@/lib/types";
+import { getDesignTheme } from "@/lib/design-theme";
+import { getGenerationDefaults } from "@/lib/generation-defaults";
+import { rememberDomain } from "@/lib/recent-domain";
+import { JobCard } from "./JobCard";
+import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
+import type { Academy, AdminOptions, Axis, AxisValue, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts } from "@/lib/types";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 const AXES: Axis[] = ["region", "keyword", "intent", "persona", "modifier"];
 const AXIS_LABEL: Record<Axis, string> = {
@@ -27,9 +33,6 @@ const TABS = [
   ["academies", "학원자료"], ["slots", "슬롯"], ["jobs", "작업"], ["posts", "글"], ["settings", "설정"],
 ] as const;
 
-type TourMode = "basic" | "advanced" | "review";
-type TourFocus = "workflow" | "source" | "slot-create" | "test-write" | "jobs" | "posts" | "plan" | "template-type" | "template-design" | "academy-types" | "slot-filter";
-
 const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: string }> = {
   basic: { label: "기본 글 생성", short: "기본", desc: "원천 데이터 → 후보 → 테스트 작성 → 검수만 따라가는 가장 쉬운 시작" },
   advanced: { label: "고급 슬롯 생성", short: "고급", desc: "기획, 글 유형, 화면 구상, 학원 타입까지 세밀하게 잡는 운영자용 흐름" },
@@ -41,27 +44,30 @@ const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: Tou
     title: "기본 글 생성",
     desc: "처음 시작할 때 가장 안전한 최소 클릭 순서",
     steps: [
-      { mode: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 자료부터 동기화", tone: "primary" },
-      { mode: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "재료로 슬롯 후보 생성" },
-      { mode: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
+      { mode: "basic", focus: "workflow", no: "기본 1", title: "흐름 개요", desc: "기본 흐름 한눈에 보기", tone: "primary" },
+      { mode: "basic", focus: "source", no: "기본 2", title: "원천 데이터 준비", desc: "지역/학원 자료부터 동기화" },
+      { mode: "basic", focus: "slot-create", no: "기본 3", title: "글 후보 만들기", desc: "재료로 슬롯 후보 생성" },
+      { mode: "basic", focus: "test-write", no: "기본 4", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
     ],
   },
   {
     title: "고급 슬롯 생성",
     desc: "기획과 생성 조건을 세밀하게 잡을 때",
     steps: [
-      { mode: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "생성 방향과 금지어 정리" },
-      { mode: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 종류와 화면 구상 선택" },
-      { mode: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
-      { mode: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터/확장", desc: "조건을 좁혀 후보 운영" },
+      { mode: "advanced", focus: "workflow", no: "고급 1", title: "흐름 개요", desc: "고급 흐름 한눈에 보기", tone: "primary" },
+      { mode: "advanced", focus: "plan", no: "고급 2", title: "기획/제외어", desc: "생성 방향과 금지어 정리" },
+      { mode: "advanced", focus: "template-design", no: "고급 3", title: "유형/디자인", desc: "글 종류와 화면 구상 선택" },
+      { mode: "advanced", focus: "academy-types", no: "고급 4", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
+      { mode: "advanced", focus: "slot-filter", no: "고급 5", title: "슬롯 필터/확장", desc: "조건을 좁혀 후보 운영" },
     ],
   },
   {
     title: "검수/마감",
     desc: "생성 이후 확인, 내보내기, 색인 요청",
     steps: [
-      { mode: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "대기·진행·실패 확인" },
-      { mode: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "미리보기/export/indexing" },
+      { mode: "review", focus: "workflow", no: "검수 1", title: "흐름 개요", desc: "검수 흐름 한눈에 보기", tone: "primary" },
+      { mode: "review", focus: "jobs", no: "검수 2", title: "작업 상태", desc: "대기·진행·실패 확인" },
+      { mode: "review", focus: "posts", no: "검수 3", title: "완성 글 검수", desc: "미리보기/export/indexing" },
     ],
   },
 ];
@@ -188,7 +194,10 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
   const [tourStep, setTourStep] = useState<number | null>(null);
   const [tourMode, setTourMode] = useState<TourMode>("basic");
   const handledFlowParam = useRef(false);
-  const tourSteps = useMemo(() => buildOperatorTourSteps(tourMode, payload?.slot_counts), [payload?.slot_counts, tourMode]);
+  const tourSteps = useMemo(
+    () => buildOperatorTourSteps(tourMode, payload?.slot_counts),
+    [payload?.slot_counts, tourMode],
+  );
 
   async function refresh() {
     const [opts, detail] = await Promise.all([getOptions(), getDomainDetail(domain)]);
@@ -203,15 +212,30 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
     setPayload(null);
     setOptions(null);
     setError("");
+    // 도메인이 바뀌면 이전 도메인의 탭/튜토리얼 상태가 넘어오지 않도록 초기화(직접 A→B 이동 대비 안전장치).
+    setTab(initialTab);
+    setTourStep(null);
+    setTourMode("basic");
+    rememberDomain(domain);
     refresh().catch((e) => setError(e.message));
   }, [domain]);
 
-  function startTour(mode: TourMode = "basic", focus?: TourFocus) {
+  function goToTourStep(mode: TourMode, focus?: TourFocus, opts: { overlay?: boolean } = {}) {
+    // 항상 개요(intro) 단계를 포함한다. focus 는 해당 튜토리얼 단계로 그대로 매핑된다(개요=focus "workflow").
     const nextSteps = buildOperatorTourSteps(mode, payload?.slot_counts);
     const startIndex = focus ? Math.max(0, nextSteps.findIndex((step) => step.focus === focus || step.target === focus)) : 0;
+    // 오버레이 없이 조용히 진입(튜토리얼 OFF)할 때, focus 없는 '흐름 시작'은 개요 탭(overview=현재 화면)이 아니라 첫 실작업 탭으로 보낸다.
+    const landingIndex = opts.overlay === false ? (focus ? startIndex : Math.min(1, nextSteps.length - 1)) : startIndex;
     setTourMode(mode);
-    setTab(nextSteps[startIndex]?.tab ?? nextSteps[0]?.tab ?? "overview");
-    setTourStep(startIndex);
+    setTab(nextSteps[landingIndex]?.tab ?? nextSteps[0]?.tab ?? "overview");
+    return startIndex;
+  }
+
+  function startTour(mode: TourMode = "basic", focus?: TourFocus) {
+    const overlay = isTourEnabled();
+    const startIndex = goToTourStep(mode, focus, { overlay });
+    // 튜토리얼이 켜져 있을 때만 오버레이를 연다. 꺼져 있으면 해당 흐름의 첫 실작업 탭으로 조용히 진입.
+    if (overlay) setTourStep(startIndex);
   }
 
   useEffect(() => {
@@ -219,9 +243,13 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
     const params = new URLSearchParams(window.location.search);
     const flow = params.get("flow");
     if (!isTourMode(flow)) return;
-    const focus = params.get("focus");
+    const focusParam = params.get("focus");
+    const focus = isTourFocus(focusParam) ? focusParam : undefined;
     handledFlowParam.current = true;
-    startTour(flow, isTourFocus(focus) ? focus : undefined);
+    const overlay = isTourEnabled();
+    const startIndex = goToTourStep(flow, focus, { overlay });
+    // ?flow= 로 진입해도 탭 이동만 하고, 튜토리얼이 켜져 있을 때만 오버레이를 연다.
+    if (overlay) setTourStep(startIndex);
     params.delete("flow");
     params.delete("focus");
     const query = params.toString();
@@ -285,8 +313,8 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
       {view === "generate" && <div className="grid">
         <div className="card card-pad">
           <p className="eyebrow">생성 전용 페이지</p>
-          <h2>후보 만들기부터 테스트 작성까지 여기서만 진행하세요</h2>
-          <p className="muted">처음에는 1개 테스트 작성으로 품질을 확인한 뒤 현재 검색 10개, 전국 100개 순서로 확장하는 흐름을 권장합니다.</p>
+          <h2>1단계 후보 만들기 → 2단계 글 작성 순서로 진행하세요</h2>
+          <p className="muted">슬롯 탭이 두 단계로 나뉩니다. 먼저 후보를 만들고, 2단계 카드에서 1개 테스트 작성으로 품질을 확인한 뒤 확장하세요.</p>
         </div>
         <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />
       </div>}
@@ -308,10 +336,12 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
       {view === "overview" && tab === "jobs" && <Jobs domain={domainConfig} jobs={payload.jobs ?? []} onRefresh={refresh} />}
       {view === "overview" && tab === "posts" && <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />}
       {view === "overview" && tab === "settings" && <Settings domain={domainConfig} options={options} onSave={saveDomain} onRefresh={refresh} />}
-      {tourStep !== null && <OperatorTour mode={tourMode} steps={tourSteps} stepIndex={tourStep} onStepChange={setTourStep} onTab={setTab} onClose={() => setTourStep(null)} />}
+      {tourStep !== null && <OperatorTour mode={tourMode} steps={tourSteps} stepIndex={tourStep} onStepChange={setTourStep} onTab={setTab} onClose={() => setTourStep(null)} onDismissPermanently={() => { setTourEnabled(false); setTourStep(null); }} />}
     </div>
   );
 }
+
+const TOUR_FULL_CARD_TARGETS = new Set(["academies-sync", "slots-writer"]);
 
 type TourStep = {
   focus: TourFocus;
@@ -322,40 +352,43 @@ type TourStep = {
   action: string;
 };
 
-function isTourMode(value: string | null): value is TourMode {
-  return value === "basic" || value === "advanced" || value === "review";
-}
-
-function isTourFocus(value: string | null): value is TourFocus {
-  return value === "workflow" || value === "source" || value === "slot-create" || value === "test-write" || value === "jobs" || value === "posts" || value === "plan" || value === "template-type" || value === "template-design" || value === "academy-types" || value === "slot-filter";
-}
-
 function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[] {
   const hasSlots = Boolean(counts && Object.values(counts).reduce((sum, value) => sum + value, 0) > 0);
   const hasPosts = Boolean(counts && counts.published > 0);
   const sharedStart: TourStep = { focus: "workflow", tab: "overview", target: "workflow", title: `${TOUR_MODE_COPY[mode].label} 흐름을 먼저 봅니다`, body: `지금은 ${TOUR_MODE_COPY[mode].desc}입니다. 초록은 끝난 단계, 강조된 카드는 현재 단계라서 어디서 시작할지 바로 알 수 있습니다.`, action: "포커스되는 영역만 순서대로 따라가면 됩니다." };
   const sourceSync: TourStep = { focus: "source", tab: "academies", target: "academies-sync", title: "원천 데이터를 먼저 준비", body: "지역과 학원 데이터를 가져와야 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다.", action: "데이터가 이미 있으면 다음 단계로 넘어가도 됩니다." };
-  const slotGenerate: TourStep = { focus: "slot-create", tab: "slots", target: "slots-generator", title: hasSlots ? "후보를 확인하고 테스트 작성" : "먼저 글 후보를 만듭니다", body: hasSlots ? "후보가 준비되어 있으니 곧바로 1개 테스트 작성부터 시작하면 됩니다. 고급 옵션은 기본값을 유지해도 됩니다." : "아직 후보가 없다면 재료로 글 후보 만들기를 먼저 실행하세요. 후보는 지역·검색어·의도 조합으로 만들어집니다.", action: hasSlots ? "다음 포커스에서 테스트 작성 버튼을 누릅니다." : "‘재료로 글 후보 만들기’를 누른 뒤 슬롯 목록이 생겼는지 확인하세요." };
-  const testWrite: TourStep = { focus: "test-write", tab: "slots", target: hasSlots ? "slots-test" : "slots-create", title: hasSlots ? "1개 테스트 작성으로 안전하게 시작" : "후보 생성 실행", body: hasSlots ? "처음부터 10개/100개를 만들지 말고 테스트 1개를 먼저 큐에 넣습니다. 작업 탭으로 이동해 진행 상황을 확인합니다." : "후보가 생긴 다음 같은 시작 버튼을 다시 누르면 1개 테스트 작성 단계로 이어집니다.", action: hasSlots ? "버튼을 누르면 작업 탭으로 이동합니다." : "후보 생성 후 ‘1개 테스트 작성’을 진행하세요." };
+  const slotGenerate: TourStep = {
+    focus: "slot-create",
+    tab: "slots",
+    target: "slots-generator",
+    title: hasSlots ? "1단계 · 후보가 이미 있습니다" : "1단계 · 글 후보 만들기",
+    body: hasSlots
+      ? "아래 목록에 후보가 있으면 1단계는 건너뛰어도 됩니다. 더 필요할 때만 「템플릿당 최대」를 조정하고 「재료로 글 후보 만들기」로 추가하세요."
+      : "1단계 카드에서 「템플릿당 최대」만 조정한 뒤 「재료로 글 후보 만들기」를 누르세요. LLM은 호출하지 않고 기획 축·글유형 조합만 만듭니다.",
+    action: hasSlots ? "후보가 충분하면 다음 단계(2단계 글 작성)로 이동하세요." : "실행 후 맨 아래 후보 목록에 행이 생겼는지 확인하세요.",
+  };
+  const testWrite: TourStep = {
+    focus: "test-write",
+    tab: "slots",
+    target: "slots-writer",
+    title: "2단계 · 1개 테스트 작성",
+    body: hasSlots
+      ? "2단계 카드의 작성 엔진·모델·이미지 옵션은 글 작성에만 적용됩니다. 처음엔 「1개 테스트 작성」만 눌러 품질을 확인하세요."
+      : "후보가 없어도 이 버튼은 1단계 후보 생성을 자동 실행한 뒤 큐에 등록합니다. 대량 버튼은 QA 확인 후 사용하세요.",
+    action: "버튼을 누르면 작업 탭에서 진행 상태를 확인합니다.",
+  };
   const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 글 탭에서 결과를 검수합니다." };
   const postsReview: TourStep = { focus: "posts", tab: "posts", target: "posts-actions", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: "이 흐름이 안정적이면 현재 검색 10개, 이후 100개로 확장하세요." };
 
-  if (mode === "basic") return [
-    sharedStart,
-    sourceSync,
-    slotGenerate,
-    testWrite,
-    jobsBoard,
-    postsReview,
-  ];
+  if (mode === "basic") {
+    return [sharedStart, sourceSync, slotGenerate, testWrite, jobsBoard, postsReview];
+  }
 
-  if (mode === "review") return [
-    sharedStart,
-    jobsBoard,
-    postsReview,
-  ];
+  if (mode === "review") {
+    return [sharedStart, jobsBoard, postsReview];
+  }
 
-  return [
+  const steps: TourStep[] = [
     sharedStart,
     { focus: "plan", tab: "plan", target: "plan-brief", title: "글 방향과 제외어를 저장", body: "어떤 글을 만들지, 절대 넣지 말아야 할 키워드는 무엇인지 먼저 정합니다. 이 내용이 뒤의 후보 생성과 프롬프트에 계속 반영됩니다.", action: "입력 후 ‘기획 저장’을 누르고 다음으로 이동하세요." },
     { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
@@ -363,17 +396,23 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     sourceSync,
     { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
-    { focus: "slot-filter", tab: "slots", target: "slots-filter", title: "고급 조건으로 후보를 좁힙니다", body: "고급 슬롯 생성에서는 상태, 글 유형, 지역/검색어를 보며 어떤 후보부터 작성할지 정합니다. 필터로 대량 생성 전에 범위를 줄일 수 있습니다.", action: "현재 검색 조건으로 필요한 후보만 남긴 뒤 테스트 작성으로 넘어가세요." },
+    { focus: "slot-filter", tab: "slots", target: "slots-filter", title: "후보 목록에서 조건 좁히기", body: "필터 줄에서 상태·유형·검색어로 범위를 줄입니다. 「현재 검색 10개 작성」도 이 조건 안에서 선별합니다.", action: "필요한 후보만 남긴 뒤 2단계 글 작성으로 넘어가세요." },
     testWrite,
     jobsBoard,
     postsReview,
   ];
+  return steps;
 }
 
-function OperatorTour({ mode, steps, stepIndex, onStepChange, onTab, onClose }: { mode: TourMode; steps: TourStep[]; stepIndex: number; onStepChange: (value: number | null) => void; onTab: (value: string) => void; onClose: () => void }) {
+function OperatorTour({ mode, steps, stepIndex, onStepChange, onTab, onClose, onDismissPermanently }: { mode: TourMode; steps: TourStep[]; stepIndex: number; onStepChange: (value: number | null) => void; onTab: (value: string) => void; onClose: () => void; onDismissPermanently: () => void }) {
   const step = steps[stepIndex];
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const [missingTarget, setMissingTarget] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!step) return;
@@ -404,9 +443,14 @@ function OperatorTour({ mode, steps, stepIndex, onStepChange, onTab, onClose }: 
       }
       setMissingTarget(false);
       active.classList.add("tour-target-active");
-      active.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+      const rawRect = active.getBoundingClientRect();
+      const scrollBlock = rawRect.height > window.innerHeight * 0.55 ? "start" : "center";
+      active.scrollIntoView({ block: scrollBlock, inline: "nearest", behavior: "smooth" });
       window.setTimeout(() => {
-        if (!disposed && active) setTargetRect(active.getBoundingClientRect());
+        if (!disposed && active) {
+          const rect = active.getBoundingClientRect();
+          setTargetRect(TOUR_FULL_CARD_TARGETS.has(step.target) ? rect : clampTourRect(rect));
+        }
       }, 180);
     };
     const id = window.setTimeout(update, 80);
@@ -426,25 +470,34 @@ function OperatorTour({ mode, steps, stepIndex, onStepChange, onTab, onClose }: 
   const canBack = stepIndex > 0;
   const canNext = stepIndex < total - 1;
   const tooltipStyle = tourTooltipStyle(targetRect);
+  const tourCard = <section className="tour-card" role="dialog" aria-modal="true" aria-label={`${TOUR_MODE_COPY[mode].label} 튜토리얼`} style={tooltipStyle}>
+    <div className="tour-card-head spread"><span className="badge info">{TOUR_MODE_COPY[mode].short} · {stepIndex + 1} / {total}</span><button className="btn ghost" onClick={onClose} aria-label="튜토리얼 닫기">×</button></div>
+    <h2>{step.title}</h2>
+    <p className="muted">{step.body}</p>
+    <div className="writer-hint"><b>해야 할 일</b><span>{step.action}</span></div>
+    {missingTarget && <p className="small" style={{ color: "var(--warning)" }}>현재 단계의 대상 영역을 찾는 중입니다. 탭을 전환했거나 데이터가 아직 로딩 중이면 잠시 뒤 다시 표시됩니다.</p>}
+    <div className="tour-progress" style={{ gridTemplateColumns: `repeat(${total}, 1fr)` }} aria-hidden="true">{steps.map((_, i) => <span key={i} className={i <= stepIndex ? "active" : ""} />)}</div>
+    <div className="tour-card-actions">
+      <div className="spread">
+        <button className="btn" disabled={!canBack} onClick={() => onStepChange(stepIndex - 1)}>이전</button>
+        <button className="btn primary" onClick={() => canNext ? onStepChange(stepIndex + 1) : onClose()}>{canNext ? "다음" : "완료"}</button>
+      </div>
+      <div className="tour-card-dismiss">
+        <button className="btn ghost" onClick={onDismissPermanently}>더 이상 안 보기</button>
+      </div>
+    </div>
+  </section>;
+
   return <div className="tour-layer" aria-live="polite">
     <div className="tour-scrim" onClick={onClose} />
     {targetRect && <div className="tour-spotlight" style={{ top: targetRect.top - 8, left: targetRect.left - 8, width: targetRect.width + 16, height: targetRect.height + 16 }} />}
-    <section className="tour-card" role="dialog" aria-modal="true" aria-label={`${TOUR_MODE_COPY[mode].label} 튜토리얼`} style={tooltipStyle}>
-      <div className="tour-card-head spread"><span className="badge info">{TOUR_MODE_COPY[mode].short} · {stepIndex + 1} / {total}</span><button className="btn ghost" onClick={onClose} aria-label="튜토리얼 닫기">×</button></div>
-      <h2>{step.title}</h2>
-      <p className="muted">{step.body}</p>
-      <div className="writer-hint"><b>해야 할 일</b><span>{step.action}</span></div>
-      {missingTarget && <p className="small" style={{ color: "var(--warning)" }}>현재 단계의 대상 영역을 찾는 중입니다. 탭을 전환했거나 데이터가 아직 로딩 중이면 잠시 뒤 다시 표시됩니다.</p>}
-      <div className="tour-progress" style={{ gridTemplateColumns: `repeat(${total}, 1fr)` }} aria-hidden="true">{steps.map((_, i) => <span key={i} className={i <= stepIndex ? "active" : ""} />)}</div>
-      <div className="tour-card-actions spread">
-        <button className="btn" disabled={!canBack} onClick={() => onStepChange(stepIndex - 1)}>이전</button>
-        <div className="row">
-          <button className="btn ghost" onClick={onClose}>끝내기</button>
-          <button className="btn primary" onClick={() => canNext ? onStepChange(stepIndex + 1) : onClose()}>{canNext ? "다음" : "완료"}</button>
-        </div>
-      </div>
-    </section>
+    {mounted && createPortal(tourCard, document.body)}
   </div>;
+}
+
+function clampTourRect(rect: DOMRect, maxHeight = 300): DOMRect {
+  if (rect.height <= maxHeight) return rect;
+  return DOMRect.fromRect({ x: rect.x, y: rect.y, width: rect.width, height: maxHeight });
 }
 
 function tourTooltipStyle(rect: DOMRect | null): React.CSSProperties {
@@ -453,11 +506,13 @@ function tourTooltipStyle(rect: DOMRect | null): React.CSSProperties {
   const viewportWidth = window.innerWidth;
   const viewportHeight = window.innerHeight;
   const cardHeight = Math.min(360, viewportHeight - 36);
-  const below = rect.bottom + 18;
-  const above = rect.top - 18;
-  const top = below + cardHeight < viewportHeight ? below : Math.max(18, above - cardHeight);
+  const margin = 18;
+  const below = rect.bottom + margin;
+  const above = rect.top - margin;
+  let top = below + cardHeight < viewportHeight ? below : Math.max(margin, above - cardHeight);
+  if (top + cardHeight > viewportHeight - margin) top = viewportHeight - cardHeight - margin;
   const rawLeft = rect.left + Math.min(40, Math.max(0, rect.width - width) / 2);
-  const left = Math.max(18, Math.min(rawLeft, viewportWidth - width - 18));
+  const left = Math.max(margin, Math.min(rawLeft, viewportWidth - width - margin));
   return { top, left, width };
 }
 
@@ -483,7 +538,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
         <p className="muted">처음 운영자는 기본 글 생성만 누르면 되고, 세부 조건을 만질 때만 고급 슬롯 생성을 쓰면 됩니다.</p>
       </div>
       <div className="grid grid-3">
-        <FlowStartCard title="기본 글 생성" badge="추천" body="데이터 준비부터 1개 테스트 작성, 검수까지 필요한 버튼만 순서대로 포커싱합니다." cta="기본 흐름 시작" tone="primary" onClick={() => onStartFlow("basic")} />
+        <FlowStartCard title="기본 글 생성" badge="추천" body="원천 데이터 → 1단계 후보 만들기 → 2단계 테스트 작성 → 검수까지 순서대로 안내합니다." cta="기본 흐름 시작" tone="primary" onClick={() => onStartFlow("basic")} />
         <FlowStartCard title="고급 슬롯 생성" badge="운영자용" body="기획·글유형·디자인·학원 타입·필터를 직접 조정하고 대량 후보로 확장합니다." cta="고급 흐름 시작" onClick={() => onStartFlow("advanced")} />
         <FlowStartCard title="검수/내보내기" badge="마감" body="작업 큐와 완성 글만 빠르게 확인해서 Markdown/HTML export와 색인 요청으로 넘깁니다." cta="검수 흐름 시작" onClick={() => onStartFlow("review")} />
       </div>
@@ -496,7 +551,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <div className="card card-pad"><h2>콘텐츠 기획</h2><p className="muted">{domain.content_brief || "아직 기획 메모가 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>기획 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {domain.design_template_id ?? "local-guide"}</p><button className="btn" onClick={() => onTab("templates")}>디자인 고르기</button></div>
     </div>
-    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>포커스되는 카드의 버튼만 순서대로 실행</li><li>작업 탭에서 진행 상태 확인</li><li>글 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">상단의 “기본 글 생성”을 누르면 거래소 앱 온보딩처럼 필요한 영역만 순서대로 포커싱합니다.</p></div>
+    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>슬롯 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 탭에서 진행 상태 확인</li><li>글 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
   </div>;
 }
 
@@ -544,13 +599,13 @@ function RecommendedNextAction({ domain, counts, onStartFlow }: { domain: Domain
 
 function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { title: string; desc: string; cta: string; mode: TourMode; focus: TourFocus } {
   const totalSlots = Object.values(counts).reduce((sum, value) => sum + value, 0);
-  if (counts.failed > 0) return { title: "실패 작업부터 확인하세요", desc: `${counts.failed.toLocaleString()}개 실패가 있어 같은 조건으로 다시 만들기 전에 에러를 먼저 봐야 합니다.`, cta: "검수 1 시작", mode: "review", focus: "jobs" };
-  if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "검수 1 시작", mode: "review", focus: "jobs" };
-  if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "기본 3 시작", mode: "basic", focus: "test-write" };
-  if (totalSlots === 0) return { title: "원천 데이터를 먼저 준비하세요", desc: "아직 글 후보가 없습니다. 지역/학원 자료를 동기화하고 후보를 만드는 순서가 가장 안전합니다.", cta: "기본 1 시작", mode: "basic", focus: "source" };
-  if (!domain.content_brief) return { title: "생성 방향을 먼저 저장하세요", desc: "후보는 있지만 기획 메모가 비어 있습니다. 어떤 글을 만들지 기준을 잡으면 생성 품질이 안정됩니다.", cta: "고급 1 시작", mode: "advanced", focus: "plan" };
-  if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "검수 2 시작", mode: "review", focus: "posts" };
-  return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "기본 2 시작", mode: "basic", focus: "slot-create" };
+  if (counts.failed > 0) return { title: "실패 작업부터 확인하세요", desc: `${counts.failed.toLocaleString()}개 실패가 있어 같은 조건으로 다시 만들기 전에 에러를 먼저 봐야 합니다.`, cta: "검수 2 시작", mode: "review", focus: "jobs" };
+  if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "검수 2 시작", mode: "review", focus: "jobs" };
+  if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "기본 4 시작", mode: "basic", focus: "test-write" };
+  if (totalSlots === 0) return { title: "기본 흐름 개요부터 보기", desc: "새 도메인입니다. 기본 생성 흐름을 개요로 훑어본 뒤 원천 데이터 준비로 이어가세요.", cta: "기본 1 시작", mode: "basic", focus: "workflow" };
+  if (!domain.content_brief) return { title: "생성 방향을 먼저 저장하세요", desc: "후보는 있지만 기획 메모가 비어 있습니다. 어떤 글을 만들지 기준을 잡으면 생성 품질이 안정됩니다.", cta: "고급 2 시작", mode: "advanced", focus: "plan" };
+  if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "검수 3 시작", mode: "review", focus: "posts" };
+  return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "기본 3 시작", mode: "basic", focus: "slot-create" };
 }
 
 function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
@@ -793,17 +848,22 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const [status, setStatus] = useState("planned");
   const [template, setTemplate] = useState("");
   const [q, setQ] = useState("");
-  const [provider, setProvider] = useState<Provider>("codex");
-  const [model, setModel] = useState("");
-  const [cooldown, setCooldown] = useState(60);
-  const [timeout, setTimeout] = useState(600);
-  const [web, setWeb] = useState(true);
-  const [imageGen, setImageGen] = useState(false);
-  const [imageSize, setImageSize] = useState("1024x1024");
+  // 설정 페이지에 저장된 브라우저 로컬 기본값으로 초기화(없으면 내장 기본값).
+  // Slots 는 payload 로드 후에 마운트되므로 localStorage 읽기가 하이드레이션에 안전하다.
+  const [genDefaults] = useState(getGenerationDefaults);
+  const [provider, setProvider] = useState<Provider>(genDefaults.provider);
+  const [model, setModel] = useState(genDefaults.model);
+  const [cooldown, setCooldown] = useState(genDefaults.cooldownSec);
+  const [timeout, setTimeout] = useState(genDefaults.timeoutSec);
+  const [web, setWeb] = useState(genDefaults.web);
+  const [imageGen, setImageGen] = useState(genDefaults.imageGen);
+  const [imageSize, setImageSize] = useState(genDefaults.imageSize);
   const [max, setMax] = useState(200);
   const [remoteSlots, setRemoteSlots] = useState(slots);
   const [remoteTotal, setRemoteTotal] = useState(slots.length);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const [busy, setBusy] = useState(false); // 후보 생성/삭제 등 느린 작업 로딩
   const [slotError, setSlotError] = useState("");
 
   useEffect(() => { setRemoteSlots(slots); setRemoteTotal(slots.length); }, [slots]);
@@ -835,19 +895,107 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const writerPayload = { provider, model, design_template_id: domain.design_template_id, use_web_research: web, cooldown_sec: cooldown, timeout_sec: timeout, enable_image_generation: imageGen, image_size: imageSize, image_count: 1, image_provider: "private-codex" };
   const exclusionLines = parseLines(domain.excluded_keywords ?? "");
 
-  async function gen() { await api(`/domains/${encodeURIComponent(domain.domain)}/slots/generate`, { method: "POST", body: JSON.stringify({ max_per_template: max }) }); await onRefresh(); await loadCurrentSlots(); }
-  async function queue(ids: string[]) { if (!ids.length) return; const r = await enqueueGenerate(domain.domain, { slot_ids: ids, ...writerPayload }); alert(`작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 탭에서 진행상태를 확인하세요.`); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs"); }
+  async function gen() { if (busy || queueBusy) return; setBusy(true); try { await api(`/domains/${encodeURIComponent(domain.domain)}/slots/generate`, { method: "POST", body: JSON.stringify({ max_per_template: max }) }); await onRefresh(); await loadCurrentSlots(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
+  async function queue(ids: string[]) {
+    if (!ids.length || queueBusy) return;
+    setQueueBusy(true);
+    try {
+      const r = await enqueueGenerate(domain.domain, { slot_ids: ids, max_per_template: max, ...writerPayload });
+      alert(`작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 탭에서 진행상태를 확인하세요.`);
+      setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQueueBusy(false);
+    }
+  }
   async function smartQueue(label: string, body: Record<string, unknown>) {
+    if (queueBusy) return;
     const count = Number(body.max || 1);
     if (count >= 50 && !confirm(`${label}: ${count}개 글 작성을 큐에 등록할까요?`)) return;
-    const r = await enqueueGenerate(domain.domain, { ...body, ...writerPayload });
-    alert(`${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 탭에서 진행상태를 확인하세요.`);
-    setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs");
+    setQueueBusy(true);
+    try {
+      const r = await enqueueGenerate(domain.domain, { ...body, max_per_template: max, ...writerPayload });
+      alert(`${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 탭에서 진행상태를 확인하세요.`);
+      setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : String(err));
+    } finally {
+      setQueueBusy(false);
+    }
   }
-  async function delSelected() { if (!confirm(`${selected.size}개 삭제?`)) return; for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/slots/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); }
+  async function delSelected() { if (busy || queueBusy || !confirm(`${selected.size}개 삭제?`)) return; setBusy(true); try { for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/slots/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
   function toggleAllVisible() { setSelected((prev) => { if (selectedAllVisible) return new Set(); const next = new Set(prev); for (const s of filtered) next.add(s.slot_id); return next; }); }
 
-  return <div className="grid"><div className="card card-pad grid" data-tour="slots-generator"><h2>글 후보 만들기/작성</h2><div className="grid grid-4"><Field label="템플릿당 최대"><input className="input" type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} /></Field><Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field><Field label="모델"><input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="비우면 기본 codex" /></Field><Field label="제한시간"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field></div><div className="row"><button className="btn primary" data-tour="slots-create" onClick={gen}>재료로 글 후보 만들기</button><button className="btn" data-tour="slots-test" onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>1개 테스트 작성</button><button className="btn" onClick={() => smartQueue("현재 검색 10개 작성", { max: 10, q, template })}>현재 검색 10개 작성</button><button className="btn" onClick={() => smartQueue("전국 골고루 100개 작성", { max: 100, balanced: true })}>전국 골고루 100개 작성</button><label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label><label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => setImageGen(e.target.checked)} /> Codex 이미지 생성</label><Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field><Field label="대량 대기시간"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field></div><div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {domain.design_template_id ?? "local-guide"}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span>{exclusionLines.length > 0 && <span>제외 {exclusionLines.length}개</span>}</div><p className="muted small">추천 흐름: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞어 특정 지역 쏠림을 줄입니다.</p>{exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}</div><div className="row" data-tour="slots-filter"><select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select><select className="select" style={{ width: 150 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{options.templates.map((t) => <option key={t}>{t}</option>)}</select><input className="input" style={{ width: 320 }} placeholder="지역/키워드/슬롯 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />{["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}<span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span><button className="btn primary" disabled={!selected.size} onClick={() => queue(Array.from(selected))}>선택 글 작성</button><button className="btn danger" disabled={!selected.size} onClick={delSelected}>삭제</button></div><p className="muted small">슬롯은 전체 후보에서 서버 검색합니다. “현재 검색 10개 작성”은 검색어/유형 조건 안에서 주제가 겹치지 않게 선별합니다.</p>{slotError && <p className="small" style={{ color: "var(--danger)" }}>슬롯 검색 오류: {slotError}</p>}<div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>상태</th></tr></thead><tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><Status status={s.status} /></td></tr>)}</tbody></table></div></div>;
+  return (
+    <div className="grid">
+      <div className="card card-pad grid slot-panel" data-tour="slots-generator">
+        <div>
+          <p className="eyebrow">1단계</p>
+          <h2>글 후보 만들기</h2>
+          <p className="muted small">지역·키워드·의도 축을 조합해 작성 대기 목록(planned 슬롯)을 만듭니다. LLM을 호출하지 않습니다.</p>
+        </div>
+        <div className="row slot-panel-actions">
+          <Field label="템플릿당 최대">
+            <input className="input" type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} style={{ width: 120 }} />
+          </Field>
+          <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy} onClick={gen}>{busy ? "만드는 중..." : "재료로 글 후보 만들기"}</button>
+        </div>
+        <p className="muted small">조합 재료는 기획 탭 축·글유형 설정·제외어를 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
+        {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
+      </div>
+
+      <div className="card card-pad grid slot-panel" data-tour="slots-writer">
+        <div>
+          <p className="eyebrow">2단계</p>
+          <h2>글 작성</h2>
+          <p className="muted small">후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.)</p>
+        </div>
+        <div className="grid grid-4">
+          <Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field>
+          <Field label="모델"><input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="비우면 기본 codex" /></Field>
+          <Field label="제한시간(초)"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field>
+          <Field label="대량 대기시간(초)"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field>
+        </div>
+        <div className="row">
+          <button className="btn primary" data-tour="slots-test" disabled={queueBusy || busy} onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>{queueBusy ? "큐 등록 중..." : "1개 테스트 작성"}</button>
+          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue("현재 검색 10개 작성", { max: 10, q, template })}>현재 검색 10개 작성</button>
+          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue("전국 골고루 100개 작성", { max: 100, balanced: true })}>전국 골고루 100개 작성</button>
+        </div>
+        <div className="row">
+          <label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label>
+          <label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => setImageGen(e.target.checked)} /> Codex 이미지 생성</label>
+          <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
+        </div>
+        <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {domain.design_template_id ?? "local-guide"}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
+        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞습니다.</p>
+      </div>
+
+      <div className="card card-pad grid" data-tour="slots-list">
+        <div data-tour="slots-list-head">
+          <p className="eyebrow">후보 목록</p>
+          <h2>슬롯 검색·선택</h2>
+          <p className="muted small">아래 필터는 목록 표시와 「현재 검색 N개 작성」 선별에 쓰입니다.</p>
+        </div>
+        <div className="row" data-tour="slots-filter">
+          <select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select>
+          <select className="select" style={{ width: 150 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{options.templates.map((t) => <option key={t}>{t}</option>)}</select>
+          <input className="input" style={{ width: 320 }} placeholder="지역/키워드/슬롯 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />
+          {["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}
+          <span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span>
+          <button className="btn primary" disabled={!selected.size || queueBusy || busy} onClick={() => queue(Array.from(selected))}>{queueBusy ? "큐 등록 중..." : "선택 글 작성"}</button>
+          <button className="btn danger" disabled={!selected.size || busy || queueBusy} onClick={delSelected}>{busy ? "삭제 중..." : "삭제"}</button>
+        </div>
+        {slotError && <p className="small" style={{ color: "var(--danger)" }}>슬롯 검색 오류: {slotError}</p>}
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>상태</th></tr></thead>
+            <tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><Status status={s.status} /></td></tr>)}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; onRefresh: () => Promise<void> }) {
@@ -875,53 +1023,65 @@ function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; 
       <Link href="/jobs" className="btn">전체 작업 큐 열기</Link>
     </div>
     {filtered.length === 0 && <div className="card card-pad muted">아직 작업이 없습니다. 슬롯 탭에서 “1개 테스트 작성”부터 등록하세요.</div>}
-    <div className="grid">{filtered.map((job) => <DomainJobCard key={job.id} job={job} domain={domain} />)}</div>
+    <div className="grid">{filtered.map((job) => <JobCard key={job.id} job={job} designFallback={domain.design_template_id} onChanged={onRefresh} />)}</div>
   </div>;
 }
 
-function DomainJobCard({ job, domain }: { job: Job; domain: DomainConfig }) {
-  const total = jobTotal(job);
-  const ok = num(job.result_obj?.ok);
-  const fail = num(job.result_obj?.fail);
-  const done = ok + fail;
-  const percent = job.status === "done" || job.status === "failed" ? 100 : job.status === "running" ? Math.max(20, Math.min(90, Math.round((done / Math.max(total, 1)) * 100) || 35)) : 5;
-  const slotIds = Array.isArray(job.payload_obj?.slot_ids) ? job.payload_obj.slot_ids : [];
-  return <details className="card" open={job.status === "running" || job.status === "failed"}>
-    <summary className="spread" style={{ padding: 16, cursor: "pointer" }}>
-      <div className="row"><Status status={job.status} /><b>{job.kind}</b><span className="muted small">{jobLabel(job)}</span></div>
-      <span className="muted small">{formatDateTime(job.scheduled_at)}</span>
-    </summary>
-    <div className="card-pad grid" style={{ borderTop: "1px solid var(--line)" }}>
-      <div className="progress"><span style={{ width: `${percent}%` }} /></div>
-      <div className="grid grid-4"><Stat label="대상" value={total} /><Stat label="성공" value={ok} accent /><Stat label="실패" value={fail} /><Stat label="진행률" value={percent} /></div>
-      <div className="writer-hint"><b>작업 옵션</b><span>엔진 {String(job.payload_obj?.provider ?? "codex")}</span><span>모델 {String(job.payload_obj?.model || "기본")}</span><span>디자인 {String(job.payload_obj?.design_template_id ?? domain.design_template_id ?? "local-guide")}</span><span>웹자료 {job.payload_obj?.use_web_research === false ? "미사용" : "사용"}</span><span>이미지 {job.payload_obj?.enable_image_generation ? `생성 / ${String(job.payload_obj?.image_size || "1024x1024")}` : "미사용"}</span></div>
-      <p className="muted small">예약 {formatDateTime(job.scheduled_at)} · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)} · 대기 {String(job.payload_obj?.cooldown_sec ?? "-")}초 · 제한 {String(job.payload_obj?.timeout_sec ?? "-")}초</p>
-      {slotIds.length > 0 && <p className="muted small mono">슬롯 {slotIds.slice(0, 8).join(", ")}{slotIds.length > 8 ? ` 외 ${slotIds.length - 8}개` : ""}</p>}
-      {job.error && <p className="toast-error">{job.error}</p>}
-      {job.result_obj?.per_slot && <details><summary className="small muted">개별 결과 보기</summary><pre className="codebox small">{JSON.stringify(job.result_obj.per_slot, null, 2)}</pre></details>}
-      <details><summary className="small muted">원본 payload/result</summary><pre className="codebox small">{JSON.stringify({ payload: job.payload_obj, result: job.result_obj }, null, 2)}</pre></details>
-    </div>
-  </details>;
-}
-
 function Posts({ domain, posts, onRefresh }: { domain: DomainConfig; posts: PostSummary[]; onRefresh: () => Promise<void> }) {
-  const [selected, setSelected] = useState(new Set<string>()); const [q, setQ] = useState("");
-  const filtered = posts.filter((p) => !q || `${p.title} ${p.slug}`.toLowerCase().includes(q.toLowerCase()));
-  async function job(kind: "dedup" | "prune" | "indexing") { const path = kind === "indexing" ? "indexing" : kind; await api(`/domains/${encodeURIComponent(domain.domain)}/jobs/${path}`, { method: "POST", body: JSON.stringify(kind === "dedup" ? { threshold: 0.75 } : kind === "prune" ? { min_body_chars: 700, stale_noindex_days: 90 } : { max: 200 }) }); alert(`${kind} 작업 등록`); }
-  async function delSelected() { if (!confirm(`${selected.size}개 삭제?`)) return; for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/posts/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); }
+  const [selected, setSelected] = useState(new Set<string>()); const [q, setQ] = useState(""); const [busy, setBusy] = useState(false);
+  const jobFilter = useSearchParams().get("job"); // 작업 큐에서 "이 작업 글 보기"로 넘어오면 그 작업 글만 본다.
+  // 작업 필터가 있으면 (스냅샷이 아니라) 서버에서 그 작업 글을 직접 조회한다.
+  const [jobPosts, setJobPosts] = useState<PostSummary[] | null>(null);
+  useEffect(() => {
+    if (!jobFilter) { setJobPosts(null); return; }
+    let cancelled = false;
+    listPosts(domain.domain, { jobId: jobFilter, limit: 500 })
+      .then((res) => { if (!cancelled) setJobPosts(res.items); })
+      .catch(() => { if (!cancelled) setJobPosts([]); });
+    return () => { cancelled = true; };
+  }, [jobFilter, domain.domain]);
+  const scoped = jobFilter ? (jobPosts ?? []) : posts;
+  const filtered = scoped.filter((p) => !q || `${p.title} ${p.slug}`.toLowerCase().includes(q.toLowerCase()));
+  // 검색어/목록/작업필터가 바뀌면 화면에서 사라진 선택은 정리한다(안 보이는 글을 export/삭제하는 사고 방지).
+  useEffect(() => {
+    setSelected((prev) => {
+      if (!prev.size) return prev;
+      const visible = new Set(filtered.map((p) => p.id));
+      const next = new Set<string>();
+      for (const id of prev) if (visible.has(id)) next.add(id);
+      return next.size === prev.size ? prev : next;
+    });
+  }, [q, posts, jobFilter]);
+  async function job(kind: "dedup" | "prune" | "indexing") { if (busy) return; setBusy(true); try { const path = kind === "indexing" ? "indexing" : kind; await api(`/domains/${encodeURIComponent(domain.domain)}/jobs/${path}`, { method: "POST", body: JSON.stringify(kind === "dedup" ? { threshold: 0.75 } : kind === "prune" ? { min_body_chars: 700, stale_noindex_days: 90 } : { max: 200 }) }); alert(`${kind} 작업 등록`); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
+  async function delSelected() { if (busy || !confirm(`${selected.size}개 삭제?`)) return; setBusy(true); try { for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/posts/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
   async function exportSelected(format: "markdown" | "html") {
-    const blob = await downloadPostExport(domain.domain, { post_ids: Array.from(selected), format });
-    downloadBlob(blob, `${domain.domain}-posts-${format}.zip`);
+    if (busy) return; setBusy(true);
+    try {
+      const blob = await downloadPostExport(domain.domain, { post_ids: Array.from(selected), format });
+      downloadBlob(blob, `${domain.domain}-posts-${format}.zip`);
+    } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); }
   }
-  return <div className="grid" data-tour="posts-review"><div className="row" data-tour="posts-actions"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span><button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length}>색인 요청</button><button className="btn" onClick={() => exportSelected("markdown")} disabled={!selected.size}>Markdown Export</button><button className="btn primary" onClick={() => exportSelected("html")} disabled={!selected.size}>HTML Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size}>삭제</button></div><div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>provider</th><th>$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.provider}</td><td>{p.cost_usd ? p.cost_usd.toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
+  const postCost = (p: PostSummary) => (p.cost_usd || 0) + (p.image_cost_usd || 0);
+  const aggImgs = scoped.reduce((sum, p) => sum + (p.image_count || 0), 0);
+  const aggCost = scoped.reduce((sum, p) => sum + postCost(p), 0);
+  return <div className="grid" data-tour="posts-review">
+    {jobFilter && <div className="card card-pad spread">
+      <div><b>작업 필터</b> <span className="mono small">{jobFilter}</span>
+        <p className="muted small">{scoped.length}개 글 · 이미지 {aggImgs}장(평균 {scoped.length ? (aggImgs / scoped.length).toFixed(1) : "0"}장) · 비용 ${aggCost.toFixed(3)} (평균 ${scoped.length ? (aggCost / scoped.length).toFixed(3) : "0"}/건, 텍스트+이미지)</p>
+      </div>
+      <Link className="btn" href={`/t/${encodeURIComponent(domain.domain)}/posts`}>필터 해제</Link>
+    </div>}
+    <div className="row" data-tour="posts-actions"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span>{busy && <span className="muted small">처리 중...</span>}<button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2 || busy}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length || busy}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length || busy}>색인 요청</button><button className="btn" onClick={() => exportSelected("markdown")} disabled={!selected.size || busy}>Markdown Export</button><button className="btn primary" onClick={() => exportSelected("html")} disabled={!selected.size || busy}>HTML Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size || busy}>삭제</button></div>
+    {scoped.length > 0 && aggCost === 0 && <p className="muted small">비용($)은 종량 API 사용 시에만 계측됩니다. 이미지는 OpenAI 이미지 API + <code>SEO_IMAGE_PRICE_USD</code>(장당 단가) 설정, 텍스트는 API LLM이 필요합니다. Codex/구독 경로는 $0으로 표시됩니다.</p>}
+    <div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>이미지</th><th>provider</th><th>비용$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.image_count ?? 0}</td><td>{p.provider}</td><td>{postCost(p) ? postCost(p).toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
 }
 
 function Settings({ domain, options, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
-  const [form, setForm] = useState({ display_name: domain.display_name, vertical: domain.vertical, theme: domain.theme, brand_color: domain.brand_color ?? "#2563eb", daily_limit: domain.daily_limit }); const [sa, setSa] = useState(""); const [url, setUrl] = useState(options.indexing.url_template);
+  const [form, setForm] = useState({ display_name: domain.display_name, vertical: domain.vertical, theme: domain.theme, brand_color: domain.brand_color ?? "#2563eb", daily_limit: domain.daily_limit });
+  const [delBusy, setDelBusy] = useState(false);
   const previewTheme = getDesignTheme(domain.design_template_id, form.brand_color);
-  async function saveIndexing() { await api("/settings/indexing", { method: "PUT", body: JSON.stringify({ sa_json: sa, url_template: url }) }); setSa(""); await onRefresh(); alert("색인 설정 저장됨"); }
-  async function deleteDomain() { if (!confirm("정말 삭제할까요? 모든 데이터가 삭제됩니다.")) return; await api(`/domains/${encodeURIComponent(domain.domain)}`, { method: "DELETE" }); location.href = "/"; }
-  return <div className="grid grid-2"><div className="card card-pad grid"><h2>메타 정보</h2><Field label="표시 이름"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field><div className="grid grid-2"><Field label="업종"><input className="input" value={form.vertical} onChange={(e) => setForm({ ...form, vertical: e.target.value })} /></Field><Field label="테마"><select className="select" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })}>{options.themes.map((t) => <option key={t}>{t}</option>)}</select></Field></div><div className="grid grid-2"><Field label="브랜드 컬러"><div className="row"><input className="input-color" type="color" value={form.brand_color} onChange={(e) => setForm({ ...form, brand_color: e.target.value })} /><code className="mono small">{form.brand_color}</code></div></Field><Field label="일일 한도"><input className="input" type="number" value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Number(e.target.value) })} /></Field></div><div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}><div className="preview-top"><b>브랜드 컬러 미리보기</b><span className="preview-cta">CTA</span></div><div className="preview-bottom-cta"><b>하단 CTA 영역</b><button type="button" className="btn primary">버튼</button></div></div><p className="muted small">미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요.</p><button className="btn primary" onClick={() => onSave(form)}>저장</button></div><div className="card card-pad grid"><h2>Google 색인 설정</h2><p className="muted small">현재 키 상태: {options.indexing.has_key ? "설정됨" : "미설정"}</p><Field label="서비스계정 JSON"><textarea className="textarea mono" value={sa} onChange={(e) => setSa(e.target.value)} placeholder="이미 저장됨 — 교체하려면 새 JSON 붙여넣기" /></Field><Field label="발행 URL 템플릿"><input className="input mono" value={url} onChange={(e) => setUrl(e.target.value)} /></Field><button className="btn" onClick={saveIndexing}>색인 설정 저장</button><hr /><button className="btn danger" onClick={deleteDomain}>도메인 삭제</button></div></div>;
+  async function deleteDomain() { if (delBusy || !confirm("정말 삭제할까요? 모든 데이터가 삭제됩니다.")) return; setDelBusy(true); try { await api(`/domains/${encodeURIComponent(domain.domain)}`, { method: "DELETE" }); location.href = "/"; } catch (err) { setDelBusy(false); alert(err instanceof Error ? err.message : String(err)); } }
+  return <div className="grid"><div className="card card-pad grid"><h2>메타 정보</h2><Field label="표시 이름"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field><div className="grid grid-2"><Field label="업종"><input className="input" value={form.vertical} onChange={(e) => setForm({ ...form, vertical: e.target.value })} /></Field><Field label="테마"><select className="select" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })}>{options.themes.map((t) => <option key={t}>{t}</option>)}</select></Field></div><div className="grid grid-2"><Field label="브랜드 컬러"><div className="row"><input className="input-color" type="color" value={form.brand_color} onChange={(e) => setForm({ ...form, brand_color: e.target.value })} /><code className="mono small">{form.brand_color}</code></div></Field><Field label="일일 한도 (0=무제한)"><input className="input" type="number" min={0} value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Math.max(0, Number(e.target.value) || 0) })} /></Field></div><div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}><div className="preview-top"><b>브랜드 컬러 미리보기</b><span className="preview-cta">CTA</span></div><div className="preview-bottom-cta"><b>하단 CTA 영역</b><button type="button" className="btn primary">버튼</button></div></div><p className="muted small">미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요.</p><button className="btn primary" onClick={() => onSave(form)}>저장</button></div><div className="card card-pad grid"><h2>도메인 삭제</h2><p className="muted small">이 도메인과 모든 슬롯·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다.</p><button className="btn danger" disabled={delBusy} onClick={deleteDomain}>{delBusy ? "삭제 중..." : "도메인 삭제"}</button></div></div>;
 }
 
 function DesignPreview({ blueprint, designId, brandColor, brand, title, summary }: { blueprint: typeof DESIGN_BLUEPRINTS[string]; designId: string; brandColor?: string | null; brand: string; title: string; summary: string }) {
@@ -964,7 +1124,6 @@ function Stat({ label, value, accent }: { label: string; value: number; accent?:
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="label">{label}</span>{children}</label>; }
 function Status({ status }: { status: string }) { const cls = status === "published" || status === "done" ? "success" : status === "failed" ? "danger" : status === "running" || status === "in_progress" ? "info" : status === "planned" || status === "queued" ? "warn" : ""; return <span className={`badge ${cls}`}>{status}</span>; }
 function typeLabel(type: string): string { return ACADEMY_TYPE_COPY[type]?.label ?? type; }
-function num(value: unknown): number { const n = Number(value); return Number.isFinite(n) ? n : 0; }
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -972,17 +1131,6 @@ function downloadBlob(blob: Blob, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-function jobTotal(job: Job): number {
-  if (Array.isArray(job.payload_obj?.slot_ids)) return job.payload_obj.slot_ids.length;
-  return num(job.result_obj?.total_posts ?? job.result_obj?.total ?? job.payload_obj?.max) || 1;
-}
-function jobLabel(job: Job): string {
-  if (job.kind === "generate") return `${jobTotal(job)}개 글 작성`;
-  if (job.kind === "dedup") return "중복 검사";
-  if (job.kind === "prune") return "품질 가지치기";
-  if (job.kind === "indexing") return "Google 색인 요청";
-  return job.kind;
 }
 function parseLines(text: string) { return Array.from(new Set(text.split(/[\n,]/).map((v) => v.trim()).filter(Boolean))); }
 function parseCsv(text: string): AxisValue[] { return text.split(/\n/).map((line) => line.trim()).filter(Boolean).map((line) => { const [value, weight, sv, kd] = line.split(",").map((x) => x.trim()); return { value, weight: Number(weight || 3), monthly_search_volume: sv ? Number(sv) : null, competition_kd: kd ? Number(kd) : null }; }).filter((v) => v.value); }

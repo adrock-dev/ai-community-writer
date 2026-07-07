@@ -18,7 +18,10 @@
 .post-title { font-size: 32px; font-weight: 900; line-height: 1.35; margin: 0 0 28px; }
 .post-body h2 { font-size: 25px; font-weight: 800; margin: 48px 0 16px; padding-bottom: 10px; border-bottom: 3px solid var(--accent); }
 .post-body h2.references-title { font-size: 19px; color: #52525b; border-bottom-width: 1px; }
-.post-body h3 { font-size: 20px; margin: 30px 0 12px; }
+.post-body h3 { font-size: 21px; font-weight: 800; margin: 36px 0 14px; }
+.post-body .academy-card { margin: 30px 0; padding: 6px 24px 24px; border: 1px solid #e5e7eb; border-radius: 16px; background: #fbfbfd; }
+.post-body .academy-card > h3 { margin: 18px 0 14px; padding-left: 12px; border-left: 4px solid var(--accent); }
+.post-body .academy-card figure.post-image { margin: 18px 0 8px; }
 .post-body p { margin: 22px 0; }
 .post-body a { color: var(--accent); text-decoration: underline; word-break: break-all; }
 .post-body blockquote { margin: 28px 0; padding: 16px 20px; border-left: 5px solid var(--accent); background: #fafafa; border-radius: 0 12px 12px 0; color: #444; }

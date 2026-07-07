@@ -150,17 +150,25 @@ function toPreviewBlocks(html: string): string {
   if (!blocks?.length) return html ? `<div class="preview-block"><p>${html}</p></div>` : "";
   const groups: string[] = [];
   let current: string[] = [];
+  let card: string[] | null = null;
   const flush = () => {
     if (!current.length) return;
     groups.push(`<section class="preview-block">${current.join("\n")}</section>`);
     current = [];
   };
+  const flushCard = () => {
+    if (!card || !card.length) { card = null; return; }
+    groups.push(`<section class="preview-block academy-card">${card.join("\n")}</section>`);
+    card = null;
+  };
   for (const block of blocks) {
+    if (block.startsWith("<h3")) { flush(); flushCard(); card = [block]; continue; } // 학원 카드 시작
+    if (block.startsWith("<h2")) { flush(); flushCard(); current.push(block); continue; } // 섹션 시작 → 카드 종료
+    if (card) { card.push(block); continue; } // 학원 카드 안: 이미지·설명·관련후기 모두 포함
     if (block.startsWith("<figure")) { flush(); groups.push(block); continue; }
-    if (block.startsWith("<h2") && current.length) flush();
     current.push(block);
   }
-  flush();
+  flush(); flushCard();
   return groups.join("\n");
 }
 function isListLine(line: string): boolean { return /^[-*]\s+/.test(line) || /^\d+[.)]\s+/.test(line) || /^[✅✔✓]\s*/.test(line); }

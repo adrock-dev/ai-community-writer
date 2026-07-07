@@ -38,7 +38,8 @@ export class WorkerService {
       if (!job) { await sleep(interval); continue; }
       try {
         const result = await this.process(job);
-        this.db.completeJob(job.id, true, result);
+        if (this.db.isJobCancelRequested(job.id)) this.db.completeJob(job.id, false, result, "취소됨(작업자 요청)");
+        else this.db.completeJob(job.id, true, result);
       } catch (error: any) {
         this.db.completeJob(job.id, false, undefined, error?.message || String(error));
       }
@@ -47,21 +48,37 @@ export class WorkerService {
 
   async process(job: Row): Promise<Row> {
     const payload = job.payload_obj || safeJson(job.payload, {});
-    if (job.kind === "generate") return this.processGenerate(job.domain, payload);
+    if (job.kind === "generate") return this.processGenerate(job.domain, payload, job.id);
     if (job.kind === "dedup") return this.processDedup(job.domain, payload);
     if (job.kind === "prune") return this.processPrune(job.domain, payload);
     if (job.kind === "indexing") return this.processIndexing(job.domain, payload);
     throw new Error(`unknown job kind: ${job.kind}`);
   }
 
-  private async processGenerate(domain: string, payload: Row): Promise<Row> {
+  private async processGenerate(domain: string, payload: Row, jobId?: string): Promise<Row> {
     const domainMeta = this.db.getDomain(domain) || {};
     const designTemplateId = payload.design_template_id || domainMeta.design_template_id || "local-guide";
     const slotIds = Array.isArray(payload.slot_ids) ? payload.slot_ids : [];
     const exclusionTerms = parseExclusionTerms(domainMeta.excluded_keywords);
+    // 일일 한도: 0(또는 미설정)이면 무제한. N>0이면 오늘 발행분 + 이번 실행 생성분이 N에 도달하면 나머지 슬롯은 손대지 않고 다음으로 미룬다.
+    const dailyLimit = Math.max(0, Number(domainMeta.daily_limit ?? 0) || 0);
+    const alreadyToday = dailyLimit > 0 ? this.db.countPostsToday(domain) : 0;
+    let producedThisRun = 0;
     let ok = 0, fail = 0, skipped = 0;
     const per_slot: Row[] = [];
     for (const [index, sid] of slotIds.entries()) {
+      if (jobId && this.db.isJobCancelRequested(jobId)) {
+        const remaining = slotIds.length - index;
+        skipped += remaining;
+        per_slot.push({ ok: false, skipped: true, error: `취소됨(작업자 요청) — ${remaining} slot(s) skipped` });
+        break;
+      }
+      if (dailyLimit > 0 && alreadyToday + producedThisRun >= dailyLimit) {
+        const remaining = slotIds.length - index;
+        skipped += remaining;
+        per_slot.push({ ok: false, skipped: true, error: `daily limit reached (${dailyLimit}/day) — ${remaining} slot(s) deferred` });
+        break;
+      }
       const slot = this.db.getSlot(sid);
       if (!slot || slot.domain !== domain) { fail++; per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
       const slotMatches = findSlotExclusionTerms(slot, exclusionTerms);
@@ -73,7 +90,13 @@ export class WorkerService {
       }
       this.db.updateSlotStatus(sid, "in_progress");
       try {
-        const facts = this.buildFacts(domain, slot);
+        const genEnabled = Boolean(payload.enable_image_generation);
+        // 학원 중심 타입(T01 BEST 비교 / T14 단독 소개 / T11 시험장 소개)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
+        // 그 외 타입은 학원 사진 최소화(1장) + 내용 기반 생성으로 총 3장.
+        const academyImageType = ["T01", "T14", "T11"].includes(String(slot.template_id || ""));
+        const facts = academyImageType
+          ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 })
+          : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 });
         const factsMatches = findMatchedExclusionTerms(facts.text, exclusionTerms);
         if (factsMatches.length) {
           const message = `excluded by domain rule in facts: ${factsMatches.join(", ")}`;
@@ -81,17 +104,15 @@ export class WorkerService {
           skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
-        const images = { ...this.imagesForSlot(domain, slot), ...facts.images };
-        const generatedImages = await this.imageGeneration.generateForSlot(domain, slot, facts.text, {
-          enabled: Boolean(payload.enable_image_generation),
-          required: Boolean(payload.image_generation_required),
-          count: clampInt(payload.image_count, 1, 1, 3),
-          size: String(payload.image_size || "1024x1024"),
-          model: String(payload.image_model || process.env.CODEX_IMAGEGEN_MODEL || "").trim() || undefined,
-          provider: String(payload.image_provider || process.env.CODEX_IMAGEGEN_PROVIDER || "private-codex").trim() || undefined,
-        });
-        Object.assign(images, generatedImages.images);
-        const factsText = appendGeneratedImageFacts(facts.text, generatedImages.images, generatedImages.warnings);
+        const IMAGE_TARGET = 3;
+        // 생성 슬롯을 미리 예약만 하고(placeholder), 실제 이미지는 글 작성 후 배치된 것만 내용 기반으로 만든다.
+        // 학원 중심 타입이고 학원 사진이 있으면 생성 없이 학원 사진 위주. 학원 사진이 없거나 그 외 타입이면 생성으로 채운다.
+        const plannedGenKeys = !genEnabled || (academyImageType && Object.keys(facts.images).length > 0)
+          ? []
+          : Array.from({ length: IMAGE_TARGET }, (_, i) => `generated_${i + 1}`);
+        const images: Record<string, string> = { ...facts.images };
+        for (const key of plannedGenKeys) images[key] = "";
+        const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
         const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         const result = await runLlm(prompt, llmOpts);
@@ -130,16 +151,40 @@ export class WorkerService {
         }
         const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, candidateCountFromFacts(factsText));
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
+        // 내용 기반 이미지 생성: LLM이 실제 배치한 생성 슬롯만, 그 슬롯이 놓인 섹션 내용에 맞춰 만든다.
+        const imageWarnings: string[] = [];
+        if (genEnabled) {
+          const usedKeys = new Set(Array.from(markdown.matchAll(/\[IMAGE:([A-Za-z0-9_-]+)\]/g)).map((m) => m[1]!));
+          let genIndex = 0;
+          for (const key of plannedGenKeys) {
+            if (!usedKeys.has(key)) { delete images[key]; continue; }
+            const res = await this.imageGeneration.generateContextual(domain, slot, key, nearestHeadingForImage(markdown, key), {
+              size: String(payload.image_size || "1024x1024"),
+              provider: String(payload.image_provider || "").trim() || undefined,
+              required: Boolean(payload.image_generation_required),
+              index: genIndex++,
+            });
+            if (res.url) images[key] = res.url;
+            else { markdown = stripImageTag(markdown, key); delete images[key]; if (res.warning) imageWarnings.push(res.warning); }
+          }
+        }
+        // 배치되지 않아 빈 채로 남은 생성 슬롯 placeholder 제거
+        for (const key of Object.keys(images)) if (!images[key]) delete images[key];
         const slug = this.db.uniqueSlug(domain, slugify(title), sid);
+        // 이미지 계측: 실제 생성한(=비용이 드는) 이미지 장수와 추정 비용을 기록한다.
+        // SEO_IMAGE_PRICE_USD(장당 단가)로 추정한다. Codex 구독 경로는 0, OpenAI API 경로면 실단가를 넣는다.
+        const generatedCount = Object.keys(images).filter((key) => key.startsWith("generated_")).length;
+        const imageCostUsd = generatedCount * Number(process.env.SEO_IMAGE_PRICE_USD || 0);
         this.db.insertPost({
           domain, slot_id: sid, slug, title, body_markdown: markdown,
           meta_description: metaDescription(markdown), images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId,
           provider: result.provider, model, session_id: sessionId, cost_usd: costUsd,
-          duration_sec: durationSec, input_tokens: inputTokens, output_tokens: outputTokens
+          duration_sec: durationSec, input_tokens: inputTokens, output_tokens: outputTokens,
+          job_id: jobId, image_count: generatedCount, image_cost_usd: imageCostUsd
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);
-        ok++; per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(generatedImages.images).length, image_warnings: generatedImages.warnings });
+        ok++; producedThisRun++; per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings });
       } catch (error: any) {
         const message = error?.message || String(error);
         this.db.updateSlotStatus(sid, "failed", message);
@@ -150,13 +195,16 @@ export class WorkerService {
     return { ok, fail, skipped, academy_type_filter: this.db.academyTypeFilter(domain), generation_gate_version: "adrock-domain-surface-v1", per_slot };
   }
 
-  private buildFacts(domain: string, slot: Row): GenerationFacts {
+  private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}): GenerationFacts {
     if (!slot.region) return { text: "", images: {} };
     const region = String(slot.region);
     const academies = this.pickAcademiesForRegion(domain, region, 5);
+    const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
+    const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
     const body = academies.map((a, i) => {
-      const imageKeys = firstImageKeys(a, i + 1, 2);
+      const remaining = Math.max(0, maxAcademyImages - Object.keys(images).length);
+      const imageKeys = remaining > 0 ? firstImageKeys(a, i + 1, Math.min(perAcademyImages, remaining)) : [];
       for (const imageKey of imageKeys) images[imageKey.key] = imageKey.url;
       const parts = [`[${i + 1}] ${a.name}`];
       for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["전화", "phone"], ["대표전화", "vphone"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"], ["지역 중심 기준 거리", "distance_km"]] as const) if (a[key]) parts.push(`${label}: ${key === "distance_km" ? `약 ${a[key]}km` : a[key]}`);
@@ -489,13 +537,36 @@ function clampInt(value: unknown, fallback: number, min: number, max: number): n
   return Math.max(min, Math.min(max, Number.isFinite(n) ? Math.trunc(n) : fallback));
 }
 
-function appendGeneratedImageFacts(facts: string, images: Record<string, string>, warnings: string[]): string {
-  const keys = Object.keys(images);
-  const imageText = keys.length
-    ? `생성 이미지 슬롯: ${keys.map((key) => `[IMAGE:${key}]`).join(", ")} / 글 흐름에 자연스럽게 1회 이상 배치한다.`
-    : "";
-  const warningText = warnings.length ? `이미지 생성 경고: ${warnings.join(" | ")} / 사용 가능한 생성 이미지가 없으면 기존 사진만 활용한다.` : "";
-  return [facts, imageText, warningText].filter(Boolean).join("\n\n");
+function appendPlannedImageFacts(facts: string, academyKeys: string[], genKeys: string[]): string {
+  const lines: string[] = [];
+  if (academyKeys.length) {
+    lines.push(`학원 사진 슬롯: ${academyKeys.map((key) => `[IMAGE:${key}]`).join(", ")} / 각 사진(academy_N)은 그 N번째 후보(학원/시험장)를 소개하는 카드 안에 배치한다. 특정 대상을 소개하지 않는 일반 문단에는 넣지 않는다.`);
+  }
+  if (genKeys.length) {
+    lines.push(`생성 이미지 슬롯: ${genKeys.map((key) => `[IMAGE:${key}]`).join(", ")} / 각 슬롯은 배치한 섹션 내용에 맞는 이미지로 생성된다. 서로 다른 섹션에 하나씩 배치한다.`);
+  }
+  lines.push("제공된 이미지 슬롯만 어울리는 위치에 배치하고, 없는 키나 임의 플레이스홀더는 만들지 않는다.");
+  return [facts, lines.join("\n")].filter(Boolean).join("\n\n");
+}
+
+// 이미지 태그가 놓인 위치 직전의 가장 가까운 제목(H1~H3)을 섹션 문맥으로 반환한다.
+function nearestHeadingForImage(md: string, key: string): string {
+  const idx = md.indexOf(`[IMAGE:${key}]`);
+  const before = idx >= 0 ? md.slice(0, idx) : md;
+  const headings = Array.from(before.matchAll(/^#{1,3}\s+(.+)$/gm));
+  return headings.length ? String(headings[headings.length - 1]![1] || "").trim() : "";
+}
+
+// 특정 이미지 슬롯 태그를 본문에서 제거한다(생성 실패 시).
+function stripImageTag(md: string, key: string): string {
+  return md
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== `[IMAGE:${key}]`)
+    .join("\n")
+    .split(`[IMAGE:${key}]`)
+    .join("")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function normalizeGeneratedMarkdown(summary: string, images: Record<string, string>): string {
@@ -677,8 +748,9 @@ ${facts || "없음"}
 - 제공된 학원 수와 관계없이 Markdown 표 1개를 반드시 포함한다. 후보가 1곳이면 주소/연락처/과정/추천 대상/상담 확인점을 담은 요약표로 작성한다.
 - 표는 정상 Markdown 표로 작성한다. 예: | 비교 항목 | 후보 A | 후보 B | 형태. 실제 후보가 있으면 표 안에도 실제 후보명을 넣는다.
 - 후보별 설명에는 가능한 경우 학원명, 주소, 대표전화(vphone 우선), 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다.
-- 이미지가 제공된 학원이 하나라도 있으면 해당 학원 설명 직후 [IMAGE:academy_1] 같은 실제 이미지 슬롯을 최소 2개, 가능하면 3~4개 배치한다. 이미지가 없으면 임의 이미지/플레이스홀더를 만들지 않는다.
-- 허용된 이미지 슬롯은 검증된 자료의 "사용 가능한 이미지 슬롯"에 있는 키만 사용한다.
+- 본문에는 제공된 이미지 슬롯만 사용한다. 학원/시험장 사진 슬롯([IMAGE:academy_*])은 각각 그 학원(또는 시험장)을 소개하는 카드 안에 배치한다(카드별 1장). 특정 대상을 소개하지 않는 일반 설명 문단이나 필기·앱처럼 학원과 무관한 글에는 넣지 않는다.
+- 생성 이미지 슬롯([IMAGE:generated_*])이 제공되면 서로 다른 섹션에 하나씩 배치한다. 학원 사진만 제공되면 생성 슬롯 없이 학원 사진만 배치한다.
+- 허용된 이미지 슬롯은 자료에 제시된 키만 사용한다. 없는 키나 임의 플레이스홀더는 만들지 않는다.
 - [IMAGE_SLOT: ...], [TABLE_SLOT: ...], [CTA_SLOT: ...], [QUOTE_SLOT: ...] 같은 임의 플레이스홀더는 절대 쓰지 말 것.
 - 체크리스트 섹션은 ✅ 불릿 목록으로 작성한다.
 - FAQ는 필수 아님. 필기시험/접수/준비물처럼 질문형 검색 의도일 때만 2~4개로 짧게 작성한다.
@@ -900,7 +972,7 @@ function stripPseudoSlots(md: string) {
 function ensureImageSlots(md: string, images: Record<string, string>) {
   const keys = Object.keys(images).sort((a, b) => a.localeCompare(b));
   if (!keys.length || /\[IMAGE:[A-Za-z0-9_-]+\]/.test(md)) return md;
-  const insertions = keys.slice(0, Math.min(4, keys.length)).map((key) => `[IMAGE:${key}]`);
+  const insertions = keys.slice(0, Math.min(3, keys.length)).map((key) => `[IMAGE:${key}]`);
   const blocks = md.split(/\n{2,}/);
   if (blocks.length <= 2) return `${md}\n\n${insertions.join("\n\n")}`.trim();
   blocks.splice(Math.min(3, blocks.length), 0, insertions[0]!);

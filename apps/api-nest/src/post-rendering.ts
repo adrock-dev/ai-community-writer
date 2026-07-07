@@ -3,7 +3,19 @@ import { DbService, safeJson } from "./db.service.js";
 type Row = Record<string, any>;
 
 export function renderMarkdown(markdown: string, images: Record<string, string> = {}): string {
-  return markdownBlocks(markdown).map((raw) => renderMarkdownBlock(raw, images)).filter(Boolean).join("\n");
+  // ### 학원명부터 다음 학원/섹션 전까지(이름·설명·이미지·관련후기)를 하나의 카드로 묶어 학원 경계를 명확히 한다.
+  const out: string[] = [];
+  let card: string[] | null = null;
+  const closeCard = () => { if (card && card.length) { out.push(`<section class="academy-card">${card.join("\n")}</section>`); card = null; } };
+  for (const raw of markdownBlocks(markdown)) {
+    const html = renderMarkdownBlock(raw, images);
+    if (!html) continue;
+    if (raw.startsWith("### ")) { closeCard(); card = [html]; continue; }
+    if (raw.startsWith("## ") || raw.startsWith("# ")) { closeCard(); out.push(html); continue; }
+    if (card) card.push(html); else out.push(html);
+  }
+  closeCard();
+  return out.join("\n");
 }
 
 export function stripPseudoSlotsForRender(markdown: string): string {

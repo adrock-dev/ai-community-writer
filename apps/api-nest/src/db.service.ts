@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS domains (
   content_brief TEXT,
   excluded_keywords TEXT,
   academy_type_filter TEXT,
-  daily_limit INTEGER NOT NULL DEFAULT 30,
+  daily_limit INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE TABLE IF NOT EXISTS axes (
@@ -81,6 +81,9 @@ CREATE TABLE IF NOT EXISTS posts (
   duration_sec REAL,
   input_tokens INTEGER DEFAULT 0,
   output_tokens INTEGER DEFAULT 0,
+  job_id TEXT,
+  image_count INTEGER DEFAULT 0,
+  image_cost_usd REAL DEFAULT 0,
   generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (domain, slug),
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE,
@@ -92,6 +95,8 @@ CREATE TABLE IF NOT EXISTS jobs (
   kind TEXT NOT NULL CHECK (kind IN ('generate','dedup','indexing','prune')),
   payload TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','done','failed')),
+  paused INTEGER NOT NULL DEFAULT 0,
+  cancel_requested INTEGER NOT NULL DEFAULT 0,
   scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   started_at TEXT,
   finished_at TEXT,
@@ -187,7 +192,7 @@ export class DbService implements OnModuleInit {
       content_brief TEXT,
       excluded_keywords TEXT,
       academy_type_filter TEXT,
-      daily_limit INTEGER NOT NULL DEFAULT 30,
+      daily_limit INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
   }
@@ -212,7 +217,7 @@ export class DbService implements OnModuleInit {
             ${select("brand_color", "'#0066ff'")},
             ${select("logo_url", "NULL")},
             ${select("templates_enabled", `'${JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)}'`)},
-            ${select("daily_limit", "30")},
+            ${select("daily_limit", "0")},
             ${select("created_at", "CURRENT_TIMESTAMP")},
             ${select("design_template_id", "'local-guide'")},
             ${select("custom_design_templates", "NULL")},
@@ -239,6 +244,12 @@ export class DbService implements OnModuleInit {
        WHERE vertical='driving' AND templates_enabled IN ('["T01","T03","T05","T07"]', '["T01","T03","T04","T05","T06","T07"]')`, [JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)]);
     const postCols = new Set(this.all("PRAGMA table_info(posts)").map((r) => r.name));
     if (!postCols.has("images")) this.db.exec("ALTER TABLE posts ADD COLUMN images TEXT");
+    if (!postCols.has("job_id")) this.db.exec("ALTER TABLE posts ADD COLUMN job_id TEXT");
+    if (!postCols.has("image_count")) this.db.exec("ALTER TABLE posts ADD COLUMN image_count INTEGER DEFAULT 0");
+    if (!postCols.has("image_cost_usd")) this.db.exec("ALTER TABLE posts ADD COLUMN image_cost_usd REAL DEFAULT 0");
+    const jobCols = new Set(this.all("PRAGMA table_info(jobs)").map((r) => r.name));
+    if (!jobCols.has("paused")) this.db.exec("ALTER TABLE jobs ADD COLUMN paused INTEGER NOT NULL DEFAULT 0");
+    if (!jobCols.has("cancel_requested")) this.db.exec("ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0");
     if (!postCols.has("design_template_id")) {
       this.db.exec("ALTER TABLE posts ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
       this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM domains t WHERE t.domain = posts.domain), 'local-guide')");
@@ -300,7 +311,7 @@ export class DbService implements OnModuleInit {
   }
   createDomain(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number }): void {
     this.run(`INSERT INTO domains (domain, display_name, vertical, theme, brand_color, daily_limit) VALUES (?, ?, ?, ?, ?, ?)`,
-      [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 30]);
+      [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0]);
   }
   updateDomain(domain: string, fields: Row): void {
     const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "custom_design_templates", "content_brief", "excluded_keywords", "academy_type_filter"]);
@@ -415,16 +426,22 @@ export class DbService implements OnModuleInit {
   }
   deleteSlot(domain: string, slotId: string): number { return this.run("DELETE FROM slots WHERE slot_id=? AND domain=?", [slotId, domain]).changes ?? 0; }
 
-  listPosts(domain: string, opts: { status?: string; limit?: number } = {}): Row[] {
-    let sql = `SELECT id, domain, slot_id, slug, title, meta_description, status, design_template_id, provider, model, cost_usd, duration_sec, generated_at, length(body_markdown) AS body_chars FROM posts WHERE domain=?`;
+  listPosts(domain: string, opts: { status?: string; limit?: number; jobId?: string } = {}): Row[] {
+    let sql = `SELECT id, domain, slot_id, slug, title, meta_description, status, design_template_id, provider, model, cost_usd, duration_sec, generated_at, job_id, image_count, image_cost_usd, length(body_markdown) AS body_chars FROM posts WHERE domain=?`;
     const args: any[] = [domain];
     if (opts.status) { sql += " AND status=?"; args.push(opts.status); }
+    if (opts.jobId) { sql += " AND job_id=?"; args.push(opts.jobId); }
     sql += " ORDER BY generated_at DESC LIMIT ?"; args.push(opts.limit ?? 200);
     return this.all(sql, args);
   }
   getPost(postId: string): Row | undefined { return this.get("SELECT * FROM posts WHERE id=?", [postId]); }
   getPostBySlug(domain: string, slug: string, status?: string): Row | undefined {
     return this.get(`SELECT * FROM posts WHERE domain=? AND slug=?${status ? " AND status=?" : ""}`, status ? [domain, slug, status] : [domain, slug]);
+  }
+  // 오늘(로컬 기준) 생성돼 살아있는(삭제 안 된) 글 수 — 일일 한도 집행에 사용.
+  countPostsToday(domain: string): number {
+    const row = this.get("SELECT COUNT(*) AS n FROM posts WHERE domain=? AND status!='deleted' AND date(generated_at, 'localtime')=date('now', 'localtime')", [domain]);
+    return Number(row?.n ?? 0);
   }
   uniqueSlug(domain: string, base: string, slotId?: string | null): string {
     if (slotId) {
@@ -440,10 +457,10 @@ export class DbService implements OnModuleInit {
   }
   insertPost(input: Row): string {
     const id = randomUUID();
-    this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, generated_at=CURRENT_TIMESTAMP`,
-      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0]);
+    this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens, job_id, image_count, image_cost_usd)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, job_id=excluded.job_id, image_count=excluded.image_count, image_cost_usd=excluded.image_cost_usd, generated_at=CURRENT_TIMESTAMP`,
+      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0, input.job_id ?? null, input.image_count ?? 0, input.image_cost_usd ?? 0]);
     return id;
   }
   deletePost(postId: string): void { this.run("DELETE FROM posts WHERE id=?", [postId]); }
@@ -576,7 +593,7 @@ export class DbService implements OnModuleInit {
   claimNextJob(): Row | undefined {
     return this.transaction(() => {
       this.failStaleRunningJobs();
-      const row = this.get("SELECT * FROM jobs WHERE status='queued' ORDER BY scheduled_at LIMIT 1");
+      const row = this.get("SELECT * FROM jobs WHERE status='queued' AND paused=0 ORDER BY scheduled_at LIMIT 1");
       if (!row) return undefined;
       const now = nowSql();
       this.run("UPDATE jobs SET status='running', started_at=? WHERE id=?", [now, row.id]);
@@ -592,6 +609,37 @@ export class DbService implements OnModuleInit {
   }
   completeJob(jobId: string, ok: boolean, result?: Row, error?: string): void {
     this.run("UPDATE jobs SET status=?, finished_at=?, result=?, error=? WHERE id=?", [ok ? "done" : "failed", nowSql(), result ? JSON.stringify(result) : null, error ?? null, jobId]);
+  }
+  // 작업 큐 제어 —
+  isJobCancelRequested(jobId: string): boolean {
+    return Number(this.get("SELECT cancel_requested FROM jobs WHERE id=?", [jobId])?.cancel_requested ?? 0) === 1;
+  }
+  cancelJob(jobId: string): { ok: boolean; state: string } {
+    const row = this.get("SELECT status FROM jobs WHERE id=?", [jobId]);
+    if (!row) return { ok: false, state: "not_found" };
+    if (row.status === "queued") {
+      this.run("UPDATE jobs SET status='failed', finished_at=?, error='취소됨(작업자 요청)' WHERE id=? AND status='queued'", [nowSql(), jobId]);
+      return { ok: true, state: "cancelled" };
+    }
+    if (row.status === "running") {
+      // 실행 중은 슬롯 경계에서 협조적으로 중단한다(현재 글은 마치고 멈춤).
+      this.run("UPDATE jobs SET cancel_requested=1 WHERE id=?", [jobId]);
+      return { ok: true, state: "cancel_requested" };
+    }
+    return { ok: false, state: row.status };
+  }
+  pauseJob(jobId: string): boolean {
+    return (this.run("UPDATE jobs SET paused=1 WHERE id=? AND status='queued'", [jobId]).changes ?? 0) > 0;
+  }
+  resumeJob(jobId: string): boolean {
+    return (this.run("UPDATE jobs SET paused=0 WHERE id=? AND status='queued'", [jobId]).changes ?? 0) > 0;
+  }
+  prioritizeJob(jobId: string): boolean {
+    // 대기 중 가장 이른 시각보다 1초 앞당겨 다음 claim에서 먼저 집히게 한다.
+    return (this.run(
+      "UPDATE jobs SET paused=0, scheduled_at=datetime((SELECT MIN(scheduled_at) FROM jobs WHERE status='queued'), '-1 seconds') WHERE id=? AND status='queued'",
+      [jobId],
+    ).changes ?? 0) > 0;
   }
   listJobs(opts: { domain?: string; status?: string; limit?: number } = {}): Row[] {
     let sql = "SELECT * FROM jobs WHERE 1=1"; const args: any[] = [];

@@ -27,6 +27,17 @@ export const getRuntimeApis = () => api<RuntimeApis>("/runtime/apis");
 export const listDomains = () => api<{ count: number; items: import("./types").DomainConfig[] }>("/domains");
 export const getDomainDetail = (domain: string, include = "slots,posts,academies,jobs") =>
   api<DomainDetailPayload>(`/domains/${encodeURIComponent(domain)}?include=${include}&limit=500`);
+export const cancelJob = (id: string) => api<{ ok: boolean; state?: string }>(`/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+export const pauseJob = (id: string) => api<{ ok: boolean }>(`/jobs/${encodeURIComponent(id)}/pause`, { method: "POST" });
+export const resumeJob = (id: string) => api<{ ok: boolean }>(`/jobs/${encodeURIComponent(id)}/resume`, { method: "POST" });
+export const prioritizeJob = (id: string) => api<{ ok: boolean }>(`/jobs/${encodeURIComponent(id)}/prioritize`, { method: "POST" });
+export const listPosts = (domain: string, params: { status?: string; jobId?: string; limit?: number } = {}) => {
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  if (params.jobId) search.set("job_id", params.jobId);
+  search.set("limit", String(params.limit ?? 500));
+  return api<{ count: number; items: import("./types").PostSummary[] }>(`/domains/${encodeURIComponent(domain)}/posts?${search}`);
+};
 export const listSlots = (domain: string, params: { status?: string; template?: string; q?: string; limit?: number; offset?: number } = {}) => {
   const search = new URLSearchParams();
   if (params.status) search.set("status", params.status);
