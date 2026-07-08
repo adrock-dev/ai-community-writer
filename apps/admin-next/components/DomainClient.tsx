@@ -785,7 +785,7 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
             <span className={`badge ${previewModeClass}`}>{previewModeLabel}</span>
             <span className="badge info">{designNameOf(previewDesignId)}</span>
           </div>
-          {previewOpen && <DesignPreview blueprint={blueprint} designId={previewDesignId} brandColor={domain.brand_color} brand={publicBrandName(domain.display_name)} title={activeDesign.name} summary={activeDesign.summary} />}
+          {previewOpen && <DesignPreview blueprint={blueprint} designId={previewDesignId} designOption={activeDesign} brandColor={domain.brand_color} brand={publicBrandName(domain.display_name)} title={activeDesign.name} summary={activeDesign.summary} />}
         </div>
         <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
@@ -1233,24 +1233,35 @@ function Settings({ domain, options, onSave, onRefresh }: { domain: DomainConfig
   return <div className="grid"><div className="card card-pad grid"><h2>메타 정보</h2><Field label="표시 이름"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} /></Field><div className="grid grid-2"><Field label="업종"><input className="input" value={form.vertical} onChange={(e) => setForm({ ...form, vertical: e.target.value })} /></Field><Field label="테마"><select className="select" value={form.theme} onChange={(e) => setForm({ ...form, theme: e.target.value })}>{options.themes.map((t) => <option key={t}>{t}</option>)}</select></Field></div><div className="grid grid-2"><Field label="브랜드 컬러"><div className="row"><input className="input-color" type="color" value={form.brand_color} onChange={(e) => setForm({ ...form, brand_color: e.target.value })} /><code className="mono small">{form.brand_color}</code></div></Field><Field label="일일 한도 (0=무제한)"><input className="input" type="number" min={0} value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Math.max(0, Number(e.target.value) || 0) })} /></Field></div><div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}><div className="preview-top"><b>브랜드 컬러 미리보기</b><span className="preview-cta">CTA</span></div><div className="preview-bottom-cta"><b>하단 CTA 영역</b><button type="button" className="btn primary">버튼</button></div></div><p className="muted small">미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요.</p><button className="btn primary" onClick={() => onSave(form)}>저장</button></div><div className="card card-pad grid"><h2>도메인 삭제</h2><p className="muted small">이 도메인과 모든 슬롯·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다.</p><button className="btn danger" disabled={delBusy} onClick={deleteDomain}>{delBusy ? "삭제 중..." : "도메인 삭제"}</button></div></div>;
 }
 
-function DesignPreview({ blueprint, designId, brandColor, brand, title, summary }: { blueprint: typeof DESIGN_BLUEPRINTS[string]; designId: string; brandColor?: string | null; brand: string; title: string; summary: string }) {
-  const spec = PREVIEW_DESIGN_SPECS[designId] ?? PREVIEW_DESIGN_SPECS.editorial;
-  const theme = getDesignTheme(designId, brandColor);
-  const previewStyle = { ["--accent" as string]: theme.accent, ["--accent-soft" as string]: theme.soft, ["--primary" as string]: theme.accent, background: theme.pageBg };
+function DesignPreview({ blueprint, designId, designOption, brandColor, brand, title, summary }: { blueprint: typeof DESIGN_BLUEPRINTS[string]; designId: string; designOption?: DesignTemplateOption; brandColor?: string | null; brand: string; title: string; summary: string }) {
+  const isUploaded = designOption?.source_type === "uploaded_html";
+  const spec = isUploaded ? { topCta: "HTML 스타일", bottomCta: "문의하기" } : PREVIEW_DESIGN_SPECS[designId] ?? PREVIEW_DESIGN_SPECS.editorial;
+  const theme = previewThemeFor(designId, brandColor, designOption);
+  const previewStyle = {
+    ["--accent" as string]: theme.accent,
+    ["--accent-soft" as string]: theme.soft,
+    ["--primary" as string]: theme.accent,
+    ["--preset-radius" as string]: theme.radius,
+    background: theme.pageBg,
+  };
   return <aside className="preview-panel">
     <div className="preview-head"><div><b>디자인 미리보기</b><p className="muted small">{blueprint.label}</p></div><span className="badge info">{designId}</span></div>
-    <div className={`preview-phone design-${designId}`} style={previewStyle}>
-      <div className="preview-top"><div><b>{brand}</b><p>{blueprint.tone}</p></div><span className="preview-cta">{spec.topCta}</span></div>
-      <div className="preview-hero"><span>대표 영역</span></div>
-      <div className="preview-body">
-        <div className="preview-meta"><span>26.04.03</span><span>조회 0</span></div>
-        <h4>{blueprint.title}</h4>
-        <div className="preview-divider" />
-        <div className="row">{blueprint.chips.map((chip, index) => <span className="badge" key={`${chip}-${index}`}>{chip}</span>)}</div>
-        <p className="muted small">{blueprint.lead}</p>
-        {blueprint.blocks.map((block, index) => <PreviewBlock key={`${block.title}-${index}`} block={block} />)}
-        <section className="preview-bottom-cta"><b>{brand}에서 {spec.bottomCta}</b><button className="btn primary">{spec.bottomCta}</button></section>
-      </div>
+    <div className={`preview-phone design-${designId} ${isUploaded ? "uploaded-preview" : ""}`} style={previewStyle}>
+      {isUploaded
+        ? <UploadedPresetPreview brand={brand} blueprint={blueprint} />
+        : <>
+          <div className="preview-top"><div><b>{brand}</b><p>{blueprint.tone}</p></div><span className="preview-cta">{spec.topCta}</span></div>
+          <div className="preview-hero"><span>대표 영역</span></div>
+          <div className="preview-body">
+            <div className="preview-meta"><span>26.04.03</span><span>조회 0</span></div>
+            <h4>{blueprint.title}</h4>
+            <div className="preview-divider" />
+            <div className="row">{blueprint.chips.map((chip, index) => <span className="badge" key={`${chip}-${index}`}>{chip}</span>)}</div>
+            <p className="muted small">{blueprint.lead}</p>
+            {blueprint.blocks.map((block, index) => <PreviewBlock key={`${block.title}-${index}`} block={block} />)}
+            <section className="preview-bottom-cta"><b>{brand}에서 {spec.bottomCta}</b><button className="btn primary">{spec.bottomCta}</button></section>
+          </div>
+        </>}
     </div>
     <div className="card card-pad preview-spec">
       <h3>{title}</h3>
@@ -1259,6 +1270,77 @@ function DesignPreview({ blueprint, designId, brandColor, brand, title, summary 
       <div className="row">{blueprint.sections.map((s, index) => <span className="badge" key={`${s}-${index}`}>{s}</span>)}</div>
     </div>
   </aside>;
+}
+
+function UploadedPresetPreview({ brand, blueprint }: { brand: string; blueprint: typeof DESIGN_BLUEPRINTS[string] }) {
+  const sections = blueprint.sections.length ? blueprint.sections : ["체크포인트", "BEST 후보", "비교표", "FAQ"];
+  return <>
+    <header className="uploaded-hero">
+      <span className="uploaded-eyebrow">{brand} 가이드</span>
+      <h4>{blueprint.title}</h4>
+      <p>{blueprint.lead}</p>
+      <div className="uploaded-meta"><span>2026.04.03</span><span>5개 후보 비교</span><span>셔틀·비용·동선</span></div>
+    </header>
+    <div className="uploaded-wrap">
+      <div className="uploaded-notice"><b>확인 포인트</b> 실제 글에서는 슬롯/검증 자료의 지역과 학원 정보만 사용합니다.</div>
+      <nav className="uploaded-toc">
+        <b>목차</b>
+        <ol>{sections.slice(0, 5).map((section, index) => <li key={`${section}-${index}`}>{section.replace(/^\d+\)\s*/, "")}</li>)}</ol>
+      </nav>
+      <ul className="uploaded-checklist">
+        <li><b>거리/셔틀</b><span>생활권 기준으로 통학 부담 확인</span></li>
+        <li><b>비용/과정</b><span>총액과 추가 비용을 분리해서 비교</span></li>
+      </ul>
+      {[1, 2, 3].map((rank) => <section className="uploaded-school" key={rank}>
+        <div className="uploaded-school-head"><span className={rank === 1 ? "gold" : ""}>{rank}</span><div><b>후보 학원 {rank}</b><p>추천 태그와 핵심 장점을 한 줄로 표시</p></div></div>
+        <div className="uploaded-spec"><span>주소</span><b>검증된 주소</b><span>셔틀</span><b>상담 확인</b><span>추천</span><b>생활권·목적별 판단</b></div>
+        <div className="uploaded-procon"><p><b>좋아요</b> 접근성/과정 장점</p><p><b>확인하세요</b> 비용/일정/셔틀</p></div>
+      </section>)}
+      <div className="uploaded-table"><b>한눈에 보는 비교표</b><div><span>학원</span><span>동선</span><span>강점</span><span>A</span><span>가까움</span><span>셔틀</span><span>B</span><span>보통</span><span>자체 시험</span></div></div>
+      <section className="uploaded-cta"><b>내 조건에 맞는 후보를 다시 확인하세요</b><button type="button" className="btn primary">상담/문의</button></section>
+    </div>
+  </>;
+}
+
+function previewThemeFor(designId: string, brandColor: string | null | undefined, option?: DesignTemplateOption): { accent: string; soft: string; pageBg: string; radius: string } {
+  const base = getDesignTheme(designId, brandColor);
+  const cssTokens = option?.css_tokens && typeof option.css_tokens === "object" ? option.css_tokens : {};
+  const colors = Array.isArray(cssTokens.colors) ? cssTokens.colors.map((v) => String(v)).filter(isCssColorToken) : [];
+  const radii = Array.isArray(cssTokens.radii) ? cssTokens.radii.map((v) => String(v).trim()).filter(Boolean) : [];
+  const accent = pickAccentColor(colors, base.accent);
+  const soft = colors.find((color) => color !== accent && isSoftColor(color)) || `color-mix(in srgb, ${accent} 12%, white)`;
+  const pageBg = colors.find((color) => /^#(?:fff|ffffff)$/i.test(color)) || base.pageBg;
+  return { accent, soft, pageBg, radius: radii[0] || "24px" };
+}
+
+function isCssColorToken(value: string): boolean {
+  return /^#[0-9a-fA-F]{3,8}$/.test(value) || /^rgba?\([^)]+\)$/.test(value);
+}
+
+function pickAccentColor(colors: string[], fallback: string): string {
+  return colors.find((color) => isSaturatedHex(color)) || colors.find((color) => !isSoftColor(color)) || fallback;
+}
+
+function isSoftColor(color: string): boolean {
+  if (!color.startsWith("#")) return false;
+  const rgb = hexToRgb(color);
+  if (!rgb) return false;
+  return rgb.r > 225 && rgb.g > 225 && rgb.b > 225;
+}
+
+function isSaturatedHex(color: string): boolean {
+  const rgb = hexToRgb(color);
+  if (!rgb) return false;
+  const max = Math.max(rgb.r, rgb.g, rgb.b);
+  const min = Math.min(rgb.r, rgb.g, rgb.b);
+  return max - min > 55 && max > 120 && min < 230;
+}
+
+function hexToRgb(color: string): { r: number; g: number; b: number } | null {
+  const hex = color.replace("#", "");
+  const full = hex.length === 3 ? hex.split("").map((v) => v + v).join("") : hex.slice(0, 6);
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16) };
 }
 
 function PreviewBlock({ block }: { block: typeof DESIGN_BLUEPRINTS[string]["blocks"][number] }) {

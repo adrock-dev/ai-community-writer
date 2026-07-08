@@ -16,6 +16,7 @@ export interface DesignTemplateOption {
   source_type?: "builtin" | "uploaded_html";
   tone?: string | null;
   structure_guide?: string[];
+  css_tokens?: Record<string, unknown>;
 }
 
 export interface DesignPreset extends DesignTemplateOption {
