@@ -100,6 +100,11 @@ CREATE TABLE IF NOT EXISTS jobs (
   cancel_requested INTEGER NOT NULL DEFAULT 0,
   scheduled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   started_at TEXT,
+  heartbeat_at TEXT,
+  current_slot_id TEXT,
+  current_step TEXT,
+  processed_count INTEGER NOT NULL DEFAULT 0,
+  failed_count INTEGER NOT NULL DEFAULT 0,
   finished_at TEXT,
   error TEXT,
   result TEXT,
@@ -269,6 +274,11 @@ export class DbService implements OnModuleInit {
     const jobCols = new Set(this.all("PRAGMA table_info(jobs)").map((r) => r.name));
     if (!jobCols.has("paused")) this.db.exec("ALTER TABLE jobs ADD COLUMN paused INTEGER NOT NULL DEFAULT 0");
     if (!jobCols.has("cancel_requested")) this.db.exec("ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0");
+    if (!jobCols.has("heartbeat_at")) this.db.exec("ALTER TABLE jobs ADD COLUMN heartbeat_at TEXT");
+    if (!jobCols.has("current_slot_id")) this.db.exec("ALTER TABLE jobs ADD COLUMN current_slot_id TEXT");
+    if (!jobCols.has("current_step")) this.db.exec("ALTER TABLE jobs ADD COLUMN current_step TEXT");
+    if (!jobCols.has("processed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN processed_count INTEGER NOT NULL DEFAULT 0");
+    if (!jobCols.has("failed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0");
     if (!postCols.has("design_template_id")) {
       this.db.exec("ALTER TABLE posts ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
       this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM domains t WHERE t.domain = posts.domain), 'local-guide')");
@@ -660,20 +670,20 @@ export class DbService implements OnModuleInit {
       const row = this.get("SELECT * FROM jobs WHERE status='queued' AND paused=0 ORDER BY scheduled_at LIMIT 1");
       if (!row) return undefined;
       const now = nowSql();
-      this.run("UPDATE jobs SET status='running', started_at=? WHERE id=?", [now, row.id]);
-      return { ...row, status: "running", started_at: now, payload_obj: safeJson(row.payload, {}) };
+      this.run("UPDATE jobs SET status='running', started_at=?, heartbeat_at=?, current_step='작업자 시작' WHERE id=?", [now, now, row.id]);
+      return { ...row, status: "running", started_at: now, heartbeat_at: now, current_step: "작업자 시작", payload_obj: safeJson(row.payload, {}) };
     });
   }
   failStaleRunningJobs(maxAgeMinutes = Number(process.env.WORKER_STALE_RUNNING_MINUTES || 360)): number {
     const minutes = Math.max(15, Math.min(24 * 60, Math.trunc(Number(maxAgeMinutes) || 360)));
     return this.run(
-      "UPDATE jobs SET status='failed', finished_at=?, error=coalesce(error, ?) WHERE status='running' AND started_at IS NOT NULL AND started_at < datetime('now', ?)",
+      "UPDATE jobs SET status='failed', finished_at=?, error=coalesce(error, ?) WHERE status='running' AND COALESCE(heartbeat_at, started_at) IS NOT NULL AND COALESCE(heartbeat_at, started_at) < datetime('now', ?)",
       [nowSql(), `stale running job exceeded ${minutes} minutes`, `-${minutes} minutes`],
     ).changes ?? 0;
   }
   recoverStaleCancellingJobs(maxExtraGraceSeconds = Number(process.env.WORKER_CANCEL_EXTRA_GRACE_SEC || 300)): number {
     const extraGraceSec = Math.max(60, Math.min(60 * 60, Math.trunc(Number(maxExtraGraceSeconds) || 300)));
-    const rows = this.all("SELECT id, payload, started_at FROM jobs WHERE status='running' AND cancel_requested=1 AND started_at IS NOT NULL")
+    const rows = this.all("SELECT id, payload, started_at, heartbeat_at FROM jobs WHERE status='running' AND cancel_requested=1 AND started_at IS NOT NULL")
       .filter((row) => isCancellingJobStale(row, extraGraceSec));
     if (!rows.length) return 0;
     for (const row of rows) {
@@ -681,7 +691,7 @@ export class DbService implements OnModuleInit {
       const timeoutSec = clampJobTimeoutSeconds(payload.timeout_sec);
       const staleAfterMin = Math.ceil((timeoutSec + extraGraceSec) / 60);
       const message = `취소됨(작업자 요청, 제한시간+여유 ${staleAfterMin}분 이상 응답 없음)`;
-      this.run("UPDATE jobs SET status='failed', finished_at=?, error=coalesce(error, ?) WHERE id=? AND status='running' AND cancel_requested=1", [nowSql(), message, row.id]);
+      this.run("UPDATE jobs SET status='failed', finished_at=?, current_step='취소 복구 처리', error=coalesce(error, ?) WHERE id=? AND status='running' AND cancel_requested=1", [nowSql(), message, row.id]);
       const slotIds = payload?.slot_ids;
       if (!Array.isArray(slotIds)) continue;
       for (const slotId of slotIds.map((value: unknown) => String(value || "")).filter(Boolean)) {
@@ -696,7 +706,19 @@ export class DbService implements OnModuleInit {
     return rows.length;
   }
   completeJob(jobId: string, ok: boolean, result?: Row, error?: string): void {
-    this.run("UPDATE jobs SET status=?, finished_at=?, result=?, error=? WHERE id=?", [ok ? "done" : "failed", nowSql(), result ? JSON.stringify(result) : null, error ?? null, jobId]);
+    this.run(
+      "UPDATE jobs SET status=?, finished_at=?, heartbeat_at=?, current_slot_id=NULL, current_step=?, processed_count=?, failed_count=?, result=?, error=? WHERE id=?",
+      [ok ? "done" : "failed", nowSql(), nowSql(), ok ? "완료" : "실패", Number(result?.ok ?? 0), Number(result?.fail ?? 0), result ? JSON.stringify(result) : null, error ?? null, jobId],
+    );
+  }
+  updateJobProgress(jobId: string | undefined, progress: { step: string; slotId?: string | null; processed?: number; failed?: number }): void {
+    if (!jobId) return;
+    this.run(
+      `UPDATE jobs
+       SET heartbeat_at=?, current_step=?, current_slot_id=?, processed_count=COALESCE(?, processed_count), failed_count=COALESCE(?, failed_count)
+       WHERE id=? AND status='running'`,
+      [nowSql(), progress.step, progress.slotId ?? null, progress.processed ?? null, progress.failed ?? null, jobId],
+    );
   }
   // 작업 큐 제어 —
   isJobCancelRequested(jobId: string): boolean {
@@ -957,10 +979,10 @@ function fallbackRegionFromAddress(address: string | null): string | null {
 }
 
 function isCancellingJobStale(job: Row, extraGraceSec: number): boolean {
-  const startedAt = Date.parse(`${String(job.started_at || "").replace(" ", "T")}Z`);
-  if (!Number.isFinite(startedAt)) return false;
+  const lastSeenAt = Date.parse(`${String(job.heartbeat_at || job.started_at || "").replace(" ", "T")}Z`);
+  if (!Number.isFinite(lastSeenAt)) return false;
   const timeoutSec = clampJobTimeoutSeconds(safeJson(job.payload, {})?.timeout_sec);
-  return Date.now() - startedAt > (timeoutSec + extraGraceSec) * 1000;
+  return Date.now() - lastSeenAt > (timeoutSec + extraGraceSec) * 1000;
 }
 
 function clampJobTimeoutSeconds(value: unknown): number {

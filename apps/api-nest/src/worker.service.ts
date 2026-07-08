@@ -50,6 +50,7 @@ export class WorkerService {
   async process(job: Row): Promise<Row> {
     const payload = job.payload_obj || safeJson(job.payload, {});
     if (job.kind === "generate") return this.processGenerate(job.domain, payload, job.id);
+    this.db.updateJobProgress(job.id, { step: `${job.kind} 처리 중` });
     if (job.kind === "dedup") return this.processDedup(job.domain, payload);
     if (job.kind === "prune") return this.processPrune(job.domain, payload);
     if (job.kind === "indexing") return this.processIndexing(job.domain, payload);
@@ -66,26 +67,30 @@ export class WorkerService {
     let producedThisRun = 0;
     let ok = 0, fail = 0, skipped = 0;
     const per_slot: Row[] = [];
+    this.db.updateJobProgress(jobId, { step: "글 생성 준비", processed: 0, failed: 0 });
     for (const [index, sid] of slotIds.entries()) {
       if (jobId && this.db.isJobCancelRequested(jobId)) {
         const remaining = slotIds.length - index;
         skipped += remaining;
+        this.db.updateJobProgress(jobId, { step: "취소 요청 확인", slotId: null, processed: ok, failed: fail });
         per_slot.push({ ok: false, skipped: true, error: `취소됨(작업자 요청) — ${remaining} slot(s) skipped` });
         break;
       }
       if (dailyLimit > 0 && alreadyToday + producedThisRun >= dailyLimit) {
         const remaining = slotIds.length - index;
         skipped += remaining;
+        this.db.updateJobProgress(jobId, { step: "일일 한도 도달", slotId: null, processed: ok, failed: fail });
         per_slot.push({ ok: false, skipped: true, error: `daily limit reached (${dailyLimit}/day) — ${remaining} slot(s) deferred` });
         break;
       }
       const slot = this.db.getSlot(sid);
-      if (!slot || slot.domain !== domain) { fail++; per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
+      this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 슬롯 확인`, slotId: sid, processed: ok, failed: fail });
+      if (!slot || slot.domain !== domain) { fail++; this.db.updateJobProgress(jobId, { step: "슬롯 없음", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
       const slotMatches = findSlotExclusionTerms(slot, exclusionTerms);
       if (slotMatches.length) {
         const message = `excluded by domain rule: ${slotMatches.join(", ")}`;
         this.db.updateSlotStatus(sid, "pruned", message);
-        skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
+        skipped++; this.db.updateJobProgress(jobId, { step: "제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
         continue;
       }
       // 디자인은 슬롯 단위로 결정한다: 작성 요청 지정 → 도메인 설정 → 기본값 순서, auto면 글 유형의 기본 디자인.
@@ -93,6 +98,7 @@ export class WorkerService {
       const designPreset = designTemplateId.startsWith("uploaded:") ? this.db.getDesignPreset(domain, designTemplateId) : undefined;
       this.db.updateSlotStatus(sid, "in_progress");
       try {
+        this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 자료 구성 중`, slotId: sid, processed: ok, failed: fail });
         const genEnabled = Boolean(payload.enable_image_generation);
         // 학원 중심 타입(T01 BEST 비교 / T14 단독 소개 / T11 시험장 소개)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
         // 그 외 타입은 학원 사진 최소화(1장) + 내용 기반 생성으로 총 3장.
@@ -104,7 +110,7 @@ export class WorkerService {
         if (factsMatches.length) {
           const message = `excluded by domain rule in facts: ${factsMatches.join(", ")}`;
           this.db.updateSlotStatus(sid, "pruned", message);
-          skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
+          skipped++; this.db.updateJobProgress(jobId, { step: "자료 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
         const IMAGE_TARGET = 3;
@@ -118,6 +124,7 @@ export class WorkerService {
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
         const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, designPreset);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
+        this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
         const result = await runLlm(prompt, llmOpts);
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
         let markdown = normalizeGeneratedMarkdown(result.summary, images);
@@ -130,6 +137,7 @@ export class WorkerService {
         let model = result.model;
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
+          this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 품질 보정 ${repairAttempt + 1}회차`, slotId: sid, processed: ok, failed: fail });
           const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, designPreset, markdown, qualityIssues), llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
@@ -149,7 +157,7 @@ export class WorkerService {
         if (generatedMatches.length) {
           const message = `excluded by domain rule in generated article: ${generatedMatches.join(", ")}`;
           this.db.updateSlotStatus(sid, "pruned", message);
-          skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
+          skipped++; this.db.updateJobProgress(jobId, { step: "생성문 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
         const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, candidateCountFromFacts(factsText));
@@ -157,6 +165,7 @@ export class WorkerService {
         // 내용 기반 이미지 생성: LLM이 실제 배치한 생성 슬롯만, 그 슬롯이 놓인 섹션 내용에 맞춰 만든다.
         const imageWarnings: string[] = [];
         if (genEnabled) {
+          this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 이미지 준비 중`, slotId: sid, processed: ok, failed: fail });
           const usedKeys = new Set(Array.from(markdown.matchAll(/\[IMAGE:([A-Za-z0-9_-]+)\]/g)).map((m) => m[1]!));
           let genIndex = 0;
           for (const key of plannedGenKeys) {
@@ -179,6 +188,7 @@ export class WorkerService {
         // SEO_IMAGE_PRICE_USD(장당 단가)로 추정한다. Codex 구독 경로는 0, OpenAI API 경로면 실단가를 넣는다.
         const generatedCount = Object.keys(images).filter((key) => key.startsWith("generated_")).length;
         const imageCostUsd = generatedCount * Number(process.env.SEO_IMAGE_PRICE_USD || 0);
+        this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 글 저장 중`, slotId: sid, processed: ok, failed: fail });
         this.db.insertPost({
           domain, slot_id: sid, slug, title, body_markdown: markdown,
           meta_description: metaDescription(markdown), images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId,
@@ -188,13 +198,16 @@ export class WorkerService {
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);
-        ok++; producedThisRun++; per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings });
+        ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings });
       } catch (error: any) {
         const message = error?.message || String(error);
         this.db.updateSlotStatus(sid, "failed", message);
-        fail++; per_slot.push({ slot_id: sid, ok: false, error: message });
+        fail++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 실패`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, error: message });
       }
-      if (index < slotIds.length - 1) await sleep(Number(payload.cooldown_sec || 60) * 1000);
+      if (index < slotIds.length - 1) {
+        this.db.updateJobProgress(jobId, { step: "다음 글 작성 전 대기 중", slotId: null, processed: ok, failed: fail });
+        await sleep(Number(payload.cooldown_sec || 60) * 1000);
+      }
     }
     return { ok, fail, skipped, academy_type_filter: this.db.academyTypeFilter(domain), generation_gate_version: "adrock-domain-surface-v1", per_slot };
   }

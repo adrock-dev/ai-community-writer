@@ -166,6 +166,11 @@ export interface Job {
   status: JobStatus;
   paused?: number;
   cancel_requested?: number;
+  heartbeat_at?: string | null;
+  current_slot_id?: string | null;
+  current_step?: string | null;
+  processed_count?: number;
+  failed_count?: number;
   scheduled_at: string;
   started_at: string | null;
   finished_at: string | null;

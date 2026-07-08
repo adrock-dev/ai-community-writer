@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { cancelJob, pauseJob, prioritizeJob, resumeJob } from "@/lib/api";
-import { formatDateTime } from "@/lib/date";
+import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
 import { designSettingLabel } from "@/lib/design-theme";
 import type { Job } from "@/lib/types";
 
@@ -13,21 +13,23 @@ const CTL_STYLE = { minHeight: 34, padding: "7px 14px", fontSize: 13, fontWeight
 // 차이는 컨텍스트뿐이므로 showDomain 으로 도메인 링크 노출만 토글한다.
 export function JobCard({ job, showDomain = false, designFallback, onChanged }: { job: Job; showDomain?: boolean; designFallback?: string; onChanged?: () => void }) {
   const [acting, setActing] = useState(false);
-  const ctl = (e: React.MouseEvent, fn: (id: string) => Promise<unknown>) => {
+  const ctl = (e: React.MouseEvent, fn: (id: string) => Promise<unknown>, confirmMessage: string) => {
     e.preventDefault(); e.stopPropagation();
-    if (acting) return; setActing(true);
+    if (acting || !window.confirm(confirmMessage)) return; setActing(true);
     fn(job.id).then(() => onChanged?.()).catch((err) => alert(err instanceof Error ? err.message : String(err))).finally(() => setActing(false));
   };
   const total = jobTotal(job);
   const ok = num(job.result_obj?.ok);
   const fail = num(job.result_obj?.fail);
   const done = ok + fail;
+  const processed = Math.max(done, num(job.processed_count) + num(job.failed_count));
   const percent = job.status === "done" || job.status === "failed"
     ? 100
     : job.status === "running"
-      ? Math.max(20, Math.min(90, Math.round((done / Math.max(total, 1)) * 100) || 35))
+      ? Math.max(20, Math.min(90, Math.round((processed / Math.max(total, 1)) * 100) || 20))
       : 5;
   const slotIds = Array.isArray(job.payload_obj?.slot_ids) ? job.payload_obj.slot_ids : [];
+  const activity = jobActivity(job);
   return <details className="card" open={job.status === "running" || job.status === "failed"}>
     <summary className="spread" style={{ padding: 16, cursor: "pointer" }}>
       <div className="row">
@@ -35,15 +37,17 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         <b>{job.kind}</b>
         <span className="muted small">{jobLabel(job)}</span>
         {job.paused ? <span className="badge warn">일시중지</span> : null}
+        {job.cancel_requested ? <span className="badge danger">취소 요청됨</span> : null}
+        {activity.stale ? <span className="badge warn">진행 확인 필요</span> : null}
         {showDomain && job.domain && <span className="mono small">{job.domain}</span>}
       </div>
       <div className="row" style={{ gap: 6 }}>
         {(job.status === "queued" || job.status === "running") && <>
           {job.status === "queued" && (job.paused
-            ? <button className="btn primary" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, resumeJob)}>▶ 재개</button>
-            : <button className="btn" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, pauseJob)}>⏸ 일시중지</button>)}
-          {job.status === "queued" && <button className="btn" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, prioritizeJob)}>⏫ 먼저 실행</button>}
-          <button className="btn danger" style={CTL_STYLE} disabled={acting || Boolean(job.cancel_requested)} onClick={(e) => ctl(e, cancelJob)}>{job.cancel_requested ? "취소 중..." : "✕ 취소"}</button>
+            ? <button className="btn primary" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, resumeJob, `${jobLabel(job)} 작업을 재개할까요?`)}>▶ 재개</button>
+            : <button className="btn" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, pauseJob, `${jobLabel(job)} 작업을 일시중지할까요?`)}>⏸ 일시중지</button>)}
+          {job.status === "queued" && <button className="btn" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, prioritizeJob, `${jobLabel(job)} 작업을 먼저 실행하도록 순서를 변경할까요?`)}>⏫ 먼저 실행</button>}
+          <button className="btn danger" style={CTL_STYLE} disabled={acting || Boolean(job.cancel_requested)} onClick={(e) => ctl(e, cancelJob, `${jobLabel(job)} 작업을 취소할까요?\n\n진행 중인 작업은 현재 처리 중인 글이 끝난 뒤 취소될 수 있습니다.`)}>{job.cancel_requested ? "취소 중..." : "✕ 취소"}</button>
         </>}
         <span className="muted small">{formatDateTime(job.scheduled_at)}</span>
       </div>
@@ -55,6 +59,14 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         <Stat label="성공" value={ok} accent />
         <Stat label="실패" value={fail} />
         <Stat label="진행률" value={percent} suffix="%" />
+      </div>
+      <div className="writer-hint">
+        <b>실행 상태</b>
+        <span>{activity.label}</span>
+        {job.current_step && <span>단계 {job.current_step}</span>}
+        {job.current_slot_id && <span>현재 슬롯 <span className="mono">{job.current_slot_id}</span></span>}
+        <span>마지막 활동 {activity.lastSeen}</span>
+        <span>처리 {processed}/{total}</span>
       </div>
       <div className="writer-hint">
         <b>작업 옵션</b>
@@ -90,6 +102,30 @@ export function jobLabel(job: Job): string {
 }
 
 function num(value: unknown): number { const n = Number(value); return Number.isFinite(n) ? n : 0; }
+
+function jobActivity(job: Job): { label: string; lastSeen: string; stale: boolean } {
+  if (job.status === "queued") return { label: job.paused ? "대기 중지" : "대기열에 있음", lastSeen: "-", stale: false };
+  if (job.status === "done") return { label: "완료", lastSeen: formatDateTime(job.finished_at ?? job.heartbeat_at), stale: false };
+  if (job.status === "failed") return { label: job.cancel_requested ? "취소/실패 처리됨" : "실패", lastSeen: formatDateTime(job.finished_at ?? job.heartbeat_at), stale: false };
+  const heartbeat = parseUtcTimestamp(job.heartbeat_at ?? job.started_at);
+  if (!heartbeat) return { label: "작업자 처리 중", lastSeen: "-", stale: false };
+  const ageSec = Math.max(0, Math.round((Date.now() - heartbeat.getTime()) / 1000));
+  const staleAfterSec = Math.max(180, num(job.payload_obj?.timeout_sec) + 60);
+  const stale = ageSec >= staleAfterSec;
+  return {
+    label: job.cancel_requested ? "취소 요청 처리 대기" : stale ? "최근 활동 지연" : "작업자 처리 중",
+    lastSeen: ageLabel(ageSec),
+    stale,
+  };
+}
+
+function ageLabel(ageSec: number): string {
+  if (ageSec < 10) return "방금";
+  if (ageSec < 60) return `${ageSec}초 전`;
+  const min = Math.floor(ageSec / 60);
+  if (min < 60) return `${min}분 전`;
+  return `${Math.floor(min / 60)}시간 전`;
+}
 
 function JobStatusBadge({ status }: { status: string }) {
   const cls = status === "done" ? "success" : status === "failed" ? "danger" : status === "running" ? "info" : "warn";
