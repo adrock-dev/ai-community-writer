@@ -714,7 +714,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
               <p className="muted small">{tpl.summary}</p>
               <p className="small"><b>추천:</b> {tpl.best_for}</p>
               <p className="small"><b>톤:</b> {bp.tone}</p>
-              <div className="row">{bp.sections.slice(0, 4).map((section) => <span key={section} className="badge">{section}</span>)}</div>
+              <div className="row">{bp.sections.slice(0, 4).map((section, index) => <span key={`${section}-${index}`} className="badge">{section}</span>)}</div>
               {tpl.source_type === "uploaded_html" && <button type="button" className="btn danger" disabled={presetBusy} onClick={() => removePreset(tpl.id)}>삭제</button>}
             </div>;
           })}</div>
@@ -796,7 +796,7 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
 function designBlueprintFor(id: string, option?: DesignTemplateOption): typeof DESIGN_BLUEPRINTS[string] {
   const builtin = DESIGN_BLUEPRINTS[id];
   if (builtin) return { ...builtin };
-  const sections = option?.structure_guide?.length ? option.structure_guide : ["상단 구성", "본문 섹션", "비교/요약", "CTA"];
+  const sections = uniquePreviewItems(option?.structure_guide?.length ? option.structure_guide : ["상단 구성", "본문 섹션", "비교/요약", "CTA"]);
   return {
     label: option?.summary || "업로드 HTML에서 추출한 화면 구상",
     title: `${option?.name || "업로드 화면 구상"} 예시 글`,
@@ -810,6 +810,16 @@ function designBlueprintFor(id: string, option?: DesignTemplateOption): typeof D
       kind: index === 2 ? "table" : index === 3 ? "cta" : undefined,
     })),
   };
+}
+
+function uniquePreviewItems(items: string[]): string[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item.trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; options: AdminOptions; onRefresh: () => Promise<void> }) {
@@ -1236,9 +1246,9 @@ function DesignPreview({ blueprint, designId, brandColor, brand, title, summary 
         <div className="preview-meta"><span>26.04.03</span><span>조회 0</span></div>
         <h4>{blueprint.title}</h4>
         <div className="preview-divider" />
-        <div className="row">{blueprint.chips.map((chip) => <span className="badge" key={chip}>{chip}</span>)}</div>
+        <div className="row">{blueprint.chips.map((chip, index) => <span className="badge" key={`${chip}-${index}`}>{chip}</span>)}</div>
         <p className="muted small">{blueprint.lead}</p>
-        {blueprint.blocks.map((block) => <PreviewBlock key={block.title} block={block} />)}
+        {blueprint.blocks.map((block, index) => <PreviewBlock key={`${block.title}-${index}`} block={block} />)}
         <section className="preview-bottom-cta"><b>{brand}에서 {spec.bottomCta}</b><button className="btn primary">{spec.bottomCta}</button></section>
       </div>
     </div>
@@ -1246,7 +1256,7 @@ function DesignPreview({ blueprint, designId, brandColor, brand, title, summary 
       <h3>{title}</h3>
       <p className="muted small">{summary}</p>
       <p className="small"><b>톤:</b> {blueprint.tone}</p>
-      <div className="row">{blueprint.sections.map((s) => <span className="badge" key={s}>{s}</span>)}</div>
+      <div className="row">{blueprint.sections.map((s, index) => <span className="badge" key={`${s}-${index}`}>{s}</span>)}</div>
     </div>
   </aside>;
 }
@@ -1255,7 +1265,7 @@ function PreviewBlock({ block }: { block: typeof DESIGN_BLUEPRINTS[string]["bloc
   if (block.kind === "table") return <div className="preview-block"><b>{block.title}</b><div className="mini-table"><span>항목</span><span>장점</span><span>추천</span><span>A 학원</span><span>셔틀</span><span>직장인</span><span>B 학원</span><span>단기반</span><span>대학생</span></div><p>{block.body}</p></div>;
   if (block.kind === "quote") return <blockquote className="preview-quote">{block.body}</blockquote>;
   if (block.kind === "cta") return <div className="preview-block preview-cta-block"><b>{block.title}</b><p>{block.body}</p><button className="btn primary">상담/예약으로 연결</button></div>;
-  if (block.kind === "list") return <div className="preview-block"><b>{block.title}</b><ul>{block.body.split("|").map((item) => <li key={item}>✓ {item}</li>)}</ul></div>;
+  if (block.kind === "list") return <div className="preview-block"><b>{block.title}</b><ul>{block.body.split("|").map((item, index) => <li key={`${item}-${index}`}>✓ {item}</li>)}</ul></div>;
   return <div className="preview-block"><b>{block.title}</b><p>{block.body}</p></div>;
 }
 
