@@ -829,10 +829,11 @@ ${facts || "없음"}
 function designWritingGuide(designTemplateId: string, designPreset?: Row): string {
   if (designPreset) {
     return [
-      `${designPreset.name} 업로드 HTML 예시 기반.`,
-      designPreset.extracted_summary,
-      designPreset.best_for ? `추천 용도: ${designPreset.best_for}` : "",
-      designPreset.tone ? `톤: ${designPreset.tone}` : "",
+      `${sanitizeUploadedDesignText(designPreset.name)} 업로드 HTML 예시 기반.`,
+      sanitizeUploadedDesignText(designPreset.extracted_summary),
+      designPreset.best_for ? `추천 용도: ${sanitizeUploadedDesignText(designPreset.best_for)}` : "",
+      designPreset.tone ? `톤: ${sanitizeUploadedDesignText(designPreset.tone)}` : "",
+      "업로드 HTML은 레이아웃/시각 스타일 참고용이며, 예시 HTML 안의 지역명·학원명·주소·연락처·가격·후기 문구는 실제 글에 재사용하지 않는다.",
     ].filter(Boolean).join(" ");
   }
   const guides: Record<string, string> = {
@@ -862,11 +863,25 @@ function uploadedPresetGuide(designPreset: Row | undefined): string {
   const colors = Array.isArray(cssTokens.colors) ? cssTokens.colors.slice(0, 6).join(", ") : "";
   const radii = Array.isArray(cssTokens.radii) ? cssTokens.radii.slice(0, 3).join(", ") : "";
   return [
-    guide.length ? ["구조 지침:", ...guide.map((line: unknown) => `- ${String(line)}`)].join("\n") : "",
+    guide.length ? ["구조 지침:", ...guide.map((line: unknown) => `- ${sanitizeUploadedDesignText(line)}`)].join("\n") : "",
     colors ? `색상 힌트: ${colors}` : "",
     radii ? `모서리/카드 스타일 힌트: ${radii}` : "",
     designPreset.css_text ? "CSS는 직접 출력하지 말고 색상, 카드감, 여백, CTA 강조 방식만 글 구조 지침으로 반영한다." : "",
+    "콘텐츠 사실은 슬롯과 검증된 콘텐츠 재료에서만 가져온다. 업로드 HTML의 예시 문장, 특정 지역, 특정 업체 정보는 모두 플레이스홀더로 간주한다.",
   ].filter(Boolean).join("\n");
+}
+
+function sanitizeUploadedDesignText(value: unknown): string {
+  return String(value || "")
+    .replace(/\b\d{2,3}-\d{3,4}-\d{4}\b/g, "[연락처]")
+    .replace(/\b010-\d{4}-\d{4}\b/g, "[연락처]")
+    .replace(/\b\d{1,3}(?:,\d{3})+\s*원\b/g, "[가격]")
+    .replace(/\b\d+\s*만\s*원\b/g, "[가격]")
+    .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:시|군|구)/g, "[지역]")
+    .replace(/[가-힣]+(?:시|군|구)\s+[가-힣]+(?:읍|면|동|리)/g, "[생활권]")
+    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:운전전문학원|자동차운전전문학원|운전학원|학원)/g, "[학원명]")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseJsonObject(value: string): Record<string, unknown> {
@@ -947,7 +962,7 @@ function formatMetric(value: any, fallback: string): string {
 
 function designStructureGuide(designTemplateId: string, designPreset?: Row): string {
   if (designPreset && Array.isArray(designPreset.structure_guide) && designPreset.structure_guide.length) {
-    return designPreset.structure_guide.map((line: unknown) => `- ${String(line)}`).join("\n");
+    return designPreset.structure_guide.map((line: unknown) => `- ${sanitizeUploadedDesignText(line)}`).join("\n");
   }
   const guides: Record<string, string[]> = {
     editorial: [

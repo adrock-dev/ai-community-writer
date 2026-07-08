@@ -447,20 +447,20 @@ function extractDesignPresetFromHtml(html: string, fallbackName: string): Row {
     .filter(Boolean)
     .slice(0, 8);
   const cssText = Array.from(safeHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)).map((m) => String(m[1] || "").trim()).filter(Boolean).join("\n\n").slice(0, 12000);
-  const plain = cleanText(safeHtml).slice(0, 1200);
+  const plain = sanitizeHtmlExampleContent(cleanText(safeHtml)).slice(0, 1200);
   const colors = Array.from(new Set((safeHtml.match(/#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)/g) || []).slice(0, 12)));
   const radii = Array.from(new Set((cssText.match(/border-radius\s*:\s*[^;]+/gi) || []).map((v) => v.split(":")[1]?.trim()).filter(Boolean))).slice(0, 4);
   const structureGuide = headings.length
-    ? headings.map((heading, i) => `${i + 1}) ${heading} 흐름과 유사한 섹션을 구성한다`)
+    ? headings.map((heading, i) => `${i + 1}) ${generalizeHtmlSectionHeading(heading)} 섹션을 구성한다`)
     : [
       "상단에 제목과 핵심 요약을 배치한다",
       "본문은 명확한 섹션 단위로 나눈다",
       "비교표, 리스트, CTA 위치를 예시 HTML의 리듬에 맞춘다",
     ];
   return {
-    name: fallbackName || title || `HTML 디자인 ${randomUUID().slice(0, 4)}`,
+    name: sanitizeHtmlExampleContent(fallbackName || title || `HTML 디자인 ${randomUUID().slice(0, 4)}`),
     source_html: safeHtml,
-    extracted_summary: plain ? `업로드 HTML에서 추출한 화면 구상입니다. ${plain.slice(0, 220)}` : "업로드 HTML에서 추출한 화면 구상입니다.",
+    extracted_summary: summarizeHtmlLayout(headings, plain),
     best_for: inferBestFor(plain),
     tone: inferTone(plain),
     structure_guide: structureGuide,
@@ -483,6 +483,42 @@ function cleanText(value: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function sanitizeHtmlExampleContent(value: string): string {
+  return String(value || "")
+    .replace(/\b\d{2,3}-\d{3,4}-\d{4}\b/g, "[연락처]")
+    .replace(/\b010-\d{4}-\d{4}\b/g, "[연락처]")
+    .replace(/\b\d{1,3}(?:,\d{3})+\s*원\b/g, "[가격]")
+    .replace(/\b\d+\s*만\s*원\b/g, "[가격]")
+    .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:시|군|구)/g, "[지역]")
+    .replace(/[가-힣]+(?:시|군|구)\s+[가-힣]+(?:읍|면|동|리)/g, "[생활권]")
+    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:운전전문학원|자동차운전전문학원|운전학원|학원)/g, "[학원명]")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function generalizeHtmlSectionHeading(heading: string): string {
+  const text = sanitizeHtmlExampleContent(heading);
+  if (/비교|BEST|순위|추천/.test(text)) return "후보 비교/추천";
+  if (/가격|비용|수강료|할인/.test(text)) return "비용 확인";
+  if (/위치|주소|셔틀|거리|가까/.test(text)) return "동선/접근성";
+  if (/후기|평점|리뷰/.test(text)) return "후기/판단 근거";
+  if (/상담|예약|문의|전화/.test(text)) return "상담/CTA";
+  if (/준비|절차|방법|체크/.test(text)) return "절차/체크리스트";
+  if (/요약|핵심/.test(text)) return "핵심 요약";
+  return text.replace(/\[[^\]]+\]/g, "").trim() || "본문";
+}
+
+function summarizeHtmlLayout(headings: string[], plain: string): string {
+  const sections = headings.map(generalizeHtmlSectionHeading).filter(Boolean).slice(0, 5);
+  const sectionText = sections.length ? ` 주요 섹션 흐름: ${Array.from(new Set(sections)).join(" -> ")}.` : "";
+  const patterns = [
+    /비교|BEST|추천|표/.test(plain) ? "비교/추천형" : "",
+    /상담|예약|문의/.test(plain) ? "상담 CTA형" : "",
+    /체크|절차|준비/.test(plain) ? "체크리스트형" : "",
+  ].filter(Boolean).join(", ");
+  return `업로드 HTML에서 구조와 스타일만 추출한 화면 구상입니다.${sectionText}${patterns ? ` 감지된 패턴: ${patterns}.` : ""}`;
 }
 
 function inferBestFor(text: string): string {
