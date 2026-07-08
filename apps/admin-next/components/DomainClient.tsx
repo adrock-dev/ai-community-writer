@@ -638,11 +638,12 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
   const [design, setDesign] = useState<string>(domain.design_template_id ?? AUTO_DESIGN_ID);
   const [overrides, setOverrides] = useState<Record<string, string>>(domain.design_template_overrides ?? {});
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(true);
   const [previewTemplateId, setPreviewTemplateId] = useState(domain.templates_enabled[0] ?? Object.keys(options.template_specs)[0] ?? "");
   const [presetName, setPresetName] = useState("");
   const [presetHtml, setPresetHtml] = useState("");
   const [presetBusy, setPresetBusy] = useState(false);
+  const presetFileInputRef = useRef<HTMLInputElement | null>(null);
   const allDesignTemplates: DesignTemplateOption[] = [...options.design_templates, ...designPresets];
   const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const designOptions = allDesignTemplates.filter((tpl) => tpl.id !== "custom");
@@ -672,6 +673,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
       await createDesignPreset(domain.domain, { name: presetName.trim(), html: presetHtml });
       setPresetName("");
       setPresetHtml("");
+      if (presetFileInputRef.current) presetFileInputRef.current.value = "";
       await onRefresh();
     } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
     finally { setPresetBusy(false); }
@@ -679,7 +681,13 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
   async function removePreset(id: string) {
     if (!confirm("이 HTML 기반 화면 구상을 삭제할까요? 이미 생성된 글에는 영향이 없습니다.")) return;
     setPresetBusy(true);
-    try { await deleteDesignPreset(domain.domain, id); await onRefresh(); }
+    try {
+      await deleteDesignPreset(domain.domain, id);
+      setPresetName("");
+      setPresetHtml("");
+      if (presetFileInputRef.current) presetFileInputRef.current.value = "";
+      await onRefresh();
+    }
     catch (err) { alert(err instanceof Error ? err.message : String(err)); }
     finally { setPresetBusy(false); }
   }
@@ -699,17 +707,17 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
     </section>
 
     <section className="grid">
-      <div className="card card-pad grid" data-tour="templates-design">
+      <div className="card card-pad grid template-config-card" data-tour="templates-design">
         <div><h2>화면 구상 / 디자인</h2><p className="muted">기본은 글 유형별 자동 매칭입니다. 아래 표에서 특정 글 유형만 바꿀 수 있고, 전체 강제는 고급 설정에서만 사용합니다.</p></div>
         <div className="toast-info">
           <div className="spread"><div><b>{isAuto ? AUTO_DESIGN_OPTION.name : "전체 화면 구상 강제"}</b><p className="muted small">{isAuto ? AUTO_DESIGN_OPTION.summary : "모든 글 유형에 같은 화면 구상을 적용합니다. 글 유형별 수동 변경보다 우선합니다."}</p></div><span className={`badge ${isAuto ? "success" : "warn"}`}>{isAuto ? "권장" : "예외"}</span></div>
           <div className="row">{autoTargetIds.slice(0, 6).map((id) => <span key={id} className="badge">{designNameOf(id)}</span>)}</div>
         </div>
-        <div className="grid">
-          <div><h3>화면 구상 종류</h3><p className="muted small">아래 항목은 설명용입니다. 실제 적용은 글 유형별 표에서 변경하세요.</p></div>
+        <div className="template-subsection">
+          <div className="template-subsection-head"><div><h3>화면 구상 종류</h3><p className="muted small">아래 항목은 설명용입니다. 실제 적용은 글 유형별 표에서 변경하세요.</p></div><span className="badge info">설명</span></div>
           <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
             const bp = designBlueprintFor(tpl.id, tpl);
-            return <div key={tpl.id} className="option-card">
+            return <div key={tpl.id} className="info-panel">
               <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.source_type === "uploaded_html" ? "HTML" : tpl.id}</span></div>
               <p className="muted small">{tpl.summary}</p>
               <p className="small"><b>추천:</b> {tpl.best_for}</p>
@@ -719,17 +727,18 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
             </div>;
           })}</div>
         </div>
-        <div className="grid">
-          <div><h3>HTML 예시로 화면 구상 추가</h3><p className="muted small">블로그 예시 HTML을 업로드하면 섹션 흐름, 톤, CSS 힌트를 추출해 화면 구상 프리셋으로 저장합니다.</p></div>
+        <div className="template-subsection template-subsection-upload">
+          <div className="template-subsection-head"><div><h3>HTML 예시로 화면 구상 추가</h3><p className="muted small">블로그 예시 HTML을 업로드하면 섹션 흐름, 톤, CSS 힌트를 추출해 화면 구상 프리셋으로 저장합니다.</p></div><span className="badge info">프리셋 추가</span></div>
+          <p className="preset-warning small">HTML 프리셋은 예시 파일을 그대로 복제하는 기능이 아니라 구조와 스타일을 최대한 참고하는 기능입니다. 실제 글은 글 유형 지침과 검증된 슬롯 자료를 우선하므로, 원본 HTML과 1:1로 동일하게 보이지 않을 수 있습니다.</p>
           <div className="grid grid-2">
             <Field label="프리셋 이름"><input className="input" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="예: 우리 블로그 카드형 스타일" /></Field>
-            <Field label="HTML 파일"><input className="input" type="file" accept=".html,.htm,text/html" onChange={(e) => readPresetFile(e.target.files?.[0] ?? null)} /></Field>
+            <Field label="HTML 파일"><input ref={presetFileInputRef} className="input" type="file" accept=".html,.htm,text/html" onClick={(e) => { e.currentTarget.value = ""; }} onChange={(e) => readPresetFile(e.target.files?.[0] ?? null)} /></Field>
           </div>
           <Field label="HTML 내용"><textarea className="textarea mono" rows={7} value={presetHtml} onChange={(e) => setPresetHtml(e.target.value)} placeholder="<html>...</html>" /></Field>
           <div className="row"><button type="button" className="btn" disabled={presetBusy || !presetHtml.trim()} onClick={uploadPreset}>{presetBusy ? "저장 중..." : "HTML 화면 구상 저장"}</button><span className="muted small">저장 후 아래 수동 변경 드롭다운에 표시됩니다.</span></div>
         </div>
-        <div className="grid">
-          <div><h3>글 유형별 화면 구상</h3><p className="muted small">자동 모드에서만 적용됩니다. 대부분은 자동 추천 그대로 두고, 특정 글 유형만 다른 화면으로 바꾸고 싶을 때 오른쪽에서 변경하세요.</p></div>
+        <div className="template-subsection">
+          <div className="template-subsection-head"><div><h3>글 유형별 화면 구상</h3><p className="muted small">자동 모드에서만 적용됩니다. 대부분은 자동 추천 그대로 두고, 특정 글 유형만 다른 화면으로 바꾸고 싶을 때 오른쪽에서 변경하세요.</p></div><span className="badge success">적용 설정</span></div>
           <div className="table-wrap"><table>
             <thead><tr><th>글 유형</th><th>자동 추천 화면</th><th>수동 변경</th><th>실제 적용</th></tr></thead>
             <tbody>{Object.entries(options.template_specs).filter(([id]) => enabled.has(id)).map(([id, spec]) => {
@@ -753,21 +762,24 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
             })}</tbody>
           </table></div>
         </div>
-        <Field label="직접 만드는 화면 구상 메모">
-          <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
+        <div className="template-subsection">
+          <div className="template-subsection-head"><div><h3>커스텀 / 고급 설정</h3><p className="muted small">일반 운영에서는 자동 추천을 유지하고, 예외적인 운영 정책이 있을 때만 사용하세요.</p></div><span className="badge warn">고급</span></div>
+          <Field label="직접 만드는 화면 구상 메모">
+            <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
-          <p className="muted small">글 유형별 화면 구상에서 '커스텀'을 선택한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
-        </Field>
-        <Field label="고급: 전체 화면 구상 강제">
-          <select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
-            <option value={AUTO_DESIGN_ID}>사용 안 함 - 글 유형별 자동 추천</option>
-            {designOptions.map((tpl) => <option key={tpl.id} value={tpl.id}>모든 글을 {tpl.name}으로 강제</option>)}
-          </select>
-          <p className="muted small">특별한 브랜드 운영 정책이 있을 때만 사용하세요. 강제하면 글 유형별 수동 변경은 저장만 되고 생성에는 적용되지 않습니다.</p>
-        </Field>
-        {!isAuto && <p className="toast-warn">전체 화면 구상 강제 모드입니다. 글 유형별 화면 구상보다 현재 고급 설정이 우선 적용됩니다.</p>}
+            <p className="muted small">글 유형별 화면 구상에서 '커스텀'을 선택한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
+          </Field>
+          <Field label="고급: 전체 화면 구상 강제">
+            <select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
+              <option value={AUTO_DESIGN_ID}>사용 안 함 - 글 유형별 자동 추천</option>
+              {designOptions.map((tpl) => <option key={tpl.id} value={tpl.id}>모든 글을 {tpl.name}으로 강제</option>)}
+            </select>
+            <p className="muted small">특별한 브랜드 운영 정책이 있을 때만 사용하세요. 강제하면 글 유형별 수동 변경은 저장만 되고 생성에는 적용되지 않습니다.</p>
+          </Field>
+          {!isAuto && <p className="toast-warn">전체 화면 구상 강제 모드입니다. 글 유형별 화면 구상보다 현재 고급 설정이 우선 적용됩니다.</p>}
+        </div>
         <div className="preview-toggle-panel">
           <div className="spread">
             <div>
@@ -1246,6 +1258,8 @@ function DesignPreview({ blueprint, designId, designOption, brandColor, brand, t
   };
   return <aside className="preview-panel">
     <div className="preview-head"><div><b>디자인 미리보기</b><p className="muted small">{blueprint.label}</p></div><span className="badge info">{designId}</span></div>
+    {isUploaded && <UploadedPresetSourcePreview html={designOption?.source_html} />}
+    {isUploaded && <div className="preview-subhead preset-info"><b>생성 구조 미리보기</b><p className="small">업로드 HTML의 구조와 CSS 힌트를 참고하지만, 실제 글은 글 유형/검증 자료를 우선해 재구성됩니다. 원본과 1:1 동일 렌더링을 보장하지 않습니다.</p></div>}
     <div className={`preview-phone design-${designId} ${isUploaded ? "uploaded-preview" : ""}`} style={previewStyle}>
       {isUploaded
         ? <UploadedPresetPreview brand={brand} blueprint={blueprint} />
@@ -1270,6 +1284,14 @@ function DesignPreview({ blueprint, designId, designOption, brandColor, brand, t
       <div className="row">{blueprint.sections.map((s, index) => <span className="badge" key={`${s}-${index}`}>{s}</span>)}</div>
     </div>
   </aside>;
+}
+
+function UploadedPresetSourcePreview({ html }: { html?: string | null }) {
+  if (!html) return <div className="uploaded-source-empty">원본 HTML이 저장되지 않은 프리셋입니다.</div>;
+  return <section className="uploaded-source-preview">
+    <div className="spread"><h3>원본 HTML 미리보기</h3><span className="badge info">sandbox</span></div>
+    <iframe title="업로드 HTML 원본 미리보기" sandbox="" referrerPolicy="no-referrer" srcDoc={html} />
+  </section>;
 }
 
 function UploadedPresetPreview({ brand, blueprint }: { brand: string; blueprint: typeof DESIGN_BLUEPRINTS[string] }) {
@@ -1306,10 +1328,11 @@ function previewThemeFor(designId: string, brandColor: string | null | undefined
   const base = getDesignTheme(designId, brandColor);
   const cssTokens = option?.css_tokens && typeof option.css_tokens === "object" ? option.css_tokens : {};
   const colors = Array.isArray(cssTokens.colors) ? cssTokens.colors.map((v) => String(v)).filter(isCssColorToken) : [];
-  const radii = Array.isArray(cssTokens.radii) ? cssTokens.radii.map((v) => String(v).trim()).filter(Boolean) : [];
-  const accent = pickAccentColor(colors, base.accent);
-  const soft = colors.find((color) => color !== accent && isSoftColor(color)) || `color-mix(in srgb, ${accent} 12%, white)`;
-  const pageBg = colors.find((color) => /^#(?:fff|ffffff)$/i.test(color)) || base.pageBg;
+  const radii = Array.isArray(cssTokens.radii) ? cssTokens.radii.map((v) => String(v).trim()).filter(isPreviewCardRadius) : [];
+  const vars = cssTokens.vars && typeof cssTokens.vars === "object" ? cssTokens.vars as Record<string, unknown> : {};
+  const accent = pickCssVar(vars, ["brand", "teal", "primary", "accent"], colors, base.accent);
+  const soft = pickCssVar(vars, ["brand-soft", "teal-soft", "surface", "sand"], colors.filter((color) => color !== accent), `color-mix(in srgb, ${accent} 12%, white)`);
+  const pageBg = pickCssVar(vars, ["paper", "bg", "background", "card"], colors, base.pageBg);
   return { accent, soft, pageBg, radius: radii[0] || "24px" };
 }
 
@@ -1319,6 +1342,17 @@ function isCssColorToken(value: string): boolean {
 
 function pickAccentColor(colors: string[], fallback: string): string {
   return colors.find((color) => isSaturatedHex(color)) || colors.find((color) => !isSoftColor(color)) || fallback;
+}
+
+function pickCssVar(vars: Record<string, unknown>, names: string[], fallbackColors: string[], fallback: string): string {
+  for (const name of names) {
+    const value = vars[name];
+    if (typeof value === "string" && isCssColorToken(value)) return value;
+  }
+  if (names.some((name) => /soft|surface|sand|paper|bg|card/.test(name))) {
+    return fallbackColors.find(isSoftColor) || fallbackColors[0] || fallback;
+  }
+  return pickAccentColor(fallbackColors, fallback);
 }
 
 function isSoftColor(color: string): boolean {
@@ -1341,6 +1375,12 @@ function hexToRgb(color: string): { r: number; g: number; b: number } | null {
   const full = hex.length === 3 ? hex.split("").map((v) => v + v).join("") : hex.slice(0, 6);
   if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
   return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16) };
+}
+
+function isPreviewCardRadius(value: string): boolean {
+  if (/%|999|calc|var/i.test(value)) return false;
+  const px = Number(value.match(/^(\d+(?:\.\d+)?)px$/)?.[1]);
+  return Number.isFinite(px) && px >= 6 && px <= 32;
 }
 
 function PreviewBlock({ block }: { block: typeof DESIGN_BLUEPRINTS[string]["blocks"][number] }) {

@@ -109,10 +109,10 @@ export class WorkerService {
         }
         const IMAGE_TARGET = 3;
         // 생성 슬롯을 미리 예약만 하고(placeholder), 실제 이미지는 글 작성 후 배치된 것만 내용 기반으로 만든다.
-        // 학원 중심 타입이고 학원 사진이 있으면 생성 없이 학원 사진 위주. 학원 사진이 없거나 그 외 타입이면 생성으로 채운다.
-        const plannedGenKeys = !genEnabled || (academyImageType && Object.keys(facts.images).length > 0)
-          ? []
-          : Array.from({ length: IMAGE_TARGET }, (_, i) => `generated_${i + 1}`);
+        // 학원 중심 타입은 학원 사진을 우선 쓰되, 사진이 3개 미만이면 생성 이미지로 최소 수량을 채운다.
+        const existingImageCount = Object.keys(facts.images).length;
+        const plannedGenCount = genEnabled ? Math.max(0, IMAGE_TARGET - existingImageCount) : 0;
+        const plannedGenKeys = Array.from({ length: plannedGenCount }, (_, i) => `generated_${i + 1}`);
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
@@ -877,9 +877,11 @@ function sanitizeUploadedDesignText(value: unknown): string {
     .replace(/\b010-\d{4}-\d{4}\b/g, "[연락처]")
     .replace(/\b\d{1,3}(?:,\d{3})+\s*원\b/g, "[가격]")
     .replace(/\b\d+\s*만\s*원\b/g, "[가격]")
+    .replace(/(?:서울|부산|대구|인천|광주|대전|울산|세종)\s*[가-힣]+구/g, "[지역]")
     .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:시|군|구)/g, "[지역]")
+    .replace(/(?:[가-힣]+구)(?=(?:엔|에는|은|는|이|가|을|를|에서|으로|로|까지|부터|,|\.|\s|$))/g, "[지역]")
     .replace(/[가-힣]+(?:시|군|구)\s+[가-힣]+(?:읍|면|동|리)/g, "[생활권]")
-    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:운전전문학원|자동차운전전문학원|운전학원|학원)/g, "[학원명]")
+    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:자동차운전전문학원|운전전문학원|자동차운전학원)/g, "[학원명]")
     .replace(/\s+/g, " ")
     .trim();
 }

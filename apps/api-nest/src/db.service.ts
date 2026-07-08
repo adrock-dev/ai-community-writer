@@ -511,7 +511,7 @@ export class DbService implements OnModuleInit {
   }
 
   listDesignPresets(domain: string): Row[] {
-    return this.all("SELECT * FROM design_presets WHERE domain=? ORDER BY created_at DESC", [domain]).map(designPresetOut);
+    return this.all("SELECT * FROM design_presets WHERE domain=? ORDER BY created_at ASC, id ASC", [domain]).map(designPresetOut);
   }
   getDesignPreset(domain: string, id: string): Row | undefined {
     const row = this.get("SELECT * FROM design_presets WHERE domain=? AND id=?", [domain, id]);
@@ -655,6 +655,7 @@ export class DbService implements OnModuleInit {
   }
   claimNextJob(): Row | undefined {
     return this.transaction(() => {
+      this.recoverStaleCancellingJobs();
       this.failStaleRunningJobs();
       const row = this.get("SELECT * FROM jobs WHERE status='queued' AND paused=0 ORDER BY scheduled_at LIMIT 1");
       if (!row) return undefined;
@@ -669,6 +670,30 @@ export class DbService implements OnModuleInit {
       "UPDATE jobs SET status='failed', finished_at=?, error=coalesce(error, ?) WHERE status='running' AND started_at IS NOT NULL AND started_at < datetime('now', ?)",
       [nowSql(), `stale running job exceeded ${minutes} minutes`, `-${minutes} minutes`],
     ).changes ?? 0;
+  }
+  recoverStaleCancellingJobs(maxExtraGraceSeconds = Number(process.env.WORKER_CANCEL_EXTRA_GRACE_SEC || 300)): number {
+    const extraGraceSec = Math.max(60, Math.min(60 * 60, Math.trunc(Number(maxExtraGraceSeconds) || 300)));
+    const rows = this.all("SELECT id, payload, started_at FROM jobs WHERE status='running' AND cancel_requested=1 AND started_at IS NOT NULL")
+      .filter((row) => isCancellingJobStale(row, extraGraceSec));
+    if (!rows.length) return 0;
+    for (const row of rows) {
+      const payload = safeJson(row.payload, {});
+      const timeoutSec = clampJobTimeoutSeconds(payload.timeout_sec);
+      const staleAfterMin = Math.ceil((timeoutSec + extraGraceSec) / 60);
+      const message = `취소됨(작업자 요청, 제한시간+여유 ${staleAfterMin}분 이상 응답 없음)`;
+      this.run("UPDATE jobs SET status='failed', finished_at=?, error=coalesce(error, ?) WHERE id=? AND status='running' AND cancel_requested=1", [nowSql(), message, row.id]);
+      const slotIds = payload?.slot_ids;
+      if (!Array.isArray(slotIds)) continue;
+      for (const slotId of slotIds.map((value: unknown) => String(value || "")).filter(Boolean)) {
+        this.run(
+          `UPDATE slots SET status='planned', last_error=?
+           WHERE slot_id=? AND status='in_progress'
+             AND NOT EXISTS (SELECT 1 FROM posts WHERE posts.slot_id=slots.slot_id AND posts.status!='deleted')`,
+          [message, slotId],
+        );
+      }
+    }
+    return rows.length;
   }
   completeJob(jobId: string, ok: boolean, result?: Row, error?: string): void {
     this.run("UPDATE jobs SET status=?, finished_at=?, result=?, error=? WHERE id=?", [ok ? "done" : "failed", nowSql(), result ? JSON.stringify(result) : null, error ?? null, jobId]);
@@ -705,6 +730,7 @@ export class DbService implements OnModuleInit {
     ).changes ?? 0) > 0;
   }
   listJobs(opts: { domain?: string; status?: string; limit?: number } = {}): Row[] {
+    this.recoverStaleCancellingJobs();
     let sql = "SELECT * FROM jobs WHERE 1=1"; const args: any[] = [];
     if (opts.domain) { sql += " AND domain=?"; args.push(opts.domain); }
     if (opts.status) { sql += " AND status=?"; args.push(opts.status); }
@@ -728,10 +754,15 @@ export function domainOut(row: Row): Row {
   };
 }
 export function designPresetOut(row: Row): Row {
+  const cssTokens = safeJson(row.css_tokens, {});
+  const structureGuide = presetStructureGuideFromHtml(String(row.source_html || "")) || safeJson(row.structure_guide, []);
   return {
     ...row,
-    structure_guide: safeJson(row.structure_guide, []),
-    css_tokens: safeJson(row.css_tokens, {}),
+    structure_guide: structureGuide,
+    css_tokens: {
+      ...cssTokens,
+      vars: cssTokens.vars && typeof cssTokens.vars === "object" ? cssTokens.vars : extractCssVars(String(row.css_text || "")),
+    },
   };
 }
 export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
@@ -741,6 +772,76 @@ function encodeJson(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "string") return value;
   try { return JSON.stringify(value); } catch { return null; }
+}
+
+function extractCssVars(cssText: string): Row {
+  return Object.fromEntries(Array.from(String(cssText || "").matchAll(/--([a-z0-9_-]+)\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/gi))
+    .map((match) => [match[1], match[2]]));
+}
+
+function presetStructureGuideFromHtml(html: string): string[] | null {
+  if (!html) return null;
+  const headings = Array.from(html.matchAll(/<h([1-4])[^>]*>([\s\S]*?)<\/h\1>/gi))
+    .map((match) => presetCleanText(match[2] || ""))
+    .filter(Boolean)
+    .slice(0, 8);
+  if (!headings.length) return null;
+  const seen = new Set<string>();
+  return headings.map((heading, index) => `${index + 1}) ${presetGeneralizeHeading(heading)} 섹션을 구성한다`)
+    .filter((line) => {
+      const key = line.replace(/^\d+\)\s*/, "");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 6);
+}
+
+function presetCleanText(value: string): string {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function presetGeneralizeHeading(heading: string): string {
+  const text = presetSanitizeText(heading)
+    .replace(/\[지역\]/g, "지역")
+    .replace(/\[생활권\]/g, "생활권")
+    .replace(/\[학원명\]/g, "후보 학원")
+    .replace(/\[가격\]/g, "비용")
+    .replace(/\[연락처\]/g, "연락처")
+    .replace(/^[0-9]{1,2}[\s.)-]+/, "")
+    .trim();
+  if (/비교|BEST|순위|추천/.test(text)) return "후보 비교/추천";
+  if (/순서|목차/.test(text)) return "목차";
+  if (/가격|비용|수강료|할인/.test(text)) return "비용 확인";
+  if (/위치|주소|셔틀|거리|가까/.test(text)) return "동선/접근성";
+  if (/후기|평점|리뷰/.test(text)) return "후기/판단 근거";
+  if (/상담|예약|문의|전화/.test(text)) return "상담/CTA";
+  if (/준비|절차|방법|체크/.test(text)) return "절차/체크리스트";
+  if (/요약|핵심/.test(text)) return "핵심 요약";
+  return text.replace(/\[[^\]]+\]/g, "").trim() || "본문";
+}
+
+function presetSanitizeText(value: string): string {
+  return String(value || "")
+    .replace(/\b\d{2,3}-\d{3,4}-\d{4}\b/g, "[연락처]")
+    .replace(/\b010-\d{4}-\d{4}\b/g, "[연락처]")
+    .replace(/\b\d{1,3}(?:,\d{3})+\s*원\b/g, "[가격]")
+    .replace(/\b\d+\s*만\s*원\b/g, "[가격]")
+    .replace(/(?:서울|부산|대구|인천|광주|대전|울산|세종)\s*[가-힣]+구/g, "[지역]")
+    .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:시|군|구)/g, "[지역]")
+    .replace(/(?:[가-힣]+구)(?=(?:엔|에는|은|는|이|가|을|를|에서|으로|로|까지|부터|,|\.|\s|$))/g, "[지역]")
+    .replace(/[가-힣]+(?:시|군|구)\s+[가-힣]+(?:읍|면|동|리)/g, "[생활권]")
+    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:자동차운전전문학원|운전전문학원|자동차운전학원)/g, "[학원명]")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function nullableText(value: unknown): string | null {
@@ -853,4 +954,15 @@ function fallbackRegionFromAddress(address: string | null): string | null {
   const parts = address.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return `${parts[0]} ${parts[1]}`;
   return parts[0] || null;
+}
+
+function isCancellingJobStale(job: Row, extraGraceSec: number): boolean {
+  const startedAt = Date.parse(`${String(job.started_at || "").replace(" ", "T")}Z`);
+  if (!Number.isFinite(startedAt)) return false;
+  const timeoutSec = clampJobTimeoutSeconds(safeJson(job.payload, {})?.timeout_sec);
+  return Date.now() - startedAt > (timeoutSec + extraGraceSec) * 1000;
+}
+
+function clampJobTimeoutSeconds(value: unknown): number {
+  return Math.max(60, Math.min(60 * 60 * 6, Math.trunc(Number(value) || 600)));
 }

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDateTime, formatShortDate } from "@/lib/date";
 import { getDesignTheme, resolveDesignId } from "@/lib/design-theme";
-import type { DesignTemplateId, PostDetail, DomainConfig } from "@/lib/types";
+import type { DesignTemplateId, PostDetail, DomainConfig, DesignPreset } from "@/lib/types";
 
 export default function PostDetailClient({ domain, postId }: { domain: string; postId: string }) {
   const [post, setPost] = useState<PostDetail | null>(null);
@@ -25,16 +25,20 @@ export default function PostDetailClient({ domain, postId }: { domain: string; p
   if (error) return <p className="toast-error">{error}</p>;
   if (!post) return <div className="card card-pad">로딩 중...</div>;
   const renderedHtml = publishedHtml || bodyHtml || fallbackMarkdown(post.body_markdown, parseImages(post.images));
-  const designId = resolveDesignId(post.design_template_id ?? domainConfig?.design_template_id);
-  const design = getDesignTheme(designId, domainConfig?.brand_color);
+  const rawDesignId = post.design_template_id ?? domainConfig?.design_template_id ?? "";
+  const designId = resolveDesignId(rawDesignId);
+  const designPreset = rawDesignId.startsWith("uploaded:") ? post.design_preset ?? null : null;
+  const design = designPreset ? uploadedDesignTheme(designPreset, domainConfig?.brand_color) : getDesignTheme(designId, domainConfig?.brand_color);
+  const articleClass = designPreset ? "design-uploaded" : `design-${designId}`;
   const brand = publicBrandName(domainConfig?.display_name ?? domain);
   const articleStyle = { ["--accent" as string]: design.accent, ["--accent-soft" as string]: design.soft, ["--primary" as string]: design.accent, background: design.pageBg };
   const contentHtml = toPreviewBlocks(prepareBodyHtml(renderedHtml, post.title, null));
-  const chips = designChips(designId);
+  const chips = designPreset ? uploadedDesignChips(designPreset) : designChips(designId);
+  const uploadedHtml = designPreset ? renderUploadedPresetHtml({ post, domainConfig, domain, designPreset, bodyHtml: renderedHtml }) : "";
   return <div>
-    <div className="page-head"><div><Link href={`/t/${encodeURIComponent(domain)}`} className="eyebrow">← {domain}</Link><h1>{post.title}</h1><p className="muted mono">{post.slug}</p></div><div className="row"><button className="btn" onClick={() => navigator.clipboard.writeText(post.body_markdown)}>Markdown 복사</button><button className="btn" onClick={() => download(`${post.slug}.md`, post.body_markdown, "text/markdown")}>Markdown 다운로드</button><button className="btn primary" onClick={() => download(`${post.slug}.html`, renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml: renderedHtml }), "text/html;charset=utf-8")}>HTML 다운로드</button></div></div>
+    <div className="page-head"><div><Link href={`/t/${encodeURIComponent(domain)}`} className="eyebrow">← {domain}</Link><h1>{post.title}</h1><p className="muted mono">{post.slug}</p></div><div className="row"><button className="btn" onClick={() => navigator.clipboard.writeText(post.body_markdown)}>Markdown 복사</button><button className="btn" onClick={() => download(`${post.slug}.md`, post.body_markdown, "text/markdown")}>Markdown 다운로드</button><button className="btn primary" onClick={() => download(`${post.slug}.html`, uploadedHtml || renderStandaloneHtml({ post, domainConfig, domain, designId, rawDesignId, designPreset, bodyHtml: renderedHtml }), "text/html;charset=utf-8")}>HTML 다운로드</button></div></div>
     <div className="grid post-detail-layout" style={{ gridTemplateColumns: "minmax(0, 1fr) 320px", alignItems: "start" }}>
-      <article className={`preview-phone preview-phone-fluid design-${designId}`} style={articleStyle}>
+      {designPreset ? <iframe className="uploaded-post-frame" title={post.title} srcDoc={uploadedHtml} /> : <article className={`preview-phone preview-phone-fluid ${articleClass}`} style={articleStyle}>
         <div className="preview-top"><div><b>{brand}</b><p>{design.label}</p></div><span className="preview-cta">{design.topCta}</span></div>
         <div className="preview-hero post-hero title-hero">
           <div>
@@ -43,14 +47,14 @@ export default function PostDetailClient({ domain, postId }: { domain: string; p
           </div>
         </div>
         <div className="preview-body">
-          <div className="preview-meta"><span>{formatShortDate(post.generated_at)}</span><span>{designId}</span></div>
+          <div className="preview-meta"><span>{formatShortDate(post.generated_at)}</span><span>{designPreset ? rawDesignId : designId}</span></div>
           <div className="preview-divider" />
           <div className="row post-chips">{chips.map((chip) => <span className="badge" key={chip}>{chip}</span>)}</div>
           <div className="generated-blocks" dangerouslySetInnerHTML={{ __html: contentHtml }} />
           <section className="preview-bottom-cta"><b>{brand}에서 {design.bottomCta}</b><a className="btn primary" href="#">{design.bottomCta}</a></section>
         </div>
-      </article>
-      <aside className="grid"><div className="card card-pad"><h2>메타</h2><p><b>상태:</b> {post.status}</p><p><b>디자인:</b> {design.label} <span className="badge">{designId}</span></p><p><b>provider:</b> {post.provider ?? "-"} {post.model ?? ""}</p><p><b>비용:</b> {post.cost_usd ? `$${post.cost_usd.toFixed(3)}` : "-"}</p><p><b>생성:</b> {formatDateTime(post.generated_at)}</p><p className="muted">{post.meta_description}</p><p className="muted small">원문은 상단의 복사/다운로드 버튼으로 확인합니다. 상세 화면에는 발행 디자인만 표시합니다.</p></div></aside>
+      </article>}
+      <aside className="grid"><div className="card card-pad"><h2>메타</h2><p><b>상태:</b> {post.status}</p><p><b>디자인:</b> {design.label} <span className="badge">{designPreset ? rawDesignId : designId}</span></p><p><b>provider:</b> {post.provider ?? "-"} {post.model ?? ""}</p><p><b>비용:</b> {post.cost_usd ? `$${post.cost_usd.toFixed(3)}` : "-"}</p><p><b>생성:</b> {formatDateTime(post.generated_at)}</p><p className="muted">{post.meta_description}</p><p className="muted small">원문은 상단의 복사/다운로드 버튼으로 확인합니다. 상세 화면에는 발행 디자인만 표시합니다.</p></div></aside>
     </div>
   </div>;
 }
@@ -207,13 +211,161 @@ function designChips(designId: DesignTemplateId): string[] {
   };
   return chips[designId];
 }
+
+function uploadedDesignChips(preset: DesignPreset): string[] {
+  return [
+    preset.best_for?.split(",")[0]?.trim(),
+    preset.tone?.replace(/\s*톤\s*$/u, "").trim(),
+    "업로드 프리셋",
+  ].filter(Boolean).slice(0, 3) as string[];
+}
+
+function uploadedDesignTheme(preset: DesignPreset, brandColor?: string | null) {
+  const base = getDesignTheme("custom", brandColor);
+  const cssTokens = preset.css_tokens && typeof preset.css_tokens === "object" ? preset.css_tokens : {};
+  const vars = cssTokens.vars && typeof cssTokens.vars === "object" ? cssTokens.vars as Record<string, unknown> : {};
+  const colors = Array.isArray(cssTokens.colors) ? cssTokens.colors.map((value) => String(value)).filter(isCssColorToken) : [];
+  const accent = pickCssVar(vars, ["brand", "teal", "primary", "accent"], colors, base.accent);
+  const soft = pickCssVar(vars, ["brand-soft", "teal-soft", "surface", "sand"], colors.filter((color) => color !== accent), `color-mix(in srgb, ${accent} 12%, white)`);
+  const pageBg = pickCssVar(vars, ["paper", "bg", "background", "card"], colors, base.pageBg);
+  return { ...base, accent, soft, pageBg, label: publicBrandName(preset.name || "업로드 프리셋").slice(0, 28) || "업로드 프리셋" };
+}
+
+function pickCssVar(vars: Record<string, unknown>, names: string[], fallbackColors: string[], fallback: string): string {
+  for (const name of names) {
+    const value = vars[name];
+    if (typeof value === "string" && isCssColorToken(value)) return value;
+  }
+  if (names.some((name) => /soft|surface|sand|paper|bg|card/.test(name))) return fallbackColors.find(isSoftColor) || fallbackColors[0] || fallback;
+  return fallbackColors.find(isSaturatedHex) || fallbackColors.find((color) => !isSoftColor(color)) || fallback;
+}
+
+function isCssColorToken(value: string): boolean {
+  return /^#[0-9a-fA-F]{3,8}$/.test(value) || /^rgba?\([^)]+\)$/.test(value);
+}
+
+function isSoftColor(color: string): boolean {
+  if (!color.startsWith("#")) return false;
+  const rgb = hexToRgb(color);
+  return Boolean(rgb && rgb.r > 225 && rgb.g > 225 && rgb.b > 225);
+}
+
+function isSaturatedHex(color: string): boolean {
+  const rgb = hexToRgb(color);
+  if (!rgb) return false;
+  const max = Math.max(rgb.r, rgb.g, rgb.b);
+  const min = Math.min(rgb.r, rgb.g, rgb.b);
+  return max - min > 55 && max > 120 && min < 230;
+}
+
+function hexToRgb(color: string): { r: number; g: number; b: number } | null {
+  const hex = color.replace("#", "");
+  const full = hex.length === 3 ? hex.split("").map((value) => value + value).join("") : hex.slice(0, 6);
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16) };
+}
+
+function renderUploadedPresetHtml({ post, domainConfig, domain, designPreset, bodyHtml }: { post: PostDetail; domainConfig: DomainConfig | null; domain: string; designPreset: DesignPreset; bodyHtml: string }) {
+  const brand = publicBrandName(domainConfig?.display_name ?? domain);
+  const title = post.title || brand;
+  const css = String(designPreset.css_text || "");
+  const contentHtml = uploadedPresetContentHtml(prepareBodyHtml(bodyHtml, title, null));
+  return `<!doctype html>
+<html lang="ko" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(title)}</title>
+  ${post.meta_description ? `<meta name="description" content="${escapeAttr(post.meta_description)}" />` : ""}
+  <style>${css}</style>
+  <style>${uploadedPresetCompatCss()}</style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <span class="eyebrow">${escapeHtml(brand)}</span>
+      <h1>${escapeHtml(title)}</h1>
+      <p>${escapeHtml(post.meta_description || "검증된 자료를 기준으로 정리한 비교 가이드입니다.")}</p>
+      <div class="meta"><span>${escapeHtml(formatShortDate(post.generated_at))}</span><span>·</span><span>${escapeHtml(designPreset.name || "업로드 프리셋")}</span></div>
+    </div>
+  </header>
+  <main><article><div class="wrap">
+    <div class="notice"><strong>확인 안내</strong> — 실제 글에서는 슬롯/검증 자료의 지역과 학원 정보를 사용합니다.</div>
+    ${contentHtml}
+  </div></article></main>
+</body>
+</html>`;
+}
+
+function uploadedPresetContentHtml(html: string): string {
+  const blocks = html.match(/<figure class="post-image">[\s\S]*?<\/figure>|<div class="post-table-wrap">[\s\S]*?<\/div>|<blockquote>[\s\S]*?<\/blockquote>|<ul>[\s\S]*?<\/ul>|<ol>[\s\S]*?<\/ol>|<h2>[\s\S]*?<\/h2>|<h3>[\s\S]*?<\/h3>|<p>[\s\S]*?<\/p>/gi);
+  if (!blocks?.length) return html;
+  const out: string[] = [];
+  let section: string[] = [];
+  let sectionKind: "section" | "toc" = "section";
+  let school: string[] = [];
+  let schoolRank = 0;
+  const flushSchool = () => {
+    if (!school.length) return;
+    out.push(`<div class="school">${school.join("\n")}</div>`);
+    school = [];
+  };
+  const flushSection = () => {
+    if (!section.length) return;
+    out.push(sectionKind === "toc" ? `<nav class="toc">${section.join("\n")}</nav>` : `<section>${section.join("\n")}</section>`);
+    section = [];
+    sectionKind = "section";
+  };
+  for (const rawBlock of blocks) {
+    const block = uploadedPresetBlock(rawBlock);
+    if (/^<h2\b/i.test(block)) {
+      flushSchool();
+      flushSection();
+      const heading = block.replace(/^<h2>/i, "").replace(/<\/h2>$/i, "");
+      if (/목차|이 글의 순서/u.test(stripTags(heading))) {
+        sectionKind = "toc";
+        section = [`<h4>${heading}</h4>`];
+      } else {
+        section = [block];
+      }
+      continue;
+    }
+    if (/^<h3\b/i.test(block)) {
+      flushSchool();
+      flushSection();
+      const heading = block.replace(/^<h3>/i, "").replace(/<\/h3>$/i, "");
+      schoolRank += 1;
+      school = [`<div class="school-head"><div class="rank${schoolRank === 1 ? " gold" : ""}">${schoolRank}</div><div><h3 class="school-title">${heading}</h3><div class="school-tag">검증 자료 기준</div></div></div>`];
+      continue;
+    }
+    if (school.length) school.push(block);
+    else section.push(block);
+  }
+  flushSchool();
+  flushSection();
+  return out.join("\n");
+}
+
+function uploadedPresetCompatCss(): string {
+  return `
+body{min-width:0}.wrap{width:100%}.hero h1{word-break:keep-all}.post-image.preset-image{margin:22px 0;border-radius:var(--radius,16px);overflow:hidden;box-shadow:var(--shadow)}.post-image.preset-image img{display:block;width:100%;max-height:440px;object-fit:cover}.school{margin:28px 0}.school>p{margin-top:14px}.school .post-image{margin:16px 0}.table-scroll{margin:18px 0}.compare{width:100%}.toc a{color:inherit;text-decoration:none}.notice{margin-top:28px}.review{display:block}.btn{text-decoration:none}@media(max-width:760px){.wrap{padding-left:16px;padding-right:16px}.hero{padding-left:16px;padding-right:16px}}`;
+}
+function uploadedPresetBlock(block: string): string {
+  return block
+    .replace(/<div class="post-table-wrap">\s*<table>/i, '<div class="table-scroll"><table class="compare">')
+    .replace(/<figure class="post-image">/i, '<figure class="post-image preset-image">')
+    .replace(/<blockquote>/i, '<blockquote class="review">');
+}
+function stripTags(value: string): string { return value.replace(/<[^>]+>/g, ""); }
 function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-function renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml }: { post: PostDetail; domainConfig: DomainConfig | null; domain: string; designId: DesignTemplateId; bodyHtml: string }) {
-  const design = getDesignTheme(designId, domainConfig?.brand_color);
+function renderStandaloneHtml({ post, domainConfig, domain, designId, rawDesignId, designPreset, bodyHtml }: { post: PostDetail; domainConfig: DomainConfig | null; domain: string; designId: DesignTemplateId; rawDesignId: string; designPreset: DesignPreset | null; bodyHtml: string }) {
+  const design = designPreset ? uploadedDesignTheme(designPreset, domainConfig?.brand_color) : getDesignTheme(designId, domainConfig?.brand_color);
+  const articleClass = designPreset ? "design-uploaded" : `design-${designId}`;
+  const visibleDesignId = designPreset ? rawDesignId : designId;
   const brand = publicBrandName(domainConfig?.display_name ?? domain);
   const title = post.title || brand;
   const contentHtml = toPreviewBlocks(prepareBodyHtml(bodyHtml, post.title, null));
-  const chips = designChips(designId);
+  const chips = designPreset ? uploadedDesignChips(designPreset) : designChips(designId);
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -225,7 +377,7 @@ function renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml }
 </head>
 <body>
   <main class="post-page">
-    <article class="preview-phone preview-phone-fluid design-${designId}" style="--accent:${design.accent};--accent-soft:${design.soft};--primary:${design.accent};background:${design.pageBg}">
+    <article class="preview-phone preview-phone-fluid ${articleClass}" style="--accent:${design.accent};--accent-soft:${design.soft};--primary:${design.accent};background:${design.pageBg}">
       <div class="preview-top"><div><b>${escapeHtml(brand)}</b><p>${escapeHtml(design.label)}</p></div><span class="preview-cta">${escapeHtml(design.topCta)}</span></div>
       <div class="preview-hero post-hero title-hero">
         <div>
@@ -234,7 +386,7 @@ function renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml }
         </div>
       </div>
       <div class="preview-body">
-        <div class="preview-meta"><span>${escapeHtml(formatShortDate(post.generated_at))}</span><span>${escapeHtml(designId)}</span></div>
+        <div class="preview-meta"><span>${escapeHtml(formatShortDate(post.generated_at))}</span><span>${escapeHtml(visibleDesignId)}</span></div>
         <div class="preview-divider"></div>
         <div class="row post-chips">${chips.map((chip) => `<span class="badge">${escapeHtml(chip)}</span>`).join("")}</div>
         <div class="generated-blocks">
