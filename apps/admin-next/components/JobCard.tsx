@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { cancelJob, pauseJob, prioritizeJob, resumeJob } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
+import { designSettingLabel } from "@/lib/design-theme";
 import type { Job } from "@/lib/types";
 
 const CTL_STYLE = { minHeight: 34, padding: "7px 14px", fontSize: 13, fontWeight: 800 } as const;
@@ -59,7 +60,7 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         <b>작업 옵션</b>
         <span>엔진 {String(job.payload_obj?.provider ?? "codex")}</span>
         <span>모델 {String(job.payload_obj?.model || "기본")}</span>
-        <span>디자인 {String(job.payload_obj?.design_template_id ?? designFallback ?? "local-guide")}</span>
+        <span>디자인 {designSettingLabel(String(job.payload_obj?.design_template_id ?? designFallback ?? "") || null)}</span>
         <span>웹자료 {job.payload_obj?.use_web_research === false ? "미사용" : "사용"}</span>
         <span>이미지 {job.payload_obj?.enable_image_generation ? `생성 / ${String(job.payload_obj?.image_size || "1024x1024")}` : "미사용"}</span>
       </div>

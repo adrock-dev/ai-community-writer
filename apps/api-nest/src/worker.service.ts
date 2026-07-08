@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, defaultDesignForTemplate } from "./constants.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -57,7 +58,6 @@ export class WorkerService {
 
   private async processGenerate(domain: string, payload: Row, jobId?: string): Promise<Row> {
     const domainMeta = this.db.getDomain(domain) || {};
-    const designTemplateId = payload.design_template_id || domainMeta.design_template_id || "local-guide";
     const slotIds = Array.isArray(payload.slot_ids) ? payload.slot_ids : [];
     const exclusionTerms = parseExclusionTerms(domainMeta.excluded_keywords);
     // 일일 한도: 0(또는 미설정)이면 무제한. N>0이면 오늘 발행분 + 이번 실행 생성분이 N에 도달하면 나머지 슬롯은 손대지 않고 다음으로 미룬다.
@@ -88,6 +88,8 @@ export class WorkerService {
         skipped++; per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
         continue;
       }
+      // 디자인은 슬롯 단위로 결정한다: 작성 요청 지정 → 도메인 설정 → 기본값 순서, auto면 글 유형의 기본 디자인.
+      const designTemplateId = resolveGenerationDesign(payload.design_template_id, domainMeta, slot.template_id);
       this.db.updateSlotStatus(sid, "in_progress");
       try {
         const genEnabled = Boolean(payload.enable_image_generation);
@@ -163,6 +165,7 @@ export class WorkerService {
               provider: String(payload.image_provider || "").trim() || undefined,
               required: Boolean(payload.image_generation_required),
               index: genIndex++,
+              sectionText: sectionExcerptForImage(markdown, key),
             });
             if (res.url) images[key] = res.url;
             else { markdown = stripImageTag(markdown, key); delete images[key]; if (res.warning) imageWarnings.push(res.warning); }
@@ -557,6 +560,43 @@ function nearestHeadingForImage(md: string, key: string): string {
   return headings.length ? String(headings[headings.length - 1]![1] || "").trim() : "";
 }
 
+// 이미지 태그가 놓인 섹션(가장 가까운 제목 ~ 다음 제목)의 본문을 평문으로 발췌한다.
+// 제목만으로는 부족한 문단 세부 내용을 이미지 프롬프트에 전달해 정합성을 높인다.
+function sectionExcerptForImage(md: string, key: string): string {
+  const tag = `[IMAGE:${key}]`;
+  const idx = md.indexOf(tag);
+  if (idx < 0) return "";
+  const before = md.slice(0, idx);
+  const headingMatches = Array.from(before.matchAll(/^#{1,3}\s+.+$/gm));
+  const last = headingMatches[headingMatches.length - 1];
+  const sectionStart = headingMatches.length && last?.index != null ? last.index : 0;
+  const after = md.slice(idx + tag.length);
+  const nextHeading = after.search(/\n#{1,3}\s+/);
+  const sectionEnd = nextHeading >= 0 ? idx + tag.length + nextHeading : md.length;
+  return plainTextExcerpt(md.slice(sectionStart, sectionEnd), 400);
+}
+
+// 마크다운을 이미지 프롬프트용 평문으로 정리한다(제목/이미지 태그/표/인용 제거, 길이 제한).
+function plainTextExcerpt(md: string, maxChars: number): string {
+  const text = md
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) =>
+      line &&
+      !/^#{1,3}\s+/.test(line) &&
+      !/^\[IMAGE:[A-Za-z0-9_-]+\]$/.test(line) &&
+      !line.startsWith("|") &&
+      !line.startsWith(">"),
+    )
+    .join(" ")
+    .replace(/\[IMAGE:[A-Za-z0-9_-]+\]/g, "")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[#*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > maxChars ? `${text.slice(0, maxChars).trim()}…` : text;
+}
+
 // 특정 이미지 슬롯 태그를 본문에서 제거한다(생성 실패 시).
 function stripImageTag(md: string, key: string): string {
   return md
@@ -642,11 +682,15 @@ function normalizeKoreanSpacing(text: string): string {
 
 function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[]): string {
   const brand = publicBrandName(domain);
+  const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   return `아래 Markdown 글은 품질 게이트를 통과하지 못했다. 확인된 콘텐츠 재료만 사용해서 같은 주제의 완성형 글로 다시 작성하라.
 
 브랜드: ${brand}
 디자인 템플릿: ${designTemplateId}
 디자인 작성 지침: ${designWritingGuide(designTemplateId)}
+${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
+- 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
+- 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
 ${designStructureGuide(designTemplateId)}
 원본 엑셀 기반 템플릿 작성법:
@@ -692,14 +736,27 @@ ${facts || "없음"}
 ${markdown}`;
 }
 
+// 디자인 결정 우선순위: 작성 요청 지정 → 도메인 설정 → 기본 디자인. auto면 슬롯 글 유형의 기본 디자인으로 치환한다.
+function resolveGenerationDesign(payloadDesign: unknown, domain: Row, templateId: unknown): string {
+  const requested = String(payloadDesign || "").trim() || String(domain.design_template_id || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE;
+  if (requested !== AUTO_DESIGN_TEMPLATE_ID) return requested;
+  const templateKey = String(templateId || "");
+  const overrides = safeDesignOverrides(domain.design_template_overrides);
+  return overrides[templateKey] || defaultDesignForTemplate(templateKey);
+}
+
 function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string): string {
   const brand = publicBrandName(domain);
+  const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 
 브랜드: ${brand}
 업종: ${domain.vertical || "driving"}
 디자인 템플릿: ${designTemplateId}
 디자인 작성 지침: ${designWritingGuide(designTemplateId)}
+${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
+- 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
+- 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
 ${designStructureGuide(designTemplateId)}
 원본 엑셀 기반 템플릿 작성법:
@@ -776,6 +833,24 @@ function designWritingGuide(designTemplateId: string): string {
     custom: "사용자 지정형. 저장된 기획 메모와 템플릿 구조를 우선 따르되, 섹션을 명확히 나눠 작성한다.",
   };
   return guides[designTemplateId] || guides["local-guide"] || guides.editorial!;
+}
+
+function safeDesignOverrides(value: unknown): Record<string, string> {
+  const raw = typeof value === "string" ? parseJsonObject(value) : value;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const allowed = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
+  return Object.fromEntries(Object.entries(raw as Record<string, unknown>)
+    .map(([templateId, designId]) => [templateId, String(designId || "")])
+    .filter((entry) => allowed.has(entry[1] ?? "")));
+}
+
+function parseJsonObject(value: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function originalArticlePatternGuide(slot: Row): string {

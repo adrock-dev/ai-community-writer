@@ -57,7 +57,7 @@ export class ImageGenerationService {
     slot: Row,
     key: string,
     sectionHeading: string,
-    options: { size: string; provider?: string; required: boolean; index: number },
+    options: { size: string; provider?: string; required: boolean; index: number; sectionText?: string },
   ): Promise<{ url: string | null; warning?: string }> {
     try {
       const provider = resolveImageProvider(options.provider);
@@ -65,7 +65,7 @@ export class ImageGenerationService {
       const outputPath = generatedImageFilePath(domain, filename);
       mkdirSync(dirname(outputPath), { recursive: true });
       await generateImage(provider, {
-        prompt: buildSectionImagePrompt(domain, slot, sectionHeading, options.index),
+        prompt: buildSectionImagePrompt(domain, slot, sectionHeading, options.index, options.sectionText || ""),
         outputPath,
         size: options.size || "1024x1024",
       });
@@ -80,11 +80,12 @@ export class ImageGenerationService {
 }
 
 // 섹션(H2/H3) 내용에 맞고, index 로 구도를 분산해 글마다·이미지마다 겹치지 않게 한다.
-function buildSectionImagePrompt(domain: string, slot: Row, sectionHeading: string, index: number): string {
+function buildSectionImagePrompt(domain: string, slot: Row, sectionHeading: string, index: number, sectionText: string): string {
   const region = String(slot.region || "").trim();
   const keyword = String(slot.primary_keyword || "").trim();
   const persona = String(slot.persona || "").trim();
   const topic = String(sectionHeading || "").replace(/[#*_`>]/g, "").trim();
+  const detail = String(sectionText || "").replace(/[#*_`>]/g, "").trim();
   const audience = persona ? `${persona} audience` : "local search audience";
   const compositions = [
     "wide establishing editorial shot",
@@ -96,6 +97,7 @@ function buildSectionImagePrompt(domain: string, slot: Row, sectionHeading: stri
     "Create a realistic editorial photo for a Korean SEO article.",
     `Article topic: ${[region, keyword].filter(Boolean).join(" ") || domain}. Audience: ${audience}.`,
     topic ? `This image illustrates the section titled "${topic}". Depict a scene that specifically matches this section's content.` : "",
+    detail ? `Section summary (interpret as a single realistic scene; never render any of this wording as visible text): ${detail}` : "",
     `Composition: ${composition}.`,
     "Choose the setting that fits the section: e.g., written-exam study, driving test course, on-road practice, license test center, or consultation — Korean driving-education context.",
     "Natural daylight, trustworthy editorial style, looks like a usable article photo, not an advertisement.",

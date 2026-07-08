@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS domains (
   logo_url TEXT,
   templates_enabled TEXT NOT NULL DEFAULT '["T01","T03","T04","T05","T06","T07","T08","T09","T10","T11","T12","T13","T14","T15"]',
   design_template_id TEXT NOT NULL DEFAULT 'local-guide',
+  design_template_overrides TEXT,
   custom_design_templates TEXT,
   content_brief TEXT,
   excluded_keywords TEXT,
@@ -188,6 +189,7 @@ export class DbService implements OnModuleInit {
       logo_url TEXT,
       templates_enabled TEXT NOT NULL DEFAULT '["T01","T03","T04","T05","T06","T07","T08","T09","T10","T11","T12","T13","T14","T15"]',
       design_template_id TEXT NOT NULL DEFAULT 'local-guide',
+      design_template_overrides TEXT,
       custom_design_templates TEXT,
       content_brief TEXT,
       excluded_keywords TEXT,
@@ -236,6 +238,7 @@ export class DbService implements OnModuleInit {
   private migrate(): void {
     const domainCols = new Set(this.all("PRAGMA table_info(domains)").map((r) => r.name));
     if (!domainCols.has("design_template_id")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
+    if (!domainCols.has("design_template_overrides")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_overrides TEXT");
     if (!domainCols.has("custom_design_templates")) this.db.exec("ALTER TABLE domains ADD COLUMN custom_design_templates TEXT");
     if (!domainCols.has("content_brief")) this.db.exec("ALTER TABLE domains ADD COLUMN content_brief TEXT");
     if (!domainCols.has("excluded_keywords")) this.db.exec("ALTER TABLE domains ADD COLUMN excluded_keywords TEXT");
@@ -314,7 +317,7 @@ export class DbService implements OnModuleInit {
       [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0]);
   }
   updateDomain(domain: string, fields: Row): void {
-    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "custom_design_templates", "content_brief", "excluded_keywords", "academy_type_filter"]);
+    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "custom_design_templates", "content_brief", "excluded_keywords", "academy_type_filter"]);
     const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
     if (!entries.length) return;
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
@@ -656,7 +659,14 @@ export function safeJson(value: any, fallback: any): any {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
-export function domainOut(row: Row): Row { return { ...row, templates_enabled: safeJson(row.templates_enabled, []), academy_type_filter: safeJson(row.academy_type_filter, []) }; }
+export function domainOut(row: Row): Row {
+  return {
+    ...row,
+    templates_enabled: safeJson(row.templates_enabled, []),
+    design_template_overrides: safeJson(row.design_template_overrides, {}),
+    academy_type_filter: safeJson(row.academy_type_filter, []),
+  };
+}
 export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
 export function nowSql(): string { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 

@@ -2,7 +2,7 @@
 
 import { api, downloadPostExport, enqueueGenerate, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
-import { getDesignTheme } from "@/lib/design-theme";
+import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
 import { JobCard } from "./JobCard";
@@ -549,7 +549,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
     </div>
     <div className="grid grid-2">
       <div className="card card-pad"><h2>콘텐츠 기획</h2><p className="muted">{domain.content_brief || "아직 기획 메모가 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>기획 열기</button></div>
-      <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {domain.design_template_id ?? "local-guide"}</p><button className="btn" onClick={() => onTab("templates")}>디자인 고르기</button></div>
+      <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>디자인 고르기</button></div>
     </div>
     <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>슬롯 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 탭에서 진행 상태 확인</li><li>글 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
   </div>;
@@ -629,46 +629,129 @@ function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: Domain
   </div>;
 }
 
+// 도메인 디자인 설정의 특수값: 글마다 슬롯의 글 유형 기본 디자인(default_design)을 자동 적용한다.
+const AUTO_DESIGN_ID = "auto";
+const AUTO_DESIGN_OPTION = { id: AUTO_DESIGN_ID, name: "자동 (글 유형별 매칭)", summary: "글마다 슬롯의 글 유형에 맞는 기본 디자인을 자동으로 골라 발행합니다.", best_for: "여러 글 유형을 함께 켜서 운영할 때" };
+
 function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; options: AdminOptions; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
-  const [design, setDesign] = useState(domain.design_template_id ?? "local-guide");
+  const [design, setDesign] = useState<string>(domain.design_template_id ?? AUTO_DESIGN_ID);
+  const [overrides, setOverrides] = useState<Record<string, string>>(domain.design_template_overrides ?? {});
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
-  const activeDesign = options.design_templates.find((d) => d.id === design) ?? options.design_templates[0];
-  const blueprint = { ...(DESIGN_BLUEPRINTS[design] ?? DESIGN_BLUEPRINTS.editorial) };
-  if (design === "custom" && custom.trim()) blueprint.lead = custom.trim();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewTemplateId, setPreviewTemplateId] = useState(domain.templates_enabled[0] ?? Object.keys(options.template_specs)[0] ?? "");
+  const designNameOf = (id?: string) => options.design_templates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
+  const designOptions = options.design_templates.filter((tpl) => tpl.id !== "custom");
+  const cleanOverrides = () => Object.fromEntries(Object.entries(overrides).filter(([templateId, designId]) => enabled.has(templateId) && Boolean(designId)));
+  const effectiveDesignForTemplate = (id: string) => cleanOverrides()[id] ?? options.template_specs[id]?.default_design ?? "local-guide";
+  const enabledTemplateIds = Array.from(enabled).sort();
+  const previewTemplate = enabled.has(previewTemplateId) ? previewTemplateId : enabledTemplateIds[0] ?? Object.keys(options.template_specs)[0] ?? "";
+  // 자동 매칭이 실제로 적용할 디자인 목록: 켜진 글 유형(없으면 전체)의 기본 디자인.
+  const autoTargetIds = Array.from(new Set((enabled.size ? enabledTemplateIds : Object.keys(options.template_specs)).map(effectiveDesignForTemplate)));
+  const isAuto = design === AUTO_DESIGN_ID;
+  const previewDesignId = isAuto ? effectiveDesignForTemplate(previewTemplate) : design;
+  const previewModeLabel = isAuto ? (cleanOverrides()[previewTemplate] ? "수동 변경" : "자동 추천") : "전체 강제";
+  const previewModeClass = isAuto ? (cleanOverrides()[previewTemplate] ? "warn" : "success") : "warn";
+  const activeDesign = options.design_templates.find((d) => d.id === previewDesignId) ?? (isAuto ? AUTO_DESIGN_OPTION : options.design_templates[0]);
+  const blueprint = { ...(DESIGN_BLUEPRINTS[previewDesignId] ?? DESIGN_BLUEPRINTS.editorial) };
+  if (previewDesignId === "custom" && custom.trim()) blueprint.lead = custom.trim();
+  if (isAuto) blueprint.lead = `${previewTemplate} 글 유형에는 ${designNameOf(previewDesignId)} 화면 구상이 적용됩니다.`;
   const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const save = () => {
+    if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 디자인 설정만 저장할까요?")) return;
+    onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: design, design_template_overrides: cleanOverrides(), custom_design_templates: custom.trim() });
+  };
   return <div className="grid">
     <section className="card card-pad grid" data-tour="templates-types">
       <div className="spread"><div><h2>글 유형</h2><p className="muted">어떤 종류의 글을 만들지 고릅니다. 너무 많이 켜면 후보 수가 빠르게 늘어납니다.</p></div><span className="badge info">{enabled.size}개 사용 중</span></div>
       <div className="grid grid-2">{Object.entries(options.template_specs).map(([id, spec]) => <button key={id} className={`option-card ${enabled.has(id) ? "active" : ""}`} onClick={() => toggle(id)}>
         <div className="spread"><b><span className="badge">{id}</span> {spec.name}</b><span>{enabled.has(id) ? "✓" : ""}</span></div>
         <p className="muted small">primary: {spec.primary.join(", ")} · persona {spec.use_persona ? "사용" : "미사용"} · intent {spec.with_intent ? "사용" : "미사용"} · modifier {spec.modifier_count}</p>
-        <div className="row">{spec.primary.map((axis) => <span key={axis} className="badge">{axis}</span>)}{spec.use_persona && <span className="badge">persona</span>}{spec.with_intent && <span className="badge">intent</span>}{spec.modifier_count > 0 && <span className="badge">modifier {spec.modifier_count}</span>}</div>
+        <div className="row">{spec.primary.map((axis) => <span key={axis} className="badge">{axis}</span>)}{spec.use_persona && <span className="badge">persona</span>}{spec.with_intent && <span className="badge">intent</span>}{spec.modifier_count > 0 && <span className="badge">modifier {spec.modifier_count}</span>}<span className="badge info">디자인 {designNameOf(spec.default_design)}</span></div>
       </button>)}</div>
     </section>
 
-    <section className="grid" style={{ gridTemplateColumns: "minmax(0, 1fr) minmax(360px, 440px)", alignItems: "start" }}>
+    <section className="grid">
       <div className="card card-pad grid" data-tour="templates-design">
-        <div><h2>화면 구상 / 디자인</h2><p className="muted">Electron에 있던 디자인 선택 화면처럼, 완성 글이 어떤 구조로 보일지 먼저 고릅니다.</p></div>
-        <div className="grid grid-2">{options.design_templates.map((tpl) => {
-          const bp = DESIGN_BLUEPRINTS[tpl.id] ?? DESIGN_BLUEPRINTS.editorial;
-          return <button key={tpl.id} className={`option-card ${design === tpl.id ? "active" : ""}`} onClick={() => setDesign(tpl.id)}>
-            <div className="spread"><b>{tpl.name}</b><span>{design === tpl.id ? "✓" : ""}</span></div>
-            <p className="muted small">{tpl.summary}</p>
-            <p className="small"><b>추천:</b> {tpl.best_for}</p>
-            <p className="small"><b>톤:</b> {bp.tone}</p>
-            <div className="row">{bp.sections.slice(0, 4).map((section) => <span key={section} className="badge">{section}</span>)}</div>
-          </button>;
-        })}</div>
+        <div><h2>화면 구상 / 디자인</h2><p className="muted">기본은 글 유형별 자동 매칭입니다. 아래 표에서 특정 글 유형만 바꿀 수 있고, 전체 강제는 고급 설정에서만 사용합니다.</p></div>
+        <div className="toast-info">
+          <div className="spread"><div><b>{isAuto ? AUTO_DESIGN_OPTION.name : "전체 화면 구상 강제"}</b><p className="muted small">{isAuto ? AUTO_DESIGN_OPTION.summary : "모든 글 유형에 같은 화면 구상을 적용합니다. 글 유형별 수동 변경보다 우선합니다."}</p></div><span className={`badge ${isAuto ? "success" : "warn"}`}>{isAuto ? "권장" : "예외"}</span></div>
+          <div className="row">{autoTargetIds.slice(0, 6).map((id) => <span key={id} className="badge">{designNameOf(id)}</span>)}</div>
+        </div>
+        <div className="grid">
+          <div><h3>화면 구상 종류</h3><p className="muted small">아래 항목은 설명용입니다. 실제 적용은 글 유형별 표에서 변경하세요.</p></div>
+          <div className="grid grid-2">{options.design_templates.map((tpl) => {
+            const bp = DESIGN_BLUEPRINTS[tpl.id] ?? DESIGN_BLUEPRINTS.editorial;
+            return <div key={tpl.id} className="option-card">
+              <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.id}</span></div>
+              <p className="muted small">{tpl.summary}</p>
+              <p className="small"><b>추천:</b> {tpl.best_for}</p>
+              <p className="small"><b>톤:</b> {bp.tone}</p>
+              <div className="row">{bp.sections.slice(0, 4).map((section) => <span key={section} className="badge">{section}</span>)}</div>
+            </div>;
+          })}</div>
+        </div>
+        <div className="grid">
+          <div><h3>글 유형별 화면 구상</h3><p className="muted small">자동 모드에서만 적용됩니다. 대부분은 자동 추천 그대로 두고, 특정 글 유형만 다른 화면으로 바꾸고 싶을 때 오른쪽에서 변경하세요.</p></div>
+          <div className="table-wrap"><table>
+            <thead><tr><th>글 유형</th><th>자동 추천 화면</th><th>수동 변경</th><th>실제 적용</th></tr></thead>
+            <tbody>{Object.entries(options.template_specs).filter(([id]) => enabled.has(id)).map(([id, spec]) => {
+              const defaultDesign = spec.default_design ?? "local-guide";
+              const manualDesign = overrides[id] ?? "";
+              const effectiveDesign = manualDesign || defaultDesign;
+              return <tr key={id}>
+                <td><b>{id}</b><p className="muted small">{spec.name}</p></td>
+                <td><span className="badge">{designNameOf(defaultDesign)}</span></td>
+                <td><select className="select" value={manualDesign} onChange={(e) => setOverrides((prev) => {
+                  const next = { ...prev };
+                  if (e.target.value) next[id] = e.target.value;
+                  else delete next[id];
+                  return next;
+                })}>
+                  <option value="">자동 추천 그대로</option>
+                  {options.design_templates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
+                </select></td>
+                <td><span className={`badge ${manualDesign ? "warn" : "success"}`}>{manualDesign ? "수동 변경" : "자동 추천"}</span><p className="muted small">{designNameOf(effectiveDesign)}</p></td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+        </div>
         <Field label="직접 만드는 화면 구상 메모">
-          <textarea className="textarea" rows={7} value={custom} onChange={(e) => { setCustom(e.target.value); if (e.target.value.trim()) setDesign("custom"); }} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
+          <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
+          <p className="muted small">글 유형별 화면 구상에서 '커스텀'을 선택한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
         </Field>
-        <div className="row"><button className="btn primary" disabled={busy || enabled.size === 0} onClick={() => onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: design, custom_design_templates: custom.trim() })}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
+        <Field label="고급: 전체 화면 구상 강제">
+          <select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
+            <option value={AUTO_DESIGN_ID}>사용 안 함 - 글 유형별 자동 추천</option>
+            {designOptions.map((tpl) => <option key={tpl.id} value={tpl.id}>모든 글을 {tpl.name}으로 강제</option>)}
+          </select>
+          <p className="muted small">특별한 브랜드 운영 정책이 있을 때만 사용하세요. 강제하면 글 유형별 수동 변경은 저장만 되고 생성에는 적용되지 않습니다.</p>
+        </Field>
+        {!isAuto && <p className="toast-warn">전체 화면 구상 강제 모드입니다. 글 유형별 화면 구상보다 현재 고급 설정이 우선 적용됩니다.</p>}
+        <div className="preview-toggle-panel">
+          <div className="spread">
+            <div>
+              <h3>실제 적용 미리보기</h3>
+              <p className="muted small">선택한 글 유형에 적용될 화면 구상을 예시로 확인합니다.</p>
+            </div>
+            <button type="button" className="btn" onClick={() => setPreviewOpen((v) => !v)}>{previewOpen ? "미리보기 닫기" : "미리보기 열기"}</button>
+          </div>
+          <div className="row">
+            <Field label="미리볼 글 유형">
+              <select className="select" value={previewTemplate} onChange={(e) => setPreviewTemplateId(e.target.value)}>
+                {(enabledTemplateIds.length ? enabledTemplateIds : Object.keys(options.template_specs)).map((id) => <option key={id} value={id}>{id} {options.template_specs[id]?.name ?? ""}</option>)}
+              </select>
+            </Field>
+            <span className={`badge ${previewModeClass}`}>{previewModeLabel}</span>
+            <span className="badge info">{designNameOf(previewDesignId)}</span>
+          </div>
+          {previewOpen && <DesignPreview blueprint={blueprint} designId={previewDesignId} brandColor={domain.brand_color} brand={publicBrandName(domain.display_name)} title={activeDesign.name} summary={activeDesign.summary} />}
+        </div>
+        <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
-      <DesignPreview blueprint={blueprint} designId={design} brandColor={domain.brand_color} brand={publicBrandName(domain.display_name)} title={activeDesign.name} summary={activeDesign.summary} />
     </section>
   </div>;
 }
@@ -967,7 +1050,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => setImageGen(e.target.checked)} /> Codex 이미지 생성</label>
           <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
         </div>
-        <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {domain.design_template_id ?? "local-guide"}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
+        <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
         <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞습니다.</p>
       </div>
 

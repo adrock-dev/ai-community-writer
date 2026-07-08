@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_CONTENT_BRIEF, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_CONTENT_BRIEF, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -77,7 +77,8 @@ export class AdminController {
     if (!DRIVING_VERTICALS.includes(vertical as any)) throw new HttpException("Adrock 회사용 운영본은 driving 도메인만 지원합니다", 400);
     if (this.db.getDomain(domain)) throw new HttpException("domain already exists", 409);
     this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit });
-    this.db.updateDomain(domain, { design_template_id: DEFAULT_DRIVING_DESIGN_TEMPLATE, content_brief: body.content_brief || DEFAULT_DRIVING_CONTENT_BRIEF });
+    // 새 도메인은 디자인 자동 매칭으로 시작한다: 글마다 슬롯의 글 유형 기본 디자인을 적용(docs/design-template-mapping.md).
+    this.db.updateDomain(domain, { design_template_id: AUTO_DESIGN_TEMPLATE_ID, content_brief: body.content_brief || DEFAULT_DRIVING_CONTENT_BRIEF });
     if (body.apply_preset !== false) this.slots.applyPreset(domain, vertical);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }
@@ -107,6 +108,7 @@ export class AdminController {
     this.requireDomain(domain);
     const fields = { ...body };
     if (Array.isArray(fields.templates_enabled)) fields.templates_enabled = JSON.stringify(fields.templates_enabled);
+    if (fields.design_template_overrides && typeof fields.design_template_overrides === "object") fields.design_template_overrides = JSON.stringify(normalizeDesignOverrides(fields.design_template_overrides));
     if (Array.isArray(fields.academy_type_filter)) fields.academy_type_filter = JSON.stringify(fields.academy_type_filter.map((v: any) => String(v || "").trim()).filter(Boolean));
     this.db.updateDomain(domain, fields);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
@@ -410,6 +412,13 @@ export function checkAuth(req: Request, headers: Record<string, string>): void {
 }
 
 function clampInt(value: any, fallback: number, min: number, max: number): number { const n = Number(value); return Math.max(min, Math.min(max, Number.isFinite(n) ? Math.trunc(n) : fallback)); }
+function normalizeDesignOverrides(value: Row): Row {
+  const templates = new Set(Object.keys(TEMPLATE_SPECS));
+  const designs = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
+  return Object.fromEntries(Object.entries(value)
+    .map(([templateId, designId]) => [String(templateId), String(designId || "")])
+    .filter((entry) => templates.has(entry[0] ?? "") && designs.has(entry[1] ?? "")));
+}
 function normalizePostForAdminExport(db: DbService, domain: string, post: Row): Row {
   const dbImages = safeJson(post.images, {});
   const images = { ...fallbackImagesForPost(db, domain, post), ...(dbImages && typeof dbImages === "object" ? dbImages : {}) };

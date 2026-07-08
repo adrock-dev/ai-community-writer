@@ -13,7 +13,7 @@
   - `scripts`: 생성 글 QA, 회사 제출용 clean 검증
   - `data`, `output`: SQLite DB/원천 자료/생성 산출물
 
-현재 이 프로젝트는 범용 SEO 도구가 아니라 **운전면허·운전학원 도메인 전용 운영본**입니다. 새 도메인은 기본적으로 `driving` vertical, `local-guide` 디자인, 운전학원 축 프리셋으로 시작합니다.
+현재 이 프로젝트는 범용 SEO 도구가 아니라 **운전면허·운전학원 도메인 전용 운영본**입니다. 새 도메인은 기본적으로 `driving` vertical, 디자인 자동 매칭(`auto` — 글마다 글 유형의 기본 디자인 적용, `docs/design-template-mapping.md` 참조), 운전학원 축 프리셋으로 시작합니다.
 
 ## 2. 핵심 실행 명령
 

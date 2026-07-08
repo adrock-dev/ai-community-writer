@@ -5,6 +5,8 @@ export type JobStatus = "queued" | "running" | "done" | "failed";
 export type JobKind = "generate" | "dedup" | "indexing" | "prune";
 export type Provider = "claude" | "codex";
 export type DesignTemplateId = "editorial" | "comparison" | "local-guide" | "checklist" | "conversion" | "custom";
+// 도메인 설정값. "auto"면 글마다 슬롯의 글 유형 기본 디자인(default_design)이 적용된다.
+export type DomainDesignSetting = DesignTemplateId | "auto";
 
 export interface DomainConfig {
   domain: string;
@@ -14,7 +16,8 @@ export interface DomainConfig {
   brand_color: string | null;
   logo_url: string | null;
   templates_enabled: string[];
-  design_template_id?: DesignTemplateId;
+  design_template_id?: DomainDesignSetting;
+  design_template_overrides?: Record<string, DesignTemplateId>;
   custom_design_templates?: string | null;
   content_brief?: string | null;
   excluded_keywords?: string | null;
@@ -157,6 +160,8 @@ export interface TemplateSpec {
   weight?: number;
   min_sv?: number;
   with_intent?: boolean;
+  kind?: string;
+  default_design?: DesignTemplateId;
 }
 
 export interface AdminOptions {

@@ -6,6 +6,8 @@ export const AXES: AxisName[] = ["region", "keyword", "intent", "persona", "modi
 export const DRIVING_VERTICALS = ["driving"] as const;
 export const DEFAULT_DRIVING_VERTICAL = "driving";
 export const DEFAULT_DRIVING_DESIGN_TEMPLATE = "local-guide";
+// 도메인 design_template_id가 이 값이면 글마다 슬롯의 글 유형 기본 디자인(default_design)을 자동 선택한다.
+export const AUTO_DESIGN_TEMPLATE_ID = "auto";
 export const DEFAULT_DRIVING_BRAND_COLOR = "#2563eb";
 export const DEFAULT_DRIVING_CONTENT_BRIEF = [
   "운전면허·운전학원 비교 콘텐츠를 회사 도메인 기준으로 발행한다.",
@@ -19,22 +21,29 @@ export const DRIVING_ORIGINAL_TEMPLATE_IDS = [
   "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"
 ] as const;
 
+// default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
 export const TEMPLATE_SPECS = {
-  T01: { name: "지역 운전학원 BEST 비교", primary: ["region"], use_persona: true, modifier_count: 2, weight: 1.15, min_sv: 0, kind: "local_best" },
-  T03: { name: "운전면허 가이드 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, kind: "general_guide" },
-  T04: { name: "면허 종류/옵션 비교", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.75, min_sv: 0, kind: "license_compare" },
-  T05: { name: "비용 및 시간 절약 전략", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "cost_strategy" },
-  T06: { name: "시험 단계 집중 BEST", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 0.9, min_sv: 0, with_intent: true, kind: "exam_best" },
-  T07: { name: "지역 허브 총정리", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.25, min_sv: 0, with_intent: true, kind: "regional_hub" },
-  T08: { name: "운전면허 필기시험 접수", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 1.08, min_sv: 0, with_intent: true, kind: "written_registration" },
-  T09: { name: "운전면허 필기시험 팁", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "written_tips" },
-  T10: { name: "운전면허 필기시험 앱 추천", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.9, min_sv: 0, kind: "written_app" },
-  T11: { name: "지역 운전면허시험장 소개", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.0, min_sv: 0, with_intent: true, kind: "test_center" },
-  T12: { name: "운전면허 취득 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "license_complete" },
-  T13: { name: "타겟별 운전면허 준비", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.9, min_sv: 0, kind: "persona_target" },
-  T14: { name: "전문학원 단독 소개", primary: ["region"], use_persona: true, modifier_count: 0, weight: 0.98, min_sv: 0, kind: "academy_profile" },
-  T15: { name: "지역+시험단계 혼합", primary: ["region"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, with_intent: true, kind: "local_exam_mix" }
+  T01: { name: "지역 운전학원 BEST 비교", primary: ["region"], use_persona: true, modifier_count: 2, weight: 1.15, min_sv: 0, kind: "local_best", default_design: "comparison" },
+  T03: { name: "운전면허 가이드 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, kind: "general_guide", default_design: "editorial" },
+  T04: { name: "면허 종류/옵션 비교", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.75, min_sv: 0, kind: "license_compare", default_design: "comparison" },
+  T05: { name: "비용 및 시간 절약 전략", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "cost_strategy", default_design: "comparison" },
+  T06: { name: "시험 단계 집중 BEST", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 0.9, min_sv: 0, with_intent: true, kind: "exam_best", default_design: "comparison" },
+  T07: { name: "지역 허브 총정리", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.25, min_sv: 0, with_intent: true, kind: "regional_hub", default_design: "local-guide" },
+  T08: { name: "운전면허 필기시험 접수", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 1.08, min_sv: 0, with_intent: true, kind: "written_registration", default_design: "checklist" },
+  T09: { name: "운전면허 필기시험 팁", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "written_tips", default_design: "checklist" },
+  T10: { name: "운전면허 필기시험 앱 추천", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.9, min_sv: 0, kind: "written_app", default_design: "comparison" },
+  T11: { name: "지역 운전면허시험장 소개", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.0, min_sv: 0, with_intent: true, kind: "test_center", default_design: "local-guide" },
+  T12: { name: "운전면허 취득 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "license_complete", default_design: "editorial" },
+  T13: { name: "타겟별 운전면허 준비", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.9, min_sv: 0, kind: "persona_target", default_design: "editorial" },
+  T14: { name: "전문학원 단독 소개", primary: ["region"], use_persona: true, modifier_count: 0, weight: 0.98, min_sv: 0, kind: "academy_profile", default_design: "conversion" },
+  T15: { name: "지역+시험단계 혼합", primary: ["region"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, with_intent: true, kind: "local_exam_mix", default_design: "local-guide" }
 } as const;
+
+// 글 유형의 기본 디자인. 알 수 없는 유형은 기본 디자인으로 폴백한다.
+export function defaultDesignForTemplate(templateId: string): string {
+  const spec = (TEMPLATE_SPECS as Record<string, { default_design?: string }>)[templateId];
+  return spec?.default_design || DEFAULT_DRIVING_DESIGN_TEMPLATE;
+}
 
 export const DESIGN_TEMPLATES = [
   { id: "local-guide", name: "지역 운전학원 추천", summary: "지역명, 생활권, 셔틀/동선, 상담 확인점을 강조하는 로컬 SEO 구성", best_for: "운전학원 추천, 근처/주변/동네 검색어" },

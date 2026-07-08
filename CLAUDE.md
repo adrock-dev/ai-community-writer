@@ -56,7 +56,7 @@ npm workspaces는 선언되어 있지 않고, 루트 스크립트가 `npm --pref
 - **품질 게이트가 두 곳에 독립 구현돼 있다.** 런타임 게이트(`worker.service.ts`의 `articleQualityIssues`/`postSurfaceQualityIssues`)와 렌더 인식 게이트(`scripts/qa-posts.mjs`)는 로직을 공유하지만 DRY하지 않다. **품질 규칙을 바꿀 때 두 쪽을 함께 맞춰라.**
 - 생성 프롬프트(`buildPrompt`)에는 "절대 원칙"이 있다: 확인된 데이터만 사용, 가격·합격률·셔틀·후기 날조 금지, 실제보다 많은 후보 주장 금지, 내부 API URL/인용 마커 노출 금지.
 - `data/article-patterns/summary.json`이 생성 시 프롬프트에 주입된다(없으면 graceful fallback). 원본 `.xlsx`/`.csv`는 gitignore.
-- 도메인은 `driving` 버티컬에 하드 특화돼 있다(`constants.ts`). 새 도메인은 `driving` + `local-guide` 디자인으로 기본 설정된다.
+- 도메인은 `driving` 버티컬에 하드 특화돼 있다(`constants.ts`). 새 도메인은 `driving` + 디자인 자동 매칭(`auto` — 글마다 글 유형의 `default_design` 적용, `docs/design-template-mapping.md` 참조)으로 기본 설정된다.
 
 ## 환경 변수
 
