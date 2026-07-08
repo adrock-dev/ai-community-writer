@@ -350,6 +350,8 @@ export class AdminController {
         400,
       );
     }
+    const enableImageGeneration = Boolean(body.enable_image_generation);
+    const defaultTimeoutSec = enableImageGeneration ? 1200 : 600;
     const job_id = this.db.enqueueJob(domain, "generate", {
       slot_ids: slotIds,
       provider: body.provider || "codex",
@@ -357,8 +359,8 @@ export class AdminController {
       design_template_id: body.design_template_id,
       use_web_research: body.use_web_research ?? true,
       cooldown_sec: body.cooldown_sec ?? 60,
-      timeout_sec: body.timeout_sec ?? 600,
-      enable_image_generation: Boolean(body.enable_image_generation),
+      timeout_sec: body.timeout_sec ?? defaultTimeoutSec,
+      enable_image_generation: enableImageGeneration,
       image_generation_required: Boolean(body.image_generation_required),
       image_count: clampInt(body.image_count, 1, 1, 3),
       image_size: String(body.image_size || "1024x1024"),

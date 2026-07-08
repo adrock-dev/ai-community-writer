@@ -3,7 +3,7 @@
 import { api, createDesignPreset, deleteDesignPreset, downloadPostExport, enqueueGenerate, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
-import { getGenerationDefaults } from "@/lib/generation-defaults";
+import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
@@ -1015,7 +1015,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const [provider, setProvider] = useState<Provider>(genDefaults.provider);
   const [model, setModel] = useState(genDefaults.model);
   const [cooldown, setCooldown] = useState(genDefaults.cooldownSec);
-  const [timeout, setTimeout] = useState(genDefaults.timeoutSec);
+  const [timeout, setTimeout] = useState(recommendedGenerationTimeoutSec(genDefaults.imageGen, genDefaults.timeoutSec));
   const [web, setWeb] = useState(genDefaults.web);
   const [imageGen, setImageGen] = useState(genDefaults.imageGen);
   const [imageSize, setImageSize] = useState(genDefaults.imageSize);
@@ -1053,7 +1053,8 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const filtered = remoteSlots;
   const expectedMinutes = Math.max(1, Math.ceil(((selected.size || 1) * (cooldown + 30)) / 60));
   const selectedAllVisible = filtered.length > 0 && filtered.every((s) => selected.has(s.slot_id));
-  const writerPayload = { provider, model, design_template_id: domain.design_template_id, use_web_research: web, cooldown_sec: cooldown, timeout_sec: timeout, enable_image_generation: imageGen, image_size: imageSize, image_count: 1, image_provider: "private-codex" };
+  const effectiveTimeout = recommendedGenerationTimeoutSec(imageGen, timeout);
+  const writerPayload = { provider, model, design_template_id: domain.design_template_id, use_web_research: web, cooldown_sec: cooldown, timeout_sec: effectiveTimeout, enable_image_generation: imageGen, image_size: imageSize, image_count: 1, image_provider: "private-codex" };
   const exclusionLines = parseLines(domain.excluded_keywords ?? "");
 
   async function gen() { if (busy || queueBusy) return; setBusy(true); try { await api(`/domains/${encodeURIComponent(domain.domain)}/slots/generate`, { method: "POST", body: JSON.stringify({ max_per_template: max }) }); await onRefresh(); await loadCurrentSlots(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
@@ -1125,10 +1126,10 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         </div>
         <div className="row">
           <label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label>
-          <label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => setImageGen(e.target.checked)} /> Codex 이미지 생성</label>
+          <label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => { const checked = e.target.checked; setImageGen(checked); setTimeout((value) => recommendedGenerationTimeoutSec(checked, value)); }} /> Codex 이미지 생성</label>
           <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
         </div>
-        <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
+        <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>제한 {effectiveTimeout}초</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
         <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞습니다.</p>
       </div>
 

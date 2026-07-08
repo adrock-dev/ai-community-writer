@@ -7,6 +7,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Provider } from "@/lib/types";
 
+export const TEXT_GENERATION_TIMEOUT_SEC = 600;
+export const IMAGE_GENERATION_TIMEOUT_SEC = 1200;
+
 export type GenerationDefaults = {
   provider: Provider;
   model: string;
@@ -20,12 +23,17 @@ export type GenerationDefaults = {
 export const DEFAULT_GENERATION_DEFAULTS: GenerationDefaults = {
   provider: "codex",
   model: "",
-  timeoutSec: 600,
+  timeoutSec: TEXT_GENERATION_TIMEOUT_SEC,
   cooldownSec: 60,
   web: true,
   imageGen: false,
   imageSize: "1024x1024",
 };
+
+export function recommendedGenerationTimeoutSec(imageGen: boolean, currentTimeoutSec: number): number {
+  const current = Number.isFinite(currentTimeoutSec) ? currentTimeoutSec : TEXT_GENERATION_TIMEOUT_SEC;
+  return imageGen ? Math.max(current, IMAGE_GENERATION_TIMEOUT_SEC) : current;
+}
 
 const STORAGE_KEY = "adrock.generation.defaults";
 export const GENERATION_DEFAULTS_EVENT = "adrock:generation-defaults";
