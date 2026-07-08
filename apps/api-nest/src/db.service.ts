@@ -111,6 +111,22 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS design_presets (
+  id TEXT PRIMARY KEY,
+  domain TEXT NOT NULL,
+  name TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'uploaded_html',
+  source_html TEXT,
+  extracted_summary TEXT,
+  best_for TEXT,
+  tone TEXT,
+  structure_guide TEXT,
+  css_text TEXT,
+  css_tokens TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_design_presets_domain ON design_presets(domain, created_at DESC);
 CREATE TABLE IF NOT EXISTS academies (
   id TEXT PRIMARY KEY,
   domain TEXT NOT NULL,
@@ -275,6 +291,22 @@ export class DbService implements OnModuleInit {
     ];
     for (const [col, sql] of academyMigrations) if (!academyCols.has(col)) this.db.exec(sql);
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
+    this.db.exec(`CREATE TABLE IF NOT EXISTS design_presets (
+      id TEXT PRIMARY KEY,
+      domain TEXT NOT NULL,
+      name TEXT NOT NULL,
+      source_type TEXT NOT NULL DEFAULT 'uploaded_html',
+      source_html TEXT,
+      extracted_summary TEXT,
+      best_for TEXT,
+      tone TEXT,
+      structure_guide TEXT,
+      css_text TEXT,
+      css_tokens TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
+    )`);
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_design_presets_domain ON design_presets(domain, created_at DESC)");
     this.db.exec(`CREATE TABLE IF NOT EXISTS seo_regions (
       domain TEXT NOT NULL,
       level INTEGER NOT NULL,
@@ -478,6 +510,34 @@ export class DbService implements OnModuleInit {
     this.run(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP`, [key, value]);
   }
 
+  listDesignPresets(domain: string): Row[] {
+    return this.all("SELECT * FROM design_presets WHERE domain=? ORDER BY created_at DESC", [domain]).map(designPresetOut);
+  }
+  getDesignPreset(domain: string, id: string): Row | undefined {
+    const row = this.get("SELECT * FROM design_presets WHERE domain=? AND id=?", [domain, id]);
+    return row ? designPresetOut(row) : undefined;
+  }
+  createDesignPreset(domain: string, input: Row): Row {
+    const id = `uploaded:${randomUUID().slice(0, 12)}`;
+    this.run(`INSERT INTO design_presets (id, domain, name, source_type, source_html, extracted_summary, best_for, tone, structure_guide, css_text, css_tokens)
+      VALUES (?, ?, ?, 'uploaded_html', ?, ?, ?, ?, ?, ?, ?)`, [
+      id,
+      domain,
+      String(input.name || "업로드 디자인").trim(),
+      input.source_html ?? null,
+      input.extracted_summary ?? null,
+      input.best_for ?? null,
+      input.tone ?? null,
+      JSON.stringify(input.structure_guide ?? []),
+      input.css_text ?? null,
+      JSON.stringify(input.css_tokens ?? {}),
+    ]);
+    return this.getDesignPreset(domain, id)!;
+  }
+  deleteDesignPreset(domain: string, id: string): number {
+    return this.run("DELETE FROM design_presets WHERE domain=? AND id=?", [domain, id]).changes ?? 0;
+  }
+
   upsertAcademies(domain: string, rows: Row[]): number {
     let n = 0;
     for (const r of rows) {
@@ -665,6 +725,13 @@ export function domainOut(row: Row): Row {
     templates_enabled: safeJson(row.templates_enabled, []),
     design_template_overrides: safeJson(row.design_template_overrides, {}),
     academy_type_filter: safeJson(row.academy_type_filter, []),
+  };
+}
+export function designPresetOut(row: Row): Row {
+  return {
+    ...row,
+    structure_guide: safeJson(row.structure_guide, []),
+    css_tokens: safeJson(row.css_tokens, {}),
   };
 }
 export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }

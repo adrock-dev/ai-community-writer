@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Param, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
@@ -92,6 +93,7 @@ export class AdminController {
     const payload: Row = {
       domain: domainConfig,
       axes: this.db.listAxes(domain),
+      design_presets: this.db.listDesignPresets(domain),
       slot_counts: this.db.countSlots(domain),
       settings: { indexing_has_key: Boolean(this.db.getSetting("google_sa_json")), indexing_url_template: this.indexingUrlTemplate() }
     };
@@ -112,6 +114,23 @@ export class AdminController {
     if (Array.isArray(fields.academy_type_filter)) fields.academy_type_filter = JSON.stringify(fields.academy_type_filter.map((v: any) => String(v || "").trim()).filter(Boolean));
     this.db.updateDomain(domain, fields);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
+  }
+
+  @Post("domains/:domain/design-presets")
+  createDesignPreset(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const html = String(body.html || body.source_html || "").trim();
+    const name = String(body.name || "").trim();
+    if (!html) throw new HttpException("html required", 400);
+    if (html.length > 500_000) throw new HttpException("html too large", 400);
+    const extracted = extractDesignPresetFromHtml(html, name);
+    return { ok: true, preset: this.db.createDesignPreset(domain, extracted) };
+  }
+
+  @Delete("domains/:domain/design-presets/:presetId")
+  deleteDesignPreset(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("presetId") presetId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return { ok: true, deleted: this.db.deleteDesignPreset(domain, presetId) };
   }
 
   @Delete("domains/:domain")
@@ -417,7 +436,67 @@ function normalizeDesignOverrides(value: Row): Row {
   const designs = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
   return Object.fromEntries(Object.entries(value)
     .map(([templateId, designId]) => [String(templateId), String(designId || "")])
-    .filter((entry) => templates.has(entry[0] ?? "") && designs.has(entry[1] ?? "")));
+    .filter((entry) => templates.has(entry[0] ?? "") && (designs.has(entry[1] ?? "") || String(entry[1] || "").startsWith("uploaded:"))));
+}
+
+function extractDesignPresetFromHtml(html: string, fallbackName: string): Row {
+  const safeHtml = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<iframe[\s\S]*?<\/iframe>/gi, "");
+  const title = firstMatch(safeHtml, /<title[^>]*>([\s\S]*?)<\/title>/i) || firstMatch(safeHtml, /<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const headings = Array.from(safeHtml.matchAll(/<h([1-4])[^>]*>([\s\S]*?)<\/h\1>/gi))
+    .map((m) => cleanText(m[2] || ""))
+    .filter(Boolean)
+    .slice(0, 8);
+  const cssText = Array.from(safeHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)).map((m) => String(m[1] || "").trim()).filter(Boolean).join("\n\n").slice(0, 12000);
+  const plain = cleanText(safeHtml).slice(0, 1200);
+  const colors = Array.from(new Set((safeHtml.match(/#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)/g) || []).slice(0, 12)));
+  const radii = Array.from(new Set((cssText.match(/border-radius\s*:\s*[^;]+/gi) || []).map((v) => v.split(":")[1]?.trim()).filter(Boolean))).slice(0, 4);
+  const structureGuide = headings.length
+    ? headings.map((heading, i) => `${i + 1}) ${heading} 흐름과 유사한 섹션을 구성한다`)
+    : [
+      "상단에 제목과 핵심 요약을 배치한다",
+      "본문은 명확한 섹션 단위로 나눈다",
+      "비교표, 리스트, CTA 위치를 예시 HTML의 리듬에 맞춘다",
+    ];
+  return {
+    name: fallbackName || title || `HTML 디자인 ${randomUUID().slice(0, 4)}`,
+    source_html: safeHtml,
+    extracted_summary: plain ? `업로드 HTML에서 추출한 화면 구상입니다. ${plain.slice(0, 220)}` : "업로드 HTML에서 추출한 화면 구상입니다.",
+    best_for: inferBestFor(plain),
+    tone: inferTone(plain),
+    structure_guide: structureGuide,
+    css_text: cssText,
+    css_tokens: { colors, radii },
+  };
+}
+
+function firstMatch(text: string, pattern: RegExp): string {
+  return cleanText(pattern.exec(text)?.[1] || "");
+}
+
+function cleanText(value: string): string {
+  return String(value || "")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferBestFor(text: string): string {
+  if (/비교|BEST|추천|표/.test(text)) return "비교형, 추천형, BEST 글";
+  if (/체크|준비물|절차|시험/.test(text)) return "체크리스트형, 시험 준비 글";
+  if (/상담|예약|문의|비용/.test(text)) return "상담 전환형, 비용 문의 글";
+  return "브랜드 가이드, 정보성 글";
+}
+
+function inferTone(text: string): string {
+  if (/상담|예약|문의/.test(text)) return "전환을 유도하는 실무적인 톤";
+  if (/체크|절차|준비/.test(text)) return "간결하고 따라가기 쉬운 안내 톤";
+  if (/비교|추천|BEST/.test(text)) return "판단이 쉬운 비교 큐레이션 톤";
+  return "업로드 예시 기반 브랜드 톤";
 }
 function normalizePostForAdminExport(db: DbService, domain: string, post: Row): Row {
   const dbImages = safeJson(post.images, {});

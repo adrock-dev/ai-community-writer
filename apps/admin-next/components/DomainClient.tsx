@@ -1,13 +1,13 @@
 "use client";
 
-import { api, downloadPostExport, enqueueGenerate, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
+import { api, createDesignPreset, deleteDesignPreset, downloadPostExport, enqueueGenerate, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
-import type { Academy, AdminOptions, Axis, AxisValue, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts } from "@/lib/types";
+import type { Academy, AdminOptions, Axis, AxisValue, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -329,7 +329,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
 
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
       {view === "overview" && tab === "plan" && <Plan domain={domainConfig} axes={payload.axes} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
-      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} busy={busy} onSave={saveDomain} />}
+      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} designPresets={payload.design_presets ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
       {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
@@ -633,15 +633,19 @@ function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: Domain
 const AUTO_DESIGN_ID = "auto";
 const AUTO_DESIGN_OPTION = { id: AUTO_DESIGN_ID, name: "자동 (글 유형별 매칭)", summary: "글마다 슬롯의 글 유형에 맞는 기본 디자인을 자동으로 골라 발행합니다.", best_for: "여러 글 유형을 함께 켜서 운영할 때" };
 
-function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; options: AdminOptions; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
+function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; designPresets: DesignTemplateOption[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
   const [design, setDesign] = useState<string>(domain.design_template_id ?? AUTO_DESIGN_ID);
   const [overrides, setOverrides] = useState<Record<string, string>>(domain.design_template_overrides ?? {});
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTemplateId, setPreviewTemplateId] = useState(domain.templates_enabled[0] ?? Object.keys(options.template_specs)[0] ?? "");
-  const designNameOf = (id?: string) => options.design_templates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
-  const designOptions = options.design_templates.filter((tpl) => tpl.id !== "custom");
+  const [presetName, setPresetName] = useState("");
+  const [presetHtml, setPresetHtml] = useState("");
+  const [presetBusy, setPresetBusy] = useState(false);
+  const allDesignTemplates: DesignTemplateOption[] = [...options.design_templates, ...designPresets];
+  const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
+  const designOptions = allDesignTemplates.filter((tpl) => tpl.id !== "custom");
   const cleanOverrides = () => Object.fromEntries(Object.entries(overrides).filter(([templateId, designId]) => enabled.has(templateId) && Boolean(designId)));
   const effectiveDesignForTemplate = (id: string) => cleanOverrides()[id] ?? options.template_specs[id]?.default_design ?? "local-guide";
   const enabledTemplateIds = Array.from(enabled).sort();
@@ -652,8 +656,8 @@ function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; op
   const previewDesignId = isAuto ? effectiveDesignForTemplate(previewTemplate) : design;
   const previewModeLabel = isAuto ? (cleanOverrides()[previewTemplate] ? "수동 변경" : "자동 추천") : "전체 강제";
   const previewModeClass = isAuto ? (cleanOverrides()[previewTemplate] ? "warn" : "success") : "warn";
-  const activeDesign = options.design_templates.find((d) => d.id === previewDesignId) ?? (isAuto ? AUTO_DESIGN_OPTION : options.design_templates[0]);
-  const blueprint = { ...(DESIGN_BLUEPRINTS[previewDesignId] ?? DESIGN_BLUEPRINTS.editorial) };
+  const activeDesign = allDesignTemplates.find((d) => d.id === previewDesignId) ?? (isAuto ? AUTO_DESIGN_OPTION : options.design_templates[0]);
+  const blueprint = designBlueprintFor(previewDesignId, activeDesign);
   if (previewDesignId === "custom" && custom.trim()) blueprint.lead = custom.trim();
   if (isAuto) blueprint.lead = `${previewTemplate} 글 유형에는 ${designNameOf(previewDesignId)} 화면 구상이 적용됩니다.`;
   const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -661,6 +665,29 @@ function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; op
     if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 디자인 설정만 저장할까요?")) return;
     onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: design, design_template_overrides: cleanOverrides(), custom_design_templates: custom.trim() });
   };
+  async function uploadPreset() {
+    if (!presetHtml.trim()) { alert("HTML 파일을 선택하거나 HTML 내용을 붙여넣어 주세요."); return; }
+    setPresetBusy(true);
+    try {
+      await createDesignPreset(domain.domain, { name: presetName.trim(), html: presetHtml });
+      setPresetName("");
+      setPresetHtml("");
+      await onRefresh();
+    } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+    finally { setPresetBusy(false); }
+  }
+  async function removePreset(id: string) {
+    if (!confirm("이 HTML 기반 화면 구상을 삭제할까요? 이미 생성된 글에는 영향이 없습니다.")) return;
+    setPresetBusy(true);
+    try { await deleteDesignPreset(domain.domain, id); await onRefresh(); }
+    catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+    finally { setPresetBusy(false); }
+  }
+  async function readPresetFile(file: File | null) {
+    if (!file) return;
+    setPresetName((prev) => prev || file.name.replace(/\.html?$/i, ""));
+    setPresetHtml(await file.text());
+  }
   return <div className="grid">
     <section className="card card-pad grid" data-tour="templates-types">
       <div className="spread"><div><h2>글 유형</h2><p className="muted">어떤 종류의 글을 만들지 고릅니다. 너무 많이 켜면 후보 수가 빠르게 늘어납니다.</p></div><span className="badge info">{enabled.size}개 사용 중</span></div>
@@ -680,16 +707,26 @@ function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; op
         </div>
         <div className="grid">
           <div><h3>화면 구상 종류</h3><p className="muted small">아래 항목은 설명용입니다. 실제 적용은 글 유형별 표에서 변경하세요.</p></div>
-          <div className="grid grid-2">{options.design_templates.map((tpl) => {
-            const bp = DESIGN_BLUEPRINTS[tpl.id] ?? DESIGN_BLUEPRINTS.editorial;
+          <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
+            const bp = designBlueprintFor(tpl.id, tpl);
             return <div key={tpl.id} className="option-card">
-              <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.id}</span></div>
+              <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.source_type === "uploaded_html" ? "HTML" : tpl.id}</span></div>
               <p className="muted small">{tpl.summary}</p>
               <p className="small"><b>추천:</b> {tpl.best_for}</p>
               <p className="small"><b>톤:</b> {bp.tone}</p>
               <div className="row">{bp.sections.slice(0, 4).map((section) => <span key={section} className="badge">{section}</span>)}</div>
+              {tpl.source_type === "uploaded_html" && <button type="button" className="btn danger" disabled={presetBusy} onClick={() => removePreset(tpl.id)}>삭제</button>}
             </div>;
           })}</div>
+        </div>
+        <div className="grid">
+          <div><h3>HTML 예시로 화면 구상 추가</h3><p className="muted small">블로그 예시 HTML을 업로드하면 섹션 흐름, 톤, CSS 힌트를 추출해 화면 구상 프리셋으로 저장합니다.</p></div>
+          <div className="grid grid-2">
+            <Field label="프리셋 이름"><input className="input" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="예: 우리 블로그 카드형 스타일" /></Field>
+            <Field label="HTML 파일"><input className="input" type="file" accept=".html,.htm,text/html" onChange={(e) => readPresetFile(e.target.files?.[0] ?? null)} /></Field>
+          </div>
+          <Field label="HTML 내용"><textarea className="textarea mono" rows={7} value={presetHtml} onChange={(e) => setPresetHtml(e.target.value)} placeholder="<html>...</html>" /></Field>
+          <div className="row"><button type="button" className="btn" disabled={presetBusy || !presetHtml.trim()} onClick={uploadPreset}>{presetBusy ? "저장 중..." : "HTML 화면 구상 저장"}</button><span className="muted small">저장 후 아래 수동 변경 드롭다운에 표시됩니다.</span></div>
         </div>
         <div className="grid">
           <div><h3>글 유형별 화면 구상</h3><p className="muted small">자동 모드에서만 적용됩니다. 대부분은 자동 추천 그대로 두고, 특정 글 유형만 다른 화면으로 바꾸고 싶을 때 오른쪽에서 변경하세요.</p></div>
@@ -709,7 +746,7 @@ function Templates({ domain, options, busy, onSave }: { domain: DomainConfig; op
                   return next;
                 })}>
                   <option value="">자동 추천 그대로</option>
-                  {options.design_templates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
+                  {allDesignTemplates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
                 </select></td>
                 <td><span className={`badge ${manualDesign ? "warn" : "success"}`}>{manualDesign ? "수동 변경" : "자동 추천"}</span><p className="muted small">{designNameOf(effectiveDesign)}</p></td>
               </tr>;
@@ -754,6 +791,25 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
       </div>
     </section>
   </div>;
+}
+
+function designBlueprintFor(id: string, option?: DesignTemplateOption): typeof DESIGN_BLUEPRINTS[string] {
+  const builtin = DESIGN_BLUEPRINTS[id];
+  if (builtin) return { ...builtin };
+  const sections = option?.structure_guide?.length ? option.structure_guide : ["상단 구성", "본문 섹션", "비교/요약", "CTA"];
+  return {
+    label: option?.summary || "업로드 HTML에서 추출한 화면 구상",
+    title: `${option?.name || "업로드 화면 구상"} 예시 글`,
+    lead: option?.summary || "업로드한 HTML의 섹션 흐름과 시각 스타일 힌트를 반영합니다.",
+    chips: ["HTML 기반", "사용자 프리셋", "화면 구상"],
+    sections,
+    tone: option?.tone || "업로드 예시 기반 브랜드 톤",
+    blocks: sections.slice(0, 4).map((section, index) => ({
+      title: section.replace(/^\d+\)\s*/, ""),
+      body: index === 0 ? "예시 HTML에서 추출한 상단 구성과 문단 리듬을 따릅니다." : "색상, 카드감, 여백, CTA 강조 방식은 업로드 예시의 분위기를 참고합니다.",
+      kind: index === 2 ? "table" : index === 3 ? "cta" : undefined,
+    })),
+  };
 }
 
 function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; options: AdminOptions; onRefresh: () => Promise<void> }) {

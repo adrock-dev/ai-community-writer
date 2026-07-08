@@ -1,4 +1,4 @@
-import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis } from "./types";
+import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, DesignPreset } from "./types";
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/admin${path}`, {
@@ -58,6 +58,10 @@ export const listAcademies = (domain: string, params: { region?: string; academy
 };
 export const updateDomain = (domain: string, body: Record<string, unknown>) =>
   api<{ ok: true; domain: import("./types").DomainConfig }>(`/domains/${encodeURIComponent(domain)}`, { method: "PATCH", body: JSON.stringify(body) });
+export const createDesignPreset = (domain: string, body: { name: string; html: string }) =>
+  api<{ ok: true; preset: DesignPreset }>(`/domains/${encodeURIComponent(domain)}/design-presets`, { method: "POST", body: JSON.stringify(body) });
+export const deleteDesignPreset = (domain: string, id: string) =>
+  api<{ ok: true; deleted: number }>(`/domains/${encodeURIComponent(domain)}/design-presets/${encodeURIComponent(id)}`, { method: "DELETE" });
 export const replaceAxis = (domain: string, axis: Axis, values: AxisValue[]) =>
   api<{ ok: true }>(`/domains/${encodeURIComponent(domain)}/axes/${axis}`, { method: "PUT", body: JSON.stringify({ values }) });
 export const enqueueGenerate = (domain: string, body: Record<string, unknown>) =>

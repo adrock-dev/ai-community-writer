@@ -6,7 +6,27 @@ export type JobKind = "generate" | "dedup" | "indexing" | "prune";
 export type Provider = "claude" | "codex";
 export type DesignTemplateId = "editorial" | "comparison" | "local-guide" | "checklist" | "conversion" | "custom";
 // 도메인 설정값. "auto"면 글마다 슬롯의 글 유형 기본 디자인(default_design)이 적용된다.
-export type DomainDesignSetting = DesignTemplateId | "auto";
+export type DomainDesignSetting = string | "auto";
+
+export interface DesignTemplateOption {
+  id: string;
+  name: string;
+  summary: string;
+  best_for: string;
+  source_type?: "builtin" | "uploaded_html";
+  tone?: string | null;
+  structure_guide?: string[];
+}
+
+export interface DesignPreset extends DesignTemplateOption {
+  domain: string;
+  source_type: "uploaded_html";
+  source_html?: string | null;
+  extracted_summary?: string | null;
+  css_text?: string | null;
+  css_tokens?: Record<string, unknown>;
+  created_at: string;
+}
 
 export interface DomainConfig {
   domain: string;
@@ -17,7 +37,7 @@ export interface DomainConfig {
   logo_url: string | null;
   templates_enabled: string[];
   design_template_id?: DomainDesignSetting;
-  design_template_overrides?: Record<string, DesignTemplateId>;
+  design_template_overrides?: Record<string, string>;
   custom_design_templates?: string | null;
   content_brief?: string | null;
   excluded_keywords?: string | null;
@@ -65,7 +85,7 @@ export interface PostSummary {
   slug: string;
   title: string;
   meta_description: string | null;
-  design_template_id: DesignTemplateId | null;
+  design_template_id: string | null;
   status: PostStatus;
   provider: string | null;
   model: string | null;
@@ -161,7 +181,7 @@ export interface TemplateSpec {
   min_sv?: number;
   with_intent?: boolean;
   kind?: string;
-  default_design?: DesignTemplateId;
+  default_design?: string;
 }
 
 export interface AdminOptions {
@@ -169,7 +189,7 @@ export interface AdminOptions {
   themes: string[];
   templates: string[];
   template_specs: Record<string, TemplateSpec>;
-  design_templates: Array<{ id: DesignTemplateId; name: string; summary: string; best_for: string }>;
+  design_templates: DesignTemplateOption[];
   providers: Provider[];
   preset_options: string[];
   indexing: { has_key: boolean; url_template: string };
@@ -199,6 +219,7 @@ export interface DomainDetailPayload {
   domain: DomainConfig;
   axes: AxesMap;
   slot_counts: SlotCounts;
+  design_presets?: DesignPreset[];
   settings: { indexing_has_key: boolean; indexing_url_template: string };
   slots?: Slot[];
   posts?: PostSummary[];

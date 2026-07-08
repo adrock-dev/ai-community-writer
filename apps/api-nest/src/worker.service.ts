@@ -90,6 +90,7 @@ export class WorkerService {
       }
       // 디자인은 슬롯 단위로 결정한다: 작성 요청 지정 → 도메인 설정 → 기본값 순서, auto면 글 유형의 기본 디자인.
       const designTemplateId = resolveGenerationDesign(payload.design_template_id, domainMeta, slot.template_id);
+      const designPreset = designTemplateId.startsWith("uploaded:") ? this.db.getDesignPreset(domain, designTemplateId) : undefined;
       this.db.updateSlotStatus(sid, "in_progress");
       try {
         const genEnabled = Boolean(payload.enable_image_generation);
@@ -115,7 +116,7 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId);
+        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, designPreset);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         const result = await runLlm(prompt, llmOpts);
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
@@ -129,7 +130,7 @@ export class WorkerService {
         let model = result.model;
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
-          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, markdown, qualityIssues), llmOpts);
+          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, designPreset, markdown, qualityIssues), llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
           inputTokens += repair.input_tokens || 0;
@@ -680,19 +681,20 @@ function normalizeKoreanSpacing(text: string): string {
     .replace(/비교추천/g, "비교 추천");
 }
 
-function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[]): string {
+function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset: Row | undefined, markdown: string, issues: string[]): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
+  const uploadedDesignGuide = uploadedPresetGuide(designPreset);
   return `아래 Markdown 글은 품질 게이트를 통과하지 못했다. 확인된 콘텐츠 재료만 사용해서 같은 주제의 완성형 글로 다시 작성하라.
 
 브랜드: ${brand}
 디자인 템플릿: ${designTemplateId}
-디자인 작성 지침: ${designWritingGuide(designTemplateId)}
-${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
+디자인 작성 지침: ${designWritingGuide(designTemplateId, designPreset)}
+${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignGuide}\n` : ""}${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${designStructureGuide(designTemplateId)}
+${designStructureGuide(designTemplateId, designPreset)}
 원본 엑셀 기반 템플릿 작성법:
 ${originalTemplateGuide(slot.template_id)}
 원본 전체 글 패턴 기반 작성법:
@@ -745,20 +747,21 @@ function resolveGenerationDesign(payloadDesign: unknown, domain: Row, templateId
   return overrides[templateKey] || defaultDesignForTemplate(templateKey);
 }
 
-function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string): string {
+function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset?: Row): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
+  const uploadedDesignGuide = uploadedPresetGuide(designPreset);
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 
 브랜드: ${brand}
 업종: ${domain.vertical || "driving"}
 디자인 템플릿: ${designTemplateId}
-디자인 작성 지침: ${designWritingGuide(designTemplateId)}
-${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
+디자인 작성 지침: ${designWritingGuide(designTemplateId, designPreset)}
+${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignGuide}\n` : ""}${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${designStructureGuide(designTemplateId)}
+${designStructureGuide(designTemplateId, designPreset)}
 원본 엑셀 기반 템플릿 작성법:
 ${originalTemplateGuide(slot.template_id)}
 템플릿: ${slot.template_id}
@@ -823,7 +826,15 @@ ${facts || "없음"}
 - 출력은 Markdown 본문만 제공하고 설명/주석은 쓰지 말 것.
 - 마지막에 참고자료/출처 목록을 붙이지 말 것. 단, 도로교통공단 등 외부 공신력 자료를 실제로 인용한 경우에만 간단히 남긴다.`;
 }
-function designWritingGuide(designTemplateId: string): string {
+function designWritingGuide(designTemplateId: string, designPreset?: Row): string {
+  if (designPreset) {
+    return [
+      `${designPreset.name} 업로드 HTML 예시 기반.`,
+      designPreset.extracted_summary,
+      designPreset.best_for ? `추천 용도: ${designPreset.best_for}` : "",
+      designPreset.tone ? `톤: ${designPreset.tone}` : "",
+    ].filter(Boolean).join(" ");
+  }
   const guides: Record<string, string> = {
     editorial: "원본 블로그형. 생활권 공감 도입, 실제 이미지 3~4개, 요약/비교표 1개, 관련 글 링크, 자연스러운 브랜드 CTA가 이어지도록 작성한다.",
     comparison: "BEST 비교형. 비교표를 앞쪽에 배치하고 후보별 장단점, 추천 대상, 가격·셔틀·과정 확인점을 명확히 작성한다.",
@@ -841,7 +852,21 @@ function safeDesignOverrides(value: unknown): Record<string, string> {
   const allowed = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
   return Object.fromEntries(Object.entries(raw as Record<string, unknown>)
     .map(([templateId, designId]) => [templateId, String(designId || "")])
-    .filter((entry) => allowed.has(entry[1] ?? "")));
+    .filter((entry) => allowed.has(entry[1] ?? "") || String(entry[1] || "").startsWith("uploaded:")));
+}
+
+function uploadedPresetGuide(designPreset: Row | undefined): string {
+  if (!designPreset) return "";
+  const guide = Array.isArray(designPreset.structure_guide) ? designPreset.structure_guide : [];
+  const cssTokens = designPreset.css_tokens && typeof designPreset.css_tokens === "object" ? designPreset.css_tokens : {};
+  const colors = Array.isArray(cssTokens.colors) ? cssTokens.colors.slice(0, 6).join(", ") : "";
+  const radii = Array.isArray(cssTokens.radii) ? cssTokens.radii.slice(0, 3).join(", ") : "";
+  return [
+    guide.length ? ["구조 지침:", ...guide.map((line: unknown) => `- ${String(line)}`)].join("\n") : "",
+    colors ? `색상 힌트: ${colors}` : "",
+    radii ? `모서리/카드 스타일 힌트: ${radii}` : "",
+    designPreset.css_text ? "CSS는 직접 출력하지 말고 색상, 카드감, 여백, CTA 강조 방식만 글 구조 지침으로 반영한다." : "",
+  ].filter(Boolean).join("\n");
 }
 
 function parseJsonObject(value: string): Record<string, unknown> {
@@ -920,7 +945,10 @@ function formatMetric(value: any, fallback: string): string {
   return Number.isFinite(n) ? String(n) : fallback;
 }
 
-function designStructureGuide(designTemplateId: string): string {
+function designStructureGuide(designTemplateId: string, designPreset?: Row): string {
+  if (designPreset && Array.isArray(designPreset.structure_guide) && designPreset.structure_guide.length) {
+    return designPreset.structure_guide.map((line: unknown) => `- ${String(line)}`).join("\n");
+  }
   const guides: Record<string, string[]> = {
     editorial: [
       "1) 상황 공감형 도입: 독자가 왜 지금 이 정보를 찾는지 2~3문장으로 시작",
