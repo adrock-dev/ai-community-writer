@@ -1,4 +1,4 @@
-export const DEFAULT_DRIVINGPLUS_API_BASE_URL = "https://api-dev.drivingplus.me:18104";
+export const DEFAULT_DRIVINGPLUS_API_BASE_URL = "https://api.drivingplus.me";
 
 export function adminApiBaseUrl(): string {
   return String(
