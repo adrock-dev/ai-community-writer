@@ -1,6 +1,6 @@
 // 아키타입 레지스트리: 글유형의 "동작 원형"(코드가 소유하는 재사용 단위). docs/archetype-audit.md 참조.
 // 글유형(TEMPLATE_SPECS)은 `kind`로 아키타입을 참조하고, 조합 파라미터(use_persona/axis_tags/direction 등)만 갖는다.
-// 즉 아키타입 = "고르는 대상(registry)", 글유형 = "아키타입 참조 + 튜닝 파라미터".
+// 즉 아키타입 = "고르는 대상(registry)", 글유형 = "아키타입 참조 + 조정 파라미터".
 // Phase 2에서 글유형(파라미터)이 DB화·편집 대상이 되고, 아키타입은 코드 registry로 남아 품질을 보장한다.
 
 import { TEMPLATE_SPECS } from "./constants.js";
