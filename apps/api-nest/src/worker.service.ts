@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { resolve } from "node:path";
 import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection } from "./axis-tags.js";
+import { getArchetype, writingGuideText } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -101,9 +102,9 @@ export class WorkerService {
       try {
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 자료 구성 중`, slotId: sid, processed: ok, failed: fail });
         const genEnabled = Boolean(payload.enable_image_generation);
-        // 학원 중심 타입(T01 BEST 비교 / T14 단독 소개 / T11 시험장 소개)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
+        // 학원 중심 타입(아키타입 academy_centric: T01/T14/T11)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
         // 그 외 타입은 학원 사진 최소화(1장) + 내용 기반 생성으로 총 3장.
-        const academyImageType = ["T01", "T14", "T11"].includes(String(slot.template_id || ""));
+        const academyImageType = getArchetype(String(slot.template_id || ""))?.academy_centric ?? false;
         const facts = academyImageType
           ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 })
           : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 });
@@ -1025,59 +1026,8 @@ function designStructureGuide(designTemplateId: string, designPreset?: Row): str
 }
 
 function originalTemplateGuide(templateId: string): string {
-  const guides: Record<string, string[]> = {
-    T01: [
-      "제목은 '지역 + 운전면허학원/BEST/가격 비교/셔틀' 축으로 잡되, 실제 후보 수보다 큰 숫자는 금지",
-      "도입에서 지역 생활권·출퇴근/통학 동선을 짚고, 후보별 사진과 비교표를 넣는다",
-      "가격·셔틀·후기는 자료가 있을 때만 단정하고 없으면 상담 질문으로 구체화한다",
-    ],
-    T03: [
-      "검색자가 전체 흐름을 한 번에 이해하도록 준비 순서, 비용 확인, 시험 단계, 학원 선택 기준을 이어 쓴다",
-      "표는 '단계/확인할 것/놓치기 쉬운 점' 형태가 적합하다",
-    ],
-    T04: [
-      "1종/2종/자동/수동/대형 등 선택지가 헷갈리는 상황을 비교한다",
-      "추천 대상과 주의점을 표로 정리하고 과장된 합격 보장은 피한다",
-    ],
-    T05: [
-      "원본의 비용·시간 절약 전략형처럼 총액, 추가비, 재시험 가능성, 셔틀 동선을 구체 질문으로 풀어낸다",
-      "확정 가격이 없으면 '상담 때 물을 질문'을 상세히 적어 빈말을 줄인다",
-    ],
-    T06: [
-      "필기/기능/도로주행 중 하나의 시험 단계를 집중 공략한다",
-      "자주 틀리는 포인트, 연습 순서, 체크리스트를 앞쪽에 둔다",
-    ],
-    T07: [
-      "지역 허브 글처럼 학원 선택, 시험장/접수/비용/준비물을 넓게 연결한다",
-      "관련 글 후보가 있으면 내부 링크를 묶어 다음 글로 이어지게 한다",
-    ],
-    T08: [
-      "운전면허 필기시험 접수형. 온라인/현장 접수, 준비물, 사진, 신분증, 수수료 확인 항목을 절차형으로 쓴다",
-      "공식 정보는 최신 확인 필요 문장으로 보수적으로 처리한다",
-    ],
-    T09: [
-      "필기시험 팁형. 공부 순서, 문제 유형, 앱/모의고사 활용, 시험 당일 체크를 경험형으로 쓴다",
-    ],
-    T10: [
-      "필기시험 앱 추천형. 앱을 임의로 꾸며내지 말고, 앱 선택 기준과 기능 체크리스트 중심으로 쓴다",
-    ],
-    T11: [
-      "지역 운전면허시험장 소개형. 시험장 위치/동선/방문 전 확인사항 중심으로 작성하고 학원 글과 구분한다",
-    ],
-    T12: [
-      "운전면허 취득 총정리형. 교육→필기→기능→도로주행→면허발급 순서로 큰 그림을 제공한다",
-    ],
-    T13: [
-      "특정 타겟 맞춤형. 페르소나의 시간표·예산·이동수단을 기준으로 추천 기준을 달리한다",
-    ],
-    T14: [
-      "전문학원 단독 소개형. 가장 적합한 1곳을 중심으로 사진, 과정, 위치, 상담 질문을 깊게 쓴다",
-    ],
-    T15: [
-      "지역+시험단계 혼합형. 지역 후보와 필기/기능/도로주행 준비 팁을 연결한다",
-    ],
-  };
-  return (guides[templateId] || guides.T03!).map((line) => `- ${line}`).join("\n");
+  // 유형별 작성 지침은 archetypes.ts (WRITING_GUIDES) 로 통합 이전됨.
+  return writingGuideText(templateId);
 }
 function publicBrandName(domain: Row): string {
   return String(domain.display_name || domain.domain || "서비스").replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || "서비스";

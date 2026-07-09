@@ -4,6 +4,7 @@ import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { filterAxisValues, resolveAcceptedTags, safeTemplateOverrides } from "./axis-tags.js";
+import { getArchetype, buildKeyword } from "./archetypes.js";
 
 type Row = Record<string, any>;
 
@@ -38,6 +39,7 @@ export class SlotService {
     for (const tid of templateIds) {
       const spec = (TEMPLATE_SPECS as Record<string, any>)[tid];
       if (!spec) continue;
+      const archetype = getArchetype(tid);
       const primaryAxis = spec.primary[0] as AxisName;
       const primaryValues = axes[primaryAxis] || [];
       if (!primaryValues.length) { summary[tid] = 0; continue; }
@@ -50,13 +52,9 @@ export class SlotService {
       const modifierCombos = modifierPairs(modifierPool, spec.modifier_count);
       const candidatesByPrimary: Row[][] = [];
       for (const pv of primaryValues) {
-        let primaryKeyword = buildPrimaryKeyword(tid, spec, pv, axes);
+        // 주키워드 생성은 아키타입 인터프리터로 통합됨(archetypes.ts). axes.keyword 는 listAxes 정렬(weight DESC).
+        const primaryKeyword = archetype ? buildKeyword(archetype, String(pv.value || ""), axes.keyword) : "";
         if (!primaryKeyword) continue;
-        if (tid === "T01" || tid === "T07" || tid === "T14" || tid === "T15") {
-          const kw = chooseKeywordForTemplate(tid, axes.keyword);
-          if (!kw) continue;
-          primaryKeyword = formatRegionKeyword(pv.value, kw.value);
-        }
         const sv = numberOrNull(pv.monthly_search_volume);
         if (sv !== null && sv < spec.min_sv) continue;
         const primaryRows: Row[] = [];
@@ -82,39 +80,7 @@ export class SlotService {
   }
 }
 
-function buildPrimaryKeyword(templateId: string, spec: Row, primaryValue: Row, axes: Record<AxisName, Row[]>): string {
-  const value = String(primaryValue.value || "").trim();
-  const kind = String(spec.kind || "");
-  if (!value) return "";
-  if (kind === "written_registration") return pickKeyword(axes.keyword, /필기시험.*접수|접수.*필기시험/u, "운전면허 필기시험 접수");
-  if (kind === "written_tips") return pickKeyword(axes.keyword, /필기시험.*(?:팁|문제|공부|합격)/u, "운전면허 필기시험 팁");
-  if (kind === "written_app") return pickKeyword(axes.keyword, /필기시험.*(?:어플|앱)/u, "운전면허 필기시험 어플");
-  if (kind === "test_center") return formatRegionKeyword(value, "운전면허시험장");
-  if (kind === "license_complete") return pickKeyword(axes.keyword, /취득|총정리|준비물/u, value);
-  if (kind === "license_compare") return pickKeyword(axes.keyword, /1종|2종|대형|소형|종보통/u, value);
-  if (kind === "cost_strategy") return pickKeyword(axes.keyword, /비용|가격|수강료|절약/u, value);
-  if (kind === "exam_best") return pickKeyword(axes.keyword, /필기시험|기능시험|도로주행|시험/u, value);
-  return value;
-}
-
-function chooseKeywordForTemplate(templateId: string, keywords: Row[]): Row | null {
-  const patterns: Record<string, RegExp> = {
-    T01: /운전면허학원|자동차학원/u,
-    T07: /운전면허|운전면허학원/u,
-    T14: /운전면허학원|자동차운전전문학원|자동차학원/u,
-    T15: /필기시험|기능시험|도로주행|운전면허학원/u,
-  };
-  const pattern = patterns[templateId] || /./u;
-  return keywords.find((kw) => pattern.test(String(kw.value || ""))) || keywords[0] || null;
-}
-
-function pickKeyword(keywords: Row[], pattern: RegExp, fallback: string): string {
-  return String((keywords.find((kw) => pattern.test(String(kw.value || ""))) || {}).value || fallback);
-}
-
-function formatRegionKeyword(region: string, keyword: string): string {
-  return `${String(region || "").trim()} ${String(keyword || "").trim()}`.replace(/\s+/g, " ").trim();
-}
+// 주키워드 생성 로직은 archetypes.ts (buildKeyword) 로 통합 이전됨.
 
 // slot_id 해시에 domain을 포함한다. slots PK는 전역 slot_id 이므로, domain을 빼면
 // 같은 프리셋을 쓰는 다른 도메인끼리 slot_id가 충돌해 두 번째 도메인 슬롯이 유실된다.
