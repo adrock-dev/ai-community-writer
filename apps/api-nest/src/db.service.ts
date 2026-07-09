@@ -456,6 +456,28 @@ export class DbService implements OnModuleInit {
   deleteCustomTemplate(domain: string, templateId: string): number {
     return this.run("DELETE FROM custom_templates WHERE domain=? AND template_id=?", [domain, templateId]).changes ?? 0;
   }
+  deleteAllCustomTemplates(domain: string): number {
+    return this.run("DELETE FROM custom_templates WHERE domain=?", [domain]).changes ?? 0;
+  }
+  // import 전용: id 를 지정해 upsert 한다(createCustomTemplate 은 id 를 새로 발급하므로 복구에 부적합).
+  // created_at 은 봉투 값 보존(없으면 CURRENT_TIMESTAMP), 충돌 시 기존 created_at 유지. axis_tags 는 stringify.
+  // 빌트인 id/kind 검증은 호출측(컨트롤러)에서 수행한다.
+  importCustomTemplate(domain: string, row: Row): void {
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, default_direction, default_design, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+      ON CONFLICT(domain, template_id) DO UPDATE SET
+        name=excluded.name, kind=excluded.kind, use_persona=excluded.use_persona, with_intent=excluded.with_intent,
+        modifier_count=excluded.modifier_count, weight=excluded.weight, min_sv=excluded.min_sv,
+        axis_tags=excluded.axis_tags, default_direction=excluded.default_direction, default_design=excluded.default_design`,
+      [domain, String(row.template_id || "").trim(), String(row.name || "").trim(), String(row.kind || "").trim(),
+        row.use_persona ? 1 : 0, row.with_intent ? 1 : 0, clampModifierCount(row.modifier_count),
+        Number.isFinite(Number(row.weight)) ? Number(row.weight) : 1.0,
+        Number.isFinite(Number(row.min_sv)) ? Math.trunc(Number(row.min_sv)) : 0,
+        serializeAxisTags(row.axis_tags),
+        row.default_direction != null && String(row.default_direction).trim() ? String(row.default_direction).trim() : null,
+        String(row.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE,
+        row.created_at != null && String(row.created_at).trim() ? String(row.created_at).trim() : null]);
+  }
   // C + randomUUID 앞 6 hex. 빌트인(T01~)·기존 커스텀 row 와 충돌하지 않는 id 를 발급한다.
   // slot_id 는 domain+template_id 해시라, template_id 가 유니크하면 슬롯 충돌은 없다.
   private nextCustomTemplateId(domain: string): string {

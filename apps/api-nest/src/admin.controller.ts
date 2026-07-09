@@ -1,7 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Param, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
-import { DbService, domainOut, jobOut, safeJson } from "./db.service.js";
+import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
 import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
@@ -161,6 +161,84 @@ export class AdminController {
     const deleted = this.db.deleteCustomTemplate(domain, templateId);
     if (!deleted) throw new HttpException("custom template not found", 404);
     return { ok: true, deleted: templateId };
+  }
+
+  // 커스텀 글유형 편집 상태 export — DB 초기화(wipe) 대비. 빌트인은 상수라 export 불필요.
+  // 봉투(envelope): 메타(schema/version/domain/exported_at) + custom_templates + template_overrides + templates_enabled.
+  @Get("domains/:domain/templates/export")
+  exportTemplates(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers);
+    const config = domainOut(this.requireDomain(domain));
+    const custom_templates = this.db.listCustomTemplates(domain).map((t) => ({
+      template_id: t.template_id, name: t.name, kind: t.kind,
+      use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
+      weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags,
+      default_direction: t.default_direction ?? null, default_design: t.default_design,
+      created_at: t.created_at,
+    }));
+    return {
+      schema: "adrock-templates-export",
+      version: 1,
+      domain,
+      exported_at: nowSql(),
+      custom_templates,
+      template_overrides: config.template_overrides,
+      templates_enabled: config.templates_enabled,
+    };
+  }
+
+  // 커스텀 글유형 편집 상태 import(복구/복제). mode=merge(기본): id별 upsert + overrides/enabled 병합. replace: 교체.
+  // id 보존(overrides/enabled 참조 유지) · 빌트인 id 차단 · kind 검증 · 부재 필드는 건드리지 않음(부분 봉투 방어).
+  @Post("domains/:domain/templates/import")
+  importTemplates(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const mode = String(query.mode || "").trim() === "replace" ? "replace" : "merge";
+    const isObj = (v: unknown): v is Row => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+    // {data: envelope} 래퍼를 명시했으면 data 는 반드시 객체여야 한다(malformed 래퍼 차단).
+    if (body && Object.prototype.hasOwnProperty.call(body, "data") && !isObj(body.data)) throw new HttpException("invalid import envelope (data wrapper malformed)", 400);
+    const env: Row = isObj(body?.data) ? body.data : (body || {});
+    if (!isObj(env)) throw new HttpException("invalid import envelope", 400);
+    // 최소한 export 봉투 표식이나 import 가능한 필드가 하나는 있어야 한다.
+    const hasPayload = env.schema === "adrock-templates-export" || Array.isArray(env.custom_templates) || isObj(env.template_overrides) || Array.isArray(env.templates_enabled);
+    if (!hasPayload) throw new HttpException("invalid import envelope (no importable fields)", 400);
+    const warnings: string[] = [];
+    if (env.domain && String(env.domain) !== domain) warnings.push(`envelope domain '${env.domain}' != target '${domain}' — importing into target`);
+
+    // 1) custom_templates
+    if (mode === "replace") this.db.deleteAllCustomTemplates(domain);
+    let imported = 0, skipped = 0;
+    const incomingCustom = Array.isArray(env.custom_templates) ? env.custom_templates : [];
+    for (const row of incomingCustom) {
+      const tid = String(row?.template_id || "").trim();
+      const kind = String(row?.kind || "").trim();
+      if (!tid) { skipped++; warnings.push("custom template without template_id skipped"); continue; }
+      if ((TEMPLATE_SPECS as Record<string, unknown>)[tid]) { skipped++; warnings.push(`'${tid}' collides with builtin id — skipped`); continue; }
+      if (!getArchetype(kind)) { skipped++; warnings.push(`'${tid}' unknown archetype kind '${kind || "(empty)"}' — skipped`); continue; }
+      this.db.importCustomTemplate(domain, row);
+      imported++;
+    }
+
+    // 2) template_overrides (봉투에 필드가 있을 때만). merge: 기존 ∪ 봉투(봉투 우선). replace: 봉투로 교체.
+    let overrides_merged = 0;
+    if (env.template_overrides !== undefined && env.template_overrides !== null) {
+      const incoming = safeTemplateOverrides(env.template_overrides);
+      const existing = mode === "replace" ? {} : safeTemplateOverrides(domainOut(this.requireDomain(domain)).template_overrides);
+      const merged = { ...existing, ...incoming };
+      this.db.updateDomain(domain, { template_overrides: JSON.stringify(merged) });
+      overrides_merged = Object.keys(incoming).length;
+    }
+
+    // 3) templates_enabled (봉투에 필드가 있을 때만). 실제 존재하는 id(빌트인+현재 커스텀)만 남겨 유령 id 방지.
+    let templates_enabled: string[] | undefined;
+    if (Array.isArray(env.templates_enabled)) {
+      const valid = new Set<string>([...Object.keys(TEMPLATE_SPECS), ...this.db.listCustomTemplates(domain).map((t) => String(t.template_id))]);
+      const incoming = env.templates_enabled.map((v: unknown) => String(v));
+      const base = mode === "replace" ? [] : (Array.isArray(domainOut(this.requireDomain(domain)).templates_enabled) ? domainOut(this.requireDomain(domain)).templates_enabled.map((v: unknown) => String(v)) : []);
+      templates_enabled = [...new Set([...base, ...incoming])].filter((id) => valid.has(id));
+      this.db.updateDomain(domain, { templates_enabled: JSON.stringify(templates_enabled) });
+    }
+
+    return { ok: true, mode, imported, skipped, overrides_merged, templates_enabled, warnings };
   }
 
   @Post("domains/:domain/design-presets")
