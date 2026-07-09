@@ -3,7 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
-import { filterAxisValues, resolveAcceptedTags, safeTemplateOverrides } from "./axis-tags.js";
+import { filterAxisValues, resolveAcceptedTags, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetypeForTemplate, buildKeyword } from "./archetypes.js";
 
 type Row = Record<string, any>;
@@ -48,9 +48,11 @@ export class SlotService {
       const personaPool = filterAxisValues("persona", axes.persona, resolveAcceptedTags(tid, "persona", overrides));
       const intentPool = filterAxisValues("intent", axes.intent, resolveAcceptedTags(tid, "intent", overrides));
       const modifierPool = filterAxisValues("modifier", axes.modifier, resolveAcceptedTags(tid, "modifier", overrides));
-      const personaValues = spec.use_persona ? (personaPool.length ? personaPool : [{ value: null }]) : [{ value: null }];
-      const intentValues = spec.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
-      const modifierCombos = modifierPairs(modifierPool, spec.modifier_count);
+      // 레시피 파라미터(use_persona/with_intent/modifier_count)는 상수 기본값 + 도메인 오버라이드.
+      const recipe = resolveRecipeFlags(tid, overrides);
+      const personaValues = recipe.use_persona ? (personaPool.length ? personaPool : [{ value: null }]) : [{ value: null }];
+      const intentValues = recipe.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
+      const modifierCombos = modifierPairs(modifierPool, recipe.modifier_count);
       const candidatesByPrimary: Row[][] = [];
       for (const pv of primaryValues) {
         // 주키워드 생성은 아키타입 인터프리터로 통합됨(archetypes.ts). axes.keyword 는 listAxes 정렬(weight DESC).

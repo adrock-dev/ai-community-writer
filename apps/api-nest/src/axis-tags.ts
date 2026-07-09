@@ -79,6 +79,10 @@ export function filterAxisValues(axis: TaggedAxis, values: Row[], accepted: stri
 export type TemplateOverride = {
   direction?: string;
   axis_tags?: Partial<Record<TaggedAxis, string[]>>;
+  // 빌트인 글유형 레시피 파라미터의 도메인별 오버라이드 (없으면 상수 기본값 사용).
+  use_persona?: boolean;
+  with_intent?: boolean;
+  modifier_count?: number;
 };
 export type TemplateOverrides = Record<string, TemplateOverride>;
 
@@ -101,9 +105,26 @@ export function safeTemplateOverrides(value: unknown): TemplateOverrides {
       }
       if (Object.keys(tags).length) entry.axis_tags = tags;
     }
-    if (entry.direction || entry.axis_tags) out[templateId] = entry;
+    const usePersona = (cfg as Row).use_persona;
+    if (typeof usePersona === "boolean") entry.use_persona = usePersona;
+    const withIntent = (cfg as Row).with_intent;
+    if (typeof withIntent === "boolean") entry.with_intent = withIntent;
+    const modifierCount = (cfg as Row).modifier_count;
+    if (typeof modifierCount === "number" && Number.isFinite(modifierCount)) entry.modifier_count = Math.max(0, Math.min(2, Math.round(modifierCount)));
+    if (entry.direction || entry.axis_tags || entry.use_persona !== undefined || entry.with_intent !== undefined || entry.modifier_count !== undefined) out[templateId] = entry;
   }
   return out;
+}
+
+// 글유형 레시피 파라미터: 도메인 오버라이드 → 상수 기본값. (빌트인은 상수가 기본, DB엔 델타만)
+export function resolveRecipeFlags(templateId: string, overrides: TemplateOverrides): { use_persona: boolean; with_intent: boolean; modifier_count: number } {
+  const spec = (TEMPLATE_SPECS as Record<string, any>)[templateId] ?? {};
+  const o = overrides[templateId] ?? {};
+  return {
+    use_persona: o.use_persona ?? Boolean(spec.use_persona),
+    with_intent: o.with_intent ?? Boolean(spec.with_intent),
+    modifier_count: o.modifier_count ?? Number(spec.modifier_count ?? 0),
+  };
 }
 
 // 글유형 방향성: 도메인 오버라이드 → 글유형 기본 방향성 순.

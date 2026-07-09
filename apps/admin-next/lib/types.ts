@@ -33,6 +33,9 @@ export interface DesignPreset extends DesignTemplateOption {
 export interface TemplateOverride {
   direction?: string;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  use_persona?: boolean;
+  with_intent?: boolean;
+  modifier_count?: number;
 }
 
 export interface DomainConfig {
