@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { resolve } from "node:path";
 import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection } from "./axis-tags.js";
-import { getArchetype, writingGuideText } from "./archetypes.js";
+import { getArchetypeForTemplate, writingGuideText } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -104,7 +104,7 @@ export class WorkerService {
         const genEnabled = Boolean(payload.enable_image_generation);
         // 학원 중심 타입(아키타입 academy_centric: T01/T14/T11)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
         // 그 외 타입은 학원 사진 최소화(1장) + 내용 기반 생성으로 총 3장.
-        const academyImageType = getArchetype(String(slot.template_id || ""))?.academy_centric ?? false;
+        const academyImageType = getArchetypeForTemplate(String(slot.template_id || ""))?.academy_centric ?? false;
         const facts = academyImageType
           ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 })
           : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 });

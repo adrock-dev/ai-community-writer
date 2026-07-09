@@ -4,7 +4,7 @@ import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { filterAxisValues, resolveAcceptedTags, safeTemplateOverrides } from "./axis-tags.js";
-import { getArchetype, buildKeyword } from "./archetypes.js";
+import { getArchetypeForTemplate, buildKeyword } from "./archetypes.js";
 
 type Row = Record<string, any>;
 
@@ -39,8 +39,9 @@ export class SlotService {
     for (const tid of templateIds) {
       const spec = (TEMPLATE_SPECS as Record<string, any>)[tid];
       if (!spec) continue;
-      const archetype = getArchetype(tid);
-      const primaryAxis = spec.primary[0] as AxisName;
+      const archetype = getArchetypeForTemplate(tid);
+      // 주축(region/keyword)은 아키타입이 소유. 미상 유형은 글유형 선언값으로 폴백.
+      const primaryAxis = (archetype?.primary ?? spec.primary[0]) as AxisName;
       const primaryValues = axes[primaryAxis] || [];
       if (!primaryValues.length) { summary[tid] = 0; continue; }
       // 글유형 수용 태그로 축 값을 부분집합화한다. 부합 값이 없으면 해당 축을 생략(null)해 미스매치를 피한다.
