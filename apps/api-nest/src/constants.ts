@@ -51,6 +51,21 @@ export const TEMPLATE_SPECS = {
   T15: { name: "지역+시험단계 혼합", primary: ["region"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, with_intent: true, kind: "local_exam_mix", default_design: "local-guide", default_direction: "지역과 시험 단계를 함께 엮어 지역 학원·시험 준비 정보를 제공한다.", axis_tags: { persona: ["select", "practice", "timing", "common"], intent: ["exam", "select", "common"], modifier: ["select", "practice", "common"] } }
 } as const;
 
+// 글유형(빌트인 TEMPLATE_SPECS / 커스텀 custom_templates row)을 동일 형태로 정규화한 리졸버 반환형.
+// primary 는 여기 넣지 않는다 — getArchetype(kind).primary 로 얻는다(빌트인/커스텀 동일 경로).
+export type TemplateSpecShape = {
+  name: string;
+  kind: string;
+  use_persona: boolean;
+  with_intent: boolean;
+  modifier_count: number;
+  weight: number;
+  min_sv: number;
+  axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  default_direction?: string;
+  default_design?: string;
+};
+
 // 글 유형의 기본 디자인. 알 수 없는 유형은 기본 디자인으로 폴백한다.
 export function defaultDesignForTemplate(templateId: string): string {
   const spec = (TEMPLATE_SPECS as Record<string, { default_design?: string }>)[templateId];

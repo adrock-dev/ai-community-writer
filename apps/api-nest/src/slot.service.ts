@@ -4,7 +4,7 @@ import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { filterAxisValues, resolveAcceptedTags, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
-import { getArchetypeForTemplate, buildKeyword } from "./archetypes.js";
+import { getArchetype, buildKeyword } from "./archetypes.js";
 
 type Row = Record<string, any>;
 
@@ -37,19 +37,21 @@ export class SlotService {
     const rows: Row[] = [];
 
     for (const tid of templateIds) {
-      const spec = (TEMPLATE_SPECS as Record<string, any>)[tid];
+      // 글유형 spec: 빌트인(상수)·커스텀(DB)을 동일 shape 로. 아키타입은 spec.kind 참조(커스텀 지원).
+      const spec = this.db.getTemplateSpec(domain, tid);
       if (!spec) continue;
-      const archetype = getArchetypeForTemplate(tid);
-      // 주축(region/keyword)은 아키타입이 소유. 미상 유형은 글유형 선언값으로 폴백.
-      const primaryAxis = (archetype?.primary ?? spec.primary[0]) as AxisName;
+      const archetype = getArchetype(String(spec.kind || ""));
+      const override = overrides[tid];
+      // 주축(region/keyword)은 아키타입이 소유. 미상 유형은 keyword 로 폴백.
+      const primaryAxis = (archetype?.primary ?? "keyword") as AxisName;
       const primaryValues = axes[primaryAxis] || [];
       if (!primaryValues.length) { summary[tid] = 0; continue; }
       // 글유형 수용 태그로 축 값을 부분집합화한다. 부합 값이 없으면 해당 축을 생략(null)해 미스매치를 피한다.
-      const personaPool = filterAxisValues("persona", axes.persona, resolveAcceptedTags(tid, "persona", overrides));
-      const intentPool = filterAxisValues("intent", axes.intent, resolveAcceptedTags(tid, "intent", overrides));
-      const modifierPool = filterAxisValues("modifier", axes.modifier, resolveAcceptedTags(tid, "modifier", overrides));
-      // 레시피 파라미터(use_persona/with_intent/modifier_count)는 상수 기본값 + 도메인 오버라이드.
-      const recipe = resolveRecipeFlags(tid, overrides);
+      const personaPool = filterAxisValues("persona", axes.persona, resolveAcceptedTags(spec, "persona", override));
+      const intentPool = filterAxisValues("intent", axes.intent, resolveAcceptedTags(spec, "intent", override));
+      const modifierPool = filterAxisValues("modifier", axes.modifier, resolveAcceptedTags(spec, "modifier", override));
+      // 레시피 파라미터(use_persona/with_intent/modifier_count)는 spec 기본값 + 도메인 오버라이드.
+      const recipe = resolveRecipeFlags(spec, override);
       const personaValues = recipe.use_persona ? (personaPool.length ? personaPool : [{ value: null }]) : [{ value: null }];
       const intentValues = recipe.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
       const modifierCombos = modifierPairs(modifierPool, recipe.modifier_count);

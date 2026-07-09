@@ -8,6 +8,7 @@ import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
 import { AXIS_TAG_VOCAB, safeTemplateOverrides } from "./axis-tags.js";
+import { getArchetype } from "./archetypes.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 
@@ -97,6 +98,7 @@ export class AdminController {
       axes: this.db.listAxes(domain),
       design_presets: this.db.listDesignPresets(domain),
       slot_counts: this.db.countSlots(domain),
+      custom_templates: this.db.listCustomTemplates(domain),
       settings: { indexing_has_key: Boolean(this.db.getSetting("google_sa_json")), indexing_url_template: this.indexingUrlTemplate() }
     };
     if (include.has("slots")) payload.slots = this.db.listSlots(domain, { status: query.slot_status || undefined, template: query.slot_template || undefined, q: query.slot_q || undefined, limit });
@@ -117,6 +119,48 @@ export class AdminController {
     if (Array.isArray(fields.academy_type_filter)) fields.academy_type_filter = JSON.stringify(fields.academy_type_filter.map((v: any) => String(v || "").trim()).filter(Boolean));
     this.db.updateDomain(domain, fields);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
+  }
+
+  // 글유형 목록: 빌트인(TEMPLATE_SPECS) + 도메인 커스텀(custom_templates).
+  @Get("domains/:domain/templates")
+  listTemplates(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return {
+      builtin: Object.entries(TEMPLATE_SPECS).map(([id, spec]) => ({ template_id: id, ...spec, custom: false })),
+      custom: this.db.listCustomTemplates(domain),
+    };
+  }
+
+  // 커스텀 글유형 생성. kind 는 기존 아키타입 참조만 허용(getArchetype 검증) — 새 아키타입 authoring 금지(품질 보장).
+  @Post("domains/:domain/templates")
+  createTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const name = String(body.name || "").trim();
+    const kind = String(body.kind || "").trim();
+    if (!name) throw new HttpException("name required", 400);
+    if (!getArchetype(kind)) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    const template = this.db.createCustomTemplate(domain, {
+      name, kind,
+      use_persona: Boolean(body.use_persona),
+      with_intent: Boolean(body.with_intent),
+      modifier_count: body.modifier_count,
+      weight: body.weight,
+      min_sv: body.min_sv,
+      axis_tags: body.axis_tags,
+      default_direction: body.default_direction,
+      default_design: body.default_design,
+    });
+    return { ok: true, template };
+  }
+
+  // 커스텀 글유형 삭제. 빌트인은 상수라 삭제 불가.
+  @Delete("domains/:domain/templates/:templateId")
+  deleteTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("templateId") templateId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    if ((TEMPLATE_SPECS as Record<string, unknown>)[templateId]) throw new HttpException("cannot delete builtin template", 400);
+    const deleted = this.db.deleteCustomTemplate(domain, templateId);
+    if (!deleted) throw new HttpException("custom template not found", 404);
+    return { ok: true, deleted: templateId };
   }
 
   @Post("domains/:domain/design-presets")

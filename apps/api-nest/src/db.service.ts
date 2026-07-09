@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_TEMPLATE_IDS, DRIVING_ORIGINAL_TEMPLATE_IDS, type AxisName, type JobKind } from "./constants.js";
+import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_TEMPLATE_IDS, DRIVING_ORIGINAL_TEMPLATE_IDS, TEMPLATE_SPECS, type AxisName, type JobKind, type TemplateSpecShape } from "./constants.js";
 import { parseExclusionTerms, slotExclusionSql } from "./exclusions.js";
 import { drivingplusApiBaseUrl } from "./runtime-config.js";
 
@@ -179,6 +179,23 @@ CREATE TABLE IF NOT EXISTS seo_regions (
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_seo_regions_domain_region ON seo_regions(domain, region);
+CREATE TABLE IF NOT EXISTS custom_templates (
+  domain TEXT NOT NULL,
+  template_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  use_persona INTEGER NOT NULL DEFAULT 0,
+  with_intent INTEGER NOT NULL DEFAULT 0,
+  modifier_count INTEGER NOT NULL DEFAULT 0,
+  weight REAL NOT NULL DEFAULT 1.0,
+  min_sv INTEGER NOT NULL DEFAULT 0,
+  axis_tags TEXT,
+  default_direction TEXT,
+  default_design TEXT NOT NULL DEFAULT 'local-guide',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (domain, template_id),
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
+);
 	`;
 
 @Injectable()
@@ -337,6 +354,23 @@ export class DbService implements OnModuleInit {
       FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
     )`);
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_seo_regions_domain_region ON seo_regions(domain, region)");
+    this.db.exec(`CREATE TABLE IF NOT EXISTS custom_templates (
+      domain TEXT NOT NULL,
+      template_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      use_persona INTEGER NOT NULL DEFAULT 0,
+      with_intent INTEGER NOT NULL DEFAULT 0,
+      modifier_count INTEGER NOT NULL DEFAULT 0,
+      weight REAL NOT NULL DEFAULT 1.0,
+      min_sv INTEGER NOT NULL DEFAULT 0,
+      axis_tags TEXT,
+      default_direction TEXT,
+      default_design TEXT NOT NULL DEFAULT 'local-guide',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (domain, template_id),
+      FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
+    )`);
   }
 
   all(sql: string, params: any[] = []): Row[] { return this.db.prepare(sql).all(...params) as Row[]; }
@@ -373,6 +407,66 @@ export class DbService implements OnModuleInit {
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
   }
   deleteDomain(domain: string): void { this.run("DELETE FROM domains WHERE domain=?", [domain]); }
+
+  // --- 글유형 리졸버 / 커스텀 글유형(custom_templates) ---
+  // 빌트인(TEMPLATE_SPECS)·커스텀(custom_templates)을 동일 shape 로 반환한다. 하위 리졸버가 균일하게 소비.
+  // primary 는 넣지 않는다 — getArchetype(spec.kind).primary 로 얻는다(빌트인/커스텀 동일 경로).
+  getTemplateSpec(domain: string, templateId: string): TemplateSpecShape | undefined {
+    const builtin = (TEMPLATE_SPECS as Record<string, any>)[templateId];
+    if (builtin) {
+      return {
+        name: String(builtin.name || ""),
+        kind: String(builtin.kind || ""),
+        use_persona: Boolean(builtin.use_persona),
+        with_intent: Boolean(builtin.with_intent),
+        modifier_count: Number(builtin.modifier_count ?? 0),
+        weight: Number(builtin.weight ?? 1),
+        min_sv: Number(builtin.min_sv ?? 0),
+        axis_tags: builtin.axis_tags,
+        default_direction: builtin.default_direction,
+        default_design: builtin.default_design,
+      };
+    }
+    const row = this.get("SELECT * FROM custom_templates WHERE domain=? AND template_id=?", [domain, templateId]);
+    return row ? customTemplateSpec(row) : undefined;
+  }
+
+  listCustomTemplates(domain: string): Row[] {
+    return this.all("SELECT * FROM custom_templates WHERE domain=? ORDER BY created_at ASC, template_id ASC", [domain]).map(customTemplateOut);
+  }
+  getCustomTemplate(domain: string, templateId: string): Row | undefined {
+    const row = this.get("SELECT * FROM custom_templates WHERE domain=? AND template_id=?", [domain, templateId]);
+    return row ? customTemplateOut(row) : undefined;
+  }
+  // 커스텀 글유형 생성. id 는 여기서 발급(빌트인/기존 커스텀과 유니크). axis_tags 는 JSON 직렬화해 저장(트랩: TEXT 컬럼 write 는 반드시 stringify).
+  createCustomTemplate(domain: string, input: Row): Row {
+    const templateId = this.nextCustomTemplateId(domain);
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, default_direction, default_design)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [domain, templateId, String(input.name || "").trim(), String(input.kind || "").trim(),
+        input.use_persona ? 1 : 0, input.with_intent ? 1 : 0,
+        clampModifierCount(input.modifier_count),
+        Number.isFinite(Number(input.weight)) ? Number(input.weight) : 1.0,
+        Number.isFinite(Number(input.min_sv)) ? Math.trunc(Number(input.min_sv)) : 0,
+        serializeAxisTags(input.axis_tags),
+        input.default_direction != null && String(input.default_direction).trim() ? String(input.default_direction).trim() : null,
+        String(input.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE]);
+    return this.getCustomTemplate(domain, templateId)!;
+  }
+  deleteCustomTemplate(domain: string, templateId: string): number {
+    return this.run("DELETE FROM custom_templates WHERE domain=? AND template_id=?", [domain, templateId]).changes ?? 0;
+  }
+  // C + randomUUID 앞 6 hex. 빌트인(T01~)·기존 커스텀 row 와 충돌하지 않는 id 를 발급한다.
+  // slot_id 는 domain+template_id 해시라, template_id 가 유니크하면 슬롯 충돌은 없다.
+  private nextCustomTemplateId(domain: string): string {
+    for (let i = 0; i < 50; i++) {
+      const candidate = `C${randomUUID().replace(/-/g, "").slice(0, 6)}`;
+      if ((TEMPLATE_SPECS as Record<string, unknown>)[candidate]) continue;
+      if (this.get("SELECT 1 FROM custom_templates WHERE domain=? AND template_id=?", [domain, candidate])) continue;
+      return candidate;
+    }
+    throw new Error("failed to allocate unique custom template id");
+  }
 
   listAxes(domain: string): Record<AxisName, Row[]> {
     const out = Object.fromEntries(AXES.map((a) => [a, []])) as unknown as Record<AxisName, Row[]>;
@@ -780,6 +874,55 @@ export function domainOut(row: Row): Row {
     design_template_overrides: safeJson(row.design_template_overrides, {}),
     template_overrides: safeJson(row.template_overrides, {}),
     academy_type_filter: safeJson(row.academy_type_filter, []),
+  };
+}
+// 커스텀 글유형 axis_tags 는 {persona?,intent?,modifier?: string[]} 만 허용해 정규화한다.
+function parseAxisTags(value: unknown): { persona?: string[]; intent?: string[]; modifier?: string[] } | undefined {
+  const raw = safeJson(value, null);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: { persona?: string[]; intent?: string[]; modifier?: string[] } = {};
+  for (const axis of ["persona", "intent", "modifier"] as const) {
+    const list = (raw as Row)[axis];
+    if (Array.isArray(list)) out[axis] = list.map((t: unknown) => String(t)).filter(Boolean);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+// TEXT 컬럼 write 트랩: axis_tags 객체는 반드시 JSON.stringify. 빈/무효는 null.
+function serializeAxisTags(value: unknown): string | null {
+  const parsed = typeof value === "string" ? parseAxisTags(value) : parseAxisTags(JSON.stringify(value ?? null));
+  return parsed ? JSON.stringify(parsed) : null;
+}
+function clampModifierCount(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(2, Math.round(n)));
+}
+// custom_templates row → TemplateSpecShape (INTEGER→boolean, axis_tags safeJson). getTemplateSpec 커스텀 경로.
+function customTemplateSpec(row: Row): TemplateSpecShape {
+  return {
+    name: String(row.name || ""),
+    kind: String(row.kind || ""),
+    use_persona: Number(row.use_persona) === 1,
+    with_intent: Number(row.with_intent) === 1,
+    modifier_count: Number(row.modifier_count ?? 0),
+    weight: Number(row.weight ?? 1),
+    min_sv: Number(row.min_sv ?? 0),
+    axis_tags: parseAxisTags(row.axis_tags),
+    default_direction: row.default_direction != null ? String(row.default_direction) : undefined,
+    default_design: row.default_design != null ? String(row.default_design) : undefined,
+  };
+}
+// custom_templates row → API 출력형 (INTEGER→boolean, axis_tags 객체화, custom 마커).
+export function customTemplateOut(row: Row): Row {
+  return {
+    ...row,
+    use_persona: Number(row.use_persona) === 1,
+    with_intent: Number(row.with_intent) === 1,
+    modifier_count: Number(row.modifier_count ?? 0),
+    weight: Number(row.weight ?? 1),
+    min_sv: Number(row.min_sv ?? 0),
+    axis_tags: parseAxisTags(row.axis_tags) ?? {},
+    custom: true,
   };
 }
 export function designPresetOut(row: Row): Row {

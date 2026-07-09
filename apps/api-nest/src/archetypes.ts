@@ -130,10 +130,16 @@ export function getArchetypeForTemplate(templateId: string): Archetype | undefin
   return spec ? ARCHETYPES[String(spec.kind || "")] : undefined;
 }
 
+// 아키타입 작성 지침 텍스트(프롬프트 주입). 커스텀 글유형은 참조 아키타입의 writing_guide 를 그대로 쓴다.
+// 미상 아키타입은 general_guide 로 폴백(기존 writingGuideText 동작 보존).
+export function writingGuideForArchetype(archetype: Archetype | undefined): string {
+  const guide = archetype?.writing_guide ?? ARCHETYPES.general_guide!.writing_guide;
+  return guide.map((line) => `- ${line}`).join("\n");
+}
+
 // 유형별 작성 지침 텍스트 (worker.originalTemplateGuide 대체). 알 수 없는 유형은 general_guide 로 폴백.
 export function writingGuideText(templateId: string): string {
-  const guide = getArchetypeForTemplate(templateId)?.writing_guide ?? ARCHETYPES.general_guide!.writing_guide;
-  return guide.map((line) => `- ${line}`).join("\n");
+  return writingGuideForArchetype(getArchetypeForTemplate(templateId));
 }
 
 // 주키워드 인터프리터 — 흩어진 buildPrimaryKeyword + chooseKeywordForTemplate + region 오버라이드를 하나로.

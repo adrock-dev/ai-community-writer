@@ -3,8 +3,8 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, defaultDesignForTemplate } from "./constants.js";
-import { resolveTemplateDirection } from "./axis-tags.js";
-import { getArchetypeForTemplate, writingGuideText } from "./archetypes.js";
+import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
+import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -102,9 +102,14 @@ export class WorkerService {
       try {
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 자료 구성 중`, slotId: sid, processed: ok, failed: fail });
         const genEnabled = Boolean(payload.enable_image_generation);
+        // 글유형 spec(빌트인/커스텀)·아키타입(spec.kind 참조)·방향성을 여기서 해석해 프롬프트로 스레딩한다.
+        // (buildPrompt/buildRepairPrompt 는 자유함수라 this.db 가 없어, 클래스 메서드에서 넘긴다.)
+        const templateSpec = this.db.getTemplateSpec(domain, String(slot.template_id || ""));
+        const archetype = getArchetype(templateSpec?.kind ?? "");
+        const templateDirection = resolveTemplateDirection(templateSpec, safeTemplateOverrides(domainMeta.template_overrides)[String(slot.template_id || "")]);
         // 학원 중심 타입(아키타입 academy_centric: T01/T14/T11)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
         // 그 외 타입은 학원 사진 최소화(1장) + 내용 기반 생성으로 총 3장.
-        const academyImageType = getArchetypeForTemplate(String(slot.template_id || ""))?.academy_centric ?? false;
+        const academyImageType = archetype?.academy_centric ?? false;
         const facts = academyImageType
           ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 })
           : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 });
@@ -124,7 +129,7 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, designPreset);
+        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, designPreset, archetype, templateDirection);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
         const result = await runLlm(prompt, llmOpts);
@@ -140,7 +145,7 @@ export class WorkerService {
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
           this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 품질 보정 ${repairAttempt + 1}회차`, slotId: sid, processed: ok, failed: fail });
-          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, designPreset, markdown, qualityIssues), llmOpts);
+          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, designPreset, markdown, qualityIssues, archetype, templateDirection), llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
           inputTokens += repair.input_tokens || 0;
@@ -696,7 +701,7 @@ function normalizeKoreanSpacing(text: string): string {
     .replace(/비교추천/g, "비교 추천");
 }
 
-function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset: Row | undefined, markdown: string, issues: string[]): string {
+function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset: Row | undefined, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const uploadedDesignGuide = uploadedPresetGuide(designPreset);
@@ -711,7 +716,7 @@ ${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignG
 템플릿 필수 구조:
 ${designStructureGuide(designTemplateId, designPreset)}
 원본 엑셀 기반 템플릿 작성법:
-${originalTemplateGuide(slot.template_id)}
+${writingGuideForArchetype(archetype)}
 원본 전체 글 패턴 기반 작성법:
 ${originalArticlePatternGuide(slot)}
 주 키워드: ${slot.primary_keyword}
@@ -720,7 +725,7 @@ ${originalArticlePatternGuide(slot)}
 의도: ${slot.intent || ""}
 수식어: ${[slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
 공통원칙: ${domain.common_principles || "없음"}
-글유형 방향성: ${resolveTemplateDirection(String(slot.template_id || ""), domain.template_overrides) || "없음"}
+글유형 방향성: ${direction || "없음"}
 
 실패 사유:
 ${issues.map((issue) => `- ${issue}`).join("\n")}
@@ -764,7 +769,7 @@ function resolveGenerationDesign(payloadDesign: unknown, domain: Row, templateId
   return overrides[templateKey] || defaultDesignForTemplate(templateKey);
 }
 
-function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset?: Row): string {
+function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset: Row | undefined, archetype: Archetype | undefined, direction: string): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const uploadedDesignGuide = uploadedPresetGuide(designPreset);
@@ -780,7 +785,7 @@ ${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignG
 템플릿 필수 구조:
 ${designStructureGuide(designTemplateId, designPreset)}
 원본 엑셀 기반 템플릿 작성법:
-${originalTemplateGuide(slot.template_id)}
+${writingGuideForArchetype(archetype)}
 템플릿: ${slot.template_id}
 원본 전체 글 패턴 기반 작성법:
 ${originalArticlePatternGuide(slot)}
@@ -790,7 +795,7 @@ ${originalArticlePatternGuide(slot)}
 의도: ${slot.intent || ""}
 수식어: ${[slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
 공통원칙: ${domain.common_principles || "없음"}
-글유형 방향성: ${resolveTemplateDirection(String(slot.template_id || ""), domain.template_overrides) || "없음"}
+글유형 방향성: ${direction || "없음"}
 
 확인된 콘텐츠 재료:
 ${facts || "없음"}
@@ -1025,10 +1030,6 @@ function designStructureGuide(designTemplateId: string, designPreset?: Row): str
   return (guides[designTemplateId] || guides["local-guide"] || guides.editorial!).map((line) => `- ${line}`).join("\n");
 }
 
-function originalTemplateGuide(templateId: string): string {
-  // 유형별 작성 지침은 archetypes.ts (WRITING_GUIDES) 로 통합 이전됨.
-  return writingGuideText(templateId);
-}
 function publicBrandName(domain: Row): string {
   return String(domain.display_name || domain.domain || "서비스").replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || "서비스";
 }

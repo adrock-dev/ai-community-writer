@@ -3,7 +3,7 @@
 // 이렇게 하면 프리셋/AI/수동 입력 값 모두 자동 태깅되고, 기존 도메인도 별도 백필 없이 즉시 필터된다.
 // keyword/region은 이미 slot.service 의 정규식으로 글유형별 선택이 이뤄지므로 여기서 다루지 않는다.
 
-import { TEMPLATE_SPECS } from "./constants.js";
+import type { TemplateSpecShape } from "./constants.js";
 
 type Row = Record<string, any>;
 export type TaggedAxis = "persona" | "intent" | "modifier";
@@ -61,11 +61,10 @@ function valueMatchesAccepted(valueTags: string[], accepted: string[]): boolean 
 }
 
 // 글유형이 특정 축에서 수용하는 태그 목록. 미지정이면 ["*"](전체 허용) — 즉 기존 동작과 동일해 안전.
-// 도메인별 template_overrides 로 오버라이드 가능.
-export function resolveAcceptedTags(templateId: string, axis: TaggedAxis, overrides: TemplateOverrides): string[] {
-  const spec = (TEMPLATE_SPECS as Record<string, any>)[templateId];
-  const override = overrides[templateId]?.axis_tags?.[axis];
-  if (Array.isArray(override) && override.length) return override;
+// 기본값은 spec.axis_tags(빌트인 상수/커스텀 row)에서, 도메인별 override 로 재정의 가능.
+export function resolveAcceptedTags(spec: TemplateSpecShape | undefined, axis: TaggedAxis, override: TemplateOverride | undefined): string[] {
+  const o = override?.axis_tags?.[axis];
+  if (Array.isArray(o) && o.length) return o;
   const base = spec?.axis_tags?.[axis];
   return Array.isArray(base) && base.length ? base : ["*"];
 }
@@ -116,23 +115,19 @@ export function safeTemplateOverrides(value: unknown): TemplateOverrides {
   return out;
 }
 
-// 글유형 레시피 파라미터: 도메인 오버라이드 → 상수 기본값. (빌트인은 상수가 기본, DB엔 델타만)
-export function resolveRecipeFlags(templateId: string, overrides: TemplateOverrides): { use_persona: boolean; with_intent: boolean; modifier_count: number } {
-  const spec = (TEMPLATE_SPECS as Record<string, any>)[templateId] ?? {};
-  const o = overrides[templateId] ?? {};
+// 글유형 레시피 파라미터: 도메인 오버라이드 → spec 기본값. (빌트인은 상수가 기본, DB엔 델타만 / 커스텀은 row 가 기본)
+export function resolveRecipeFlags(spec: TemplateSpecShape | undefined, override: TemplateOverride | undefined): { use_persona: boolean; with_intent: boolean; modifier_count: number } {
   return {
-    use_persona: o.use_persona ?? Boolean(spec.use_persona),
-    with_intent: o.with_intent ?? Boolean(spec.with_intent),
-    modifier_count: o.modifier_count ?? Number(spec.modifier_count ?? 0),
+    use_persona: override?.use_persona ?? Boolean(spec?.use_persona),
+    with_intent: override?.with_intent ?? Boolean(spec?.with_intent),
+    modifier_count: override?.modifier_count ?? Number(spec?.modifier_count ?? 0),
   };
 }
 
-// 글유형 방향성: 도메인 오버라이드 → 글유형 기본 방향성 순.
-export function resolveTemplateDirection(templateId: string, overridesValue: unknown): string {
-  const overrides = safeTemplateOverrides(overridesValue);
-  const override = overrides[templateId]?.direction;
-  if (override && override.trim()) return override.trim();
-  const spec = (TEMPLATE_SPECS as Record<string, any>)[templateId];
+// 글유형 방향성: 도메인 오버라이드 → spec 기본 방향성 순.
+export function resolveTemplateDirection(spec: TemplateSpecShape | undefined, override: TemplateOverride | undefined): string {
+  const o = override?.direction;
+  if (o && o.trim()) return o.trim();
   return String(spec?.default_direction || "").trim();
 }
 
