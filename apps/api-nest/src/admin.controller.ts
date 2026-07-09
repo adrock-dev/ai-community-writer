@@ -7,7 +7,7 @@ import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_C
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
-import { AXIS_TAG_VOCAB, safeTemplateOverrides } from "./axis-tags.js";
+import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
 import { getArchetype } from "./archetypes.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
@@ -161,6 +161,58 @@ export class AdminController {
     const deleted = this.db.deleteCustomTemplate(domain, templateId);
     if (!deleted) throw new HttpException("custom template not found", 404);
     return { ok: true, deleted: templateId };
+  }
+
+  // 글유형 복제(clone) — 검증된 기존 글유형(빌트인/커스텀)을 복사해 조정 시작점으로. 새 커스텀 row 발급.
+  // effective 복사: 소스가 '이 도메인에서 지금 동작하는 그대로'(spec + 해당 오버라이드 병합)를 파라미터로 굳혀 독립 row 로.
+  @Post("domains/:domain/templates/clone")
+  cloneTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const sourceId = String(body.source_template_id || "").trim();
+    if (!sourceId) throw new HttpException("source_template_id required", 400);
+    const spec = this.db.getTemplateSpec(domain, sourceId);
+    if (!spec) throw new HttpException("source template not found", 404);
+    const config = domainOut(this.requireDomain(domain));
+    const srcOverride = safeTemplateOverrides(config.template_overrides)[sourceId];
+    // effective 파라미터: 오버라이드를 소스 spec 위에 적용해 굳힌다(복제본은 오버라이드 없이 소스와 동일 동작).
+    const recipe = resolveRecipeFlags(spec, srcOverride);
+    const axis_tags: Partial<Record<TaggedAxis, string[]>> = {};
+    for (const axis of ["persona", "intent", "modifier"] as TaggedAxis[]) {
+      const tags = srcOverride?.axis_tags?.[axis] ?? spec.axis_tags?.[axis];
+      if (Array.isArray(tags) && tags.length) axis_tags[axis] = tags;
+    }
+    const direction = resolveTemplateDirection(spec, srcOverride);
+    // inline overrides(복제-후-조정 한 번에). 알려진 파라미터만 위에 덮는다.
+    const inline = (body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)) ? body.overrides : {};
+    const input: Row = {
+      kind: spec.kind,
+      use_persona: recipe.use_persona,
+      with_intent: recipe.with_intent,
+      modifier_count: recipe.modifier_count,
+      weight: spec.weight,
+      min_sv: spec.min_sv,
+      axis_tags,
+      default_direction: direction || null,
+      default_design: spec.default_design,
+      ...inline,
+    };
+    const kind = String(input.kind || "").trim();
+    if (!getArchetype(kind)) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    input.kind = kind;
+    input.name = String(body.name || "").trim() || `${spec.name} (복사본)`;
+    const template = this.db.createCustomTemplate(domain, input);
+    return { ok: true, template, source_template_id: sourceId };
+  }
+
+  // 커스텀 글유형 편집(PATCH). 빌트인은 상수라 편집 불가(template_overrides 로).
+  @Patch("domains/:domain/templates/:templateId")
+  updateTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("templateId") templateId: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    if ((TEMPLATE_SPECS as Record<string, unknown>)[templateId]) throw new HttpException("cannot edit builtin template (use template_overrides)", 400);
+    if (!this.db.getCustomTemplate(domain, templateId)) throw new HttpException("custom template not found", 404);
+    if (body.kind !== undefined && !getArchetype(String(body.kind || "").trim())) throw new HttpException(`unknown archetype kind: ${String(body.kind || "").trim() || "(empty)"}`, 400);
+    this.db.updateCustomTemplate(domain, templateId, body);
+    return { ok: true, template: this.db.getCustomTemplate(domain, templateId) };
   }
 
   // 커스텀 글유형 편집 상태 export — DB 초기화(wipe) 대비. 빌트인은 상수라 export 불필요.

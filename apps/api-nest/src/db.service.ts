@@ -459,6 +459,25 @@ export class DbService implements OnModuleInit {
   deleteAllCustomTemplates(domain: string): number {
     return this.run("DELETE FROM custom_templates WHERE domain=?", [domain]).changes ?? 0;
   }
+  // 커스텀 글유형 부분 편집(PATCH). 제공된 필드만 갱신. axis_tags 는 stringify(트랩). kind 검증은 호출측.
+  updateCustomTemplate(domain: string, templateId: string, fields: Row): number {
+    const sets: string[] = [];
+    const args: any[] = [];
+    const push = (col: string, val: any) => { sets.push(`${col}=?`); args.push(val); };
+    if (fields.name !== undefined) push("name", String(fields.name || "").trim());
+    if (fields.kind !== undefined) push("kind", String(fields.kind || "").trim());
+    if (fields.use_persona !== undefined) push("use_persona", fields.use_persona ? 1 : 0);
+    if (fields.with_intent !== undefined) push("with_intent", fields.with_intent ? 1 : 0);
+    if (fields.modifier_count !== undefined) push("modifier_count", clampModifierCount(fields.modifier_count));
+    if (fields.weight !== undefined) push("weight", Number.isFinite(Number(fields.weight)) ? Number(fields.weight) : 1.0);
+    if (fields.min_sv !== undefined) push("min_sv", Number.isFinite(Number(fields.min_sv)) ? Math.trunc(Number(fields.min_sv)) : 0);
+    if (fields.axis_tags !== undefined) push("axis_tags", serializeAxisTags(fields.axis_tags));
+    if (fields.default_direction !== undefined) push("default_direction", fields.default_direction != null && String(fields.default_direction).trim() ? String(fields.default_direction).trim() : null);
+    if (fields.default_design !== undefined) push("default_design", String(fields.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE);
+    if (!sets.length) return 0;
+    args.push(domain, templateId);
+    return this.run(`UPDATE custom_templates SET ${sets.join(", ")} WHERE domain=? AND template_id=?`, args).changes ?? 0;
+  }
   // import 전용: id 를 지정해 upsert 한다(createCustomTemplate 은 id 를 새로 발급하므로 복구에 부적합).
   // created_at 은 봉투 값 보존(없으면 CURRENT_TIMESTAMP), 충돌 시 기존 created_at 유지. axis_tags 는 stringify.
   // 빌트인 id/kind 검증은 호출측(컨트롤러)에서 수행한다.
