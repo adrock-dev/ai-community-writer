@@ -72,8 +72,9 @@
 ## 공통(cross-cutting) — 모든 단계 적용
 
 ### 검증 규율 (필수)
-- 각 단계 **골든 0-diff**로 빌트인 동작 불변 증명. 픽스처: `apps/api-nest/scripts/tests/golden-slots.json`(556 슬롯).
-- 방법: 격리 API(`ADMIN_PORT=8790 SEO_DB_PATH=<scratch> API_WORKER=0 npx tsx src/main.ts`) → 전 글유형 slots/generate(max 40) → 슬롯 필드 스냅샷 diff. 오버라이드/커스텀은 **긍정 테스트** 추가.
+- 각 단계 **골든 0-diff**로 빌트인 동작 불변 증명. **`npm run test:golden`** (러너: `apps/api-nest/scripts/tests/golden-runner.ts`, 픽스처: `golden-slots.json`, 556 슬롯). 불일치 시 exit 1.
+- 러너는 Db/Slot 서비스를 직접 호출(HTTP/포트 없음). 레시피/프리셋을 **의도적으로 바꿨을 때만** `npm run test:golden -- --update`(또는 `npx tsx scripts/tests/golden-runner.ts --update`)로 골든 재생성.
+- 오버라이드/커스텀 글유형은 골든이 안 다루니 **별도 긍정 테스트**(그 도메인만 생성해 슬롯에 반영됐는지)를 애드혹으로 추가.
 - **커밋 전 3종 게이트 모두**: `verify:company-clean` + `typecheck` + `qa:posts`.
   - **반드시 게이트를 `&&` 로 커밋에 묶어라. bare `git commit` 금지.** 게이트를 별도로 돌리고 결과를 안 보고 커밋하면 실패(빨간불)에도 커밋이 나간다(실제 사고 있었음 → b5dd85a 로 정정).
     ```

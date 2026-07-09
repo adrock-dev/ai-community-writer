@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker:once": "tsx src/worker-once.ts"
+    "worker:once": "tsx src/worker-once.ts",
+    "test:golden": "tsx scripts/tests/golden-runner.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.9",

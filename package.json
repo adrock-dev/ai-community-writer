@@ -12,6 +12,7 @@
     "worker:once": "npm --prefix apps/api-nest run worker:once",
     "verify:company-clean": "node scripts/verify-company-clean.mjs",
     "test": "npm --prefix apps/api-nest run test",
+    "test:golden": "npm --prefix apps/api-nest run test:golden",
     "lint": "biome lint",
     "format": "biome format --write",
     "lint:fix": "biome check --write"

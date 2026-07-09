@@ -105,9 +105,9 @@ getTemplateSpec(domain, tid): TemplateSpecShape | undefined
 
 - **2b-2a**: 테이블 + CRUD + getTemplateSpec (additive, 배선 없음). 검증: CRUD 왕복(생성→조회→삭제).
 - **2b-2b**: 리졸버 디커플링 + slot.service + worker 배선. 검증:
-  - 골든 0-diff(오버라이드/커스텀 없는 도메인, 전 빌트인). 픽스처: `apps/api-nest/scripts/tests/golden-slots.json`.
+  - 골든 0-diff(빌트인 동작 불변): **`npm run test:golden`**. 레시피를 안 바꿨는데 diff 나면 회귀 → 원인 규명.
   - 긍정 테스트: 커스텀 글유형(예: name="심야 학원 특집", kind="local_best") 생성 → templates_enabled 에 추가 → slots/generate → **주키워드가 local_best 규칙(지역+운전면허학원) 대로 나오는지**, academy_centric/writing_guide 가 참조 아키타입대로 프롬프트에 반영되는지.
-- 검증 API 기동: `ADMIN_PORT=8790 ADMIN_HOST=127.0.0.1 SEO_DB_PATH=<scratch> API_WORKER=0 PUBLIC_API_ORIGINS=* npx tsx src/main.ts`.
+- 커스텀 긍정 테스트는 골든 밖 — 격리 API(`ADMIN_PORT=8790 ADMIN_HOST=127.0.0.1 SEO_DB_PATH=<scratch> API_WORKER=0 npx tsx src/main.ts`)로 커스텀 글유형 생성→생성→확인, 또는 서비스 직접호출 애드혹.
 
 ## 9. 커밋 전 필수 (이번에 놓쳐서 사고났던 부분)
 
