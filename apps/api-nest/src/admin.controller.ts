@@ -215,6 +215,13 @@ export class AdminController {
     return { ok: true, template: this.db.getCustomTemplate(domain, templateId) };
   }
 
+  // 레시피↔데이터 정합성(coherence) — 읽기/계산 전용. 생성 전에 얇은/근거없는 조합을 사전 경고(전 빌트인+커스텀).
+  @Get("domains/:domain/templates/coherence")
+  templatesCoherence(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.slots.analyzeCoherence(domain);
+  }
+
   // 커스텀 글유형 편집 상태 export — DB 초기화(wipe) 대비. 빌트인은 상수라 export 불필요.
   // 봉투(envelope): 메타(schema/version/domain/exported_at) + custom_templates + template_overrides + templates_enabled.
   @Get("domains/:domain/templates/export")

@@ -434,6 +434,12 @@ export class DbService implements OnModuleInit {
   listCustomTemplates(domain: string): Row[] {
     return this.all("SELECT * FROM custom_templates WHERE domain=? ORDER BY created_at ASC, template_id ASC", [domain]).map(customTemplateOut);
   }
+  // 정합성 계산용: 도메인 학원의 region 문자열 목록(비어있지 않은 것만). analyzeCoherence 가 축 region 값과 매칭.
+  academyRegionValues(domain: string): string[] {
+    return this.all("SELECT region FROM academies WHERE domain=? AND region IS NOT NULL AND region!=''", [domain])
+      .map((r) => String(r.region || "").trim())
+      .filter(Boolean);
+  }
   getCustomTemplate(domain: string, templateId: string): Row | undefined {
     const row = this.get("SELECT * FROM custom_templates WHERE domain=? AND template_id=?", [domain, templateId]);
     return row ? customTemplateOut(row) : undefined;
