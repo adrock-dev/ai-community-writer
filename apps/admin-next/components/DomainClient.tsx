@@ -7,7 +7,7 @@ import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/ge
 import { rememberDomain } from "@/lib/recent-domain";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
-import type { Academy, AdminOptions, Axis, AxisValue, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts } from "@/lib/types";
+import type { Academy, AdminOptions, Axis, AxisValue, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateOverride, TemplateSpec } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -29,7 +29,7 @@ const AXIS_PLACEHOLDER: Record<Axis, string> = {
   modifier: "셔틀 편리\n친절한 강사\n최단기",
 };
 const TABS = [
-  ["overview", "개요"], ["plan", "기획"], ["templates", "글유형/디자인"], ["axes", "축"],
+  ["overview", "개요"], ["plan", "공통원칙"], ["templates", "글유형/디자인"], ["axes", "축"],
   ["academies", "학원자료"], ["slots", "슬롯"], ["jobs", "작업"], ["posts", "글"], ["settings", "설정"],
 ] as const;
 
@@ -55,7 +55,7 @@ const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: Tou
     desc: "기획과 생성 조건을 세밀하게 잡을 때",
     steps: [
       { mode: "advanced", focus: "workflow", no: "고급 1", title: "흐름 개요", desc: "고급 흐름 한눈에 보기", tone: "primary" },
-      { mode: "advanced", focus: "plan", no: "고급 2", title: "기획/제외어", desc: "생성 방향과 금지어 정리" },
+      { mode: "advanced", focus: "plan", no: "고급 2", title: "공통원칙/제외어", desc: "공통 작성 원칙과 금지어 정리" },
       { mode: "advanced", focus: "template-design", no: "고급 3", title: "유형/디자인", desc: "글 종류와 화면 구상 선택" },
       { mode: "advanced", focus: "academy-types", no: "고급 4", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
       { mode: "advanced", focus: "slot-filter", no: "고급 5", title: "슬롯 필터/확장", desc: "조건을 좁혀 후보 운영" },
@@ -328,7 +328,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
       </div>}
 
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
-      {view === "overview" && tab === "plan" && <Plan domain={domainConfig} axes={payload.axes} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
+      {view === "overview" && tab === "plan" && <Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
       {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} designPresets={payload.design_presets ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
       {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
@@ -390,7 +390,7 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
 
   const steps: TourStep[] = [
     sharedStart,
-    { focus: "plan", tab: "plan", target: "plan-brief", title: "글 방향과 제외어를 저장", body: "어떤 글을 만들지, 절대 넣지 말아야 할 키워드는 무엇인지 먼저 정합니다. 이 내용이 뒤의 후보 생성과 프롬프트에 계속 반영됩니다.", action: "입력 후 ‘기획 저장’을 누르고 다음으로 이동하세요." },
+    { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
     { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
     { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "완성 글이 어떤 형태로 보일지 미리 고릅니다. 오른쪽 미리보기가 실제 상세 화면의 톤과 구조를 이해시키는 기준입니다.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
     sourceSync,
@@ -519,7 +519,7 @@ function tourTooltipStyle(rect: DOMRect | null): React.CSSProperties {
 function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; counts: SlotCounts; active: string; onTab: (v: string) => void }) {
   const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
   const steps = [
-    { tab: "plan", title: "기획", done: Boolean(domain.content_brief), count: domain.content_brief ? "완료" : "필요" },
+    { tab: "plan", title: "공통원칙", done: Boolean(domain.common_principles), count: domain.common_principles ? "완료" : "필요" },
     { tab: "templates", title: "유형/디자인", done: domain.templates_enabled.length > 0, count: `${domain.templates_enabled.length}개` },
     { tab: "slots", title: "후보/작성", done: totalSlots > 0, count: `${totalSlots}개` },
     { tab: "jobs", title: "작업", done: counts.in_progress > 0 || counts.published > 0, count: counts.in_progress > 0 ? `${counts.in_progress}개 진행` : "상태 확인" },
@@ -548,7 +548,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <Stat label="대기 슬롯" value={counts.planned} /><Stat label="진행" value={counts.in_progress} /><Stat label="발행" value={counts.published} accent /><Stat label="실패" value={counts.failed} />
     </div>
     <div className="grid grid-2">
-      <div className="card card-pad"><h2>콘텐츠 기획</h2><p className="muted">{domain.content_brief || "아직 기획 메모가 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>기획 열기</button></div>
+      <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>공통원칙 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>디자인 고르기</button></div>
     </div>
     <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>슬롯 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 탭에서 진행 상태 확인</li><li>글 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
@@ -603,29 +603,25 @@ function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { t
   if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "검수 2 시작", mode: "review", focus: "jobs" };
   if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "기본 4 시작", mode: "basic", focus: "test-write" };
   if (totalSlots === 0) return { title: "기본 흐름 개요부터 보기", desc: "새 도메인입니다. 기본 생성 흐름을 개요로 훑어본 뒤 원천 데이터 준비로 이어가세요.", cta: "기본 1 시작", mode: "basic", focus: "workflow" };
-  if (!domain.content_brief) return { title: "생성 방향을 먼저 저장하세요", desc: "후보는 있지만 기획 메모가 비어 있습니다. 어떤 글을 만들지 기준을 잡으면 생성 품질이 안정됩니다.", cta: "고급 2 시작", mode: "advanced", focus: "plan" };
+  if (!domain.common_principles) return { title: "공통 원칙을 먼저 저장하세요", desc: "후보는 있지만 공통 작성 원칙이 비어 있습니다. 확인된 데이터 사용·과장 금지 같은 공통 기준을 잡으면 생성 품질이 안정됩니다.", cta: "고급 2 시작", mode: "advanced", focus: "plan" };
   if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "검수 3 시작", mode: "review", focus: "posts" };
   return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "기본 3 시작", mode: "basic", focus: "slot-create" };
 }
 
-function Plan({ domain, axes, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
-  const [brief, setBrief] = useState(domain.content_brief ?? "");
+// 공통원칙 탭: 모든 글 유형에 공통 적용되는 안전·데이터 원칙 + 제외어. 축 편집은 「축」 탭으로 일원화됐다.
+function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
+  const [brief, setBrief] = useState(domain.common_principles ?? domain.content_brief ?? "");
   const [excludedKeywords, setExcludedKeywords] = useState(domain.excluded_keywords ?? "");
-  const [texts, setTexts] = useState<Record<Axis, string>>(() => Object.fromEntries(AXES.map((a) => [a, axes[a]?.map((v) => v.value).join("\n") ?? ""])) as Record<Axis, string>);
   async function save() {
-    await Promise.all(AXES.map((axis) => {
-      const values = parseLines(texts[axis]).map((value) => ({ value, weight: 3, monthly_search_volume: null, competition_kd: null }));
-      return values.length ? replaceAxis(domain.domain, axis, values) : Promise.resolve();
-    }));
-    await onSave({ content_brief: brief.trim(), excluded_keywords: excludedKeywords.trim() });
+    await onSave({ common_principles: brief.trim(), excluded_keywords: excludedKeywords.trim() });
     await onRefresh();
   }
   return <div className="card card-pad grid" data-tour="plan-brief">
-    <h2>생성할 글 기획</h2>
-    <Field label="이번에 생성할 글의 방향 / 검증된 자료"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="수도권 직장인이 빠르게 운전면허를 따기 위해 지역별 학원, 비용, 셔틀 여부를 비교하는 글을 만든다." /></Field>
+    <h2>공통 작성 원칙</h2>
+    <p className="muted">모든 글 유형에 공통 적용되는 안전·데이터 원칙과 제외어입니다. 글 유형별 방향성·축 범위는 「글유형/디자인」 탭에서, 축 값은 「축」 탭에서 관리합니다.</p>
+    <Field label="공통 작성 원칙 (모든 글 유형 공통)"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="확인된 데이터만 사용하고, 가격·합격률·셔틀은 자료가 있을 때만 단정한다. 확인 가능한 사실이 부족하면 숫자를 부풀리지 말고 확인 방법 중심으로 정직하게 작성한다." /></Field>
     <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 슬롯 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
-    <div className="grid grid-2">{AXES.map((axis) => <Field key={axis} label={AXIS_LABEL[axis]}><textarea className="textarea" value={texts[axis]} onChange={(e) => setTexts((p) => ({ ...p, [axis]: e.target.value }))} placeholder={AXIS_PLACEHOLDER[axis]} /></Field>)}</div>
-    <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "기획 저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형 고르기</button><button className="btn" onClick={() => onTab("slots")}>글 후보 만들기</button></div>
+    <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형/방향성</button><button className="btn" onClick={() => onTab("axes")}>축 편집</button></div>
   </div>;
 }
 
@@ -802,7 +798,98 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
         <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
     </section>
+    <TemplateOverridesEditor domain={domain} enabledTemplateIds={enabledTemplateIds} options={options} busy={busy} onSave={onSave} />
   </div>;
+}
+
+type TaggedAxis = "persona" | "intent" | "modifier";
+const TAGGED_AXES: TaggedAxis[] = ["persona", "intent", "modifier"];
+const AXIS_TAG_LABEL: Record<string, string> = {
+  select: "학원선택", practice: "실기연습", license: "면허종류", schedule: "시간대", cost: "비용", written: "필기", location: "위치", exam: "시험단계", timing: "시기/상황", common: "공통", "*": "전체 허용",
+};
+
+function sameSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sb = new Set(b);
+  return a.every((x) => sb.has(x));
+}
+
+// 글유형별 방향성 + 축 수용 태그 오버라이드 편집기. 비우면 글유형 기본값(상수)을 그대로 사용한다.
+function TemplateOverridesEditor({ domain, enabledTemplateIds, options, busy, onSave }: { domain: DomainConfig; enabledTemplateIds: string[]; options: AdminOptions; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
+  const [overrides, setOverrides] = useState<Record<string, TemplateOverride>>(() => domain.template_overrides ?? {});
+  const [saving, setSaving] = useState(false);
+  const specs = options.template_specs;
+  // 구버전 API(axis_tag_vocab 미노출)에서도 크래시 없이 동작하도록 방어.
+  const vocab = options.axis_tag_vocab ?? { persona: [], intent: [], modifier: [] };
+  const ids = (enabledTemplateIds.length ? enabledTemplateIds : Object.keys(specs)).filter((id) => specs[id]);
+
+  const axesForTemplate = (spec: TemplateSpec): TaggedAxis[] => TAGGED_AXES.filter((axis) =>
+    axis === "persona" ? spec.use_persona : axis === "intent" ? Boolean(spec.with_intent) : (spec.modifier_count ?? 0) > 0);
+  const defaultTags = (tid: string, axis: TaggedAxis): string[] => specs[tid]?.axis_tags?.[axis] ?? ["*"];
+  const acceptedTags = (tid: string, axis: TaggedAxis): string[] => overrides[tid]?.axis_tags?.[axis] ?? defaultTags(tid, axis);
+  const hasOverride = (tid: string, axis: TaggedAxis): boolean => Boolean(overrides[tid]?.axis_tags?.[axis]);
+
+  function mutate(tid: string, fn: (entry: TemplateOverride) => TemplateOverride) {
+    setOverrides((prev) => {
+      const draft = fn({ ...(prev[tid] ?? {}) });
+      const next = { ...prev };
+      const cleaned: TemplateOverride = {};
+      if (draft.direction && draft.direction.trim()) cleaned.direction = draft.direction;
+      if (draft.axis_tags && Object.keys(draft.axis_tags).length) cleaned.axis_tags = draft.axis_tags;
+      if (cleaned.direction || cleaned.axis_tags) next[tid] = cleaned; else delete next[tid];
+      return next;
+    });
+  }
+  const setDirection = (tid: string, value: string) => mutate(tid, (e) => ({ ...e, direction: value }));
+  function setAxisTags(tid: string, axis: TaggedAxis, tags: string[]) {
+    mutate(tid, (e) => {
+      const at = { ...(e.axis_tags ?? {}) };
+      if (sameSet(tags, defaultTags(tid, axis))) delete at[axis]; else at[axis] = tags;
+      return { ...e, axis_tags: Object.keys(at).length ? at : undefined };
+    });
+  }
+  function toggleTag(tid: string, axis: TaggedAxis, tag: string) {
+    const cur = acceptedTags(tid, axis);
+    let next: string[];
+    if (cur.includes("*")) next = [tag];
+    else if (cur.includes(tag)) next = cur.filter((t) => t !== tag);
+    else next = [...cur, tag];
+    if (!next.length) next = ["*"];
+    setAxisTags(tid, axis, next);
+  }
+  const resetAxis = (tid: string, axis: TaggedAxis) => setAxisTags(tid, axis, defaultTags(tid, axis));
+
+  async function save() {
+    setSaving(true);
+    try { await onSave({ template_overrides: overrides }); }
+    finally { setSaving(false); }
+  }
+
+  return <section className="card card-pad grid" data-tour="templates-directions">
+    <div className="spread"><div><h2>글 유형별 방향성 · 축 범위</h2><p className="muted">공통원칙 위에 글 유형마다 얹히는 방향성과, 각 글 유형이 사용할 축 값 범위를 정합니다. 비우면 기본값을 그대로 씁니다.</p></div><span className="badge info">{ids.length}개 유형</span></div>
+    {ids.map((tid) => {
+      const spec = specs[tid]!;
+      const axes = axesForTemplate(spec);
+      const direction = overrides[tid]?.direction ?? "";
+      return <div key={tid} className="info-panel grid">
+        <div className="spread"><b><span className="badge">{tid}</span> {spec.name}</b>{overrides[tid] && <span className="badge warn">오버라이드</span>}</div>
+        <Field label="방향성 (비우면 기본값 사용)">
+          <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(tid, e.target.value)} placeholder={spec.default_direction || "기본 방향성 없음"} />
+        </Field>
+        {axes.length > 0 && <div className="grid">{axes.map((axis) => {
+          const accepted = acceptedTags(tid, axis);
+          const allMode = accepted.includes("*");
+          return <div key={axis} className="row" style={{ flexWrap: "wrap", alignItems: "center", gap: 6 }}>
+            <span className="muted small" style={{ minWidth: 64 }}>{axis}</span>
+            <button type="button" className={`badge ${allMode ? "info" : ""}`} style={{ cursor: "pointer" }} onClick={() => setAxisTags(tid, axis, ["*"])}>전체 허용</button>
+            {vocab[axis].map((tag) => <button key={tag} type="button" className={`badge ${!allMode && accepted.includes(tag) ? "success" : ""}`} style={{ cursor: "pointer", opacity: allMode ? 0.45 : 1 }} onClick={() => toggleTag(tid, axis, tag)}>{AXIS_TAG_LABEL[tag] ?? tag}</button>)}
+            {hasOverride(tid, axis) && <button type="button" className="btn" style={{ padding: "2px 8px" }} onClick={() => resetAxis(tid, axis)}>기본값</button>}
+          </div>;
+        })}</div>}
+      </div>;
+    })}
+    <div className="row"><button className="btn primary" disabled={busy || saving} onClick={save}>{saving ? "저장 중..." : "방향성/축 범위 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
+  </section>;
 }
 
 function designBlueprintFor(id: string, option?: DesignTemplateOption): typeof DESIGN_BLUEPRINTS[string] {
@@ -864,6 +951,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   const [remoteTotal, setRemoteTotal] = useState(academies.length);
   const [academyTypes, setAcademyTypes] = useState<Array<{ value: string; count: number }>>([]);
   const [generationTypes, setGenerationTypes] = useState(new Set(domain.academy_type_filter ?? []));
+  const [manualToolsOpen, setManualToolsOpen] = useState(false);
   const [runtimeApis, setRuntimeApis] = useState<RuntimeApis | null>(null);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
@@ -947,6 +1035,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
         <b>현재 적용 API</b>
         <span>관리자/Nest: <code>{runtimeApis?.admin_api_base ?? "확인 중..."}</code></span>
         <span>DrivingPlus 원천: <code>{runtimeApis?.drivingplus_api_base ?? "확인 중..."}</code></span>
+        {runtimeApis && <span>지역: <code>{runtimeApis.drivingplus_endpoints.seo_regions}</code></span>}
         {runtimeApis && <span>학원: <code>{runtimeApis.drivingplus_endpoints.academies}</code></span>}
         {runtimeApis && <span>일반 리뷰: <code>{runtimeApis.drivingplus_endpoints.reviews}</code></span>}
         {runtimeApis && <span>블로그 리뷰: <code>{runtimeApis.drivingplus_endpoints.blog_reviews}</code></span>}
@@ -993,8 +1082,13 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
       })}</div>
       {!academyTypes.length && <p className="muted small">먼저 학원 동기화를 실행하면 API 타입 목록이 표시됩니다.</p>}
     </div>
-    <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h2>학원 1곳 추가</h2><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">추가</button></form>
-    <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h2>JSON 일괄 업로드</h2><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">업로드</button></form>
+    <div className="card card-pad grid">
+      <div className="spread"><div><h2>수동 학원자료 등록</h2><p className="muted small">DrivingPlus 동기화에 없는 검증 자료를 직접 보완할 때 사용합니다. 단건 등록 또는 JSON 일괄 등록 중 하나를 선택하세요.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
+      {manualToolsOpen && <>
+        <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다.</p><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
+        <form className="grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h3>2. JSON 일괄 등록</h3><p className="muted small">여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다.</p><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">JSON 일괄 등록</button></form>
+      </>}
+    </div>
     <div className="table-wrap"><table><thead><tr><th>지역</th><th>학원명</th><th>API 타입</th><th>전화/사진</th><th>SEO 설명</th><th>출처</th><th></th></tr></thead><tbody>{remoteAcademies.map((a) => {
       const photoCount = parsePhotoCount(a.photos);
       const reviewCount = parseJsonCount(a.review_json);
@@ -1103,7 +1197,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           </Field>
           <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy} onClick={gen}>{busy ? "만드는 중..." : "재료로 글 후보 만들기"}</button>
         </div>
-        <p className="muted small">조합 재료는 기획 탭 축·글유형 설정·제외어를 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
+        <p className="muted small">조합 재료는 「축」 탭 축 값·「글유형/디자인」 설정·「공통원칙」 탭 제외어를 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
       </div>
 

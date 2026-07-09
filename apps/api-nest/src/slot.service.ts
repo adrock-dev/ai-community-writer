@@ -3,6 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
+import { filterAxisValues, resolveAcceptedTags, safeTemplateOverrides } from "./axis-tags.js";
 
 type Row = Record<string, any>;
 
@@ -30,6 +31,7 @@ export class SlotService {
     const enabled = opts.templates?.length ? opts.templates : safeJson(domainConfig.templates_enabled, []);
     const templateIds = enabled.length ? enabled : Object.keys(TEMPLATE_SPECS);
     const maxPerTemplate = opts.maxPerTemplate ?? 200;
+    const overrides = safeTemplateOverrides(domainConfig.template_overrides);
     const summary: Record<string, number> = {};
     const rows: Row[] = [];
 
@@ -39,9 +41,13 @@ export class SlotService {
       const primaryAxis = spec.primary[0] as AxisName;
       const primaryValues = axes[primaryAxis] || [];
       if (!primaryValues.length) { summary[tid] = 0; continue; }
-      const personaValues = spec.use_persona ? (axes.persona.length ? axes.persona : [{ value: null }]) : [{ value: null }];
-      const intentValues = spec.with_intent ? (axes.intent.length ? axes.intent : [{ value: null }]) : [{ value: null }];
-      const modifierCombos = modifierPairs(axes.modifier, spec.modifier_count);
+      // 글유형 수용 태그로 축 값을 부분집합화한다. 부합 값이 없으면 해당 축을 생략(null)해 미스매치를 피한다.
+      const personaPool = filterAxisValues("persona", axes.persona, resolveAcceptedTags(tid, "persona", overrides));
+      const intentPool = filterAxisValues("intent", axes.intent, resolveAcceptedTags(tid, "intent", overrides));
+      const modifierPool = filterAxisValues("modifier", axes.modifier, resolveAcceptedTags(tid, "modifier", overrides));
+      const personaValues = spec.use_persona ? (personaPool.length ? personaPool : [{ value: null }]) : [{ value: null }];
+      const intentValues = spec.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
+      const modifierCombos = modifierPairs(modifierPool, spec.modifier_count);
       const candidatesByPrimary: Row[][] = [];
       for (const pv of primaryValues) {
         let primaryKeyword = buildPrimaryKeyword(tid, spec, pv, axes);
@@ -57,7 +63,7 @@ export class SlotService {
         for (const persona of personaValues) for (const intent of intentValues) for (const [m1, m2] of modifierCombos) {
           const parts = [pv.value || "", persona.value || "", intent.value || "", m1 || "", m2 || ""];
           primaryRows.push({
-            slot_id: slotId(tid, parts), domain: domain, template_id: tid, primary_keyword: primaryKeyword,
+            slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: primaryKeyword,
             region: primaryAxis === "region" ? pv.value : null, persona: persona.value ?? null, intent: intent.value ?? null,
             modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(sv, numberOrNull(pv.competition_kd), spec.weight)
           });
@@ -110,8 +116,11 @@ function formatRegionKeyword(region: string, keyword: string): string {
   return `${String(region || "").trim()} ${String(keyword || "").trim()}`.replace(/\s+/g, " ").trim();
 }
 
-function slotId(templateId: string, parts: string[]): string {
-  const h = createHash("sha1").update([templateId, ...parts].join("|")).digest("hex").slice(0, 8);
+// slot_id 해시에 domain을 포함한다. slots PK는 전역 slot_id 이므로, domain을 빼면
+// 같은 프리셋을 쓰는 다른 도메인끼리 slot_id가 충돌해 두 번째 도메인 슬롯이 유실된다.
+// 같은 도메인 재생성 시에는 동일 조합→동일 id 로 idempotency 를 유지한다.
+function slotId(domain: string, templateId: string, parts: string[]): string {
+  const h = createHash("sha1").update([domain, templateId, ...parts].join("|")).digest("hex").slice(0, 8);
   return `${templateId}_${h}`;
 }
 function numberOrNull(v: any): number | null { const n = Number(v); return Number.isFinite(n) ? n : null; }

@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DRIVING_ORIGINAL_TEMPLATE_IDS, type AxisName, type JobKind } from "./constants.js";
+import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_TEMPLATE_IDS, DRIVING_ORIGINAL_TEMPLATE_IDS, type AxisName, type JobKind } from "./constants.js";
 import { parseExclusionTerms, slotExclusionSql } from "./exclusions.js";
 import { drivingplusApiBaseUrl } from "./runtime-config.js";
 
@@ -26,11 +26,13 @@ CREATE TABLE IF NOT EXISTS domains (
   theme TEXT NOT NULL DEFAULT 'clean' CHECK (theme IN ('clean','modern','pro')),
   brand_color TEXT DEFAULT '#0066ff',
   logo_url TEXT,
-  templates_enabled TEXT NOT NULL DEFAULT '["T01","T03","T04","T05","T06","T07","T08","T09","T10","T11","T12","T13","T14","T15"]',
+  templates_enabled TEXT NOT NULL DEFAULT '["T01"]',
   design_template_id TEXT NOT NULL DEFAULT 'local-guide',
   design_template_overrides TEXT,
+  template_overrides TEXT,
   custom_design_templates TEXT,
   content_brief TEXT,
+  common_principles TEXT,
   excluded_keywords TEXT,
   academy_type_filter TEXT,
   daily_limit INTEGER NOT NULL DEFAULT 0,
@@ -208,7 +210,7 @@ export class DbService implements OnModuleInit {
       theme TEXT NOT NULL DEFAULT 'clean' CHECK (theme IN ('clean','modern','pro')),
       brand_color TEXT DEFAULT '#0066ff',
       logo_url TEXT,
-      templates_enabled TEXT NOT NULL DEFAULT '["T01","T03","T04","T05","T06","T07","T08","T09","T10","T11","T12","T13","T14","T15"]',
+      templates_enabled TEXT NOT NULL DEFAULT '["T01"]',
       design_template_id TEXT NOT NULL DEFAULT 'local-guide',
       design_template_overrides TEXT,
       custom_design_templates TEXT,
@@ -239,7 +241,7 @@ export class DbService implements OnModuleInit {
             ${select("theme", "'clean'")},
             ${select("brand_color", "'#0066ff'")},
             ${select("logo_url", "NULL")},
-            ${select("templates_enabled", `'${JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)}'`)},
+            ${select("templates_enabled", `'${JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS)}'`)},
             ${select("daily_limit", "0")},
             ${select("created_at", "CURRENT_TIMESTAMP")},
             ${select("design_template_id", "'local-guide'")},
@@ -261,7 +263,13 @@ export class DbService implements OnModuleInit {
     if (!domainCols.has("design_template_id")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
     if (!domainCols.has("design_template_overrides")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_overrides TEXT");
     if (!domainCols.has("custom_design_templates")) this.db.exec("ALTER TABLE domains ADD COLUMN custom_design_templates TEXT");
+    if (!domainCols.has("template_overrides")) this.db.exec("ALTER TABLE domains ADD COLUMN template_overrides TEXT");
     if (!domainCols.has("content_brief")) this.db.exec("ALTER TABLE domains ADD COLUMN content_brief TEXT");
+    if (!domainCols.has("common_principles")) {
+      this.db.exec("ALTER TABLE domains ADD COLUMN common_principles TEXT");
+      // 폐기 가능한 개발 데이터 기준의 단순 이월: 기존 content_brief 를 공통원칙 초기값으로 가져온다.
+      this.db.exec("UPDATE domains SET common_principles = content_brief WHERE common_principles IS NULL AND content_brief IS NOT NULL");
+    }
     if (!domainCols.has("excluded_keywords")) this.db.exec("ALTER TABLE domains ADD COLUMN excluded_keywords TEXT");
     if (!domainCols.has("academy_type_filter")) this.db.exec("ALTER TABLE domains ADD COLUMN academy_type_filter TEXT");
     this.run(`UPDATE domains SET templates_enabled=?
@@ -354,12 +362,12 @@ export class DbService implements OnModuleInit {
       .map((value: any) => String(value || "").trim())
       .filter(Boolean);
   }
-  createDomain(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number }): void {
-    this.run(`INSERT INTO domains (domain, display_name, vertical, theme, brand_color, daily_limit) VALUES (?, ?, ?, ?, ?, ?)`,
-      [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0]);
+  createDomain(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number; templates_enabled?: string }): void {
+    this.run(`INSERT INTO domains (domain, display_name, vertical, theme, brand_color, daily_limit, templates_enabled) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0, input.templates_enabled || JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS)]);
   }
   updateDomain(domain: string, fields: Row): void {
-    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "custom_design_templates", "content_brief", "excluded_keywords", "academy_type_filter"]);
+    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords", "academy_type_filter"]);
     const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
     if (!entries.length) return;
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
@@ -665,8 +673,7 @@ export class DbService implements OnModuleInit {
   }
   claimNextJob(): Row | undefined {
     return this.transaction(() => {
-      this.recoverStaleCancellingJobs();
-      this.failStaleRunningJobs();
+      this.recoverStaleRunningJobs();
       const row = this.get("SELECT * FROM jobs WHERE status='queued' AND paused=0 ORDER BY scheduled_at LIMIT 1");
       if (!row) return undefined;
       const now = nowSql();
@@ -674,36 +681,35 @@ export class DbService implements OnModuleInit {
       return { ...row, status: "running", started_at: now, heartbeat_at: now, current_step: "작업자 시작", payload_obj: safeJson(row.payload, {}) };
     });
   }
-  failStaleRunningJobs(maxAgeMinutes = Number(process.env.WORKER_STALE_RUNNING_MINUTES || 360)): number {
-    const minutes = Math.max(15, Math.min(24 * 60, Math.trunc(Number(maxAgeMinutes) || 360)));
-    return this.run(
-      "UPDATE jobs SET status='failed', finished_at=?, error=coalesce(error, ?) WHERE status='running' AND COALESCE(heartbeat_at, started_at) IS NOT NULL AND COALESCE(heartbeat_at, started_at) < datetime('now', ?)",
-      [nowSql(), `stale running job exceeded ${minutes} minutes`, `-${minutes} minutes`],
-    ).changes ?? 0;
-  }
-  recoverStaleCancellingJobs(maxExtraGraceSeconds = Number(process.env.WORKER_CANCEL_EXTRA_GRACE_SEC || 300)): number {
+  recoverStaleRunningJobs(maxExtraGraceSeconds = Number(process.env.WORKER_CANCEL_EXTRA_GRACE_SEC || 300)): number {
     const extraGraceSec = Math.max(60, Math.min(60 * 60, Math.trunc(Number(maxExtraGraceSeconds) || 300)));
-    const rows = this.all("SELECT id, payload, started_at, heartbeat_at FROM jobs WHERE status='running' AND cancel_requested=1 AND started_at IS NOT NULL")
-      .filter((row) => isCancellingJobStale(row, extraGraceSec));
+    const rows = this.all("SELECT id, payload, started_at, heartbeat_at, cancel_requested FROM jobs WHERE status='running' AND started_at IS NOT NULL")
+      .filter((row) => isRunningJobStale(row, extraGraceSec));
     if (!rows.length) return 0;
     for (const row of rows) {
       const payload = safeJson(row.payload, {});
       const timeoutSec = clampJobTimeoutSeconds(payload.timeout_sec);
       const staleAfterMin = Math.ceil((timeoutSec + extraGraceSec) / 60);
-      const message = `취소됨(작업자 요청, 제한시간+여유 ${staleAfterMin}분 이상 응답 없음)`;
-      this.run("UPDATE jobs SET status='failed', finished_at=?, current_step='취소 복구 처리', error=coalesce(error, ?) WHERE id=? AND status='running' AND cancel_requested=1", [nowSql(), message, row.id]);
-      const slotIds = payload?.slot_ids;
-      if (!Array.isArray(slotIds)) continue;
-      for (const slotId of slotIds.map((value: unknown) => String(value || "")).filter(Boolean)) {
-        this.run(
-          `UPDATE slots SET status='planned', last_error=?
-           WHERE slot_id=? AND status='in_progress'
-             AND NOT EXISTS (SELECT 1 FROM posts WHERE posts.slot_id=slots.slot_id AND posts.status!='deleted')`,
-          [message, slotId],
-        );
-      }
+      const cancelled = Number(row.cancel_requested ?? 0) === 1;
+      const message = cancelled
+        ? `취소됨(작업자 요청, 제한시간+여유 ${staleAfterMin}분 이상 응답 없음)`
+        : `실패 처리됨(작업자 응답 없음, 제한시간+여유 ${staleAfterMin}분 초과)`;
+      const step = cancelled ? "취소 복구 처리" : "응답 없음 복구 처리";
+      this.run("UPDATE jobs SET status='failed', finished_at=?, current_slot_id=NULL, current_step=?, error=coalesce(error, ?) WHERE id=? AND status='running'", [nowSql(), step, message, row.id]);
+      this.recoverInProgressSlots(payload?.slot_ids, message);
     }
     return rows.length;
+  }
+  private recoverInProgressSlots(slotIds: unknown, message: string): void {
+    if (!Array.isArray(slotIds)) return;
+    for (const slotId of slotIds.map((value: unknown) => String(value || "")).filter(Boolean)) {
+      this.run(
+        `UPDATE slots SET status='planned', last_error=?
+         WHERE slot_id=? AND status='in_progress'
+           AND NOT EXISTS (SELECT 1 FROM posts WHERE posts.slot_id=slots.slot_id AND posts.status!='deleted')`,
+        [message, slotId],
+      );
+    }
   }
   completeJob(jobId: string, ok: boolean, result?: Row, error?: string): void {
     this.run(
@@ -752,7 +758,7 @@ export class DbService implements OnModuleInit {
     ).changes ?? 0) > 0;
   }
   listJobs(opts: { domain?: string; status?: string; limit?: number } = {}): Row[] {
-    this.recoverStaleCancellingJobs();
+    this.recoverStaleRunningJobs();
     let sql = "SELECT * FROM jobs WHERE 1=1"; const args: any[] = [];
     if (opts.domain) { sql += " AND domain=?"; args.push(opts.domain); }
     if (opts.status) { sql += " AND status=?"; args.push(opts.status); }
@@ -772,6 +778,7 @@ export function domainOut(row: Row): Row {
     ...row,
     templates_enabled: safeJson(row.templates_enabled, []),
     design_template_overrides: safeJson(row.design_template_overrides, {}),
+    template_overrides: safeJson(row.template_overrides, {}),
     academy_type_filter: safeJson(row.academy_type_filter, []),
   };
 }
@@ -978,7 +985,7 @@ function fallbackRegionFromAddress(address: string | null): string | null {
   return parts[0] || null;
 }
 
-function isCancellingJobStale(job: Row, extraGraceSec: number): boolean {
+function isRunningJobStale(job: Row, extraGraceSec: number): boolean {
   const lastSeenAt = Date.parse(`${String(job.heartbeat_at || job.started_at || "").replace(" ", "T")}Z`);
   if (!Number.isFinite(lastSeenAt)) return false;
   const timeoutSec = clampJobTimeoutSeconds(safeJson(job.payload, {})?.timeout_sec);

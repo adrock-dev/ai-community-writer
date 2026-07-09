@@ -10,4 +10,3 @@ export function adminApiBaseUrl(): string {
 export function drivingplusApiBaseUrl(): string {
   return String(process.env.DRIVINGPLUS_API_BASE_URL || DEFAULT_DRIVINGPLUS_API_BASE_URL).replace(/\/$/, "");
 }
-

@@ -30,6 +30,11 @@ export interface DesignPreset extends DesignTemplateOption {
   created_at: string;
 }
 
+export interface TemplateOverride {
+  direction?: string;
+  axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+}
+
 export interface DomainConfig {
   domain: string;
   display_name: string;
@@ -40,8 +45,10 @@ export interface DomainConfig {
   templates_enabled: string[];
   design_template_id?: DomainDesignSetting;
   design_template_overrides?: Record<string, string>;
+  template_overrides?: Record<string, TemplateOverride>;
   custom_design_templates?: string | null;
   content_brief?: string | null;
+  common_principles?: string | null;
   excluded_keywords?: string | null;
   academy_type_filter?: string[];
   daily_limit: number;
@@ -190,6 +197,8 @@ export interface TemplateSpec {
   with_intent?: boolean;
   kind?: string;
   default_design?: string;
+  default_direction?: string;
+  axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
 }
 
 export interface AdminOptions {
@@ -197,6 +206,7 @@ export interface AdminOptions {
   themes: string[];
   templates: string[];
   template_specs: Record<string, TemplateSpec>;
+  axis_tag_vocab: { persona: string[]; intent: string[]; modifier: string[] };
   design_templates: DesignTemplateOption[];
   providers: Provider[];
   preset_options: string[];

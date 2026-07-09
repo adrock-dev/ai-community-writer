@@ -1,0 +1,107 @@
+import { api } from "@/lib/api";
+
+// 학원 심층조사 관리자 API 클라이언트(기존 도메인 API와 분리).
+
+export interface AcademyBaseRow {
+  external_id: string;
+  name?: string | null;
+  region?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  vphone?: string | null;
+  academy_type?: string | null;
+  thumb_url?: string | null;
+  synced_at?: string | null;
+  researched_at?: string | null;
+  research_engine?: string | null;
+}
+
+export interface StatusDef { code: string; label: string; rank: number }
+
+export interface ResearchRun {
+  id: string;
+  scope: string;
+  region?: string | null;
+  engine?: string | null;
+  method?: string | null;
+  status: string;
+  count_total: number;
+  count_done: number;
+  error?: string | null;
+  started_at: string;
+  finished_at?: string | null;
+}
+
+export interface ReviewRow {
+  id: string;
+  platform: string;
+  rating?: number | null;
+  title?: string | null;
+  quote_text: string;
+  author_masked?: string | null;
+  source_url?: string | null;
+  posted_at?: string | null;
+  collected_at: string;
+}
+
+export interface FieldMetaRow {
+  field_key: string;
+  status: string;
+  source_url?: string | null;
+  source_name?: string | null;
+  verified_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface AcademyFull {
+  base: AcademyBaseRow;
+  research: Record<string, any> | null;
+  courses: Array<Record<string, any>>;
+  shuttle_routes: Array<Record<string, any>>;
+  reviews: ReviewRow[];
+  field_meta: FieldMetaRow[];
+}
+
+export const listAcademyResearch = (region?: string, q?: string) => {
+  const search = new URLSearchParams();
+  if (region) search.set("region", region);
+  if (q) search.set("q", q);
+  return api<{ count: number; region: string | null; items: AcademyBaseRow[] }>(`/academy-research/list?${search.toString()}`);
+};
+export const getAcademyResearch = (externalId: string) => api<AcademyFull>(`/academy-research/${encodeURIComponent(externalId)}`);
+export const listStatusDefs = () => api<{ items: StatusDef[] }>("/academy-research/status-defs");
+export const listResearchRuns = () => api<{ items: ResearchRun[] }>("/academy-research/runs");
+export const syncRegion = (region: string) => api<{ region: string; matched: number; total: number; reviews: number }>("/academy-research/sync", { method: "POST", body: JSON.stringify({ region }) });
+export const syncOneAcademy = (externalId: string) => api<{ external_id: string; found: boolean; reviews: number }>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });
+export const researchOneAcademy = (externalId: string) => api<{ ok: boolean; external_id: string; provider?: string; error?: string; no_sources?: boolean; sources?: number }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST" });
+export const researchRegion = (region: string) => api<{ ok: boolean; run_id?: string; count?: number; error?: string }>("/academy-research/research/region", { method: "POST", body: JSON.stringify({ region }) });
+export const updateResearchField = (externalId: string, field: string, value: unknown) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field`, { method: "PATCH", body: JSON.stringify({ field, value }) });
+export const setResearchFieldMeta = (externalId: string, body: { field_key: string; status?: string; source_url?: string; note?: string }) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field-meta`, { method: "PATCH", body: JSON.stringify(body) });
+
+// 조사 스칼라 필드 라벨(상세 편집 UI 순서)
+export const RESEARCH_FIELD_LABELS: Array<{ key: string; label: string }> = [
+  { key: "name_researched", label: "이름(재조사)" },
+  { key: "address_researched", label: "주소(재조사)" },
+  { key: "phone_researched", label: "전화(재조사)" },
+  { key: "gu", label: "구/군" },
+  { key: "dong", label: "동" },
+  { key: "jibun_address", label: "지번주소" },
+  { key: "hours", label: "운영/교육시간" },
+  { key: "night_class", label: "야간반" },
+  { key: "weekend", label: "주말운영" },
+  { key: "closed_days", label: "휴무일" },
+  { key: "shuttle_available", label: "셔틀 운행여부" },
+  { key: "shuttle_summary", label: "셔틀 요약" },
+  { key: "licenses", label: "취급면허" },
+  { key: "self_test", label: "자체시험장" },
+  { key: "facilities", label: "설비" },
+  { key: "fee_summary", label: "가격요약" },
+  { key: "price_disclosed", label: "가격공개" },
+  { key: "pass_rate", label: "합격률" },
+  { key: "pass_rate_scope", label: "합격률 근거" },
+  { key: "established_year", label: "설립연도" },
+  { key: "scale", label: "규모" },
+  { key: "homepage_url", label: "홈페이지" },
+  { key: "naver_place_url", label: "네이버플레이스" },
+  { key: "kakao_url", label: "카카오맵" },
+];

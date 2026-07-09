@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, defaultDesignForTemplate } from "./constants.js";
+import { resolveTemplateDirection } from "./axis-tags.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -717,6 +718,8 @@ ${originalArticlePatternGuide(slot)}
 페르소나: ${slot.persona || ""}
 의도: ${slot.intent || ""}
 수식어: ${[slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
+공통원칙: ${domain.common_principles || "없음"}
+글유형 방향성: ${resolveTemplateDirection(String(slot.template_id || ""), domain.template_overrides) || "없음"}
 
 실패 사유:
 ${issues.map((issue) => `- ${issue}`).join("\n")}
@@ -785,7 +788,8 @@ ${originalArticlePatternGuide(slot)}
 페르소나: ${slot.persona || ""}
 의도: ${slot.intent || ""}
 수식어: ${[slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
-브랜드/작성 메모: ${domain.content_brief || "없음"}
+공통원칙: ${domain.common_principles || "없음"}
+글유형 방향성: ${resolveTemplateDirection(String(slot.template_id || ""), domain.template_overrides) || "없음"}
 
 확인된 콘텐츠 재료:
 ${facts || "없음"}

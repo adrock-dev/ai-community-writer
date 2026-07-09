@@ -3,10 +3,11 @@ import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_CONTENT_BRIEF, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
+import { AXIS_TAG_VOCAB, safeTemplateOverrides } from "./axis-tags.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 
@@ -29,6 +30,7 @@ export class AdminController {
       themes: ["clean", "modern", "pro"],
       templates: Object.keys(TEMPLATE_SPECS),
       template_specs: TEMPLATE_SPECS,
+      axis_tag_vocab: AXIS_TAG_VOCAB,
       design_templates: DESIGN_TEMPLATES,
       providers: ["codex", "claude"],
       preset_options: [DEFAULT_DRIVING_VERTICAL],
@@ -77,9 +79,9 @@ export class AdminController {
     if (!domain || !display_name) throw new HttpException("domain, display_name required", 400);
     if (!DRIVING_VERTICALS.includes(vertical as any)) throw new HttpException("Adrock 회사용 운영본은 driving 도메인만 지원합니다", 400);
     if (this.db.getDomain(domain)) throw new HttpException("domain already exists", 409);
-    this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit });
+    this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit, templates_enabled: JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS) });
     // 새 도메인은 디자인 자동 매칭으로 시작한다: 글마다 슬롯의 글 유형 기본 디자인을 적용(docs/design-template-mapping.md).
-    this.db.updateDomain(domain, { design_template_id: AUTO_DESIGN_TEMPLATE_ID, content_brief: body.content_brief || DEFAULT_DRIVING_CONTENT_BRIEF });
+    this.db.updateDomain(domain, { design_template_id: AUTO_DESIGN_TEMPLATE_ID, common_principles: body.common_principles || body.content_brief || DEFAULT_DRIVING_COMMON_PRINCIPLES });
     if (body.apply_preset !== false) this.slots.applyPreset(domain, vertical);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }
@@ -111,6 +113,7 @@ export class AdminController {
     const fields = { ...body };
     if (Array.isArray(fields.templates_enabled)) fields.templates_enabled = JSON.stringify(fields.templates_enabled);
     if (fields.design_template_overrides && typeof fields.design_template_overrides === "object") fields.design_template_overrides = JSON.stringify(normalizeDesignOverrides(fields.design_template_overrides));
+    if (fields.template_overrides && typeof fields.template_overrides === "object") fields.template_overrides = JSON.stringify(safeTemplateOverrides(fields.template_overrides));
     if (Array.isArray(fields.academy_type_filter)) fields.academy_type_filter = JSON.stringify(fields.academy_type_filter.map((v: any) => String(v || "").trim()).filter(Boolean));
     this.db.updateDomain(domain, fields);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };

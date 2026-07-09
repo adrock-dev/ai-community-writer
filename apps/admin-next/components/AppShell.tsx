@@ -19,7 +19,7 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [domains, setDomains] = useState<Awaited<ReturnType<typeof listDomains>>["items"]>([]);
   const [domainsReady, setDomainsReady] = useState(false);
-  // 마지막으로 연 도메인(localStorage). 도메인이 URL에 없는 페이지(/jobs, /settings)에서 앵커로 쓴다.
+  // 마지막으로 연 도메인(localStorage). 도메인이 URL에 없는 페이지(/jobs, /settings 등)에서 앵커로 쓴다.
   // pathname 이 바뀔 때마다 다시 읽어, 방금 보던 도메인을 반영한다.
   const [recentDomain, setRecentDomain] = useState<string | null>(null);
 
@@ -105,30 +105,36 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           <span><b>Adrock Ops</b><small>Internal</small></span>
         </Link>
 
-        <div className="side-domain">
-          <p><span aria-hidden style={{ color: domains.length ? activeDomainColor : "#cbd5e1" }}>●</span> 현재 도메인</p>
-          <select
-            className="select"
-            value={domains.length ? (activeDomain ?? "") : ""}
-            onChange={(e) => switchDomain(e.target.value)}
-            disabled={!sidebarOpen || domains.length === 0}
-            tabIndex={sidebarOpen ? 0 : -1}
-            aria-label="현재 도메인 전환"
-          >
-            {domains.length === 0
-              ? <option value="">도메인 없음 — 먼저 생성</option>
-              : domains.map((d) => <option key={d.domain} value={d.domain}>{d.display_name || d.domain}</option>)}
-          </select>
-        </div>
-
         <nav className="side-nav" aria-label="관리 메뉴">
-          <p>메뉴</p>
+          <p>콘텐츠 운영</p>
+          <div className="side-domain in-nav">
+            <p><span aria-hidden style={{ color: domains.length ? activeDomainColor : "#cbd5e1" }}>●</span> 운영 대상</p>
+            <select
+              className="select"
+              value={domains.length ? (activeDomain ?? "") : ""}
+              onChange={(e) => switchDomain(e.target.value)}
+              disabled={!sidebarOpen || domains.length === 0}
+              tabIndex={sidebarOpen ? 0 : -1}
+              aria-label="현재 도메인 전환"
+            >
+              {domains.length === 0
+                ? <option value="">도메인 없음 — 먼저 생성</option>
+                : domains.map((d) => <option key={d.domain} value={d.domain}>{d.display_name || d.domain}</option>)}
+            </select>
+          </div>
           <SidebarLink href="/" active={pathname === "/"} tabIndex={sidebarOpen ? 0 : -1}>대시보드</SidebarLink>
           <SidebarLink href={manageHref} active={onDomainOverview || (onNeedDomainPage && menuFrom === "manage")} tabIndex={sidebarOpen ? 0 : -1}>도메인 관리</SidebarLink>
           <SidebarLink href={generationHref} active={onGenerate || (onNeedDomainPage && menuFrom === "generate")} tabIndex={sidebarOpen ? 0 : -1}>글 생성</SidebarLink>
           <SidebarLink href={reviewHref} active={onReview || (onNeedDomainPage && menuFrom === "review")} tabIndex={sidebarOpen ? 0 : -1}>검수·보내기</SidebarLink>
           <SidebarLink href="/jobs" active={pathname === "/jobs"} tabIndex={sidebarOpen ? 0 : -1}>작업 큐</SidebarLink>
-          <SidebarLink href="/settings" active={pathname === "/settings"} tabIndex={sidebarOpen ? 0 : -1}>설정</SidebarLink>
+          <p style={{ marginTop: 12 }}>자료 관리</p>
+          <SidebarLink href="/academies" active={pathname.startsWith("/academies")} tabIndex={sidebarOpen ? 0 : -1}>
+            <span>학원 조사 DB</span>
+            <span className="side-beta">베타</span>
+          </SidebarLink>
+          <p style={{ marginTop: 12 }}>설정</p>
+          <SidebarLink href="/settings" active={pathname === "/settings"} tabIndex={sidebarOpen ? 0 : -1}>작업환경</SidebarLink>
+          <SidebarLink href="/integrations" active={pathname === "/integrations"} tabIndex={sidebarOpen ? 0 : -1}>연동 설정</SidebarLink>
         </nav>
 
         <div className="side-note">

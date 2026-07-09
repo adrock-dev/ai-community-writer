@@ -9,7 +9,16 @@ export const DEFAULT_DRIVING_DESIGN_TEMPLATE = "local-guide";
 // 도메인 design_template_id가 이 값이면 글마다 슬롯의 글 유형 기본 디자인(default_design)을 자동 선택한다.
 export const AUTO_DESIGN_TEMPLATE_ID = "auto";
 export const DEFAULT_DRIVING_BRAND_COLOR = "#2563eb";
-export const DEFAULT_DRIVING_CONTENT_BRIEF = [
+// 공통원칙: 모든 글유형에 공통으로 적용되는 안전·데이터 원칙(방향성 제외). buildPrompt 상단에 주입된다.
+export const DEFAULT_DRIVING_COMMON_PRINCIPLES = [
+  "운전면허·운전학원 도메인 콘텐츠를 회사 도메인 기준으로 발행한다.",
+  "지역명·학원명·주소·전화·사진·리뷰처럼 확인된 데이터만 사용하고, 가격·합격률·셔틀은 데이터가 있을 때만 단정한다.",
+  "확인 가능한 사실이 부족하면 숫자를 부풀리지 말고, 확인 방법과 체크리스트 중심으로 정직하게 작성한다.",
+  "내부 API·원천 시스템·데이터 처리 흔적을 공개 글에 남기지 않는다."
+].join("\n");
+
+// 구버전 통합 brief 문자열. 마이그레이션에서 기존 content_brief 값을 식별하는 용도로만 남긴다(런타임 미사용).
+export const LEGACY_DEFAULT_DRIVING_CONTENT_BRIEF = [
   "운전면허·운전학원 비교 콘텐츠를 회사 도메인 기준으로 발행한다.",
   "지역명, 학원명, 주소, 전화, 사진, 리뷰처럼 확인된 데이터만 사용하고 가격·합격률·셔틀은 데이터가 있을 때만 단정한다.",
   "후보가 부족한 지역은 억지 BEST 숫자를 만들지 말고 직접 확인 가능한 후보와 상담 체크리스트 중심으로 정직하게 작성한다.",
@@ -20,23 +29,26 @@ export const DRIVING_ORIGINAL_TEMPLATE_IDS = [
   "T01", "T03", "T04", "T05", "T06", "T07",
   "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"
 ] as const;
+export const DEFAULT_DRIVING_TEMPLATE_IDS = ["T01"] as const;
 
 // default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
+// default_direction: 이 글유형의 기본 방향성(공통원칙 위에 얹히는 오버레이). 도메인 template_overrides 로 재정의 가능.
+// axis_tags: 이 글유형이 수용하는 축 값 태그(axis-tags.ts). 미지정 축은 전체 허용(["*"]). region/keyword 는 정규식 경로라 제외.
 export const TEMPLATE_SPECS = {
-  T01: { name: "지역 운전학원 BEST 비교", primary: ["region"], use_persona: true, modifier_count: 2, weight: 1.15, min_sv: 0, kind: "local_best", default_design: "comparison" },
-  T03: { name: "운전면허 가이드 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, kind: "general_guide", default_design: "editorial" },
-  T04: { name: "면허 종류/옵션 비교", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.75, min_sv: 0, kind: "license_compare", default_design: "comparison" },
-  T05: { name: "비용 및 시간 절약 전략", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "cost_strategy", default_design: "comparison" },
-  T06: { name: "시험 단계 집중 BEST", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 0.9, min_sv: 0, with_intent: true, kind: "exam_best", default_design: "comparison" },
-  T07: { name: "지역 허브 총정리", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.25, min_sv: 0, with_intent: true, kind: "regional_hub", default_design: "local-guide" },
-  T08: { name: "운전면허 필기시험 접수", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 1.08, min_sv: 0, with_intent: true, kind: "written_registration", default_design: "checklist" },
-  T09: { name: "운전면허 필기시험 팁", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "written_tips", default_design: "checklist" },
-  T10: { name: "운전면허 필기시험 앱 추천", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.9, min_sv: 0, kind: "written_app", default_design: "comparison" },
-  T11: { name: "지역 운전면허시험장 소개", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.0, min_sv: 0, with_intent: true, kind: "test_center", default_design: "local-guide" },
-  T12: { name: "운전면허 취득 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "license_complete", default_design: "editorial" },
-  T13: { name: "타겟별 운전면허 준비", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.9, min_sv: 0, kind: "persona_target", default_design: "editorial" },
-  T14: { name: "전문학원 단독 소개", primary: ["region"], use_persona: true, modifier_count: 0, weight: 0.98, min_sv: 0, kind: "academy_profile", default_design: "conversion" },
-  T15: { name: "지역+시험단계 혼합", primary: ["region"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, with_intent: true, kind: "local_exam_mix", default_design: "local-guide" }
+  T01: { name: "지역 운전학원 BEST 비교", primary: ["region"], use_persona: true, modifier_count: 2, weight: 1.15, min_sv: 0, kind: "local_best", default_design: "comparison", default_direction: "지역 학원 후보를 비교표와 추천 기준으로 정리하고, 상담·비용·셔틀·면허 종류 확인으로 전환을 연결한다.", axis_tags: { persona: ["*"], modifier: ["*"] } },
+  T03: { name: "운전면허 가이드 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, kind: "general_guide", default_design: "editorial", default_direction: "운전면허 절차와 개념을 초보자도 이해하도록 총정리형으로 풀고, 단계별 확인 포인트를 제공한다.", axis_tags: { persona: ["*"], modifier: ["*"] } },
+  T04: { name: "면허 종류/옵션 비교", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.75, min_sv: 0, kind: "license_compare", default_design: "comparison", default_direction: "면허 종류·옵션의 차이와 선택 기준을 비교해, 독자가 자기 상황에 맞는 종류를 고르게 돕는다.", axis_tags: { persona: ["license", "timing", "common"] } },
+  T05: { name: "비용 및 시간 절약 전략", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "cost_strategy", default_design: "comparison", default_direction: "비용·시간을 아끼는 전략을 확인 가능한 기준으로 제시하되, 구체 금액은 자료가 있을 때만 쓴다.", axis_tags: { persona: ["cost", "select", "schedule", "timing", "common"], modifier: ["cost", "select", "schedule", "common"] } },
+  T06: { name: "시험 단계 집중 BEST", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 0.9, min_sv: 0, with_intent: true, kind: "exam_best", default_design: "comparison", default_direction: "필기·기능·도로주행 등 시험 단계별 핵심을 집중적으로 정리하고, 준비 순서를 제시한다.", axis_tags: { intent: ["exam", "common"] } },
+  T07: { name: "지역 허브 총정리", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.25, min_sv: 0, with_intent: true, kind: "regional_hub", default_design: "local-guide", default_direction: "지역 단위로 학원·시험장·생활권 정보를 허브형으로 총정리해 지역 검색 의도를 폭넓게 충족한다.", axis_tags: { intent: ["select", "location", "common"] } },
+  T08: { name: "운전면허 필기시험 접수", primary: ["keyword"], use_persona: false, modifier_count: 0, weight: 1.08, min_sv: 0, with_intent: true, kind: "written_registration", default_design: "checklist", default_direction: "필기시험 접수 절차·준비물·일정 확인 방법을 단계별 체크리스트로 안내한다.", axis_tags: { intent: ["written", "common"] } },
+  T09: { name: "운전면허 필기시험 팁", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "written_tips", default_design: "checklist", default_direction: "필기시험 공부·합격 팁을 실전 위주로 정리하고, 준비 순서와 자주 틀리는 포인트를 제공한다.", axis_tags: { persona: ["written", "timing", "common"], modifier: ["written", "common"] } },
+  T10: { name: "운전면허 필기시험 앱 추천", primary: ["keyword"], use_persona: true, modifier_count: 0, weight: 0.9, min_sv: 0, kind: "written_app", default_design: "comparison", default_direction: "필기시험 학습 앱·도구의 선택 기준과 활용법을 비교 관점으로 정리한다.", axis_tags: { persona: ["written", "timing", "common"] } },
+  T11: { name: "지역 운전면허시험장 소개", primary: ["region"], use_persona: false, modifier_count: 0, weight: 1.0, min_sv: 0, with_intent: true, kind: "test_center", default_design: "local-guide", default_direction: "지역 운전면허시험장의 위치·동선·준비물·확인 포인트를 안내한다.", axis_tags: { intent: ["location", "select", "common"] } },
+  T12: { name: "운전면허 취득 총정리", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 1.0, min_sv: 0, kind: "license_complete", default_design: "editorial", default_direction: "면허 취득 전 과정을 처음부터 끝까지 총정리하고, 단계별 준비물과 확인 사항을 제공한다.", axis_tags: { persona: ["license", "select", "timing", "common"], modifier: ["select", "common"] } },
+  T13: { name: "타겟별 운전면허 준비", primary: ["keyword"], use_persona: true, modifier_count: 1, weight: 0.9, min_sv: 0, kind: "persona_target", default_design: "editorial", default_direction: "대상(페르소나)별 상황에 맞춰 면허 준비 방법과 확인 포인트를 제안한다.", axis_tags: { persona: ["*"], modifier: ["*"] } },
+  T14: { name: "전문학원 단독 소개", primary: ["region"], use_persona: true, modifier_count: 0, weight: 0.98, min_sv: 0, kind: "academy_profile", default_design: "conversion", default_direction: "특정 전문학원을 단독으로 소개하되 확인된 자료만 사용하고, 상담·비용·셔틀 확인으로 전환을 연결한다.", axis_tags: { persona: ["*"] } },
+  T15: { name: "지역+시험단계 혼합", primary: ["region"], use_persona: true, modifier_count: 1, weight: 0.95, min_sv: 0, with_intent: true, kind: "local_exam_mix", default_design: "local-guide", default_direction: "지역과 시험 단계를 함께 엮어 지역 학원·시험 준비 정보를 제공한다.", axis_tags: { persona: ["select", "practice", "timing", "common"], intent: ["exam", "select", "common"], modifier: ["select", "practice", "common"] } }
 } as const;
 
 // 글 유형의 기본 디자인. 알 수 없는 유형은 기본 디자인으로 폴백한다.
@@ -98,7 +110,84 @@ export const PRESETS: Record<string, Record<AxisName, Array<Record<string, unkno
       { value: "장롱면허 운전연수", weight: 6, monthly_search_volume: 4800, competition_kd: 39 }
     ],
     intent: ["비교추천", "근처학원", "비용확인", "수강료비교", "셔틀확인", "주말반", "야간반", "필기접수", "기능시험", "도로주행", "준비물", "단기합격"].map((value, i) => ({ value, weight: i < 5 ? 5 : i < 10 ? 4 : 3 })),
-    persona: ["처음 면허 따는 대학생", "퇴근 후 배우는 직장인", "방학 중 단기 취득", "2종에서 1종 전환", "장롱면허 재도전", "자녀 면허를 알아보는 보호자"].map((value, i) => ({ value, weight: i < 3 ? 5 : 4 })),
+    persona: [
+      { value: "처음 면허 따는 대학생", weight: 5 },
+      { value: "퇴근 후 배우는 직장인", weight: 5 },
+      { value: "방학 중 단기 취득", weight: 5 },
+      { value: "2종에서 1종 전환", weight: 4 },
+      { value: "장롱면허 재도전", weight: 4 },
+      { value: "자녀 면허를 알아보는 보호자", weight: 4 },
+      { value: "수능 후 면허 준비", weight: 5 },
+      { value: "취업 전 면허 취득", weight: 5 },
+      { value: "군 입대 전 면허 취득", weight: 4 },
+      { value: "복학 전 면허 준비", weight: 4 },
+      { value: "대학생 방학 특강 찾는 학생", weight: 4 },
+      { value: "주말만 가능한 직장인", weight: 5 },
+      { value: "야간반을 찾는 직장인", weight: 5 },
+      { value: "교대근무 직장인", weight: 3 },
+      { value: "자영업자 시간 맞춤 수강", weight: 3 },
+      { value: "운전이 처음인 초보자", weight: 5 },
+      { value: "운전에 자신감이 없는 초보자", weight: 5 },
+      { value: "시험이 걱정되는 수험생", weight: 4 },
+      { value: "기능시험 재응시 준비", weight: 4 },
+      { value: "도로주행 재응시 준비", weight: 4 },
+      { value: "1종 보통 취득 희망자", weight: 5 },
+      { value: "2종 보통 취득 희망자", weight: 5 },
+      { value: "1종 대형 취득 희망자", weight: 4 },
+      { value: "2종 소형 취득 희망자", weight: 3 },
+      { value: "집 가까운 학원을 찾는 수강생", weight: 5 },
+      { value: "회사 근처 학원을 찾는 직장인", weight: 4 },
+      { value: "셔틀버스 이용 희망자", weight: 4 },
+      { value: "자체시험 가능한 학원을 찾는 수강생", weight: 5 },
+      { value: "빠른 시험 일정이 필요한 수강생", weight: 5 },
+      { value: "친절한 강사를 찾는 초보자", weight: 4 },
+      { value: "외국인 운전면허 취득 준비", weight: 2 },
+      { value: "결혼 전 면허를 준비하는 예비부부", weight: 2 },
+      { value: "가성비 좋은 학원을 찾는 수강생", weight: 4 },
+      { value: "운전면허학원 비교 중인 수강생", weight: 5 },
+      { value: "운전전문학원 추천을 찾는 사용자", weight: 5 },
+      { value: "운전면허 비용을 비교하는 사용자", weight: 5 },
+      { value: "학원 후기 확인 중인 사용자", weight: 4 },
+      { value: "시험 일정이 궁금한 사용자", weight: 4 },
+      { value: "등록 절차를 알아보는 사용자", weight: 4 },
+      { value: "재수생 방학 면허 준비", weight: 4 },
+      { value: "편입 전 면허 취득", weight: 3 },
+      { value: "유학 출국 전 면허 준비", weight: 3 },
+      { value: "취업 준비생", weight: 5 },
+      { value: "첫 출근 전 면허 준비", weight: 4 },
+      { value: "회사 입사 예정자", weight: 4 },
+      { value: "이직 준비 중인 직장인", weight: 3 },
+      { value: "운전이 필요한 신입사원", weight: 4 },
+      { value: "출퇴근을 위해 면허가 필요한 직장인", weight: 5 },
+      { value: "출장이 많은 직장인", weight: 3 },
+      { value: "아이 등하교를 준비하는 부모", weight: 4 },
+      { value: "출산을 앞둔 예비 부모", weight: 3 },
+      { value: "육아를 위해 운전이 필요한 부모", weight: 4 },
+      { value: "가족 차량 운전을 준비하는 초보자", weight: 4 },
+      { value: "부모님 차량을 운전하려는 자녀", weight: 3 },
+      { value: "기능시험이 어려운 수험생", weight: 5 },
+      { value: "도로주행이 두려운 수험생", weight: 5 },
+      { value: "주차가 어려운 초보자", weight: 5 },
+      { value: "경사로가 어려운 수험생", weight: 3 },
+      { value: "T자 주차가 어려운 초보자", weight: 3 },
+      { value: "평행주차를 배우고 싶은 초보자", weight: 3 },
+      { value: "비 오는 날 운전이 걱정되는 초보자", weight: 2 },
+      { value: "야간운전이 걱정되는 초보자", weight: 2 },
+      { value: "시험장과 가까운 학원을 찾는 수강생", weight: 4 },
+      { value: "집 근처 셔틀이 있는 학원을 찾는 수강생", weight: 4 },
+      { value: "자체시험 가능한 운전전문학원을 찾는 수강생", weight: 5 },
+      { value: "실제 시험 코스로 연습하고 싶은 수강생", weight: 5 },
+      { value: "연습을 많이 할 수 있는 학원을 찾는 수강생", weight: 4 },
+      { value: "빠른 등록이 가능한 학원을 찾는 수강생", weight: 3 },
+      { value: "오늘 상담 가능한 학원을 찾는 사용자", weight: 2 },
+      { value: "친구와 함께 등록하려는 대학생", weight: 3 },
+      { value: "커플이 함께 면허를 준비하는 수강생", weight: 2 },
+      { value: "형제자매와 함께 등록하는 수강생", weight: 2 },
+      { value: "첫 차 구매 예정자", weight: 5 },
+      { value: "중고차 구매 예정자", weight: 4 },
+      { value: "신차 출고 예정자", weight: 3 },
+      { value: "차량 계약 후 면허를 준비하는 사용자", weight: 3 },
+    ],
     modifier: ["근처", "가까운", "비용절약", "셔틀편리", "주말반", "야간반", "필기부터", "도로주행", "상담전확인"].map((value, i) => ({ value, weight: i < 4 ? 5 : 4 }))
   },
   general: {

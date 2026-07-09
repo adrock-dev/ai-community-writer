@@ -1,10 +1,9 @@
 "use client";
 
-import { api, getOptions } from "@/lib/api";
+import { getOptions } from "@/lib/api";
 import { DEFAULT_GENERATION_DEFAULTS, useGenerationDefaults } from "@/lib/generation-defaults";
 import { useTourEnabled } from "@/lib/tour";
 import type { Provider } from "@/lib/types";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const IMAGE_SIZES: Array<{ value: string; label: string }> = [
@@ -14,19 +13,16 @@ const IMAGE_SIZES: Array<{ value: string; label: string }> = [
 ];
 
 export default function SettingsClient() {
-  const [tourEnabled, setTourEnabled] = useTourEnabled();
-  const [gen, setGen] = useGenerationDefaults();
+  const [savedTourEnabled, setSavedTourEnabled] = useTourEnabled();
+  const [savedGen, setSavedGen] = useGenerationDefaults();
+  const [tourDraft, setTourDraft] = useState(savedTourEnabled);
+  const [genDraft, setGenDraft] = useState(savedGen);
   const [providers, setProviders] = useState<Provider[]>(["codex", "claude"]);
-  const [indexingHasKey, setIndexingHasKey] = useState(false);
-  const [indexUrl, setIndexUrl] = useState("");
-  const [saJson, setSaJson] = useState("");
-  const [savingIndex, setSavingIndex] = useState(false);
+  const [localNotice, setLocalNotice] = useState("");
 
   async function loadOptions() {
     const opts = await getOptions();
     if (opts.providers?.length) setProviders(opts.providers);
-    setIndexingHasKey(opts.indexing.has_key);
-    setIndexUrl((prev) => prev || opts.indexing.url_template);
   }
 
   useEffect(() => {
@@ -34,30 +30,34 @@ export default function SettingsClient() {
     loadOptions().catch(() => {});
   }, []);
 
-  async function saveIndexing() {
-    setSavingIndex(true);
-    try {
-      await api("/settings/indexing", { method: "PUT", body: JSON.stringify({ sa_json: saJson, url_template: indexUrl }) });
-      setSaJson("");
-      await loadOptions();
-      alert("색인 설정 저장됨 — 전 도메인 공통 적용");
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setSavingIndex(false);
-    }
+  useEffect(() => {
+    setTourDraft(savedTourEnabled);
+  }, [savedTourEnabled]);
+
+  useEffect(() => {
+    setGenDraft(savedGen);
+  }, [savedGen]);
+
+  function saveLocalSettings() {
+    setSavedTourEnabled(tourDraft);
+    setSavedGen(genDraft);
+    setLocalNotice("전역 설정 저장됨");
   }
 
-  const patch = (fields: Partial<typeof gen>) => setGen({ ...gen, ...fields });
-  const isDefault = JSON.stringify(gen) === JSON.stringify(DEFAULT_GENERATION_DEFAULTS);
+  const patch = (fields: Partial<typeof genDraft>) => {
+    setGenDraft((current) => ({ ...current, ...fields }));
+    setLocalNotice("");
+  };
+  const localDirty = tourDraft !== savedTourEnabled || JSON.stringify(genDraft) !== JSON.stringify(savedGen);
+  const isDefault = JSON.stringify(genDraft) === JSON.stringify(DEFAULT_GENERATION_DEFAULTS);
 
   return (
     <div>
       <div className="page-head">
         <div>
           <p className="eyebrow">관리자</p>
-          <h1>설정</h1>
-          <p className="muted">튜토리얼·생성 기본값은 이 브라우저에만 저장됩니다. Google 색인 설정은 서버에 저장되어 전 도메인에 공통 적용됩니다.</p>
+          <h1>작업환경</h1>
+          <p className="muted">튜토리얼·생성 기본값처럼 이 브라우저의 작업 편의에만 영향을 주는 설정입니다.</p>
         </div>
       </div>
 
@@ -65,7 +65,7 @@ export default function SettingsClient() {
         <div>
           <div className="row" style={{ gap: 8 }}>
             <h2 style={{ margin: 0 }}>운영 튜토리얼</h2>
-            <span className={`badge ${tourEnabled ? "success" : ""}`}>{tourEnabled ? "켜짐" : "꺼짐"}</span>
+            <span className={`badge ${tourDraft ? "success" : ""}`}>{tourDraft ? "켜짐" : "꺼짐"}</span>
           </div>
           <p className="muted small" style={{ marginTop: 6 }}>
             「기본/고급/검수 흐름 시작」이나 「기본 N 시작」을 누르면 단계별 가이드가 표시됩니다.
@@ -75,8 +75,11 @@ export default function SettingsClient() {
         <label className="row">
           <input
             type="checkbox"
-            checked={tourEnabled}
-            onChange={(e) => setTourEnabled(e.target.checked)}
+            checked={tourDraft}
+            onChange={(e) => {
+              setTourDraft(e.target.checked);
+              setLocalNotice("");
+            }}
           />
           <span>흐름 시작 시 튜토리얼 표시 (기본값)</span>
         </label>
@@ -94,84 +97,68 @@ export default function SettingsClient() {
           </div>
           <p className="muted small" style={{ marginTop: 6 }}>
             「재료로 글 후보 만들기 / 작성」 화면의 작성 엔진·모델·이미지 옵션 초기값입니다.
-            자주 쓰는 조합을 저장해두면 매번 다시 고르지 않아도 됩니다. 변경 즉시 이 브라우저에 저장됩니다.
+            자주 쓰는 조합을 저장해두면 매번 다시 고르지 않아도 됩니다.
           </p>
         </div>
 
         <div className="grid grid-2">
           <label>
             <span className="label">작성 엔진</span>
-            <select className="select" value={gen.provider} onChange={(e) => patch({ provider: e.target.value as Provider })}>
+            <select className="select" value={genDraft.provider} onChange={(e) => patch({ provider: e.target.value as Provider })}>
               {providers.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </label>
           <label>
             <span className="label">모델 (비우면 엔진 기본)</span>
-            <input className="input" value={gen.model} onChange={(e) => patch({ model: e.target.value })} placeholder="비우면 기본 codex" />
+            <input className="input" value={genDraft.model} onChange={(e) => patch({ model: e.target.value })} placeholder="비우면 기본 codex" />
           </label>
           <label>
             <span className="label">제한시간(초)</span>
-            <input className="input" type="number" value={gen.timeoutSec} onChange={(e) => patch({ timeoutSec: Number(e.target.value) })} />
+            <input className="input" type="number" value={genDraft.timeoutSec} onChange={(e) => patch({ timeoutSec: Number(e.target.value) })} />
           </label>
           <label>
             <span className="label">대량 대기시간(초)</span>
-            <input className="input" type="number" value={gen.cooldownSec} onChange={(e) => patch({ cooldownSec: Number(e.target.value) })} />
+            <input className="input" type="number" value={genDraft.cooldownSec} onChange={(e) => patch({ cooldownSec: Number(e.target.value) })} />
           </label>
           <label>
             <span className="label">이미지 크기</span>
-            <select className="select" value={gen.imageSize} onChange={(e) => patch({ imageSize: e.target.value })}>
+            <select className="select" value={genDraft.imageSize} onChange={(e) => patch({ imageSize: e.target.value })}>
               {IMAGE_SIZES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </label>
         </div>
 
         <label className="row">
-          <input type="checkbox" checked={gen.web} onChange={(e) => patch({ web: e.target.checked })} />
+          <input type="checkbox" checked={genDraft.web} onChange={(e) => patch({ web: e.target.checked })} />
           <span>웹 자료 수집 후 작성</span>
         </label>
         <label className="row">
-          <input type="checkbox" checked={gen.imageGen} onChange={(e) => patch({ imageGen: e.target.checked })} />
+          <input type="checkbox" checked={genDraft.imageGen} onChange={(e) => patch({ imageGen: e.target.checked })} />
           <span>Codex 이미지 생성</span>
         </label>
 
         <div className="row">
-          <button className="btn" disabled={isDefault} onClick={() => setGen(DEFAULT_GENERATION_DEFAULTS)}>기본값으로 초기화</button>
+          <button className="btn" disabled={isDefault} onClick={() => {
+            setGenDraft(DEFAULT_GENERATION_DEFAULTS);
+            setLocalNotice("");
+          }}>기본값으로 초기화</button>
         </div>
-        <p className="muted small">이미 열려 있는 작성 화면에는 다음에 그 화면을 다시 열 때부터 반영됩니다.</p>
+        <p className="muted small">저장 후 이미 열려 있는 작성 화면에는 다음에 그 화면을 다시 열 때부터 반영됩니다.</p>
       </section>
 
       <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
         <div>
-          <div className="row" style={{ gap: 8 }}>
-            <h2 style={{ margin: 0 }}>Google 색인 설정</h2>
-            <span className={`badge ${indexingHasKey ? "success" : "warn"}`}>{indexingHasKey ? "키 설정됨" : "키 미설정"}</span>
-          </div>
+          <h2 style={{ margin: 0 }}>변경사항 저장</h2>
           <p className="muted small" style={{ marginTop: 6 }}>
-            서비스계정 키와 발행 URL 템플릿입니다. <b>서버에 저장되어 모든 도메인에 공통</b>으로 적용됩니다.
-            URL 템플릿의 <code>{"{domain}"}</code>·<code>{"{slug}"}</code>는 색인 시 각 글의 도메인/슬러그로 자동 치환됩니다.
+            튜토리얼·생성 옵션 기본값 변경사항을 이 브라우저에 저장합니다.
           </p>
         </div>
-        <label>
-          <span className="label">서비스계정 JSON</span>
-          <textarea
-            className="textarea mono"
-            value={saJson}
-            onChange={(e) => setSaJson(e.target.value)}
-            placeholder={indexingHasKey ? "이미 저장됨 — 교체하려면 새 JSON 붙여넣기" : "서비스계정 JSON 붙여넣기 (client_email/private_key 포함)"}
-          />
-        </label>
-        <label>
-          <span className="label">발행 URL 템플릿</span>
-          <input className="input mono" value={indexUrl} onChange={(e) => setIndexUrl(e.target.value)} placeholder="https://{domain}/community/{slug}" />
-        </label>
         <div className="row">
-          <button className="btn primary" onClick={saveIndexing} disabled={savingIndex}>{savingIndex ? "저장 중..." : "색인 설정 저장"}</button>
+          <button className="btn primary" disabled={!localDirty} onClick={saveLocalSettings}>전역 설정 저장</button>
+          {localNotice && <span className="badge success">{localNotice}</span>}
+          {localDirty && <span className="badge warn">저장되지 않은 변경</span>}
         </div>
       </section>
-
-      <div className="row" style={{ marginTop: 18 }}>
-        <Link className="btn" href="/">대시보드로</Link>
-      </div>
     </div>
   );
 }
