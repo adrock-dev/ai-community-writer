@@ -74,7 +74,13 @@
 ### 검증 규율 (필수)
 - 각 단계 **골든 0-diff**로 빌트인 동작 불변 증명. 픽스처: `apps/api-nest/scripts/tests/golden-slots.json`(556 슬롯).
 - 방법: 격리 API(`ADMIN_PORT=8790 SEO_DB_PATH=<scratch> API_WORKER=0 npx tsx src/main.ts`) → 전 글유형 slots/generate(max 40) → 슬롯 필드 스냅샷 diff. 오버라이드/커스텀은 **긍정 테스트** 추가.
-- **커밋 전 3종 게이트 모두**: `verify:company-clean` + `typecheck` + `qa:posts`. (2a/2b-1 때 company-clean 누락으로 금지어 유입 사고 → 반드시 3종 다.)
+- **커밋 전 3종 게이트 모두**: `verify:company-clean` + `typecheck` + `qa:posts`.
+  - **반드시 게이트를 `&&` 로 커밋에 묶어라. bare `git commit` 금지.** 게이트를 별도로 돌리고 결과를 안 보고 커밋하면 실패(빨간불)에도 커밋이 나간다(실제 사고 있었음 → b5dd85a 로 정정).
+    ```
+    npm run verify:company-clean && npm run typecheck && npm run qa:posts \
+      && git add <파일> && git commit -m "..."
+    ```
+  - **pre-commit 훅**(`.git/hooks/pre-commit`)이 company-clean 실패 시 커밋을 자동 차단하도록 설치돼 있다(이 저장소 로컬). **주의: `.git/hooks` 는 버전관리 대상이 아니라 새 클론엔 없다** — 없으면 재설치하라(내용: `npm run --silent verify:company-clean` 실패 시 `exit 1`). typecheck/qa 는 훅에 없으니 위 `&&` 로 반드시 수동 확인.
 
 ### 기지의 함정 체크리스트
 1. **JSON 컬럼 write 직렬화** — 객체를 TEXT 컬럼에 넣을 땐 `JSON.stringify`(PATCH/CRUD). template_overrides에서 이걸 빠뜨려 유실 버그 겪음.
