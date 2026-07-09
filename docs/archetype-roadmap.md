@@ -25,6 +25,7 @@
 - **아키타입** = 코드 registry(`archetypes.ts`, kind 키). "고르는 대상". DB화 안 함 → 코드 품질 보장. 커스텀도 기존 아키타입을 **참조(select)** 하지 새로 authoring 하지 않는다.
 - **글유형** = 아키타입 참조(kind) + 파라미터. 빌트인=상수 기본 + DB 오버라이드 / 커스텀=full DB row.
 - **복구**: 빌트인은 상수라 DB 초기화에도 안전. 커스텀만 DB 의존.
+- **용어(정본)**: **레시피 파라미터** = 글유형이 갖는 조정 가능 값(`use_persona`·`with_intent`·`modifier_count`·`axis_tags`·`direction`·`design`). "조합/조정" 등 변형 표현 대신 "레시피 파라미터"로 통일. (아키타입의 동작 원형 primary/keyword_rule/academy_centric/writing_guide 와는 구분.)
 
 ## 현재 위치 (develop, 미푸시)
 
