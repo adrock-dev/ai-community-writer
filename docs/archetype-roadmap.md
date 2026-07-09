@@ -46,7 +46,7 @@
 ### Phase 2c — 커스텀 내구성(export/import) + 재시드
 - **목표**: 빌트인은 상수라 복구 공짜. 커스텀만 DB 의존이니 **export/import**로 wipe 대비.
 - **접근**: `GET /domains/:domain/templates/export`(custom_templates + template_overrides JSON) / `POST .../import`. 선택적 "빌트인 재시드" 유틸(상수→오버라이드 초기화)은 사실상 불필요(상수가 이미 기본).
-- **결정할 것**: export 범위(템플릿+오버라이드만 vs 축까지). 추천: 편집 상태(템플릿+오버라이드)만.
+- **결정할 것**: export 범위(글유형+오버라이드만 vs 축까지). 추천: 편집 상태(글유형+오버라이드)만.
 - **위험**: 낮음(대부분 직렬화). 2b-2 끝나면 작음.
 
 ### Phase 2d — select/clone API (안전한 새 유형 경로)
