@@ -677,7 +677,7 @@ function Templates({ domain, options, busy, onSave, onRefresh }: { domain: Domai
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design">
         <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 아래 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
-        <div className="spread"><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 글 유형의 기본 디자인(자동 매칭)이며, 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정합니다.</p></div><span className="badge info">참고</span></div>
+        <div className="spread"><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 보여주는 참고용 목록입니다.</p></div><span className="badge info">참고</span></div>
         <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
           const bp = designBlueprintFor(tpl.id, tpl);
           return <div key={tpl.id} className="info-panel">
