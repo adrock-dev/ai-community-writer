@@ -95,16 +95,16 @@ export class WorkerService {
         skipped++; this.db.updateJobProgress(jobId, { step: "제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
         continue;
       }
-      // 디자인은 슬롯 단위로 결정한다: 작성 요청 지정 → 도메인 설정 → 기본값 순서, auto면 글 유형의 기본 디자인.
-      const designTemplateId = resolveGenerationDesign(payload.design_template_id, domainMeta, slot.template_id);
+      // 글유형 spec(빌트인/커스텀): 디자인 폴백·아키타입·방향성 해석의 공통 소스로 먼저 해석.
+      const templateSpec = this.db.getTemplateSpec(domain, String(slot.template_id || ""));
+      // 디자인은 슬롯 단위로 결정: 요청 지정 → 도메인 설정 → template_overrides.design → 레거시 → 글유형(spec) 기본.
+      const designTemplateId = resolveGenerationDesign(payload.design_template_id, domainMeta, slot.template_id, templateSpec?.default_design);
       const designPreset = designTemplateId.startsWith("uploaded:") ? this.db.getDesignPreset(domain, designTemplateId) : undefined;
       this.db.updateSlotStatus(sid, "in_progress");
       try {
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 자료 구성 중`, slotId: sid, processed: ok, failed: fail });
         const genEnabled = Boolean(payload.enable_image_generation);
-        // 글유형 spec(빌트인/커스텀)·아키타입(spec.kind 참조)·방향성을 여기서 해석해 프롬프트로 스레딩한다.
-        // (buildPrompt/buildRepairPrompt 는 자유함수라 this.db 가 없어, 클래스 메서드에서 넘긴다.)
-        const templateSpec = this.db.getTemplateSpec(domain, String(slot.template_id || ""));
+        // 아키타입(spec.kind 참조)·방향성을 프롬프트로 스레딩(buildPrompt 는 자유함수라 this.db 가 없어 메서드에서 넘김).
         const archetype = getArchetype(templateSpec?.kind ?? "");
         const templateDirection = resolveTemplateDirection(templateSpec, safeTemplateOverrides(domainMeta.template_overrides)[String(slot.template_id || "")]);
         // 학원 중심 타입(아키타입 academy_centric: T01/T14/T11)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
@@ -764,14 +764,18 @@ ${markdown}`;
 // auto 치환 시 통합 경로(template_overrides[tid].design)를 우선 보고, 없으면 레거시 design_template_overrides,
 // 그래도 없으면 글유형 기본. (PR3 groundwork: 신규 경로가 비면 레거시가 이겨 동작 보존. 마이그레이션은 P4c에서 UI와 함께.)
 // export 이유: load-bearing(모든 발행글 디자인 결정)이라 격리 테스트로 회귀 방어한다.
-export function resolveGenerationDesign(payloadDesign: unknown, domain: Row, templateId: unknown): string {
+export function resolveGenerationDesign(payloadDesign: unknown, domain: Row, templateId: unknown, fallbackDesign?: string): string {
   const requested = String(payloadDesign || "").trim() || String(domain.design_template_id || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE;
   if (requested !== AUTO_DESIGN_TEMPLATE_ID) return requested;
   const templateKey = String(templateId || "");
   const unified = safeTemplateOverrides(domain.template_overrides)[templateKey]?.design;
   if (unified && isSelectableDesign(unified)) return unified;
   const overrides = safeDesignOverrides(domain.design_template_overrides);
-  return overrides[templateKey] || defaultDesignForTemplate(templateKey);
+  if (overrides[templateKey]) return overrides[templateKey]!;
+  // 글유형 기본 디자인: spec.default_design(빌트인/커스텀 공통) — 커스텀 id 는 defaultDesignForTemplate 이 못 찾으므로 이걸로 폴백.
+  const fallback = String(fallbackDesign || "").trim();
+  if (fallback && isSelectableDesign(fallback)) return fallback;
+  return defaultDesignForTemplate(templateKey);
 }
 
 // 선택 가능한 디자인 id 인가(빌트인 DESIGN_TEMPLATES 또는 업로드 프리셋). safeDesignOverrides 필터와 동일 규칙.
