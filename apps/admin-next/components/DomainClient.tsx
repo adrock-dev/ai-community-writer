@@ -692,14 +692,37 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
     setPresetName((prev) => prev || file.name.replace(/\.html?$/i, ""));
     setPresetHtml(await file.text());
   }
+  const builtinIds = Object.keys(options.template_specs);
+  const activeBuiltins = builtinIds.filter((id) => enabled.has(id));
+  const availableBuiltins = builtinIds.filter((id) => !enabled.has(id));
+  const specMeta = (spec: TemplateSpec) => `primary: ${spec.primary.join(", ")} · persona ${spec.use_persona ? "사용" : "미사용"} · intent ${spec.with_intent ? "사용" : "미사용"} · modifier ${spec.modifier_count}`;
+  const specBadges = (spec: TemplateSpec) => <div className="row">{spec.primary.map((axis) => <span key={axis} className="badge">{axis}</span>)}{spec.use_persona && <span className="badge">persona</span>}{spec.with_intent && <span className="badge">intent</span>}{spec.modifier_count > 0 && <span className="badge">modifier {spec.modifier_count}</span>}<span className="badge info">디자인 {designNameOf(spec.default_design)}</span></div>;
   return <div className="grid">
     <section className="card card-pad grid" data-tour="templates-types">
-      <div className="spread"><div><h2>글 유형</h2><p className="muted">어떤 종류의 글을 만들지 고릅니다. 너무 많이 켜면 후보 수가 빠르게 늘어납니다.</p></div><span className="badge info">{enabled.size}개 사용 중</span></div>
-      <div className="grid grid-2">{Object.entries(options.template_specs).map(([id, spec]) => <button key={id} className={`option-card ${enabled.has(id) ? "active" : ""}`} onClick={() => toggle(id)}>
-        <div className="spread"><b><span className="badge">{id}</span> {spec.name}</b><span>{enabled.has(id) ? "✓" : ""}</span></div>
-        <p className="muted small">primary: {spec.primary.join(", ")} · persona {spec.use_persona ? "사용" : "미사용"} · intent {spec.with_intent ? "사용" : "미사용"} · modifier {spec.modifier_count}</p>
-        <div className="row">{spec.primary.map((axis) => <span key={axis} className="badge">{axis}</span>)}{spec.use_persona && <span className="badge">persona</span>}{spec.with_intent && <span className="badge">intent</span>}{spec.modifier_count > 0 && <span className="badge">modifier {spec.modifier_count}</span>}<span className="badge info">디자인 {designNameOf(spec.default_design)}</span></div>
-      </button>)}</div>
+      <div className="spread"><div><h2>이 도메인의 글 유형</h2><p className="muted">필요한 유형만 담아 씁니다. 더 필요하면 아래 카탈로그에서 추가하세요. 커스텀 유형은 맨 아래에서 만들고 켭니다.</p></div><span className="badge info">{enabled.size}개 사용 중</span></div>
+      {activeBuiltins.length === 0
+        ? <p className="muted small">담긴 빌트인 글 유형이 없습니다. 아래 카탈로그에서 필요한 유형을 추가하세요.</p>
+        : <div className="grid grid-2">{activeBuiltins.map((id) => {
+            const spec = options.template_specs[id]!;
+            return <div key={id} className="option-card active">
+              <div className="spread"><b><span className="badge">{id}</span> {spec.name}</b><button type="button" className="btn ghost" style={{ padding: "2px 8px" }} onClick={() => toggle(id)}>제거</button></div>
+              <p className="muted small">{specMeta(spec)}</p>
+              {specBadges(spec)}
+            </div>;
+          })}</div>}
+      <details className="template-subsection">
+        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>글 유형 카탈로그에서 추가</h3><p className="muted small">빌트인 글 유형 중 필요한 것만 담습니다. DB를 초기화해도 코드에서 복구되는 기본 유형입니다.</p></div><span className="badge info">{availableBuiltins.length}개 추가 가능</span></div></summary>
+        {availableBuiltins.length === 0
+          ? <p className="muted small">모든 빌트인 글 유형이 이미 담겨 있습니다.</p>
+          : <div className="grid grid-2">{availableBuiltins.map((id) => {
+              const spec = options.template_specs[id]!;
+              return <button key={id} type="button" className="option-card" onClick={() => toggle(id)}>
+                <div className="spread"><b><span className="badge">{id}</span> {spec.name}</b><span className="badge success">+ 추가</span></div>
+                <p className="muted small">{specMeta(spec)}</p>
+                {specBadges(spec)}
+              </button>;
+            })}</div>}
+      </details>
     </section>
 
     <section className="grid">
@@ -802,9 +825,18 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
     return [...map.entries()].map(([kind, v]) => ({ kind, label: v.label, primary: v.primary }));
   }, [options.template_specs]);
   const primaryOfKind = (kind: string) => kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword";
-  const cloneSources = useMemo(() => [
-    ...Object.entries(options.template_specs).map(([id, spec]) => ({ id, label: `${id} ${spec.name} (빌트인)` })),
-    ...custom.map((t) => ({ id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)` })),
+  // 커스텀 만들기 '시작점' 옵션: 빌트인 + 기존 커스텀. 고르면 폼에 값을 채워 시작(복제 통합).
+  const createSources: TemplateSource[] = useMemo(() => [
+    ...Object.entries(options.template_specs).map(([id, spec]) => ({
+      id, label: `${id} ${spec.name} (빌트인)`, name: spec.name, kind: spec.kind ?? "",
+      use_persona: spec.use_persona, with_intent: Boolean(spec.with_intent), modifier_count: spec.modifier_count,
+      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "",
+    })),
+    ...custom.map((t) => ({
+      id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)`, name: t.name, kind: t.kind,
+      use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
+      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "",
+    })),
   ], [options.template_specs, custom]);
 
   async function reload() {
@@ -838,10 +870,9 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
 
-    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} busy={busy}
-      onSubmit={(body) => run(() => createTemplate(domain, body))} />
-    <CloneTemplatePanel sources={cloneSources} busy={busy}
-      onClone={(sourceId, name) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name: name || undefined }))} />
+    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} sources={createSources} busy={busy}
+      onSubmit={(body) => run(() => createTemplate(domain, body))}
+      onClone={(sourceId, name, overrides) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name, overrides }))} />
 
     {loading ? <p className="muted small">불러오는 중...</p> : custom.length === 0
       ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
@@ -887,10 +918,14 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
   </section>;
 }
 
-// 커스텀 글유형 생성/편집 폼.
-function CustomTemplateForm({ mode, initial, kindOptions, designChoices, busy, onSubmit, onCancel }: {
-  mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[]; busy: boolean;
-  onSubmit: (body: Partial<CustomTemplate>) => void; onCancel?: () => void;
+// 커스텀 만들기 '시작점' 옵션 형태(빌트인/커스텀 공통). 고르면 폼 값을 채운다.
+type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string };
+
+// 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
+function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources, busy, onSubmit, onClone, onCancel }: {
+  mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
+  sources?: TemplateSource[]; busy: boolean;
+  onSubmit: (body: Partial<CustomTemplate>) => void; onClone?: (sourceId: string, name: string, overrides: Record<string, unknown>) => void; onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [kind, setKind] = useState(initial?.kind ?? kindOptions[0]?.kind ?? "");
@@ -899,23 +934,60 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, busy, o
   const [withIntent, setWithIntent] = useState(initial?.with_intent ?? false);
   const [modifierCount, setModifierCount] = useState(initial?.modifier_count ?? 0);
   const [direction, setDirection] = useState(initial?.default_direction ?? "");
+  const [source, setSource] = useState(""); // 시작점(빈값=직접 입력). create 모드 전용.
+  const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
+
+  function selectSource(id: string) {
+    setSource(id);
+    const src = sources?.find((s) => s.id === id);
+    if (!src) return; // 직접 입력: 현재 값 유지, 아키타입만 다시 선택 가능.
+    setName(`${src.name} (복사본)`);
+    setKind(src.kind);
+    setDesign(src.default_design);
+    setUsePersona(src.use_persona);
+    setWithIntent(src.with_intent);
+    setModifierCount(src.modifier_count);
+    setDirection(src.default_direction ?? "");
+  }
 
   function submit() {
     if (!name.trim()) { alert("이름을 입력하세요."); return; }
+    if (source && onClone) {
+      // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다 — 안 바꾼 값은 소스의 effective 설정(weight·축태그·기존 오버라이드)을 그대로 복제.
+      const src = sources?.find((s) => s.id === source);
+      const overrides: Record<string, unknown> = {};
+      if (src) {
+        if (design !== src.default_design) overrides.default_design = design;
+        if (usePersona !== src.use_persona) overrides.use_persona = usePersona;
+        if (withIntent !== src.with_intent) overrides.with_intent = withIntent;
+        if (modifierCount !== src.modifier_count) overrides.modifier_count = modifierCount;
+        if (direction.trim() !== (src.default_direction ?? "").trim()) overrides.default_direction = direction.trim() || null;
+      }
+      onClone(source, name.trim(), overrides);
+      if (mode === "create") { setName(""); setDirection(""); setSource(""); }
+      return;
+    }
     if (!kind) { alert("참조 아키타입을 선택하세요."); return; }
     onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined });
-    if (mode === "create") { setName(""); setDirection(""); }
+    if (mode === "create") { setName(""); setDirection(""); setSource(""); }
   }
 
   return <div className="info-panel grid">
     <div className="spread"><b>{mode === "create" ? "새 커스텀 글유형" : `편집 · ${initial?.template_id}`}</b>{mode === "edit" && <span className="badge warn">편집 중</span>}</div>
+    {mode === "create" && sources && sources.length > 0 && <Field label="시작점">
+      <select className="select" value={source} onChange={(e) => selectSource(e.target.value)}>
+        <option value="">직접 입력 (빈 폼에서 시작)</option>
+        {sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+      </select>
+      <p className="muted small">{source ? "선택한 글유형의 값을 채웠습니다. 필요한 부분만 고치면 됩니다. weight·축 태그·기존 설정은 그대로 복제되고, 아키타입은 소스로 고정됩니다." : "빈 폼으로 직접 만들거나, 기존 글유형(빌트인/커스텀)을 골라 값을 채워 시작할 수 있습니다."}</p>
+    </Field>}
     <div className="grid grid-2">
       <Field label="이름"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 심야 학원 특집" /></Field>
       <Field label="참조 아키타입 (kind)">
-        <select className="select" value={kind} onChange={(e) => setKind(e.target.value)} disabled={mode === "edit"}>
+        <select className="select" value={kind} onChange={(e) => setKind(e.target.value)} disabled={sourceLocked}>
           {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
         </select>
-        <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b> · 주키워드 규칙·품질 지침은 참조 아키타입이 결정합니다(직접 변경 불가).</p>
+        <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b> · 주키워드 규칙·품질 지침은 참조 아키타입이 결정합니다(직접 변경 불가).{source ? " 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""}</p>
       </Field>
       <Field label="디자인"><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
         {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
@@ -930,27 +1002,10 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, busy, o
     </div>
     <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
     <div className="row">
-      <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "create" ? "만들기" : "저장"}</button>
+      <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
       {mode === "edit" && <button type="button" className="btn" disabled={busy} onClick={onCancel}>취소</button>}
       {mode === "edit" && <span className="muted small">참조 아키타입(kind)은 만든 뒤 바꿀 수 없습니다.</span>}
     </div>
-  </div>;
-}
-
-// 기존 글유형(빌트인/커스텀)에서 복제.
-function CloneTemplatePanel({ sources, busy, onClone }: { sources: { id: string; label: string }[]; busy: boolean; onClone: (sourceId: string, name: string) => void }) {
-  const [source, setSource] = useState(sources[0]?.id ?? "");
-  const [name, setName] = useState("");
-  return <div className="info-panel grid">
-    <b>기존 글유형에서 복제</b>
-    <p className="muted small">빌트인/커스텀 글유형을 그대로 복사해 조정 시작점으로 씁니다(참조 아키타입·파라미터 복제).</p>
-    <div className="grid grid-2">
-      <Field label="원본 글유형"><select className="select" value={source} onChange={(e) => setSource(e.target.value)}>
-        {sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
-      </select></Field>
-      <Field label="새 이름 (비우면 '원본 (복사본)')"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="(선택)" /></Field>
-    </div>
-    <div className="row"><button type="button" className="btn" disabled={busy || !source} onClick={() => onClone(source, name.trim())}>{busy ? "복제 중..." : "복제"}</button></div>
   </div>;
 }
 
