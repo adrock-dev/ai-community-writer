@@ -1,4 +1,4 @@
-import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, DesignPreset } from "./types";
+import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, DesignPreset, CustomTemplate, CoherenceReport } from "./types";
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/admin${path}`, {
@@ -58,6 +58,25 @@ export const listAcademies = (domain: string, params: { region?: string; academy
 };
 export const updateDomain = (domain: string, body: Record<string, unknown>) =>
   api<{ ok: true; domain: import("./types").DomainConfig }>(`/domains/${encodeURIComponent(domain)}`, { method: "PATCH", body: JSON.stringify(body) });
+// --- 커스텀 글유형(custom_templates) + coherence (Phase 2b-2~P3 백엔드) ---
+export const listTemplates = (domain: string) =>
+  api<{ builtin: Array<Record<string, unknown>>; custom: CustomTemplate[] }>(`/domains/${encodeURIComponent(domain)}/templates`);
+export const createTemplate = (domain: string, body: Partial<CustomTemplate>) =>
+  api<{ ok: true; template: CustomTemplate }>(`/domains/${encodeURIComponent(domain)}/templates`, { method: "POST", body: JSON.stringify(body) });
+export const cloneTemplate = (domain: string, body: { source_template_id: string; name?: string; overrides?: Record<string, unknown> }) =>
+  api<{ ok: true; template: CustomTemplate; source_template_id: string }>(`/domains/${encodeURIComponent(domain)}/templates/clone`, { method: "POST", body: JSON.stringify(body) });
+export const updateTemplate = (domain: string, templateId: string, body: Partial<CustomTemplate>) =>
+  api<{ ok: true; template: CustomTemplate }>(`/domains/${encodeURIComponent(domain)}/templates/${encodeURIComponent(templateId)}`, { method: "PATCH", body: JSON.stringify(body) });
+export const deleteTemplate = (domain: string, templateId: string) =>
+  api<{ ok: true; deleted: string }>(`/domains/${encodeURIComponent(domain)}/templates/${encodeURIComponent(templateId)}`, { method: "DELETE" });
+export const exportTemplates = (domain: string) =>
+  api<Record<string, unknown>>(`/domains/${encodeURIComponent(domain)}/templates/export`);
+export const importTemplates = (domain: string, envelope: Record<string, unknown>, mode?: "merge" | "replace") =>
+  api<{ ok: true; mode: string; imported: number; skipped: number; overrides_merged: number; templates_enabled?: string[]; warnings: string[] }>(
+    `/domains/${encodeURIComponent(domain)}/templates/import${mode ? `?mode=${mode}` : ""}`, { method: "POST", body: JSON.stringify(envelope) });
+export const getCoherence = (domain: string) =>
+  api<CoherenceReport>(`/domains/${encodeURIComponent(domain)}/templates/coherence`);
+
 export const createDesignPreset = (domain: string, body: { name: string; html: string }) =>
   api<{ ok: true; preset: DesignPreset }>(`/domains/${encodeURIComponent(domain)}/design-presets`, { method: "POST", body: JSON.stringify(body) });
 export const deleteDesignPreset = (domain: string, id: string) =>

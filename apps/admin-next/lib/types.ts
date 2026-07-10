@@ -36,6 +36,47 @@ export interface TemplateOverride {
   use_persona?: boolean;
   with_intent?: boolean;
   modifier_count?: number;
+  // 글유형별 디자인(PR3: 레거시 design_template_overrides 통합). 백엔드 resolveGenerationDesign 이 우선 소비.
+  design?: string;
+}
+
+// 커스텀 글유형(custom_templates row). 빌트인 TemplateSpec 과 유사하되 template_id/created_at 를 갖는다.
+export interface CustomTemplate {
+  template_id: string;
+  name: string;
+  kind: string;
+  use_persona: boolean;
+  with_intent: boolean;
+  modifier_count: number;
+  weight: number;
+  min_sv: number;
+  axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  default_direction?: string | null;
+  default_design?: string;
+  created_at?: string;
+  custom?: boolean;
+}
+
+// 레시피↔데이터 정합성(coherence) 응답.
+export interface CoherenceWarning { level: "error" | "warn" | string; code: string; message: string; }
+export interface CoherenceTemplate {
+  template_id: string;
+  name: string;
+  kind: string;
+  custom: boolean;
+  enabled: boolean;
+  primary_axis: string;
+  primary_value_count: number;
+  keyword_rule: { format: string | null; matched_keyword_count: number | null; keyword_total: number };
+  axes: Record<"persona" | "intent" | "modifier", { used: boolean; accepted_tags: string[]; pool_size: number; total: number }>;
+  academy: { applicable: boolean; regions_total?: number; regions_with_academies?: number; regions_with_min_for_best?: number };
+  estimated_slot_upperbound: number;
+  warnings: CoherenceWarning[];
+}
+export interface CoherenceReport {
+  domain: string;
+  thresholds: { academy_min_for_best: number };
+  templates: CoherenceTemplate[];
 }
 
 export interface DomainConfig {
