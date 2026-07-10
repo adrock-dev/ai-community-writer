@@ -675,29 +675,25 @@ function Templates({ domain, options, busy, onSave, onRefresh }: { domain: Domai
     </section>
 
     <section className="grid">
-      <div className="card card-pad grid template-config-card" data-tour="templates-design">
+      <div className="card card-pad grid template-config-card" data-tour="templates-design" style={{ gap: 12 }}>
         <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 아래 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
-        <div className="spread"><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 보여주는 참고용 목록입니다.</p></div><span className="badge info">참고</span></div>
-        <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
-          const bp = designBlueprintFor(tpl.id, tpl);
-          return <div key={tpl.id} className="info-panel">
-            <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.id}</span></div>
-            <p className="muted small">{tpl.summary}</p>
-            <p className="small"><b>추천:</b> {tpl.best_for}</p>
-            <p className="small"><b>톤:</b> {bp.tone}</p>
-            <div className="row">{bp.sections.slice(0, 4).map((section, index) => <span key={`${section}-${index}`} className="badge">{section}</span>)}</div>
-          </div>;
-        })}</div>
-        <div className="template-subsection">
-          <div className="template-subsection-head"><div><h3>커스텀 디자인 메모 (선택)</h3><p className="muted small">기본 디자인 밖의 레이아웃이 필요할 때만. 원하는 구조를 적고, 커스텀 글유형에서 디자인을 ‘커스텀’으로 지정하면 이 메모가 작성 프롬프트로 들어갑니다.</p></div><span className="badge">선택</span></div>
-          <Field label="커스텀 디자인 메모">
-            <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
+        <div className="template-subsection-head" style={{ borderBottom: "none", paddingBottom: 0 }}><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 보여주는 참고용 목록입니다.</p></div></div>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>디자인</th><th>요약</th><th>추천 상황</th></tr></thead>
+            <tbody>{allDesignTemplates.map((tpl) => <tr key={tpl.id}>
+              <td><b>{tpl.name}</b> <span className="muted small mono">{tpl.id}</span></td>
+              <td className="muted small">{tpl.summary}</td>
+              <td className="small">{tpl.best_for}</td>
+            </tr>)}</tbody>
+          </table>
+        </div>
+        <div className="template-subsection-head" style={{ borderBottom: "none", paddingBottom: 0, marginTop: 20 }}><div><h3>커스텀 디자인 메모 (선택)</h3><p className="muted small">기본 디자인 밖의 레이아웃이 필요할 때만. 원하는 구조를 적고, 커스텀 글유형에서 디자인을 ‘커스텀’으로 지정하면 이 메모가 작성 프롬프트로 들어갑니다.</p></div></div>
+        <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
-          </Field>
-          <div className="row"><button className="btn primary" disabled={busy} onClick={saveDesign}>{busy ? "저장 중..." : "커스텀 디자인 저장"}</button><span className="muted small">저장 후 새 글부터 적용됩니다.</span></div>
-        </div>
+        <div className="row"><button className="btn primary" disabled={busy} onClick={saveDesign}>{busy ? "저장 중..." : "커스텀 디자인 저장"}</button><span className="muted small">저장 후 새 글부터 적용됩니다.</span></div>
       </div>
     </section>
     <CustomTemplatesManager domainConfig={domain} options={options} onSave={onSave} />
