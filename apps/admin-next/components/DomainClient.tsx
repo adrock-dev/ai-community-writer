@@ -858,7 +858,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
       <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 "켜기"를 눌러야 생성에 쓰입니다.</p></div>
       <div className="row"><span className="badge info">{custom.length}개</span><button type="button" className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
     </div>
-    <p className="toast-info small"><b>주축</b>은 참조 아키타입이 결정합니다(직접 변경 불가). <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개합니다. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등)입니다.</p>
+    <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
 
     <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} busy={busy}
