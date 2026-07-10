@@ -326,6 +326,10 @@ tr:hover td { background: #fbfdff; }
 .slot-panel { gap: 12px; }
 .slot-panel h2 { margin: 4px 0 0; }
 .slot-panel-actions { align-items: flex-end; flex-wrap: wrap; gap: 12px; }
+.advanced-slots { border: 1px dashed #d4d4d8; border-radius: 12px; padding: 12px 14px; background: #fafafa; }
+.advanced-slots[open] { padding-bottom: 16px; }
+.advanced-slots-summary { cursor: pointer; font-weight: 600; font-size: 13px; color: #52525b; list-style: revert; }
+.advanced-slots-summary:hover { color: #18181b; }
 
 /* Generated post main banner: title-first hero, academy photos stay in body content. */
 .preview-phone-fluid .preview-hero.title-hero {
