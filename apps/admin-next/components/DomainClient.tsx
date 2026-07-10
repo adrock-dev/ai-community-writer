@@ -30,7 +30,7 @@ const AXIS_PLACEHOLDER: Record<Axis, string> = {
 };
 const TABS = [
   ["overview", "개요"], ["plan", "공통원칙"], ["templates", "글유형/디자인"], ["axes", "축"],
-  ["academies", "학원자료"], ["slots", "후보"], ["jobs", "작업"], ["posts", "글"], ["settings", "설정"],
+  ["academies", "학원자료"], ["slots", "글 생성"], ["jobs", "작업 큐"], ["posts", "검수·내보내기"], ["settings", "설정"],
 ] as const;
 
 const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: string }> = {
@@ -314,7 +314,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
         <div className="card card-pad">
           <p className="eyebrow">생성 전용 페이지</p>
           <h2>1단계 후보 만들기 → 2단계 글 작성 순서로 진행하세요</h2>
-          <p className="muted">후보 탭이 두 단계로 나뉩니다. 먼저 후보를 만들고, 2단계 카드에서 1개 테스트 작성으로 품질을 확인한 뒤 확장하세요.</p>
+          <p className="muted">글 생성 탭이 두 단계로 나뉩니다. 먼저 후보를 만들고, 2단계 카드에서 1개 테스트 작성으로 품질을 확인한 뒤 확장하세요.</p>
         </div>
         <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />
       </div>}
@@ -375,9 +375,9 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     body: hasSlots
       ? "2단계 카드의 작성 엔진·모델·이미지 옵션은 글 작성에만 적용됩니다. 처음엔 「1개 테스트 작성」만 눌러 품질을 확인하세요."
       : "후보가 없어도 이 버튼은 1단계 후보 생성을 자동 실행한 뒤 큐에 등록합니다. 대량 버튼은 QA 확인 후 사용하세요.",
-    action: "버튼을 누르면 작업 탭에서 진행 상태를 확인합니다.",
+    action: "버튼을 누르면 작업 큐 탭에서 진행 상태를 확인합니다.",
   };
-  const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 글 탭에서 결과를 검수합니다." };
+  const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 검수·내보내기 탭에서 결과를 검수합니다." };
   const postsReview: TourStep = { focus: "posts", tab: "posts", target: "posts-actions", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: "이 흐름이 안정적이면 현재 검색 10개, 이후 100개로 확장하세요." };
 
   if (mode === "basic") {
@@ -392,7 +392,7 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     sharedStart,
     { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
     { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
-    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "완성 글이 어떤 형태로 보일지 미리 고릅니다. 오른쪽 미리보기가 실제 상세 화면의 톤과 구조를 이해시키는 기준입니다.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
+    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 바꾸려면 아래 ‘글 유형별 디자인·방향성·축 범위’ 편집기를 쓰고, 프리셋·전체 강제는 ‘고급’에서 사용합니다. 미리보기로 톤·구조를 확인하세요.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
     sourceSync,
     { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
@@ -551,7 +551,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>공통원칙 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>디자인 고르기</button></div>
     </div>
-    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>후보 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 탭에서 진행 상태 확인</li><li>글 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
+    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 탭에서 진행 상태 확인</li><li>검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
   </div>;
 }
 
@@ -704,13 +704,13 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
 
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design">
-        <div><h2>화면 구상 / 디자인</h2><p className="muted">기본은 글 유형별 자동 매칭입니다. 아래 표에서 특정 글 유형만 바꿀 수 있고, 전체 강제는 고급 설정에서만 사용합니다.</p></div>
+        <div><h2>화면 구상 / 디자인</h2><p className="muted">글 유형마다 어울리는 디자인이 자동 적용됩니다. 대부분 그대로 두면 됩니다. 글 유형별로 바꾸려면 아래 ‘글 유형별 디자인·방향성·축 범위’에서, 전체 강제·프리셋·커스텀 메모는 ‘고급’에서 사용합니다.</p></div>
         <div className="toast-info">
           <div className="spread"><div><b>{isAuto ? AUTO_DESIGN_OPTION.name : "전체 화면 구상 강제"}</b><p className="muted small">{isAuto ? AUTO_DESIGN_OPTION.summary : "모든 글 유형에 같은 화면 구상을 적용합니다. 글 유형별 수동 변경보다 우선합니다."}</p></div><span className={`badge ${isAuto ? "success" : "warn"}`}>{isAuto ? "권장" : "예외"}</span></div>
           <div className="row">{autoTargetIds.slice(0, 6).map((id) => <span key={id} className="badge">{designNameOf(id)}</span>)}</div>
         </div>
-        <div className="template-subsection">
-          <div className="template-subsection-head"><div><h3>화면 구상 종류</h3><p className="muted small">아래 항목은 설명용입니다. 실제 적용은 글 유형별 표에서 변경하세요.</p></div><span className="badge info">설명</span></div>
+        <details className="template-subsection">
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>화면 구상 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 아래 ‘글 유형별 디자인·방향성·축 범위’에서 바꿉니다.</p></div><span className="badge info">설명 보기</span></div></summary>
           <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
             const bp = designBlueprintFor(tpl.id, tpl);
             return <div key={tpl.id} className="info-panel">
@@ -722,7 +722,9 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
               {tpl.source_type === "uploaded_html" && <button type="button" className="btn danger" disabled={presetBusy} onClick={() => removePreset(tpl.id)}>삭제</button>}
             </div>;
           })}</div>
-        </div>
+        </details>
+        <details className="template-advanced">
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>고급 · 프리셋 추가 / 커스텀 메모 / 전체 강제</h3><p className="muted small">일반 운영에서는 열지 않아도 됩니다. HTML 프리셋 추가, 커스텀 메모, 전체 화면 구상 강제가 필요할 때만 펼치세요.</p></div><span className="badge warn">고급</span></div></summary>
         <div className="template-subsection template-subsection-upload">
           <div className="template-subsection-head"><div><h3>HTML 예시로 화면 구상 추가</h3><p className="muted small">블로그 예시 HTML을 업로드하면 섹션 흐름, 톤, CSS 힌트를 추출해 화면 구상 프리셋으로 저장합니다.</p></div><span className="badge info">프리셋 추가</span></div>
           <p className="preset-warning small">HTML 프리셋은 예시 파일을 그대로 복제하는 기능이 아니라 구조와 스타일을 최대한 참고하는 기능입니다. 실제 글은 글 유형 지침과 검증된 후보 자료를 우선하므로, 원본 HTML과 1:1로 동일하게 보이지 않을 수 있습니다.</p>
@@ -734,27 +736,12 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
           <div className="row"><button type="button" className="btn" disabled={presetBusy || !presetHtml.trim()} onClick={uploadPreset}>{presetBusy ? "저장 중..." : "HTML 화면 구상 저장"}</button><span className="muted small">저장 후 아래 수동 변경 드롭다운에 표시됩니다.</span></div>
         </div>
         <div className="template-subsection">
-          <div className="template-subsection-head"><div><h3>글 유형별 화면 구상</h3><p className="muted small">글 유형마다 다른 화면 구상을 쓰려면 아래 &quot;글 유형별 디자인 · 방향성 · 축 범위&quot;에서 방향성·축과 함께 설정합니다. 비우면 각 글 유형의 기본 화면 구상이 적용됩니다.</p></div><span className="badge info">아래에서 설정</span></div>
-          <div className="table-wrap"><table>
-            <thead><tr><th>글 유형</th><th>기본 화면</th><th>실제 적용</th></tr></thead>
-            <tbody>{Object.entries(options.template_specs).filter(([id]) => enabled.has(id)).map(([id, spec]) => {
-              const manual = designOverrideFor(id);
-              return <tr key={id}>
-                <td><b>{id}</b><p className="muted small">{spec.name}</p></td>
-                <td><span className="badge">{designNameOf(spec.default_design ?? "local-guide")}</span></td>
-                <td><span className={`badge ${manual ? "warn" : "success"}`}>{manual ? "수동 변경" : "기본"}</span><p className="muted small">{designNameOf(effectiveDesignForTemplate(id))}</p></td>
-              </tr>;
-            })}</tbody>
-          </table></div>
-        </div>
-        <div className="template-subsection">
-          <div className="template-subsection-head"><div><h3>커스텀 / 고급 설정</h3><p className="muted small">일반 운영에서는 자동 추천을 유지하고, 예외적인 운영 정책이 있을 때만 사용하세요.</p></div><span className="badge warn">고급</span></div>
           <Field label="직접 만드는 화면 구상 메모">
             <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
-            <p className="muted small">글 유형별 화면 구상에서 '커스텀'을 선택한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
+            <p className="muted small">아래 ‘글 유형별 디자인·방향성·축 범위’에서 디자인을 ‘커스텀’으로 선택한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
           </Field>
           <Field label="고급: 전체 화면 구상 강제">
             <select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
@@ -765,6 +752,7 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
           </Field>
           {!isAuto && <p className="toast-warn">전체 화면 구상 강제 모드입니다. 글 유형별 화면 구상보다 현재 고급 설정이 우선 적용됩니다.</p>}
         </div>
+        </details>
         <div className="preview-toggle-panel">
           <div className="spread">
             <div>
@@ -1224,7 +1212,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
         <div className="row" style={{ alignItems: "end" }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button></div>
       </div>
       {syncResult && <p className="small badge success" style={{ width: "fit-content" }}>{syncResult}</p>}
-      <p className="muted small">권장 순서: 지역 동기화(level=2, 축 교체) → 학원 동기화(사진·별점리뷰·블로그 리뷰 포함) → 후보 탭에서 후보 생성.</p>
+      <p className="muted small">권장 순서: 지역 동기화(level=2, 축 교체) → 학원 동기화(사진·별점리뷰·블로그 리뷰 포함) → 글 생성 탭에서 후보 생성.</p>
     </div>
     <div className="card card-pad"><p className="muted">후보 지역과 일치하거나 가까운 원천 자료가 생성 프롬프트에 주입됩니다. 외부 원천 API 자료는 SEO 설명, vphone, 사진 URL, 별점 리뷰, 블로그 리뷰글도 함께 사용됩니다.</p></div>
     <div className="card card-pad grid">
@@ -1350,7 +1338,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     setQueueBusy(true);
     try {
       const r = await enqueueGenerate(domain.domain, { slot_ids: ids, max_per_template: max, ...writerPayload });
-      alert(`작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 탭에서 진행상태를 확인하세요.`);
+      alert(`작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 큐 탭에서 진행상태를 확인하세요.`);
       setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs");
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -1365,7 +1353,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     setQueueBusy(true);
     try {
       const r = await enqueueGenerate(domain.domain, { ...body, max_per_template: max, ...writerPayload });
-      alert(`${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 탭에서 진행상태를 확인하세요.`);
+      alert(`${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 큐 탭에서 진행상태를 확인하세요.`);
       setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs");
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -1470,7 +1458,7 @@ function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; 
     <div className="card card-pad grid" data-tour="jobs-board">
       <div className="spread"><div><h2>작업 상태판</h2><p className="muted">글 작성/중복검사/가지치기/색인 작업을 이 화면에서 바로 확인합니다. 3초마다 자동 새로고침됩니다.</p></div><button className="btn" onClick={onRefresh}>새로고침</button></div>
       <div className="grid grid-4"><Stat label="대기" value={counts.queued ?? 0} /><Stat label="진행" value={counts.running ?? 0} /><Stat label="완료" value={counts.done ?? 0} accent /><Stat label="실패" value={counts.failed ?? 0} /></div>
-      <div className="writer-hint"><b>운영 순서</b><span>후보 탭에서 작성 등록</span><span>작업 탭에서 진행 확인</span><span>완료 후 글 탭에서 검수</span><span>필요 시 npm run worker:once</span></div>
+      <div className="writer-hint"><b>운영 순서</b><span>글 생성 탭에서 작성 등록</span><span>작업 큐 탭에서 진행 확인</span><span>완료 후 검수·내보내기 탭에서 검수</span><span>필요 시 npm run worker:once</span></div>
       {active > 0 && <p className="muted small">대기/진행 작업이 멈춰 있으면 서버 터미널에서 <code>npm run worker:once</code>를 실행해 처리할 수 있습니다.</p>}
     </div>
     <div className="row">
@@ -1478,7 +1466,7 @@ function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; 
       <span className="muted small">{filtered.length}개 표시 / 전체 {jobs.length}개</span>
       <Link href="/jobs" className="btn">전체 작업 큐 열기</Link>
     </div>
-    {filtered.length === 0 && <div className="card card-pad muted">아직 작업이 없습니다. 후보 탭에서 “1개 테스트 작성”부터 등록하세요.</div>}
+    {filtered.length === 0 && <div className="card card-pad muted">아직 작업이 없습니다. 글 생성 탭에서 “1개 테스트 작성”부터 등록하세요.</div>}
     <div className="grid">{filtered.map((job) => <JobCard key={job.id} job={job} designFallback={domain.design_template_id} onChanged={onRefresh} />)}</div>
   </div>;
 }
