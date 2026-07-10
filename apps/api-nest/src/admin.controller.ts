@@ -362,7 +362,12 @@ export class AdminController {
   @Post("domains/:domain/slots/generate")
   generateSlots(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const summary = this.slots.generateSlotsForDomain(domain, { maxPerTemplate: Math.max(1, Number(body.max_per_template || 200)) });
+    // template(단일)/templates(배열)가 오면 그 유형만 후보 생성한다. 없으면 기존대로 enabled 전 유형.
+    const rawTemplates = Array.isArray(body.templates) ? body.templates : (body.template ? [body.template] : []);
+    const templates = rawTemplates.map((t: any) => String(t).trim()).filter(Boolean);
+    const opts: { templates?: string[]; maxPerTemplate: number } = { maxPerTemplate: Math.max(1, Number(body.max_per_template || 200)) };
+    if (templates.length) opts.templates = templates;
+    const summary = this.slots.generateSlotsForDomain(domain, opts);
     return { ok: true, summary, slot_counts: this.db.countSlots(domain) };
   }
 
