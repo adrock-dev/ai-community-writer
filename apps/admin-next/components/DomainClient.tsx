@@ -35,7 +35,7 @@ const TABS = [
 
 const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: string }> = {
   basic: { label: "기본 글 생성", short: "기본", desc: "원천 데이터 → 후보 → 테스트 작성 → 검수만 따라가는 가장 쉬운 시작" },
-  advanced: { label: "고급 후보 생성", short: "고급", desc: "기획, 글 유형, 화면 구상, 학원 타입까지 세밀하게 잡는 운영자용 흐름" },
+  advanced: { label: "고급 후보 생성", short: "고급", desc: "기획, 글 유형, 디자인, 학원 타입까지 세밀하게 잡는 운영자용 흐름" },
   review: { label: "검수/내보내기", short: "검수", desc: "작업 상태와 완성 글을 확인하고 export/indexing으로 넘기는 마감 흐름" },
 };
 
@@ -56,7 +56,7 @@ const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: Tou
     steps: [
       { mode: "advanced", focus: "workflow", no: "고급 1", title: "흐름 개요", desc: "고급 흐름 한눈에 보기", tone: "primary" },
       { mode: "advanced", focus: "plan", no: "고급 2", title: "공통원칙/제외어", desc: "공통 작성 원칙과 금지어 정리" },
-      { mode: "advanced", focus: "template-design", no: "고급 3", title: "유형/디자인", desc: "글 종류와 화면 구상 선택" },
+      { mode: "advanced", focus: "template-design", no: "고급 3", title: "유형/디자인", desc: "글 종류와 디자인 선택" },
       { mode: "advanced", focus: "academy-types", no: "고급 4", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
       { mode: "advanced", focus: "slot-filter", no: "고급 5", title: "후보 필터/확장", desc: "조건을 좁혀 후보 운영" },
     ],
@@ -168,7 +168,7 @@ const DESIGN_BLUEPRINTS: Record<string, {
   },
   custom: {
     label: "직접 입력한 메모를 기준으로 잡는 화면",
-    title: "내가 정한 화면 구상을 반영한 글",
+    title: "내가 정한 디자인을 반영한 글",
     lead: "오른쪽 메모에 원하는 화면 구조를 적으면 직접 만든 디자인 기준으로 저장됩니다.",
     chips: ["커스텀", "직접 설계"],
     sections: ["상단 구성", "본문 규칙", "표/이미지 위치", "CTA 위치"],
@@ -391,8 +391,8 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
   const steps: TourStep[] = [
     sharedStart,
     { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
-    { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
-    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 디자인·방향성·축을 바꾸려면 아래 「커스텀 글유형」에서 그 유형을 복제해 조정하세요. 프리셋·전체 강제는 ‘고급’에서 사용합니다. 미리보기로 톤·구조를 확인하세요.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
+    { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 디자인으로 넘어갑니다." },
+    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 디자인 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 디자인·방향성·축을 바꾸려면 아래 「커스텀 글유형」에서 그 유형을 복제해 조정하세요.", action: "‘글 유형/디자인 저장’을 누르면 새 글부터 적용됩니다." },
     sourceSync,
     { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
@@ -627,14 +627,11 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
 
 // 도메인 디자인 설정의 특수값: 글마다 후보의 글 유형 기본 디자인(default_design)을 자동 적용한다.
 const AUTO_DESIGN_ID = "auto";
-const AUTO_DESIGN_OPTION = { id: AUTO_DESIGN_ID, name: "자동 (글 유형별 매칭)", summary: "글마다 글 유형에 맞는 기본 디자인을 자동으로 골라 발행합니다.", best_for: "여러 글 유형을 함께 켜서 운영할 때" };
 
 function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; designPresets: DesignTemplateOption[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
   const [design, setDesign] = useState<string>(domain.design_template_id ?? AUTO_DESIGN_ID);
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
-  const [previewOpen, setPreviewOpen] = useState(true);
-  const [previewTemplateId, setPreviewTemplateId] = useState(domain.templates_enabled[0] ?? Object.keys(options.template_specs)[0] ?? "");
   const [presetName, setPresetName] = useState("");
   const [presetHtml, setPresetHtml] = useState("");
   const [presetBusy, setPresetBusy] = useState(false);
@@ -642,21 +639,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
   const allDesignTemplates: DesignTemplateOption[] = [...options.design_templates, ...designPresets];
   const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const designOptions = allDesignTemplates.filter((tpl) => tpl.id !== "custom");
-  // 글유형별 디자인은 template_overrides[tid].design(레거시 오버라이드; UI 편집기는 제거—글유형 복제로 대체) → spec.default_design 순으로 읽는다. 엔진은 기존 오버라이드를 계속 존중.
-  const designOverrideFor = (id: string) => domain.template_overrides?.[id]?.design || "";
-  const effectiveDesignForTemplate = (id: string) => designOverrideFor(id) || options.template_specs[id]?.default_design || "local-guide";
-  const enabledTemplateIds = Array.from(enabled).sort();
-  const previewTemplate = enabled.has(previewTemplateId) ? previewTemplateId : enabledTemplateIds[0] ?? Object.keys(options.template_specs)[0] ?? "";
-  // 자동 매칭이 실제로 적용할 디자인 목록: 켜진 글 유형(없으면 전체)의 기본 디자인.
-  const autoTargetIds = Array.from(new Set((enabled.size ? enabledTemplateIds : Object.keys(options.template_specs)).map(effectiveDesignForTemplate)));
   const isAuto = design === AUTO_DESIGN_ID;
-  const previewDesignId = isAuto ? effectiveDesignForTemplate(previewTemplate) : design;
-  const previewModeLabel = isAuto ? (designOverrideFor(previewTemplate) ? "수동 변경" : "자동 추천") : "전체 강제";
-  const previewModeClass = isAuto ? (designOverrideFor(previewTemplate) ? "warn" : "success") : "warn";
-  const activeDesign = allDesignTemplates.find((d) => d.id === previewDesignId) ?? (isAuto ? AUTO_DESIGN_OPTION : options.design_templates[0]);
-  const blueprint = designBlueprintFor(previewDesignId, activeDesign);
-  if (previewDesignId === "custom" && custom.trim()) blueprint.lead = custom.trim();
-  if (isAuto) blueprint.lead = `${previewTemplate} 글 유형에는 ${designNameOf(previewDesignId)} 화면 구상이 적용됩니다.`;
   const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const save = () => {
     if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 디자인 설정만 저장할까요?")) return;
@@ -675,7 +658,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
     finally { setPresetBusy(false); }
   }
   async function removePreset(id: string) {
-    if (!confirm("이 HTML 기반 화면 구상을 삭제할까요? 이미 생성된 글에는 영향이 없습니다.")) return;
+    if (!confirm("이 HTML 기반 디자인을 삭제할까요? 이미 생성된 글에는 영향이 없습니다.")) return;
     setPresetBusy(true);
     try {
       await deleteDesignPreset(domain.domain, id);
@@ -727,13 +710,9 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
 
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design">
-        <div><h2>화면 구상 / 디자인</h2><p className="muted">글 유형마다 어울리는 디자인이 자동 적용됩니다. 대부분 그대로 두면 됩니다. 글 유형별로 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정하고, 전체 강제·프리셋·커스텀 메모는 ‘고급’에서 사용합니다.</p></div>
-        <div className="toast-info">
-          <div className="spread"><div><b>{isAuto ? AUTO_DESIGN_OPTION.name : "전체 화면 구상 강제"}</b><p className="muted small">{isAuto ? AUTO_DESIGN_OPTION.summary : "모든 글 유형에 같은 화면 구상을 적용합니다. 글 유형별 수동 변경보다 우선합니다."}</p></div><span className={`badge ${isAuto ? "success" : "warn"}`}>{isAuto ? "권장" : "예외"}</span></div>
-          <div className="row">{autoTargetIds.slice(0, 6).map((id) => <span key={id} className="badge">{designNameOf(id)}</span>)}</div>
-        </div>
+        <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 아래 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
         <details className="template-subsection">
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>화면 구상 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 글 유형의 기본 디자인(자동 매칭)이며, 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정합니다.</p></div><span className="badge info">설명 보기</span></div></summary>
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 글 유형의 기본 디자인(자동 매칭)이며, 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정합니다.</p></div><span className="badge info">설명 보기</span></div></summary>
           <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
             const bp = designBlueprintFor(tpl.id, tpl);
             return <div key={tpl.id} className="info-panel">
@@ -747,55 +726,36 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
           })}</div>
         </details>
         <details className="template-advanced">
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>고급 · 프리셋 추가 / 커스텀 메모 / 전체 강제</h3><p className="muted small">일반 운영에서는 열지 않아도 됩니다. HTML 프리셋 추가, 커스텀 메모, 전체 화면 구상 강제가 필요할 때만 펼치세요.</p></div><span className="badge warn">고급</span></div></summary>
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>고급 · 프리셋 추가 / 커스텀 메모 / 전체 강제</h3><p className="muted small">일반 운영에서는 열지 않아도 됩니다. HTML 프리셋 추가, 커스텀 메모, 전체 디자인 강제가 필요할 때만 펼치세요.</p></div><span className="badge warn">고급</span></div></summary>
         <div className="template-subsection template-subsection-upload">
-          <div className="template-subsection-head"><div><h3>HTML 예시로 화면 구상 추가</h3><p className="muted small">블로그 예시 HTML을 업로드하면 섹션 흐름, 톤, CSS 힌트를 추출해 화면 구상 프리셋으로 저장합니다.</p></div><span className="badge info">프리셋 추가</span></div>
+          <div className="template-subsection-head"><div><h3>HTML 예시로 디자인 추가</h3><p className="muted small">블로그 예시 HTML을 업로드하면 섹션 흐름, 톤, CSS 힌트를 추출해 디자인 프리셋으로 저장합니다.</p></div><span className="badge info">프리셋 추가</span></div>
           <p className="preset-warning small">HTML 프리셋은 예시 파일을 그대로 복제하는 기능이 아니라 구조와 스타일을 최대한 참고하는 기능입니다. 실제 글은 글 유형 지침과 검증된 후보 자료를 우선하므로, 원본 HTML과 1:1로 동일하게 보이지 않을 수 있습니다.</p>
           <div className="grid grid-2">
             <Field label="프리셋 이름"><input className="input" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="예: 우리 블로그 카드형 스타일" /></Field>
             <Field label="HTML 파일"><input ref={presetFileInputRef} className="input" type="file" accept=".html,.htm,text/html" onClick={(e) => { e.currentTarget.value = ""; }} onChange={(e) => readPresetFile(e.target.files?.[0] ?? null)} /></Field>
           </div>
           <Field label="HTML 내용"><textarea className="textarea mono" rows={7} value={presetHtml} onChange={(e) => setPresetHtml(e.target.value)} placeholder="<html>...</html>" /></Field>
-          <div className="row"><button type="button" className="btn" disabled={presetBusy || !presetHtml.trim()} onClick={uploadPreset}>{presetBusy ? "저장 중..." : "HTML 화면 구상 저장"}</button><span className="muted small">저장 후 아래 수동 변경 드롭다운에 표시됩니다.</span></div>
+          <div className="row"><button type="button" className="btn" disabled={presetBusy || !presetHtml.trim()} onClick={uploadPreset}>{presetBusy ? "저장 중..." : "HTML 디자인 저장"}</button><span className="muted small">저장 후 아래 수동 변경 드롭다운에 표시됩니다.</span></div>
         </div>
         <div className="template-subsection">
-          <Field label="직접 만드는 화면 구상 메모">
+          <Field label="직접 만드는 디자인 메모">
             <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
             <p className="muted small">커스텀 글유형에서 디자인을 ‘커스텀’으로 지정한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
           </Field>
-          <Field label="고급: 전체 화면 구상 강제">
+          <Field label="고급: 전체 디자인 강제">
             <select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
               <option value={AUTO_DESIGN_ID}>사용 안 함 - 글 유형별 자동 추천</option>
               {designOptions.map((tpl) => <option key={tpl.id} value={tpl.id}>모든 글을 {tpl.name}으로 강제</option>)}
             </select>
             <p className="muted small">특별한 브랜드 운영 정책이 있을 때만 사용하세요. 강제하면 글 유형별 수동 변경은 저장만 되고 생성에는 적용되지 않습니다.</p>
           </Field>
-          {!isAuto && <p className="toast-warn">전체 화면 구상 강제 모드입니다. 글 유형별 화면 구상보다 현재 고급 설정이 우선 적용됩니다.</p>}
+          {!isAuto && <p className="toast-warn">전체 디자인 강제 모드입니다. 글 유형별 디자인보다 현재 고급 설정이 우선 적용됩니다.</p>}
         </div>
         </details>
-        <div className="preview-toggle-panel">
-          <div className="spread">
-            <div>
-              <h3>실제 적용 미리보기</h3>
-              <p className="muted small">선택한 글 유형에 적용될 화면 구상을 예시로 확인합니다.</p>
-            </div>
-            <button type="button" className="btn" onClick={() => setPreviewOpen((v) => !v)}>{previewOpen ? "미리보기 닫기" : "미리보기 열기"}</button>
-          </div>
-          <div className="row">
-            <Field label="미리볼 글 유형">
-              <select className="select" value={previewTemplate} onChange={(e) => setPreviewTemplateId(e.target.value)}>
-                {(enabledTemplateIds.length ? enabledTemplateIds : Object.keys(options.template_specs)).map((id) => <option key={id} value={id}>{id} {options.template_specs[id]?.name ?? ""}</option>)}
-              </select>
-            </Field>
-            <span className={`badge ${previewModeClass}`}>{previewModeLabel}</span>
-            <span className="badge info">{designNameOf(previewDesignId)}</span>
-          </div>
-          {previewOpen && <DesignPreview blueprint={blueprint} designId={previewDesignId} designOption={activeDesign} brandColor={domain.brand_color} brand={publicBrandName(domain.display_name)} title={activeDesign.name} summary={activeDesign.summary} />}
-        </div>
-        <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
+        <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/디자인 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
     </section>
     <CustomTemplatesManager domainConfig={domain} options={options} designPresets={designPresets} onSave={onSave} />
@@ -869,7 +829,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
 
-    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} sources={createSources} busy={busy}
+    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} sources={createSources} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
       onSubmit={(body) => run(() => createTemplate(domain, body))}
       onClone={(sourceId, name, overrides) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name, overrides }))} />
 
@@ -878,7 +838,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
         const on = enabledSet.has(t.template_id);
-        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" initial={t} kindOptions={kindOptions} designChoices={designChoices} busy={busy}
+        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" initial={t} kindOptions={kindOptions} designChoices={designChoices} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
           onCancel={() => setEditId(null)}
           onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
         return <div key={t.template_id} className="info-panel grid">
@@ -921,9 +881,9 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
 type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] } };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
-function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources, busy, onSubmit, onClone, onCancel }: {
+function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
   mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
-  sources?: TemplateSource[]; busy: boolean;
+  sources?: TemplateSource[]; brandColor?: string | null; brand?: string; busy: boolean;
   onSubmit: (body: Partial<CustomTemplate>) => void; onClone?: (sourceId: string, name: string, overrides: Record<string, unknown>) => void; onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -1031,6 +991,13 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
         {modifierCount > 0 && <textarea className="textarea" rows={3} value={modifierVals} onChange={(e) => setModifierVals(e.target.value)} placeholder={"필기시험부터\n상담전확인   (비우면 도메인 공통 modifier 사용)"} />}
       </div>
     </div>
+    <details className="template-subsection">
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>미리보기 (디자인 목업)</h3><p className="muted small">선택한 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info">열기</span></div></summary>
+      {(() => {
+        const opt = designChoices.find((d) => d.id === design);
+        return <DesignPreview blueprint={designBlueprintFor(design, opt)} designId={design} designOption={opt} brandColor={brandColor} brand={brand ?? "브랜드"} title={opt?.name ?? design} summary={opt?.summary ?? ""} />;
+      })()}
+    </details>
     <div className="row">
       <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
       {mode === "edit" && <button type="button" className="btn" disabled={busy} onClick={onCancel}>취소</button>}
@@ -1044,10 +1011,10 @@ function designBlueprintFor(id: string, option?: DesignTemplateOption): typeof D
   if (builtin) return { ...builtin };
   const sections = uniquePreviewItems(option?.structure_guide?.length ? option.structure_guide : ["상단 구성", "본문 섹션", "비교/요약", "CTA"]);
   return {
-    label: option?.summary || "업로드 HTML에서 추출한 화면 구상",
-    title: `${option?.name || "업로드 화면 구상"} 예시 글`,
+    label: option?.summary || "업로드 HTML에서 추출한 디자인",
+    title: `${option?.name || "업로드 디자인"} 예시 글`,
     lead: option?.summary || "업로드한 HTML의 섹션 흐름과 시각 스타일 힌트를 반영합니다.",
-    chips: ["HTML 기반", "사용자 프리셋", "화면 구상"],
+    chips: ["HTML 기반", "사용자 프리셋", "디자인"],
     sections,
     tone: option?.tone || "업로드 예시 기반 브랜드 톤",
     blocks: sections.slice(0, 4).map((section, index) => ({
