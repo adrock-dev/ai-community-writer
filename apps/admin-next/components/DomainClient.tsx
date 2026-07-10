@@ -632,7 +632,6 @@ const AUTO_DESIGN_OPTION = { id: AUTO_DESIGN_ID, name: "자동 (글 유형별 �
 function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; designPresets: DesignTemplateOption[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
   const [design, setDesign] = useState<string>(domain.design_template_id ?? AUTO_DESIGN_ID);
-  const [overrides, setOverrides] = useState<Record<string, string>>(domain.design_template_overrides ?? {});
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
   const [previewOpen, setPreviewOpen] = useState(true);
   const [previewTemplateId, setPreviewTemplateId] = useState(domain.templates_enabled[0] ?? Object.keys(options.template_specs)[0] ?? "");
@@ -643,16 +642,17 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
   const allDesignTemplates: DesignTemplateOption[] = [...options.design_templates, ...designPresets];
   const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const designOptions = allDesignTemplates.filter((tpl) => tpl.id !== "custom");
-  const cleanOverrides = () => Object.fromEntries(Object.entries(overrides).filter(([templateId, designId]) => enabled.has(templateId) && Boolean(designId)));
-  const effectiveDesignForTemplate = (id: string) => cleanOverrides()[id] ?? options.template_specs[id]?.default_design ?? "local-guide";
+  // PR3: 글유형별 디자인은 template_overrides[tid].design(아래 "글 유형별 디자인·방향성·축 범위"에서 편집)에서 읽는다. 레거시 design_template_overrides 는 백엔드 폴백으로만 남는다.
+  const designOverrideFor = (id: string) => domain.template_overrides?.[id]?.design || "";
+  const effectiveDesignForTemplate = (id: string) => designOverrideFor(id) || options.template_specs[id]?.default_design || "local-guide";
   const enabledTemplateIds = Array.from(enabled).sort();
   const previewTemplate = enabled.has(previewTemplateId) ? previewTemplateId : enabledTemplateIds[0] ?? Object.keys(options.template_specs)[0] ?? "";
   // 자동 매칭이 실제로 적용할 디자인 목록: 켜진 글 유형(없으면 전체)의 기본 디자인.
   const autoTargetIds = Array.from(new Set((enabled.size ? enabledTemplateIds : Object.keys(options.template_specs)).map(effectiveDesignForTemplate)));
   const isAuto = design === AUTO_DESIGN_ID;
   const previewDesignId = isAuto ? effectiveDesignForTemplate(previewTemplate) : design;
-  const previewModeLabel = isAuto ? (cleanOverrides()[previewTemplate] ? "수동 변경" : "자동 추천") : "전체 강제";
-  const previewModeClass = isAuto ? (cleanOverrides()[previewTemplate] ? "warn" : "success") : "warn";
+  const previewModeLabel = isAuto ? (designOverrideFor(previewTemplate) ? "수동 변경" : "자동 추천") : "전체 강제";
+  const previewModeClass = isAuto ? (designOverrideFor(previewTemplate) ? "warn" : "success") : "warn";
   const activeDesign = allDesignTemplates.find((d) => d.id === previewDesignId) ?? (isAuto ? AUTO_DESIGN_OPTION : options.design_templates[0]);
   const blueprint = designBlueprintFor(previewDesignId, activeDesign);
   if (previewDesignId === "custom" && custom.trim()) blueprint.lead = custom.trim();
@@ -660,7 +660,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
   const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const save = () => {
     if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 디자인 설정만 저장할까요?")) return;
-    onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: design, design_template_overrides: cleanOverrides(), custom_design_templates: custom.trim() });
+    onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: design, custom_design_templates: custom.trim() });
   };
   async function uploadPreset() {
     if (!presetHtml.trim()) { alert("HTML 파일을 선택하거나 HTML 내용을 붙여넣어 주세요."); return; }
@@ -734,26 +734,15 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
           <div className="row"><button type="button" className="btn" disabled={presetBusy || !presetHtml.trim()} onClick={uploadPreset}>{presetBusy ? "저장 중..." : "HTML 화면 구상 저장"}</button><span className="muted small">저장 후 아래 수동 변경 드롭다운에 표시됩니다.</span></div>
         </div>
         <div className="template-subsection">
-          <div className="template-subsection-head"><div><h3>글 유형별 화면 구상</h3><p className="muted small">자동 모드에서만 적용됩니다. 대부분은 자동 추천 그대로 두고, 특정 글 유형만 다른 화면으로 바꾸고 싶을 때 오른쪽에서 변경하세요.</p></div><span className="badge success">적용 설정</span></div>
+          <div className="template-subsection-head"><div><h3>글 유형별 화면 구상</h3><p className="muted small">글 유형마다 다른 화면 구상을 쓰려면 아래 &quot;글 유형별 디자인 · 방향성 · 축 범위&quot;에서 방향성·축과 함께 설정합니다. 비우면 각 글 유형의 기본 화면 구상이 적용됩니다.</p></div><span className="badge info">아래에서 설정</span></div>
           <div className="table-wrap"><table>
-            <thead><tr><th>글 유형</th><th>자동 추천 화면</th><th>수동 변경</th><th>실제 적용</th></tr></thead>
+            <thead><tr><th>글 유형</th><th>기본 화면</th><th>실제 적용</th></tr></thead>
             <tbody>{Object.entries(options.template_specs).filter(([id]) => enabled.has(id)).map(([id, spec]) => {
-              const defaultDesign = spec.default_design ?? "local-guide";
-              const manualDesign = overrides[id] ?? "";
-              const effectiveDesign = manualDesign || defaultDesign;
+              const manual = designOverrideFor(id);
               return <tr key={id}>
                 <td><b>{id}</b><p className="muted small">{spec.name}</p></td>
-                <td><span className="badge">{designNameOf(defaultDesign)}</span></td>
-                <td><select className="select" value={manualDesign} onChange={(e) => setOverrides((prev) => {
-                  const next = { ...prev };
-                  if (e.target.value) next[id] = e.target.value;
-                  else delete next[id];
-                  return next;
-                })}>
-                  <option value="">자동 추천 그대로</option>
-                  {allDesignTemplates.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
-                </select></td>
-                <td><span className={`badge ${manualDesign ? "warn" : "success"}`}>{manualDesign ? "수동 변경" : "자동 추천"}</span><p className="muted small">{designNameOf(effectiveDesign)}</p></td>
+                <td><span className="badge">{designNameOf(spec.default_design ?? "local-guide")}</span></td>
+                <td><span className={`badge ${manual ? "warn" : "success"}`}>{manual ? "수동 변경" : "기본"}</span><p className="muted small">{designNameOf(effectiveDesignForTemplate(id))}</p></td>
               </tr>;
             })}</tbody>
           </table></div>
@@ -798,7 +787,7 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
         <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
     </section>
-    <TemplateOverridesEditor domain={domain} enabledTemplateIds={enabledTemplateIds} options={options} busy={busy} onSave={onSave} />
+    <TemplateOverridesEditor domain={domain} enabledTemplateIds={enabledTemplateIds} options={options} designPresets={designPresets} busy={busy} onSave={onSave} />
     <CustomTemplatesManager domainConfig={domain} options={options} designPresets={designPresets} onSave={onSave} />
   </div>;
 }
@@ -990,10 +979,12 @@ function sameSet(a: string[], b: string[]): boolean {
 }
 
 // 글유형별 방향성 + 축 수용 태그 오버라이드 편집기. 비우면 글유형 기본값(상수)을 그대로 사용한다.
-function TemplateOverridesEditor({ domain, enabledTemplateIds, options, busy, onSave }: { domain: DomainConfig; enabledTemplateIds: string[]; options: AdminOptions; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
+function TemplateOverridesEditor({ domain, enabledTemplateIds, options, designPresets, busy, onSave }: { domain: DomainConfig; enabledTemplateIds: string[]; options: AdminOptions; designPresets: DesignTemplateOption[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
   const [overrides, setOverrides] = useState<Record<string, TemplateOverride>>(() => domain.template_overrides ?? {});
   const [saving, setSaving] = useState(false);
   const specs = options.template_specs;
+  const designChoices = [...options.design_templates, ...designPresets].filter((d) => d.id !== "custom");
+  const designNameOf = (id?: string) => [...options.design_templates, ...designPresets].find((d) => d.id === id)?.name ?? id ?? "local-guide";
   // 구버전 API(axis_tag_vocab 미노출)에서도 크래시 없이 동작하도록 방어.
   const vocab = options.axis_tag_vocab ?? { persona: [], intent: [], modifier: [] };
   const ids = (enabledTemplateIds.length ? enabledTemplateIds : Object.keys(specs)).filter((id) => specs[id]);
@@ -1011,11 +1002,13 @@ function TemplateOverridesEditor({ domain, enabledTemplateIds, options, busy, on
       const cleaned: TemplateOverride = {};
       if (draft.direction && draft.direction.trim()) cleaned.direction = draft.direction;
       if (draft.axis_tags && Object.keys(draft.axis_tags).length) cleaned.axis_tags = draft.axis_tags;
-      if (cleaned.direction || cleaned.axis_tags) next[tid] = cleaned; else delete next[tid];
+      if (draft.design && draft.design.trim()) cleaned.design = draft.design;
+      if (cleaned.direction || cleaned.axis_tags || cleaned.design) next[tid] = cleaned; else delete next[tid];
       return next;
     });
   }
   const setDirection = (tid: string, value: string) => mutate(tid, (e) => ({ ...e, direction: value }));
+  const setDesign = (tid: string, value: string) => mutate(tid, (e) => ({ ...e, design: value || undefined }));
   function setAxisTags(tid: string, axis: TaggedAxis, tags: string[]) {
     mutate(tid, (e) => {
       const at = { ...(e.axis_tags ?? {}) };
@@ -1041,13 +1034,19 @@ function TemplateOverridesEditor({ domain, enabledTemplateIds, options, busy, on
   }
 
   return <section className="card card-pad grid" data-tour="templates-directions">
-    <div className="spread"><div><h2>글 유형별 방향성 · 축 범위</h2><p className="muted">공통원칙 위에 글 유형마다 얹히는 방향성과, 각 글 유형이 사용할 축 값 범위를 정합니다. 비우면 기본값을 그대로 씁니다.</p></div><span className="badge info">{ids.length}개 유형</span></div>
+    <div className="spread"><div><h2>글 유형별 디자인 · 방향성 · 축 범위</h2><p className="muted">글 유형마다 화면 구상(디자인), 공통원칙 위에 얹히는 방향성, 사용할 축 값 범위를 한곳에서 정합니다. 비우면 기본값을 그대로 씁니다.</p></div><span className="badge info">{ids.length}개 유형</span></div>
     {ids.map((tid) => {
       const spec = specs[tid]!;
       const axes = axesForTemplate(spec);
       const direction = overrides[tid]?.direction ?? "";
       return <div key={tid} className="info-panel grid">
         <div className="spread"><b><span className="badge">{tid}</span> {spec.name}</b>{overrides[tid] && <span className="badge warn">오버라이드</span>}</div>
+        <Field label="디자인 (비우면 글유형 기본)">
+          <select className="select" value={overrides[tid]?.design ?? ""} onChange={(e) => setDesign(tid, e.target.value)}>
+            <option value="">기본값 사용 ({designNameOf(spec.default_design)})</option>
+            {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </Field>
         <Field label="방향성 (비우면 기본값 사용)">
           <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(tid, e.target.value)} placeholder={spec.default_direction || "기본 방향성 없음"} />
         </Field>

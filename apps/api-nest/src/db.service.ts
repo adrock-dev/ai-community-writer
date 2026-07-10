@@ -371,6 +371,11 @@ export class DbService implements OnModuleInit {
       PRIMARY KEY (domain, template_id),
       FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
     )`);
+    // PR3: 레거시 디자인 오버라이드를 template_overrides.design 으로 1회 이관(멱등, 이후엔 신규 경로가 소유).
+    if (!this.getSetting("pr3_design_migrated")) {
+      this.migratePr3DesignOverrides();
+      this.setSetting("pr3_design_migrated", "1");
+    }
   }
 
   all(sql: string, params: any[] = []): Row[] { return this.db.prepare(sql).all(...params) as Row[]; }
@@ -464,6 +469,26 @@ export class DbService implements OnModuleInit {
   }
   deleteAllCustomTemplates(domain: string): number {
     return this.run("DELETE FROM custom_templates WHERE domain=?", [domain]).changes ?? 0;
+  }
+  // PR3: 레거시 design_template_overrides(글유형→디자인 문자열 맵)를 template_overrides[tid].design 으로 이관.
+  // per-entry 멱등(design 이 이미 있으면 안 건드림) — 레거시 컬럼은 읽기 폴백으로 남긴다. migrate()에서 1회 플래그로 호출.
+  migratePr3DesignOverrides(): number {
+    let updated = 0;
+    for (const row of this.all("SELECT domain, design_template_overrides, template_overrides FROM domains")) {
+      const legacy = safeJson(row.design_template_overrides, {});
+      if (!legacy || typeof legacy !== "object" || Array.isArray(legacy) || !Object.keys(legacy).length) continue;
+      const tplRaw = safeJson(row.template_overrides, {});
+      const tpl: Record<string, any> = (tplRaw && typeof tplRaw === "object" && !Array.isArray(tplRaw)) ? tplRaw : {};
+      let changed = false;
+      for (const [tid, designId] of Object.entries(legacy as Record<string, unknown>)) {
+        const d = String(designId || "").trim();
+        if (!d) continue;
+        const entry = (tpl[tid] && typeof tpl[tid] === "object" && !Array.isArray(tpl[tid])) ? tpl[tid] : {};
+        if (entry.design === undefined) { entry.design = d; tpl[tid] = entry; changed = true; }
+      }
+      if (changed) { this.run("UPDATE domains SET template_overrides=? WHERE domain=?", [JSON.stringify(tpl), row.domain]); updated++; }
+    }
+    return updated;
   }
   // 커스텀 글유형 부분 편집(PATCH). 제공된 필드만 갱신. axis_tags 는 stringify(트랩). kind 검증은 호출측.
   updateCustomTemplate(domain: string, templateId: string, fields: Row): number {
