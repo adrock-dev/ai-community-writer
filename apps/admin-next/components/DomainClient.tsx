@@ -630,51 +630,15 @@ const AUTO_DESIGN_ID = "auto";
 
 function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; designPresets: DesignTemplateOption[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
-  const [design, setDesign] = useState<string>(domain.design_template_id ?? AUTO_DESIGN_ID);
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
-  const [presetName, setPresetName] = useState("");
-  const [presetHtml, setPresetHtml] = useState("");
-  const [presetBusy, setPresetBusy] = useState(false);
-  const presetFileInputRef = useRef<HTMLInputElement | null>(null);
-  const allDesignTemplates: DesignTemplateOption[] = [...options.design_templates, ...designPresets];
+  const allDesignTemplates: DesignTemplateOption[] = options.design_templates;
   const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
-  const designOptions = allDesignTemplates.filter((tpl) => tpl.id !== "custom");
-  const isAuto = design === AUTO_DESIGN_ID;
   const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const save = () => {
     if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 디자인 설정만 저장할까요?")) return;
-    onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: design, custom_design_templates: custom.trim() });
+    // 전체 디자인 강제 제거 — 항상 글 유형별 자동 매칭(auto)으로 정규화.
+    onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: AUTO_DESIGN_ID, custom_design_templates: custom.trim() });
   };
-  async function uploadPreset() {
-    if (!presetHtml.trim()) { alert("HTML 파일을 선택하거나 HTML 내용을 붙여넣어 주세요."); return; }
-    setPresetBusy(true);
-    try {
-      await createDesignPreset(domain.domain, { name: presetName.trim(), html: presetHtml });
-      setPresetName("");
-      setPresetHtml("");
-      if (presetFileInputRef.current) presetFileInputRef.current.value = "";
-      await onRefresh();
-    } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
-    finally { setPresetBusy(false); }
-  }
-  async function removePreset(id: string) {
-    if (!confirm("이 HTML 기반 디자인을 삭제할까요? 이미 생성된 글에는 영향이 없습니다.")) return;
-    setPresetBusy(true);
-    try {
-      await deleteDesignPreset(domain.domain, id);
-      setPresetName("");
-      setPresetHtml("");
-      if (presetFileInputRef.current) presetFileInputRef.current.value = "";
-      await onRefresh();
-    }
-    catch (err) { alert(err instanceof Error ? err.message : String(err)); }
-    finally { setPresetBusy(false); }
-  }
-  async function readPresetFile(file: File | null) {
-    if (!file) return;
-    setPresetName((prev) => prev || file.name.replace(/\.html?$/i, ""));
-    setPresetHtml(await file.text());
-  }
   const builtinIds = Object.keys(options.template_specs);
   const activeBuiltins = builtinIds.filter((id) => enabled.has(id));
   const availableBuiltins = builtinIds.filter((id) => !enabled.has(id));
@@ -716,44 +680,22 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
           <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
             const bp = designBlueprintFor(tpl.id, tpl);
             return <div key={tpl.id} className="info-panel">
-              <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.source_type === "uploaded_html" ? "HTML" : tpl.id}</span></div>
+              <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.id}</span></div>
               <p className="muted small">{tpl.summary}</p>
               <p className="small"><b>추천:</b> {tpl.best_for}</p>
               <p className="small"><b>톤:</b> {bp.tone}</p>
               <div className="row">{bp.sections.slice(0, 4).map((section, index) => <span key={`${section}-${index}`} className="badge">{section}</span>)}</div>
-              {tpl.source_type === "uploaded_html" && <button type="button" className="btn danger" disabled={presetBusy} onClick={() => removePreset(tpl.id)}>삭제</button>}
             </div>;
           })}</div>
         </details>
-        <details className="template-advanced">
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>고급 · 프리셋 추가 / 커스텀 메모 / 전체 강제</h3><p className="muted small">일반 운영에서는 열지 않아도 됩니다. HTML 프리셋 추가, 커스텀 메모, 전체 디자인 강제가 필요할 때만 펼치세요.</p></div><span className="badge warn">고급</span></div></summary>
-        <div className="template-subsection template-subsection-upload">
-          <div className="template-subsection-head"><div><h3>HTML 예시로 디자인 추가</h3><p className="muted small">블로그 예시 HTML을 업로드하면 섹션 흐름, 톤, CSS 힌트를 추출해 디자인 프리셋으로 저장합니다.</p></div><span className="badge info">프리셋 추가</span></div>
-          <p className="preset-warning small">HTML 프리셋은 예시 파일을 그대로 복제하는 기능이 아니라 구조와 스타일을 최대한 참고하는 기능입니다. 실제 글은 글 유형 지침과 검증된 후보 자료를 우선하므로, 원본 HTML과 1:1로 동일하게 보이지 않을 수 있습니다.</p>
-          <div className="grid grid-2">
-            <Field label="프리셋 이름"><input className="input" value={presetName} onChange={(e) => setPresetName(e.target.value)} placeholder="예: 우리 블로그 카드형 스타일" /></Field>
-            <Field label="HTML 파일"><input ref={presetFileInputRef} className="input" type="file" accept=".html,.htm,text/html" onClick={(e) => { e.currentTarget.value = ""; }} onChange={(e) => readPresetFile(e.target.files?.[0] ?? null)} /></Field>
-          </div>
-          <Field label="HTML 내용"><textarea className="textarea mono" rows={7} value={presetHtml} onChange={(e) => setPresetHtml(e.target.value)} placeholder="<html>...</html>" /></Field>
-          <div className="row"><button type="button" className="btn" disabled={presetBusy || !presetHtml.trim()} onClick={uploadPreset}>{presetBusy ? "저장 중..." : "HTML 디자인 저장"}</button><span className="muted small">저장 후 아래 수동 변경 드롭다운에 표시됩니다.</span></div>
-        </div>
-        <div className="template-subsection">
-          <Field label="직접 만드는 디자인 메모">
+        <details className="template-subsection">
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>직접 만드는 디자인 메모 (선택)</h3><p className="muted small">기본 디자인 밖의 레이아웃이 필요할 때만. 원하는 구조를 적고, 커스텀 글유형에서 디자인을 ‘커스텀’으로 지정하면 이 메모가 작성 프롬프트로 들어갑니다.</p></div><span className="badge">선택</span></div></summary>
+          <Field label="디자인 메모">
             <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
-            <p className="muted small">커스텀 글유형에서 디자인을 ‘커스텀’으로 지정한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
           </Field>
-          <Field label="고급: 전체 디자인 강제">
-            <select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
-              <option value={AUTO_DESIGN_ID}>사용 안 함 - 글 유형별 자동 추천</option>
-              {designOptions.map((tpl) => <option key={tpl.id} value={tpl.id}>모든 글을 {tpl.name}으로 강제</option>)}
-            </select>
-            <p className="muted small">특별한 브랜드 운영 정책이 있을 때만 사용하세요. 강제하면 글 유형별 수동 변경은 저장만 되고 생성에는 적용되지 않습니다.</p>
-          </Field>
-          {!isAuto && <p className="toast-warn">전체 디자인 강제 모드입니다. 글 유형별 디자인보다 현재 고급 설정이 우선 적용됩니다.</p>}
-        </div>
         </details>
         <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/디자인 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
@@ -773,7 +715,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
   const [editId, setEditId] = useState<string | null>(null);
   const enabledSet = new Set(domainConfig.templates_enabled);
 
-  const designChoices = useMemo(() => [...options.design_templates, ...designPresets], [options.design_templates, designPresets]);
+  const designChoices = useMemo(() => [...options.design_templates], [options.design_templates]);
   const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const kindOptions = useMemo(() => {
     const map = new Map<string, { label: string; primary: string }>();
