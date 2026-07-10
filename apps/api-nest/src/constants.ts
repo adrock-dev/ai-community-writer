@@ -62,6 +62,9 @@ export type TemplateSpecShape = {
   weight: number;
   min_sv: number;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  // 글유형 소속 축 값 프리셋(persona/intent/modifier). 있으면 도메인 공통 축 풀을 '대체'한다(없으면 폴백).
+  // region/keyword 는 도메인 실데이터라 여기 두지 않는다.
+  axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   default_direction?: string;
   default_design?: string;
 };

@@ -3,7 +3,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
 import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
-import { filterAxisValues, resolveAcceptedTags, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
+import { filterAxisValues, resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, buildKeyword } from "./archetypes.js";
 
 type Row = Record<string, any>;
@@ -47,9 +47,10 @@ export class SlotService {
       const primaryValues = axes[primaryAxis] || [];
       if (!primaryValues.length) { summary[tid] = 0; continue; }
       // 글유형 수용 태그로 축 값을 부분집합화한다. 부합 값이 없으면 해당 축을 생략(null)해 미스매치를 피한다.
-      const personaPool = filterAxisValues("persona", axes.persona, resolveAcceptedTags(spec, "persona", override));
-      const intentPool = filterAxisValues("intent", axes.intent, resolveAcceptedTags(spec, "intent", override));
-      const modifierPool = filterAxisValues("modifier", axes.modifier, resolveAcceptedTags(spec, "modifier", override));
+      // 프리셋(spec.axis_values) 있으면 도메인 풀 대체, 없으면 도메인 풀+태그필터 폴백.
+      const personaPool = resolveAxisPool(spec, "persona", axes.persona, override);
+      const intentPool = resolveAxisPool(spec, "intent", axes.intent, override);
+      const modifierPool = resolveAxisPool(spec, "modifier", axes.modifier, override);
       // 레시피 파라미터(use_persona/with_intent/modifier_count)는 spec 기본값 + 도메인 오버라이드.
       const recipe = resolveRecipeFlags(spec, override);
       const personaValues = recipe.use_persona ? (personaPool.length ? personaPool : [{ value: null }]) : [{ value: null }];
@@ -118,7 +119,7 @@ export class SlotService {
       const axesReport: Row = {};
       for (const axis of taggedAxes) {
         const accepted = resolveAcceptedTags(spec, axis, override);
-        const pool = filterAxisValues(axis, axes[axis] || [], accepted);
+        const pool = resolveAxisPool(spec, axis, axes[axis] || [], override);
         poolSizes[axis] = pool.length;
         axesReport[axis] = { used: usedByAxis[axis], accepted_tags: accepted, pool_size: pool.length, total: (axes[axis] || []).length };
         if (usedByAxis[axis] && pool.length === 0) warnings.push({ level: "warn", code: `${axis}_pool_empty`, message: `${axis} 축을 쓰지만 이 유형이 수용하는 태그에 맞는 값이 없어(0) 조합에서 무시됩니다.` });

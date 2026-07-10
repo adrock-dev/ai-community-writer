@@ -75,6 +75,14 @@ export function filterAxisValues(axis: TaggedAxis, values: Row[], accepted: stri
   return values.filter((row) => valueMatchesAccepted(tagsForValue(axis, row.value), accepted));
 }
 
+// persona/intent/modifier 축 풀 결정: 글유형 프리셋(spec.axis_values)이 있으면 도메인 풀을 '대체'(태그 필터 없이 그대로),
+// 없으면 기존 동작(도메인 풀 + 수용 태그 필터)으로 폴백. region/keyword 는 대상 아님(호출측에서 안 넘김).
+export function resolveAxisPool(spec: TemplateSpecShape | undefined, axis: TaggedAxis, domainValues: Row[], override: TemplateOverride | undefined): Row[] {
+  const preset = spec?.axis_values?.[axis];
+  if (Array.isArray(preset) && preset.length) return preset.map((value) => ({ value }));
+  return filterAxisValues(axis, domainValues, resolveAcceptedTags(spec, axis, override));
+}
+
 export type TemplateOverride = {
   direction?: string;
   axis_tags?: Partial<Record<TaggedAxis, string[]>>;

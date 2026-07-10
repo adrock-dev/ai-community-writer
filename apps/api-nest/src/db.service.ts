@@ -428,6 +428,7 @@ export class DbService implements OnModuleInit {
         weight: Number(builtin.weight ?? 1),
         min_sv: Number(builtin.min_sv ?? 0),
         axis_tags: builtin.axis_tags,
+        axis_values: builtin.axis_values,
         default_direction: builtin.default_direction,
         default_design: builtin.default_design,
       };
