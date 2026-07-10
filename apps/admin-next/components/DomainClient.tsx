@@ -442,9 +442,6 @@ function OperatorTour({ mode, steps, stepIndex, onStepChange, onTab, onClose, on
         return;
       }
       setMissingTarget(false);
-      // 타깃이 접힌 <details>(예: 고급 슬롯 패널) 안이면 펼쳐서 측정·하이라이트가 가능하게 한다.
-      const collapsed = active.closest("details:not([open])") as HTMLDetailsElement | null;
-      if (collapsed) collapsed.open = true;
       active.classList.add("tour-target-active");
       const rawRect = active.getBoundingClientRect();
       const scrollBlock = rawRect.height > window.innerHeight * 0.55 ? "start" : "center";
@@ -1292,23 +1289,17 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const [web, setWeb] = useState(genDefaults.web);
   const [imageGen, setImageGen] = useState(genDefaults.imageGen);
   const [imageSize, setImageSize] = useState(genDefaults.imageSize);
-  const [max, setMax] = useState(200);
+  const [max, setMax] = useState(30); // 1단계: 선택 글유형의 후보 생성 개수(유형당 상한)
   const [remoteSlots, setRemoteSlots] = useState(slots);
   const [remoteTotal, setRemoteTotal] = useState(slots.length);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [queueBusy, setQueueBusy] = useState(false);
   const [busy, setBusy] = useState(false); // 후보 생성/삭제 등 느린 작업 로딩
   const [slotError, setSlotError] = useState("");
-  // P5b: '유형 + 개수 + 생성' 주 흐름. 슬롯 목록/작성 옵션은 아래 '고급' 접이식으로 보존.
+  // P5b: 1단계 후보 만들기를 '글유형 + 개수'로. 유형 라벨/후보상한은 coherence(빌트인+커스텀 공통).
   const enabledTypeIds = domain.templates_enabled;
   const [genType, setGenType] = useState(enabledTypeIds[0] ?? "");
-  const [genCount, setGenCount] = useState(10);
-  const [genBalanced, setGenBalanced] = useState(true);
-  const [balancedTouched, setBalancedTouched] = useState(false); // 사용자가 직접 토글하면 유형별 자동 기본값을 덮지 않는다.
-  const [genBusy, setGenBusy] = useState(false);
   const [typeMeta, setTypeMeta] = useState<Record<string, CoherenceTemplate>>({});
-
-  // 유형 라벨·주축·후보 상한: coherence(빌트인+커스텀 공통). 실패해도 생성은 가능(부가정보).
   useEffect(() => {
     let cancelled = false;
     getCoherence(domain.domain)
@@ -1316,20 +1307,11 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [domain.domain]);
-
   const enabledTypes = enabledTypeIds.map((id) => {
     const meta = typeMeta[id];
     const spec = options.template_specs[id];
-    return { id, name: meta?.name ?? spec?.name ?? id, primaryAxis: meta?.primary_axis ?? spec?.primary?.[0] ?? "keyword", upper: meta?.estimated_slot_upperbound };
+    return { id, name: meta?.name ?? spec?.name ?? id, upper: meta?.estimated_slot_upperbound };
   });
-  const selectedType = enabledTypes.find((t) => t.id === genType) ?? enabledTypes[0];
-
-  // balanced 기본값: 주축이 지역인 유형(지역허브·BEST비교 등)은 전국 골고루 ON, 단일 대상(단독소개 등)은 OFF. 사용자가 만지면 유지.
-  useEffect(() => {
-    if (balancedTouched) return;
-    const axis = selectedType?.primaryAxis;
-    if (axis) setGenBalanced(axis === "region");
-  }, [genType, selectedType?.primaryAxis, balancedTouched]);
 
   useEffect(() => { setRemoteSlots(slots); setRemoteTotal(slots.length); }, [slots]);
 
@@ -1361,31 +1343,8 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const writerPayload = { provider, model, design_template_id: domain.design_template_id, use_web_research: web, cooldown_sec: cooldown, timeout_sec: effectiveTimeout, enable_image_generation: imageGen, image_size: imageSize, image_count: 1, image_provider: "private-codex" };
   const exclusionLines = parseLines(domain.excluded_keywords ?? "");
 
-  // P5b 오케스트레이션(경로1, 프론트): 후보 개수 확인 → 부족하면 그 유형만 확보 → 상위 N 작성 큐 등록. 엔진 무변경.
-  async function generateByType(count: number, label: string) {
-    if (genBusy || busy || queueBusy) return;
-    if (!genType) { alert("먼저 글유형을 선택하세요. (‘글유형/디자인’ 탭에서 유형을 켤 수 있습니다.)"); return; }
-    if (count >= 50 && !confirm(`${label}: ${count}개 글 작성을 큐에 등록할까요?`)) return;
-    setGenBusy(true);
-    try {
-      // 1) 이 유형의 planned 후보가 count 미만이면 그 유형만 자동 확보(slots/generate + template).
-      const listed = await listSlots(domain.domain, { template: genType, status: "planned", limit: 1 });
-      const plannedCount = listed.total ?? listed.count ?? 0;
-      if (plannedCount < count) {
-        await api(`/domains/${encodeURIComponent(domain.domain)}/slots/generate`, { method: "POST", body: JSON.stringify({ template: genType, max_per_template: count }) });
-      }
-      // 2) 상위 count 선택·작성 큐 등록(랜덤 아님: 우선순위 상위 N + 지역 균형 옵션).
-      const r = await enqueueGenerate(domain.domain, { template: genType, max: count, balanced: genBalanced, ...writerPayload });
-      alert(`${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 탭에서 진행상태를 확인하세요.`);
-      await onRefresh(); await loadCurrentSlots(); onTab("jobs");
-    } catch (err) {
-      alert(err instanceof Error ? err.message : String(err));
-    } finally {
-      setGenBusy(false);
-    }
-  }
 
-  async function gen() { if (busy || queueBusy) return; setBusy(true); try { await api(`/domains/${encodeURIComponent(domain.domain)}/slots/generate`, { method: "POST", body: JSON.stringify({ max_per_template: max }) }); await onRefresh(); await loadCurrentSlots(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
+  async function gen() { if (busy || queueBusy || !genType) return; setBusy(true); try { await api(`/domains/${encodeURIComponent(domain.domain)}/slots/generate`, { method: "POST", body: JSON.stringify({ template: genType, max_per_template: max }) }); await onRefresh(); await loadCurrentSlots(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
   async function queue(ids: string[]) {
     if (!ids.length || queueBusy) return;
     setQueueBusy(true);
@@ -1419,48 +1378,25 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
 
   return (
     <div className="grid">
-      <div className="card card-pad grid slot-panel" data-tour="slots-maker">
-        <div>
-          <p className="eyebrow">글 생성</p>
-          <h2>유형 고르고, 개수만큼 생성</h2>
-          <p className="muted small">글유형과 개수를 정하면 후보 확보부터 작성 큐 등록까지 한 번에 진행합니다. <b>개수 N = 우선순위 상위 N개</b>(지역 균형 옵션) — 무작위가 아닙니다.</p>
-        </div>
-        {enabledTypes.length === 0
-          ? <p className="muted small">활성화된 글유형이 없습니다. <button className="btn" onClick={() => onTab("templates")}>글유형/디자인 탭</button>에서 유형을 켜세요.</p>
-          : <>
-            <div className="row slot-panel-actions">
-              <Field label="글유형">
-                <select className="select" style={{ minWidth: 220 }} value={genType} onChange={(e) => { setGenType(e.target.value); setBalancedTouched(false); }}>
-                  {enabledTypes.map((t) => <option key={t.id} value={t.id}>{t.name}{typeof t.upper === "number" ? ` · 후보 상한 ~${t.upper.toLocaleString()}` : ""}</option>)}
-                </select>
-              </Field>
-              <Field label="개수">
-                <input className="input" type="number" min={1} value={genCount} onChange={(e) => setGenCount(Math.max(1, Number(e.target.value) || 1))} style={{ width: 100 }} />
-              </Field>
-              <label className="row small" title="켜면 지역을 골고루 섞어 상위 N을 고릅니다. 끄면 우선순위 순수 상위 N."><input type="checkbox" checked={genBalanced} onChange={(e) => { setGenBalanced(e.target.checked); setBalancedTouched(true); }} /> 지역 균형</label>
-              <button className="btn primary" data-tour="slots-generate" disabled={genBusy || busy || queueBusy} onClick={() => generateByType(genCount, `${selectedType?.name ?? "선택 유형"} ${genCount}개 생성`)}>{genBusy ? "생성 중..." : `${genCount}개 생성`}</button>
-              <button className="btn" data-tour="slots-test" disabled={genBusy || busy || queueBusy} onClick={() => generateByType(1, "1개 테스트 생성")}>1개 테스트 생성</button>
-            </div>
-            <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>제한 {effectiveTimeout}초</span></div>
-            <p className="muted small">추천: <b>1개 테스트 생성</b> → ‘검수·내보내기’에서 확인 → 개수를 늘려 대량 생성. 엔진·모델·웹자료·이미지 등 작성 옵션은 아래 <b>고급</b>에서 바꿉니다.</p>
-          </>}
-      </div>
-
-      <details className="advanced-slots">
-        <summary className="advanced-slots-summary">고급 · 후보 직접 관리 / 작성 옵션 세부 <span className="muted small">(검색·개별 선택·수동 후보 생성·개별 삭제·엔진/모델/이미지)</span></summary>
-        <div className="grid" style={{ marginTop: 16 }}>
       <div className="card card-pad grid slot-panel" data-tour="slots-generator">
         <div>
           <p className="eyebrow">1단계</p>
           <h2>글 후보 만들기</h2>
-          <p className="muted small">지역·키워드·의도 축을 조합해 작성 대기 목록(planned 슬롯)을 만듭니다. LLM을 호출하지 않습니다.</p>
+          <p className="muted small">글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM을 호출하지 않습니다.</p>
         </div>
         <div className="row slot-panel-actions">
-          <Field label="템플릿당 최대">
-            <input className="input" type="number" value={max} onChange={(e) => setMax(Number(e.target.value))} style={{ width: 120 }} />
+          <Field label="글유형">
+            <select className="select" style={{ minWidth: 220 }} value={genType} onChange={(e) => setGenType(e.target.value)}>
+              {enabledTypes.length === 0 && <option value="">활성 글유형 없음</option>}
+              {enabledTypes.map((t) => <option key={t.id} value={t.id}>{t.name}{typeof t.upper === "number" ? ` · 후보 상한 ~${t.upper.toLocaleString()}` : ""}</option>)}
+            </select>
           </Field>
-          <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy} onClick={gen}>{busy ? "만드는 중..." : "재료로 글 후보 만들기"}</button>
+          <Field label="개수">
+            <input className="input" type="number" min={1} value={max} onChange={(e) => setMax(Math.max(1, Number(e.target.value) || 1))} style={{ width: 100 }} />
+          </Field>
+          <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy || !genType} onClick={gen}>{busy ? "만드는 중..." : "글 후보 만들기"}</button>
         </div>
+        {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <button className="btn" onClick={() => onTab("templates")}>글유형/디자인 탭</button>에서 유형을 켜세요.</p>}
         <p className="muted small">조합 재료는 「축」 탭 축 값·「글유형/디자인」 설정·「공통원칙」 탭 제외어를 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
       </div>
@@ -1514,8 +1450,6 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           </table>
         </div>
       </div>
-        </div>
-      </details>
     </div>
   );
 }
