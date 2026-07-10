@@ -82,6 +82,8 @@ export type TemplateOverride = {
   use_persona?: boolean;
   with_intent?: boolean;
   modifier_count?: number;
+  // 글유형별 디자인(PR3: 레거시 design_template_overrides 통합 대상). 디자인 유효성은 소비측(resolveGenerationDesign)에서 검증.
+  design?: string;
 };
 export type TemplateOverrides = Record<string, TemplateOverride>;
 
@@ -110,7 +112,9 @@ export function safeTemplateOverrides(value: unknown): TemplateOverrides {
     if (typeof withIntent === "boolean") entry.with_intent = withIntent;
     const modifierCount = (cfg as Row).modifier_count;
     if (typeof modifierCount === "number" && Number.isFinite(modifierCount)) entry.modifier_count = Math.max(0, Math.min(2, Math.round(modifierCount)));
-    if (entry.direction || entry.axis_tags || entry.use_persona !== undefined || entry.with_intent !== undefined || entry.modifier_count !== undefined) out[templateId] = entry;
+    const design = (cfg as Row).design;
+    if (typeof design === "string" && design.trim()) entry.design = design.trim();
+    if (entry.direction || entry.axis_tags || entry.use_persona !== undefined || entry.with_intent !== undefined || entry.modifier_count !== undefined || entry.design) out[templateId] = entry;
   }
   return out;
 }

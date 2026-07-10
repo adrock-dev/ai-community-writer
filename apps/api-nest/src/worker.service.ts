@@ -761,12 +761,23 @@ ${markdown}`;
 }
 
 // 디자인 결정 우선순위: 작성 요청 지정 → 도메인 설정 → 기본 디자인. auto면 슬롯 글 유형의 기본 디자인으로 치환한다.
-function resolveGenerationDesign(payloadDesign: unknown, domain: Row, templateId: unknown): string {
+// auto 치환 시 통합 경로(template_overrides[tid].design)를 우선 보고, 없으면 레거시 design_template_overrides,
+// 그래도 없으면 글유형 기본. (PR3 groundwork: 신규 경로가 비면 레거시가 이겨 동작 보존. 마이그레이션은 P4c에서 UI와 함께.)
+// export 이유: load-bearing(모든 발행글 디자인 결정)이라 격리 테스트로 회귀 방어한다.
+export function resolveGenerationDesign(payloadDesign: unknown, domain: Row, templateId: unknown): string {
   const requested = String(payloadDesign || "").trim() || String(domain.design_template_id || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE;
   if (requested !== AUTO_DESIGN_TEMPLATE_ID) return requested;
   const templateKey = String(templateId || "");
+  const unified = safeTemplateOverrides(domain.template_overrides)[templateKey]?.design;
+  if (unified && isSelectableDesign(unified)) return unified;
   const overrides = safeDesignOverrides(domain.design_template_overrides);
   return overrides[templateKey] || defaultDesignForTemplate(templateKey);
+}
+
+// 선택 가능한 디자인 id 인가(빌트인 DESIGN_TEMPLATES 또는 업로드 프리셋). safeDesignOverrides 필터와 동일 규칙.
+function isSelectableDesign(id: string): boolean {
+  const value = String(id || "").trim();
+  return DESIGN_TEMPLATES.some((template) => template.id === value) || value.startsWith("uploaded:");
 }
 
 function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset: Row | undefined, archetype: Archetype | undefined, direction: string): string {
