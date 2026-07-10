@@ -1094,6 +1094,9 @@ function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes
   async function preset(form: HTMLFormElement) { const preset_key = String(new FormData(form).get("preset_key") || ""); await api(`/domains/${encodeURIComponent(domain.domain)}/axes/preset`, { method: "POST", body: JSON.stringify({ preset_key }) }); await onRefresh(); }
   async function ai(form: HTMLFormElement) { setAiBusy(true); try { const fd = new FormData(form); await api(`/domains/${encodeURIComponent(domain.domain)}/axes/ai-fill`, { method: "POST", body: JSON.stringify({ provider: fd.get("provider"), model: fd.get("model"), extra_context: fd.get("extra_context"), timeout_sec: 300 }) }); await onRefresh(); } catch (e) { alert((e as Error).message); } finally { setAiBusy(false); } }
   return <div className="grid">
+    <div className="card card-pad">
+      <div className="spread"><div><h2>축 — 생성용 배경 데이터</h2><p className="muted">글 후보를 만들 때 조합에 쓰이는 지역·키워드·의도·페르소나·수식어 값입니다. 프리셋 적용이나 학원 동기화로 채워지며, 평소 생성 때는 열지 않아도 됩니다. 후보 범위를 넓히거나 좁힐 때만 손봅니다.</p></div><span className="badge info">배경 데이터</span></div>
+    </div>
     <div className="grid grid-2">
       <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); ai(e.currentTarget); }}><h2>🤖 AI로 축 자동 생성</h2><textarea className="textarea" name="extra_context" placeholder="추가 컨텍스트" /><div className="row"><select className="select" name="provider" style={{ maxWidth: 160 }}><option>codex</option><option>claude</option></select><input className="input" name="model" placeholder="모델 선택" style={{ maxWidth: 180 }} /><button className="btn primary" disabled={aiBusy}>{aiBusy ? "생성 중..." : "생성"}</button></div></form>
       <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); if (confirm("현재 축을 프리셋으로 덮어쓸까요?")) preset(e.currentTarget); }}><h2>프리셋 적용</h2><select className="select" name="preset_key">{options.preset_options.map((p) => <option key={p}>{p}</option>)}</select><button className="btn">덮어쓰기</button></form>
@@ -1194,7 +1197,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   const recommendedTypes = knownTypeValues.filter((type) => type !== "indoor_academy");
   return <div className="grid">
     <div className="card card-pad grid" data-tour="academies-sync">
-      <div className="spread"><div><h2>DrivingPlus 원천 데이터 동기화</h2><p className="muted">Swagger API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 사용합니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
+      <div className="spread"><div><h2>학원자료 — 생성용 배경 데이터</h2><p className="muted">DrivingPlus 원천 API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 한 번 준비해두면 생성 때 다시 열 필요는 없습니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
       <div className="writer-hint">
         <b>현재 적용 API</b>
         <span>관리자/Nest: <code>{runtimeApis?.admin_api_base ?? "확인 중..."}</code></span>
