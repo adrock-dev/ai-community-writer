@@ -392,7 +392,7 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     sharedStart,
     { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
     { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 디자인으로 넘어갑니다." },
-    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 디자인 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 디자인·방향성·축을 바꾸려면 아래 「커스텀 글유형」에서 그 유형을 복제해 조정하세요.", action: "‘글 유형/디자인 저장’을 누르면 새 글부터 적용됩니다." },
+    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 디자인 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 디자인·방향성·축을 바꾸려면 아래 「커스텀 글유형」에서 그 유형을 복제해 조정하세요.", action: "‘글 유형·디자인 메모 저장’을 누르면 새 글부터 적용됩니다." },
     sourceSync,
     { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
@@ -675,7 +675,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design">
         <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 아래 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
-        <details className="template-subsection">
+        <details className="template-subsection" open>
           <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 글 유형의 기본 디자인(자동 매칭)이며, 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정합니다.</p></div><span className="badge info">설명 보기</span></div></summary>
           <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
             const bp = designBlueprintFor(tpl.id, tpl);
@@ -697,7 +697,7 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
           </Field>
         </details>
-        <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/디자인 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
+        <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형·디자인 메모 저장"}</button><span className="muted small">위에서 담은 글 유형과 디자인 메모가 함께 저장됩니다. 저장 후 새 글부터 적용됩니다.</span></div>
       </div>
     </section>
     <CustomTemplatesManager domainConfig={domain} options={options} designPresets={designPresets} onSave={onSave} />
