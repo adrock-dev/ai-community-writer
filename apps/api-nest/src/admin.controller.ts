@@ -210,7 +210,7 @@ export class AdminController {
   @Patch("domains/:domain/templates/:templateId")
   updateTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("templateId") templateId: string, @Body() body: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
-    if ((TEMPLATE_SPECS as Record<string, unknown>)[templateId]) throw new HttpException("cannot edit builtin template (use template_overrides)", 400);
+    if ((TEMPLATE_SPECS as Record<string, unknown>)[templateId]) throw new HttpException("cannot edit builtin template (clone it to a custom template instead)", 400);
     if (!this.db.getCustomTemplate(domain, templateId)) throw new HttpException("custom template not found", 404);
     if (body.kind !== undefined && !getArchetype(String(body.kind || "").trim())) throw new HttpException(`unknown archetype kind: ${String(body.kind || "").trim() || "(empty)"}`, 400);
     this.db.updateCustomTemplate(domain, templateId, body);

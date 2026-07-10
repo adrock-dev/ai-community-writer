@@ -7,7 +7,7 @@ import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/ge
 import { rememberDomain } from "@/lib/recent-domain";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
-import type { Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateOverride, TemplateSpec } from "@/lib/types";
+import type { Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -392,7 +392,7 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     sharedStart,
     { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
     { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 화면 구상으로 넘어갑니다." },
-    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 바꾸려면 아래 ‘글 유형별 디자인·방향성·축 범위’ 편집기를 쓰고, 프리셋·전체 강제는 ‘고급’에서 사용합니다. 미리보기로 톤·구조를 확인하세요.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
+    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 화면 구상 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 디자인·방향성·축을 바꾸려면 아래 「커스텀 글유형」에서 그 유형을 복제해 조정하세요. 프리셋·전체 강제는 ‘고급’에서 사용합니다. 미리보기로 톤·구조를 확인하세요.", action: "‘글 유형/화면 구상 저장’을 누르면 새 글부터 적용됩니다." },
     sourceSync,
     { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
@@ -618,7 +618,7 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
   }
   return <div className="card card-pad grid" data-tour="plan-brief">
     <h2>공통 작성 원칙</h2>
-    <p className="muted">모든 글 유형에 공통 적용되는 안전·데이터 원칙과 제외어입니다. 글 유형별 방향성·축 범위는 「글유형/디자인」 탭에서, 축 값은 「축」 탭에서 관리합니다.</p>
+    <p className="muted">모든 글 유형에 공통 적용되는 안전·데이터 원칙과 제외어입니다. 글 유형별 방향성·축은 「글유형/디자인」 탭의 커스텀 글유형에서, 공통 축 값은 「축」 탭에서 관리합니다.</p>
     <Field label="공통 작성 원칙 (모든 글 유형 공통)"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="확인된 데이터만 사용하고, 가격·합격률·셔틀은 자료가 있을 때만 단정한다. 확인 가능한 사실이 부족하면 숫자를 부풀리지 말고 확인 방법 중심으로 정직하게 작성한다." /></Field>
     <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 후보 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
     <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형/방향성</button><button className="btn" onClick={() => onTab("axes")}>축 편집</button></div>
@@ -642,7 +642,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
   const allDesignTemplates: DesignTemplateOption[] = [...options.design_templates, ...designPresets];
   const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const designOptions = allDesignTemplates.filter((tpl) => tpl.id !== "custom");
-  // PR3: 글유형별 디자인은 template_overrides[tid].design(아래 "글 유형별 디자인·방향성·축 범위"에서 편집)에서 읽는다. 레거시 design_template_overrides 는 백엔드 폴백으로만 남는다.
+  // 글유형별 디자인은 template_overrides[tid].design(레거시 오버라이드; UI 편집기는 제거—글유형 복제로 대체) → spec.default_design 순으로 읽는다. 엔진은 기존 오버라이드를 계속 존중.
   const designOverrideFor = (id: string) => domain.template_overrides?.[id]?.design || "";
   const effectiveDesignForTemplate = (id: string) => designOverrideFor(id) || options.template_specs[id]?.default_design || "local-guide";
   const enabledTemplateIds = Array.from(enabled).sort();
@@ -727,13 +727,13 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
 
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design">
-        <div><h2>화면 구상 / 디자인</h2><p className="muted">글 유형마다 어울리는 디자인이 자동 적용됩니다. 대부분 그대로 두면 됩니다. 글 유형별로 바꾸려면 아래 ‘글 유형별 디자인·방향성·축 범위’에서, 전체 강제·프리셋·커스텀 메모는 ‘고급’에서 사용합니다.</p></div>
+        <div><h2>화면 구상 / 디자인</h2><p className="muted">글 유형마다 어울리는 디자인이 자동 적용됩니다. 대부분 그대로 두면 됩니다. 글 유형별로 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정하고, 전체 강제·프리셋·커스텀 메모는 ‘고급’에서 사용합니다.</p></div>
         <div className="toast-info">
           <div className="spread"><div><b>{isAuto ? AUTO_DESIGN_OPTION.name : "전체 화면 구상 강제"}</b><p className="muted small">{isAuto ? AUTO_DESIGN_OPTION.summary : "모든 글 유형에 같은 화면 구상을 적용합니다. 글 유형별 수동 변경보다 우선합니다."}</p></div><span className={`badge ${isAuto ? "success" : "warn"}`}>{isAuto ? "권장" : "예외"}</span></div>
           <div className="row">{autoTargetIds.slice(0, 6).map((id) => <span key={id} className="badge">{designNameOf(id)}</span>)}</div>
         </div>
         <details className="template-subsection">
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>화면 구상 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 아래 ‘글 유형별 디자인·방향성·축 범위’에서 바꿉니다.</p></div><span className="badge info">설명 보기</span></div></summary>
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>화면 구상 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 글 유형의 기본 디자인(자동 매칭)이며, 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정합니다.</p></div><span className="badge info">설명 보기</span></div></summary>
           <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
             const bp = designBlueprintFor(tpl.id, tpl);
             return <div key={tpl.id} className="info-panel">
@@ -764,7 +764,7 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
-            <p className="muted small">아래 ‘글 유형별 디자인·방향성·축 범위’에서 디자인을 ‘커스텀’으로 선택한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
+            <p className="muted small">커스텀 글유형에서 디자인을 ‘커스텀’으로 지정한 글에만 이 메모가 작성 프롬프트로 들어갑니다.</p>
           </Field>
           <Field label="고급: 전체 화면 구상 강제">
             <select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
@@ -798,7 +798,6 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
         <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형/화면 구상 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
       </div>
     </section>
-    <TemplateOverridesEditor domain={domain} enabledTemplateIds={enabledTemplateIds} options={options} designPresets={designPresets} busy={busy} onSave={onSave} />
     <CustomTemplatesManager domainConfig={domain} options={options} designPresets={designPresets} onSave={onSave} />
   </div>;
 }
@@ -1009,129 +1008,35 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
       <Field label="디자인"><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
         {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
       </select></Field>
-      <Field label="modifier 수"><select className="select" value={modifierCount} onChange={(e) => setModifierCount(Number(e.target.value))}>
-        <option value={0}>0</option><option value={1}>1</option><option value={2}>2</option>
-      </select></Field>
-    </div>
-    <div className="row">
-      <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={usePersona} onChange={(e) => setUsePersona(e.target.checked)} /> persona 사용</label>
-      <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={withIntent} onChange={(e) => setWithIntent(e.target.checked)} /> intent 사용</label>
     </div>
     <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
-    {(usePersona || withIntent || modifierCount > 0) && <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">축 값 프리셋 (선택)</b><p className="muted small">채우면 이 글유형 전용 축 값으로 <b>도메인 공통 축을 대체</b>합니다. 비우면 도메인 공통 축을 사용합니다. 한 줄에 하나씩.</p></div>
-      {usePersona && <Field label="persona 값"><textarea className="textarea" rows={3} value={personaVals} onChange={(e) => setPersonaVals(e.target.value)} placeholder={"퇴근 후 배우는 직장인\n주말만 가능한 직장인"} /></Field>}
-      {withIntent && <Field label="intent 값"><textarea className="textarea" rows={3} value={intentVals} onChange={(e) => setIntentVals(e.target.value)} placeholder={"필기접수\n준비물"} /></Field>}
-      {modifierCount > 0 && <Field label="modifier 값"><textarea className="textarea" rows={3} value={modifierVals} onChange={(e) => setModifierVals(e.target.value)} placeholder={"필기시험부터\n상담전확인"} /></Field>}
-    </div>}
+    <div className="grid" style={{ gap: 8 }}>
+      <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">쓸 축을 켜고 값을 채우면 이 글유형 전용 값으로 도메인 공통 축을 <b>대체</b>합니다(비우면 공통 축 사용). 직접 입력·시작점 복제 모두 여기서 조정합니다. 한 줄에 하나씩.</p></div>
+      <div className="info-panel grid" style={{ gap: 6 }}>
+        <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={usePersona} onChange={(e) => setUsePersona(e.target.checked)} /> <b>persona</b> 사용 — 누구에게 말할지(독자)</label>
+        {usePersona && <textarea className="textarea" rows={3} value={personaVals} onChange={(e) => setPersonaVals(e.target.value)} placeholder={"퇴근 후 배우는 직장인\n주말만 가능한 직장인   (비우면 도메인 공통 persona 사용)"} />}
+      </div>
+      <div className="info-panel grid" style={{ gap: 6 }}>
+        <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={withIntent} onChange={(e) => setWithIntent(e.target.checked)} /> <b>intent</b> 사용 — 사용자가 무엇을 알고 싶은지</label>
+        {withIntent && <textarea className="textarea" rows={3} value={intentVals} onChange={(e) => setIntentVals(e.target.value)} placeholder={"필기접수\n준비물   (비우면 도메인 공통 intent 사용)"} />}
+      </div>
+      <div className="info-panel grid" style={{ gap: 6 }}>
+        <label className="row" style={{ gap: 6, alignItems: "center" }}>
+          <input type="checkbox" checked={modifierCount > 0} onChange={(e) => setModifierCount(e.target.checked ? 1 : 0)} /> <b>modifier</b> 사용 — 강조할 장점
+          {modifierCount > 0 && <><span className="muted small">· 개수</span>
+            <select className="select" style={{ width: 56 }} value={modifierCount} onChange={(e) => setModifierCount(Number(e.target.value))}>
+              <option value={1}>1</option><option value={2}>2</option>
+            </select><span className="muted small">개 조합</span></>}
+        </label>
+        {modifierCount > 0 && <textarea className="textarea" rows={3} value={modifierVals} onChange={(e) => setModifierVals(e.target.value)} placeholder={"필기시험부터\n상담전확인   (비우면 도메인 공통 modifier 사용)"} />}
+      </div>
+    </div>
     <div className="row">
       <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
       {mode === "edit" && <button type="button" className="btn" disabled={busy} onClick={onCancel}>취소</button>}
       {mode === "edit" && <span className="muted small">참조 아키타입(kind)은 만든 뒤 바꿀 수 없습니다.</span>}
     </div>
   </div>;
-}
-
-type TaggedAxis = "persona" | "intent" | "modifier";
-const TAGGED_AXES: TaggedAxis[] = ["persona", "intent", "modifier"];
-const AXIS_TAG_LABEL: Record<string, string> = {
-  select: "학원선택", practice: "실기연습", license: "면허종류", schedule: "시간대", cost: "비용", written: "필기", location: "위치", exam: "시험단계", timing: "시기/상황", common: "공통", "*": "전체 허용",
-};
-
-function sameSet(a: string[], b: string[]): boolean {
-  if (a.length !== b.length) return false;
-  const sb = new Set(b);
-  return a.every((x) => sb.has(x));
-}
-
-// 글유형별 방향성 + 축 수용 태그 오버라이드 편집기. 비우면 글유형 기본값(상수)을 그대로 사용한다.
-function TemplateOverridesEditor({ domain, enabledTemplateIds, options, designPresets, busy, onSave }: { domain: DomainConfig; enabledTemplateIds: string[]; options: AdminOptions; designPresets: DesignTemplateOption[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
-  const [overrides, setOverrides] = useState<Record<string, TemplateOverride>>(() => domain.template_overrides ?? {});
-  const [saving, setSaving] = useState(false);
-  const specs = options.template_specs;
-  // "custom" 포함: 선택 시 도메인의 "직접 만드는 화면 구상 메모"(custom_design_templates)가 그 글유형에 적용된다.
-  const designChoices = [...options.design_templates, ...designPresets];
-  const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
-  // 구버전 API(axis_tag_vocab 미노출)에서도 크래시 없이 동작하도록 방어.
-  const vocab = options.axis_tag_vocab ?? { persona: [], intent: [], modifier: [] };
-  const ids = (enabledTemplateIds.length ? enabledTemplateIds : Object.keys(specs)).filter((id) => specs[id]);
-
-  const axesForTemplate = (spec: TemplateSpec): TaggedAxis[] => TAGGED_AXES.filter((axis) =>
-    axis === "persona" ? spec.use_persona : axis === "intent" ? Boolean(spec.with_intent) : (spec.modifier_count ?? 0) > 0);
-  const defaultTags = (tid: string, axis: TaggedAxis): string[] => specs[tid]?.axis_tags?.[axis] ?? ["*"];
-  const acceptedTags = (tid: string, axis: TaggedAxis): string[] => overrides[tid]?.axis_tags?.[axis] ?? defaultTags(tid, axis);
-  const hasOverride = (tid: string, axis: TaggedAxis): boolean => Boolean(overrides[tid]?.axis_tags?.[axis]);
-
-  function mutate(tid: string, fn: (entry: TemplateOverride) => TemplateOverride) {
-    setOverrides((prev) => {
-      const draft = fn({ ...(prev[tid] ?? {}) });
-      const next = { ...prev };
-      const cleaned: TemplateOverride = {};
-      if (draft.direction && draft.direction.trim()) cleaned.direction = draft.direction;
-      if (draft.axis_tags && Object.keys(draft.axis_tags).length) cleaned.axis_tags = draft.axis_tags;
-      if (draft.design && draft.design.trim()) cleaned.design = draft.design;
-      if (cleaned.direction || cleaned.axis_tags || cleaned.design) next[tid] = cleaned; else delete next[tid];
-      return next;
-    });
-  }
-  const setDirection = (tid: string, value: string) => mutate(tid, (e) => ({ ...e, direction: value }));
-  const setDesign = (tid: string, value: string) => mutate(tid, (e) => ({ ...e, design: value || undefined }));
-  function setAxisTags(tid: string, axis: TaggedAxis, tags: string[]) {
-    mutate(tid, (e) => {
-      const at = { ...(e.axis_tags ?? {}) };
-      if (sameSet(tags, defaultTags(tid, axis))) delete at[axis]; else at[axis] = tags;
-      return { ...e, axis_tags: Object.keys(at).length ? at : undefined };
-    });
-  }
-  function toggleTag(tid: string, axis: TaggedAxis, tag: string) {
-    const cur = acceptedTags(tid, axis);
-    let next: string[];
-    if (cur.includes("*")) next = [tag];
-    else if (cur.includes(tag)) next = cur.filter((t) => t !== tag);
-    else next = [...cur, tag];
-    if (!next.length) next = ["*"];
-    setAxisTags(tid, axis, next);
-  }
-  const resetAxis = (tid: string, axis: TaggedAxis) => setAxisTags(tid, axis, defaultTags(tid, axis));
-
-  async function save() {
-    setSaving(true);
-    try { await onSave({ template_overrides: overrides }); }
-    finally { setSaving(false); }
-  }
-
-  return <section className="card card-pad grid" data-tour="templates-directions">
-    <div className="spread"><div><h2>글 유형별 디자인 · 방향성 · 축 범위</h2><p className="muted">글 유형마다 화면 구상(디자인), 공통원칙 위에 얹히는 방향성, 사용할 축 값 범위를 한곳에서 정합니다. 비우면 기본값을 그대로 씁니다.</p></div><span className="badge info">{ids.length}개 유형</span></div>
-    {ids.map((tid) => {
-      const spec = specs[tid]!;
-      const axes = axesForTemplate(spec);
-      const direction = overrides[tid]?.direction ?? "";
-      return <div key={tid} className="info-panel grid">
-        <div className="spread"><b><span className="badge">{tid}</span> {spec.name}</b>{overrides[tid] && <span className="badge warn">오버라이드</span>}</div>
-        <Field label="디자인 (비우면 글유형 기본)">
-          <select className="select" value={overrides[tid]?.design ?? ""} onChange={(e) => setDesign(tid, e.target.value)}>
-            <option value="">기본값 사용 ({designNameOf(spec.default_design)})</option>
-            {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-          </select>
-          {overrides[tid]?.design === "custom" && <p className="muted small">&quot;커스텀&quot; 선택 시 위 &quot;화면 구상/디자인&quot;의 &quot;직접 만드는 화면 구상 메모&quot;가 이 글유형에 적용됩니다.</p>}
-        </Field>
-        <Field label="방향성 (비우면 기본값 사용)">
-          <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(tid, e.target.value)} placeholder={spec.default_direction || "기본 방향성 없음"} />
-        </Field>
-        {axes.length > 0 && <div className="grid">{axes.map((axis) => {
-          const accepted = acceptedTags(tid, axis);
-          const allMode = accepted.includes("*");
-          return <div key={axis} className="row" style={{ flexWrap: "wrap", alignItems: "center", gap: 6 }}>
-            <span className="muted small" style={{ minWidth: 64 }}>{axis}</span>
-            <button type="button" className={`badge ${allMode ? "info" : ""}`} style={{ cursor: "pointer" }} onClick={() => setAxisTags(tid, axis, ["*"])}>전체 허용</button>
-            {vocab[axis].map((tag) => <button key={tag} type="button" className={`badge ${!allMode && accepted.includes(tag) ? "success" : ""}`} style={{ cursor: "pointer", opacity: allMode ? 0.45 : 1 }} onClick={() => toggleTag(tid, axis, tag)}>{AXIS_TAG_LABEL[tag] ?? tag}</button>)}
-            {hasOverride(tid, axis) && <button type="button" className="btn" style={{ padding: "2px 8px" }} onClick={() => resetAxis(tid, axis)}>기본값</button>}
-          </div>;
-        })}</div>}
-      </div>;
-    })}
-    <div className="row"><button className="btn primary" disabled={busy || saving} onClick={save}>{saving ? "저장 중..." : "방향성/축 범위 저장"}</button><span className="muted small">저장 후 새 글 후보/생성글부터 적용됩니다.</span></div>
-  </section>;
 }
 
 function designBlueprintFor(id: string, option?: DesignTemplateOption): typeof DESIGN_BLUEPRINTS[string] {
