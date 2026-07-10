@@ -1,6 +1,6 @@
 "use client";
 
-import { api, createDesignPreset, deleteDesignPreset, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
+import { api, cloneTemplate, createDesignPreset, createTemplate, deleteDesignPreset, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -799,17 +799,35 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
       </div>
     </section>
     <TemplateOverridesEditor domain={domain} enabledTemplateIds={enabledTemplateIds} options={options} busy={busy} onSave={onSave} />
-    <CustomTemplatesManager domain={domain.domain} options={options} designPresets={designPresets} />
+    <CustomTemplatesManager domainConfig={domain} options={options} designPresets={designPresets} onSave={onSave} />
   </div>;
 }
 
-// 커스텀 글유형 관리(목록 + 정합성 미리보기). 생성/복제/편집/삭제는 다음 단계에서 추가.
-function CustomTemplatesManager({ domain, options, designPresets }: { domain: string; options: AdminOptions; designPresets: DesignTemplateOption[] }) {
+// 커스텀 글유형 관리: 목록 + 정합성 미리보기 + 생성/복제/편집/삭제 + 켜기/끄기.
+function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }: { domainConfig: DomainConfig; options: AdminOptions; designPresets: DesignTemplateOption[]; onSave: (f: Record<string, unknown>) => Promise<void> }) {
+  const domain = domainConfig.domain;
   const [custom, setCustom] = useState<CustomTemplate[]>([]);
   const [coherence, setCoherence] = useState<Record<string, CoherenceTemplate>>({});
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const designNameOf = (id?: string) => [...options.design_templates, ...designPresets].find((d) => d.id === id)?.name ?? id ?? "local-guide";
+  const [editId, setEditId] = useState<string | null>(null);
+  const enabledSet = new Set(domainConfig.templates_enabled);
+
+  const designChoices = useMemo(() => [...options.design_templates, ...designPresets], [options.design_templates, designPresets]);
+  const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
+  const kindOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const spec of Object.values(options.template_specs)) {
+      const k = spec.kind ?? "";
+      if (k && !map.has(k)) map.set(k, `${k} — ${spec.name} 계열`);
+    }
+    return [...map.entries()].map(([kind, label]) => ({ kind, label }));
+  }, [options.template_specs]);
+  const cloneSources = useMemo(() => [
+    ...Object.entries(options.template_specs).map(([id, spec]) => ({ id, label: `${id} ${spec.name} (빌트인)` })),
+    ...custom.map((t) => ({ id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)` })),
+  ], [options.template_specs, custom]);
 
   async function reload() {
     setLoading(true); setError("");
@@ -822,25 +840,62 @@ function CustomTemplatesManager({ domain, options, designPresets }: { domain: st
   }
   useEffect(() => { void reload(); }, [domain]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true); setError("");
+    try { await fn(); await reload(); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  function toggleEnabled(tid: string, on: boolean) {
+    const next = new Set(domainConfig.templates_enabled);
+    on ? next.add(tid) : next.delete(tid);
+    void run(() => onSave({ templates_enabled: Array.from(next).sort() }));
+  }
+
   return <section className="card card-pad grid">
     <div className="spread">
-      <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다.</p></div>
-      <div className="row"><span className="badge info">{custom.length}개</span><button type="button" className="btn" disabled={loading} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
+      <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 "켜기"를 눌러야 생성에 쓰입니다.</p></div>
+      <div className="row"><span className="badge info">{custom.length}개</span><button type="button" className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
     </div>
     {error && <p className="toast-warn">{error}</p>}
+
+    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} busy={busy}
+      onSubmit={(body) => run(() => createTemplate(domain, body))} />
+    <CloneTemplatePanel sources={cloneSources} busy={busy}
+      onClone={(sourceId, name) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name: name || undefined }))} />
+
     {loading ? <p className="muted small">불러오는 중...</p> : custom.length === 0
-      ? <p className="muted small">아직 커스텀 글유형이 없습니다. (다음 단계에서 생성·복제 UI가 추가됩니다.)</p>
+      ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
+        const on = enabledSet.has(t.template_id);
+        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" initial={t} kindOptions={kindOptions} designChoices={designChoices} busy={busy}
+          onCancel={() => setEditId(null)}
+          onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
         return <div key={t.template_id} className="info-panel grid">
-          <div className="spread"><b><span className="badge">{t.template_id}</span> {t.name}</b><span className="badge info">아키타입 {t.kind}</span></div>
+          <div className="spread">
+            <b><span className="badge">{t.template_id}</span> {t.name}</b>
+            <div className="row">
+              <span className="badge info">아키타입 {t.kind}</span>
+              <button type="button" className={`btn ${on ? "" : "primary"}`} disabled={busy} onClick={() => toggleEnabled(t.template_id, !on)}>{on ? "끄기" : "켜기"}</button>
+              <button type="button" className="btn" disabled={busy} onClick={() => setEditId(t.template_id)}>편집</button>
+              <button type="button" className="btn danger" disabled={busy} onClick={() => {
+                if (!confirm(`커스텀 글유형 '${t.name}'을 삭제할까요? 이미 생성된 글에는 영향이 없습니다.`)) return;
+                const next = new Set(domainConfig.templates_enabled); next.delete(t.template_id);
+                void run(async () => {
+                  await deleteTemplate(domain, t.template_id);
+                  if (domainConfig.templates_enabled.includes(t.template_id)) await onSave({ templates_enabled: Array.from(next).sort() });
+                });
+              }}>삭제</button>
+            </div>
+          </div>
           <div className="row">
+            <span className={`badge ${on ? "success" : ""}`}>{on ? "사용 중" : "미사용"}</span>
             {t.use_persona && <span className="badge">persona</span>}
             {t.with_intent && <span className="badge">intent</span>}
             {t.modifier_count > 0 && <span className="badge">modifier {t.modifier_count}</span>}
             <span className="badge">weight {t.weight}</span>
             <span className="badge info">디자인 {designNameOf(t.default_design)}</span>
-            {coh && <span className={`badge ${coh.enabled ? "success" : ""}`}>{coh.enabled ? "사용 중" : "미사용"}</span>}
           </div>
           {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
           {coh && <>
@@ -850,6 +905,70 @@ function CustomTemplatesManager({ domain, options, designPresets }: { domain: st
         </div>;
       })}</div>}
   </section>;
+}
+
+// 커스텀 글유형 생성/편집 폼.
+function CustomTemplateForm({ mode, initial, kindOptions, designChoices, busy, onSubmit, onCancel }: {
+  mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string }[]; designChoices: DesignTemplateOption[]; busy: boolean;
+  onSubmit: (body: Partial<CustomTemplate>) => void; onCancel?: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [kind, setKind] = useState(initial?.kind ?? kindOptions[0]?.kind ?? "");
+  const [design, setDesign] = useState(initial?.default_design ?? "local-guide");
+  const [usePersona, setUsePersona] = useState(initial?.use_persona ?? false);
+  const [withIntent, setWithIntent] = useState(initial?.with_intent ?? false);
+  const [modifierCount, setModifierCount] = useState(initial?.modifier_count ?? 0);
+  const [direction, setDirection] = useState(initial?.default_direction ?? "");
+
+  function submit() {
+    if (!name.trim()) { alert("이름을 입력하세요."); return; }
+    if (!kind) { alert("참조 아키타입을 선택하세요."); return; }
+    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined });
+    if (mode === "create") { setName(""); setDirection(""); }
+  }
+
+  return <div className="info-panel grid">
+    <div className="spread"><b>{mode === "create" ? "새 커스텀 글유형" : `편집 · ${initial?.template_id}`}</b>{mode === "edit" && <span className="badge warn">편집 중</span>}</div>
+    <div className="grid grid-2">
+      <Field label="이름"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 심야 학원 특집" /></Field>
+      <Field label="참조 아키타입 (kind)"><select className="select" value={kind} onChange={(e) => setKind(e.target.value)} disabled={mode === "edit"}>
+        {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
+      </select></Field>
+      <Field label="디자인"><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
+        {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+      </select></Field>
+      <Field label="modifier 수"><select className="select" value={modifierCount} onChange={(e) => setModifierCount(Number(e.target.value))}>
+        <option value={0}>0</option><option value={1}>1</option><option value={2}>2</option>
+      </select></Field>
+    </div>
+    <div className="row">
+      <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={usePersona} onChange={(e) => setUsePersona(e.target.checked)} /> persona 사용</label>
+      <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={withIntent} onChange={(e) => setWithIntent(e.target.checked)} /> intent 사용</label>
+    </div>
+    <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
+    <div className="row">
+      <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "create" ? "만들기" : "저장"}</button>
+      {mode === "edit" && <button type="button" className="btn" disabled={busy} onClick={onCancel}>취소</button>}
+      {mode === "edit" && <span className="muted small">참조 아키타입(kind)은 만든 뒤 바꿀 수 없습니다.</span>}
+    </div>
+  </div>;
+}
+
+// 기존 글유형(빌트인/커스텀)에서 복제.
+function CloneTemplatePanel({ sources, busy, onClone }: { sources: { id: string; label: string }[]; busy: boolean; onClone: (sourceId: string, name: string) => void }) {
+  const [source, setSource] = useState(sources[0]?.id ?? "");
+  const [name, setName] = useState("");
+  return <div className="info-panel grid">
+    <b>기존 글유형에서 복제</b>
+    <p className="muted small">빌트인/커스텀 글유형을 그대로 복사해 조정 시작점으로 씁니다(참조 아키타입·파라미터 복제).</p>
+    <div className="grid grid-2">
+      <Field label="원본 글유형"><select className="select" value={source} onChange={(e) => setSource(e.target.value)}>
+        {sources.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+      </select></Field>
+      <Field label="새 이름 (비우면 '원본 (복사본)')"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="(선택)" /></Field>
+    </div>
+    <div className="row"><button type="button" className="btn" disabled={busy || !source} onClick={() => onClone(source, name.trim())}>{busy ? "복제 중..." : "복제"}</button></div>
+  </div>;
 }
 
 type TaggedAxis = "persona" | "intent" | "modifier";
