@@ -983,8 +983,9 @@ function TemplateOverridesEditor({ domain, enabledTemplateIds, options, designPr
   const [overrides, setOverrides] = useState<Record<string, TemplateOverride>>(() => domain.template_overrides ?? {});
   const [saving, setSaving] = useState(false);
   const specs = options.template_specs;
-  const designChoices = [...options.design_templates, ...designPresets].filter((d) => d.id !== "custom");
-  const designNameOf = (id?: string) => [...options.design_templates, ...designPresets].find((d) => d.id === id)?.name ?? id ?? "local-guide";
+  // "custom" 포함: 선택 시 도메인의 "직접 만드는 화면 구상 메모"(custom_design_templates)가 그 글유형에 적용된다.
+  const designChoices = [...options.design_templates, ...designPresets];
+  const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   // 구버전 API(axis_tag_vocab 미노출)에서도 크래시 없이 동작하도록 방어.
   const vocab = options.axis_tag_vocab ?? { persona: [], intent: [], modifier: [] };
   const ids = (enabledTemplateIds.length ? enabledTemplateIds : Object.keys(specs)).filter((id) => specs[id]);
@@ -1046,6 +1047,7 @@ function TemplateOverridesEditor({ domain, enabledTemplateIds, options, designPr
             <option value="">기본값 사용 ({designNameOf(spec.default_design)})</option>
             {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
+          {overrides[tid]?.design === "custom" && <p className="muted small">&quot;커스텀&quot; 선택 시 위 &quot;화면 구상/디자인&quot;의 &quot;직접 만드는 화면 구상 메모&quot;가 이 글유형에 적용됩니다.</p>}
         </Field>
         <Field label="방향성 (비우면 기본값 사용)">
           <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(tid, e.target.value)} placeholder={spec.default_direction || "기본 방향성 없음"} />
