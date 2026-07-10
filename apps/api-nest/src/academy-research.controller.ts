@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { checkAuth } from "./admin.controller.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyResearchService } from "./academy-research.service.js";
+import type { ResearchProviderPreference } from "./academy-research-llm.js";
 
 type Row = Record<string, any>;
 
@@ -48,18 +49,15 @@ export class AcademyResearchController {
   @Post("sync")
   async sync(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
     checkAuth(req, headers);
-    const region = String(body?.region || "").trim();
-    if (!region) throw new HttpException("region is required", 400);
-    return this.service.syncRegion(region, { reviewLimit: Number(body?.review_limit) || 5, blogReviewLimit: Number(body?.blog_review_limit) || 5 });
+    return this.service.syncAll({ reviewLimit: Number(body?.review_limit) || 5, blogReviewLimit: Number(body?.blog_review_limit) || 5 });
   }
 
-  // 지역 전체 AI 조사 시작(a, 백그라운드) — run_id 반환
+  // 전체 AI 조사 시작(a, 백그라운드) — run_id 반환
   @Post("research/region")
   async researchRegion(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
     checkAuth(req, headers);
-    const region = String(body?.region || "").trim();
-    if (!region) throw new HttpException("region is required", 400);
-    const result = await this.service.startRegionResearch(region);
+    const provider = parseResearchProvider(body?.provider);
+    const result = await this.service.startRegionResearch(undefined, { provider });
     if (!result.ok) throw new HttpException(result.error || "failed", 409);
     return result;
   }
@@ -82,9 +80,10 @@ export class AcademyResearchController {
 
   // 단건 AI 조사(b, 동기)
   @Post(":externalId/research")
-  async researchOne(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("externalId") externalId: string) {
+  async researchOne(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("externalId") externalId: string, @Body() body: Row) {
     checkAuth(req, headers);
-    const result = await this.service.researchOne(externalId, { method: "b_single" });
+    const provider = parseResearchProvider(body?.provider);
+    const result = await this.service.researchOne(externalId, { method: "b_single", provider });
     // 소스 못 찾음은 실패가 아니라 명시적 상태로 반환.
     if (!result.ok && !result.no_sources) throw new HttpException(result.error || "failed", 400);
     return result;
@@ -117,4 +116,10 @@ export class AcademyResearchController {
     });
     return { ok: true, external_id: externalId, field_key: fieldKey };
   }
+}
+
+function parseResearchProvider(value: unknown): ResearchProviderPreference {
+  if (value == null || value === "") return "auto";
+  if (value === "auto" || value === "codex" || value === "claude") return value;
+  throw new HttpException("provider must be auto, codex or claude", 400);
 }

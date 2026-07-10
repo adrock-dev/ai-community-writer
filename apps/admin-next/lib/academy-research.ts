@@ -10,13 +10,21 @@ export interface AcademyBaseRow {
   phone?: string | null;
   vphone?: string | null;
   academy_type?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   thumb_url?: string | null;
+  photos?: string | null;
+  seo_title?: string | null;
+  seo_keywords?: string | null;
+  seo_description?: string | null;
+  raw_json?: string | null;
   synced_at?: string | null;
   researched_at?: string | null;
   research_engine?: string | null;
 }
 
 export interface StatusDef { code: string; label: string; rank: number }
+export type ResearchProvider = "auto" | "codex" | "claude";
 
 export interface ResearchRun {
   id: string;
@@ -71,10 +79,10 @@ export const listAcademyResearch = (region?: string, q?: string) => {
 export const getAcademyResearch = (externalId: string) => api<AcademyFull>(`/academy-research/${encodeURIComponent(externalId)}`);
 export const listStatusDefs = () => api<{ items: StatusDef[] }>("/academy-research/status-defs");
 export const listResearchRuns = () => api<{ items: ResearchRun[] }>("/academy-research/runs");
-export const syncRegion = (region: string) => api<{ region: string; matched: number; total: number; reviews: number }>("/academy-research/sync", { method: "POST", body: JSON.stringify({ region }) });
+export const syncRegion = () => api<{ matched: number; total: number; reviews: number }>("/academy-research/sync", { method: "POST", body: JSON.stringify({}) });
 export const syncOneAcademy = (externalId: string) => api<{ external_id: string; found: boolean; reviews: number }>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });
-export const researchOneAcademy = (externalId: string) => api<{ ok: boolean; external_id: string; provider?: string; error?: string; no_sources?: boolean; sources?: number }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST" });
-export const researchRegion = (region: string) => api<{ ok: boolean; run_id?: string; count?: number; error?: string }>("/academy-research/research/region", { method: "POST", body: JSON.stringify({ region }) });
+export const researchOneAcademy = (externalId: string, provider: ResearchProvider = "auto") => api<{ ok: boolean; external_id: string; provider?: string; error?: string; no_sources?: boolean; sources?: number }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST", body: JSON.stringify({ provider }) });
+export const researchRegion = (provider: ResearchProvider = "auto") => api<{ ok: boolean; run_id?: string; count?: number; error?: string }>("/academy-research/research/region", { method: "POST", body: JSON.stringify({ provider }) });
 export const updateResearchField = (externalId: string, field: string, value: unknown) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field`, { method: "PATCH", body: JSON.stringify({ field, value }) });
 export const setResearchFieldMeta = (externalId: string, body: { field_key: string; status?: string; source_url?: string; note?: string }) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field-meta`, { method: "PATCH", body: JSON.stringify(body) });
 

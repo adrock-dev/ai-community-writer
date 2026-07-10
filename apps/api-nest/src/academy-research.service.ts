@@ -2,8 +2,8 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { DrivingplusApiService, type DrivingplusAcademy } from "./drivingplus-api.service.js";
 import {
-  detectResearchProvider, parseResearchJson, runResearchCli,
-  type ResearchProvider, type ResearchResult,
+  detectResearchProviders, parseResearchJson, runResearchCli,
+  type ResearchProvider, type ResearchProviderPreference, type ResearchResult,
 } from "./academy-research-llm.js";
 import { buildExtractionPrompt, gatherSources } from "./academy-research-web.js";
 
@@ -27,16 +27,14 @@ export class AcademyResearchService {
     @Inject(DrivingplusApiService) private readonly drivingplus: DrivingplusApiService,
   ) {}
 
-  // 지역(예: "부산")으로 DrivingPlus 학원을 동기화. 리뷰/블로그리뷰 원문 포함(A안).
-  // 리스트만 먼저 받아 지역으로 거른 뒤, 매칭된 학원만 리뷰를 개별 호출(전국 리뷰 선(先)조회 방지).
-  async syncRegion(region: string, opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): Promise<{ region: string; matched: number; total: number; reviews: number }> {
+  // DrivingPlus 전체 학원을 동기화. 리뷰/블로그리뷰 원문 포함(A안).
+  async syncAll(opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): Promise<{ matched: number; total: number; reviews: number }> {
     const all = await this.drivingplus.fetchAcademies();
-    const matched = all.filter((a) => addressMatchesRegion(a.roadAddress, region));
     let reviewCount = 0;
-    for (const academy of matched) {
+    for (const academy of all) {
       reviewCount += await this.upsertWithReviews(academy, opts);
     }
-    return { region, matched: matched.length, total: all.length, reviews: reviewCount };
+    return { matched: all.length, total: all.length, reviews: reviewCount };
   }
 
   // 단건(외부 id) 동기화 — 기본정보/리뷰 새로고침.
@@ -77,11 +75,11 @@ export class AcademyResearchService {
   // ---- AI 심층조사 ----
 
   // b: 단건 조사(B안 = 자체 fetch). Node가 직접 공개 페이지를 수집 → LLM이 소스 본문에서만 추출.
-  async researchOne(externalId: string, opts: { method?: string; provider?: ResearchProvider; runId?: string } = {}): Promise<{ ok: boolean; external_id: string; provider?: ResearchProvider; error?: string; no_sources?: boolean; sources?: number }> {
+  async researchOne(externalId: string, opts: { method?: string; provider?: ResearchProviderPreference; runId?: string } = {}): Promise<{ ok: boolean; external_id: string; provider?: ResearchProvider; error?: string; no_sources?: boolean; sources?: number }> {
     const base = this.db.getBase(externalId);
     if (!base) return { ok: false, external_id: externalId, error: "학원(base)이 없습니다. 먼저 동기화하세요." };
-    const provider = opts.provider ?? (await detectResearchProvider());
-    if (!provider) return { ok: false, external_id: externalId, error: "claude/codex CLI를 찾을 수 없습니다." };
+    const providers = await this.resolveProviders(opts.provider);
+    if (!providers.length) return { ok: false, external_id: externalId, error: "claude/codex CLI를 찾을 수 없습니다." };
     const method = opts.method ?? "b_single";
     const ref = { external_id: externalId, name: base.name, address: base.address, phone: base.phone, vphone: base.vphone, region: base.region };
 
@@ -89,20 +87,25 @@ export class AcademyResearchService {
     const sources = await gatherSources(ref);
     if (sources.length === 0) {
       this.bumpRun(opts.runId);
-      return { ok: false, external_id: externalId, provider, no_sources: true, error: "공개 소스를 찾지 못했습니다(검색/페치 실패). 값은 저장하지 않았습니다." };
+      return { ok: false, external_id: externalId, provider: providers[0], no_sources: true, error: "공개 소스를 찾지 못했습니다(검색/페치 실패). 값은 저장하지 않았습니다." };
     }
 
     // 2) 소스 본문에서만 추출(웹툴 불필요 → Opus 지정)
     const prompt = buildExtractionPrompt(ref, sources);
-    const out = await runResearchCli(prompt, { provider, model: provider === "claude" ? "opus" : undefined });
-    if (!out.ok) return { ok: false, external_id: externalId, provider, error: out.error || "CLI 실행 실패" };
-    const parsed = parseResearchJson(out.text);
-    if (!parsed) return { ok: false, external_id: externalId, provider, error: "JSON 파싱 실패(응답이 스키마와 다름)" };
+    let lastError = "";
+    for (const provider of providers) {
+      const out = await runResearchCli(prompt, { provider, model: provider === "claude" ? "opus" : undefined });
+      if (!out.ok) { lastError = `${provider}: ${out.error || "CLI 실행 실패"}`; continue; }
+      const parsed = parseResearchJson(out.text);
+      if (!parsed) { lastError = `${provider}: JSON 파싱 실패(응답이 스키마와 다름)`; continue; }
 
-    // 근거 URL이 비어있는 필드는 수집 소스 첫 URL로 보완(추적성 확보)
-    this.persistResearch(externalId, parsed, { engine: provider, method }, sources.map((s) => s.url));
-    this.bumpRun(opts.runId);
-    return { ok: true, external_id: externalId, provider, sources: sources.length };
+      // 근거 URL이 비어있는 필드는 수집 소스 첫 URL로 보완(추적성 확보)
+      this.persistResearch(externalId, parsed, { engine: provider, method }, sources.map((s) => s.url));
+      this.bumpRun(opts.runId);
+      return { ok: true, external_id: externalId, provider, sources: sources.length };
+    }
+
+    return { ok: false, external_id: externalId, provider: providers[providers.length - 1], error: lastError || "CLI 실행 실패" };
   }
 
   private bumpRun(runId?: string): void {
@@ -111,24 +114,24 @@ export class AcademyResearchService {
     this.db.updateRun(runId, { count_done: Number(run?.count_done ?? 0) + 1 });
   }
 
-  // a: 지역 전체 배치 조사. 백그라운드로 실행하고 runId 를 즉시 반환.
-  async startRegionResearch(region: string, opts: { provider?: ResearchProvider } = {}): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
+  // a: 전체 배치 조사. 백그라운드로 실행하고 runId 를 즉시 반환.
+  async startRegionResearch(region?: string, opts: { provider?: ResearchProviderPreference } = {}): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
     if (this.activeRegionRun) return { ok: false, error: "이미 진행 중인 전체 조사가 있습니다." };
-    const provider = opts.provider ?? (await detectResearchProvider());
-    if (!provider) return { ok: false, error: "claude/codex CLI를 찾을 수 없습니다." };
+    const providers = await this.resolveProviders(opts.provider);
+    if (!providers.length) return { ok: false, error: "claude/codex CLI를 찾을 수 없습니다." };
     const targets = this.db.listBase({ region, limit: 5000 });
-    if (!targets.length) return { ok: false, error: `${region} 지역에 동기화된 학원이 없습니다. 먼저 동기화하세요.` };
+    if (!targets.length) return { ok: false, error: "동기화된 학원이 없습니다. 먼저 동기화하세요." };
 
-    const runId = this.db.createRun({ scope: "all", region, engine: provider, method: "a_batch", count_total: targets.length });
+    const runId = this.db.createRun({ scope: "all", region, engine: opts.provider && opts.provider !== "auto" ? opts.provider : "auto", method: "a_batch", count_total: targets.length });
     this.activeRegionRun = true;
     // 백그라운드 실행(HTTP 응답을 막지 않음). 진행 상황은 research_runs 로 추적.
-    void this.runRegionBatch(runId, targets.map((t) => String(t.external_id)), provider)
-      .catch((error) => { this.logger.error(`region research failed: ${error?.message || error}`); this.db.updateRun(runId, { status: "error", error: String(error?.message || error), finished: true }); })
+    void this.runRegionBatch(runId, targets.map((t) => String(t.external_id)), opts.provider ?? "auto")
+      .catch((error) => { this.logger.error(`batch research failed: ${error?.message || error}`); this.db.updateRun(runId, { status: "error", error: String(error?.message || error), finished: true }); })
       .finally(() => { this.activeRegionRun = false; });
     return { ok: true, run_id: runId, count: targets.length };
   }
 
-  private async runRegionBatch(runId: string, externalIds: string[], provider: ResearchProvider): Promise<void> {
+  private async runRegionBatch(runId: string, externalIds: string[], provider: ResearchProviderPreference): Promise<void> {
     let done = 0;
     for (const externalId of externalIds) {
       try {
@@ -169,6 +172,11 @@ export class AcademyResearchService {
     }
   }
 
+  private async resolveProviders(preference: ResearchProviderPreference | undefined): Promise<ResearchProvider[]> {
+    if (preference && preference !== "auto") return [preference];
+    return detectResearchProviders();
+  }
+
   private storeReviews(externalId: string, academy: DrivingplusAcademy): number {
     let count = 0;
     for (const [i, review] of (academy.reviews ?? []).entries()) {
@@ -204,11 +212,6 @@ export class AcademyResearchService {
     }
     return count;
   }
-}
-
-function addressMatchesRegion(address: string | null | undefined, region: string): boolean {
-  if (!address) return false;
-  return String(address).includes(region);
 }
 
 // 작성자 식별정보 최소화: 첫 글자만 남기고 마스킹.

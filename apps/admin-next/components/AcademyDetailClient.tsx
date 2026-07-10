@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
-  type AcademyFull, type StatusDef, RESEARCH_FIELD_LABELS,
-  getAcademyResearch, listStatusDefs, researchOneAcademy, setResearchFieldMeta, syncOneAcademy, updateResearchField,
+  type AcademyFull, type ResearchProvider, type StatusDef, RESEARCH_FIELD_LABELS,
+  getAcademyResearch, listStatusDefs, researchOneAcademy, setResearchFieldMeta, updateResearchField,
 } from "@/lib/academy-research";
+import { formatDateTime } from "@/lib/date";
 
 export default function AcademyDetailClient({ externalId }: { externalId: string }) {
   const [data, setData] = useState<AcademyFull | null>(null);
@@ -13,6 +14,7 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
   const [values, setValues] = useState<Record<string, string>>({});
   const [statuses, setStatuses] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
+  const [researchProvider, setResearchProvider] = useState<ResearchProvider>("auto");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -35,16 +37,12 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
 
   useEffect(() => { load(); }, [load]);
 
-  async function onSync() {
-    setBusy("sync"); setError(""); setNotice("");
-    try { const r = await syncOneAcademy(externalId); setNotice(r.found ? `동기화 완료 · 리뷰 ${r.reviews}건` : "DrivingPlus에서 학원을 찾지 못했습니다."); await load(); }
-    catch (e: any) { setError(e?.message || "동기화 실패"); }
-    finally { setBusy(""); }
-  }
   async function onResearch() {
+    const targetName = data?.base?.name || externalId;
+    if (!confirm(`${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다. 진행할까요?`)) return;
     setBusy("research"); setError(""); setNotice("");
     try {
-      const r = await researchOneAcademy(externalId);
+      const r = await researchOneAcademy(externalId, researchProvider);
       if (r.no_sources) { setError(`⚠️ ${r.error || "공개 소스를 찾지 못했습니다."}`); await load(); return; }
       if (!r.ok) throw new Error(r.error || "실패");
       setNotice(`AI 조사 완료 (${r.provider}) · 소스 ${r.sources ?? 0}건`); await load();
@@ -72,23 +70,48 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
       <h1 style={{ marginTop: 0 }}>{b.name || "(이름없음)"}</h1>
       <p className="muted">external_id: {b.external_id} · {b.region || "-"} · {b.academy_type || "-"}</p>
 
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 16px" }}>
-        <button className="btn" onClick={onSync} disabled={busy === "sync"}>{busy === "sync" ? "동기화 중…" : "DrivingPlus 재동기화"}</button>
-        <button className="btn" onClick={onResearch} disabled={busy === "research"}>{busy === "research" ? "조사 중… (수분 소요)" : "AI 단건 조사"}</button>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "8px 0 16px" }}>
+        <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
+          <select className="select" value={researchProvider} onChange={(e) => setResearchProvider(e.target.value as ResearchProvider)} disabled={busy === "research"} aria-label="AI 조사 CLI 선택" style={{ width: "auto", minWidth: 112 }}>
+            <option value="auto">자동</option>
+            <option value="codex">Codex</option>
+            <option value="claude">Claude</option>
+          </select>
+          <button className="btn" onClick={onResearch} disabled={busy === "research"} style={{ whiteSpace: "nowrap" }}>{busy === "research" ? "조사 중… (수분 소요)" : "AI 단건 조사"}</button>
+        </div>
       </div>
       {notice && <div className="card card-pad" style={{ borderColor: "#1a9c5b", color: "#1a9c5b", margin: "8px 0" }}>{notice}</div>}
       {error && <div className="card card-pad" style={{ borderColor: "#d64545", color: "#d64545", margin: "8px 0" }}>{error}</div>}
 
-      {/* DrivingPlus 원본(참고, 덮어쓰지 않음) */}
-      <h2>DrivingPlus 원본 <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>(참고 · 조사값과 병존)</span></h2>
+      {/* DrivingPlus 원본 기본정보(참고, 덮어쓰지 않음) */}
+      <h2>DrivingPlus 원본 기본정보 <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>(참고 · 조사값과 병존)</span></h2>
       <div className="card card-pad">
-        <div className="muted">주소</div><div>{b.address || "-"}</div>
-        <div className="muted" style={{ marginTop: 8 }}>전화 / 대표번호</div><div>{b.phone || "-"} / {b.vphone || "-"}</div>
-        <div className="muted" style={{ marginTop: 8 }}>동기화 시각</div><div>{fmt(b.synced_at)}</div>
+        <div style={{ overflowX: "auto" }}>
+          <table className="table">
+            <tbody>
+              <tr><th style={{ width: 150 }}>외부 ID</th><td>{b.external_id}</td></tr>
+              <tr><th>학원명</th><td>{b.name || "-"}</td></tr>
+              <tr><th>지역 / 유형</th><td>{b.region || "-"} / {b.academy_type || "-"}</td></tr>
+              <tr><th>주소</th><td>{b.address || "-"}</td></tr>
+              <tr><th>전화 / 대표번호</th><td>{b.phone || "-"} / {b.vphone || "-"}</td></tr>
+              <tr><th>좌표</th><td>{b.latitude != null && b.longitude != null ? `${b.latitude}, ${b.longitude}` : "-"}</td></tr>
+              <tr><th>썸네일</th><td>{b.thumb_url ? <a href={b.thumb_url} target="_blank" rel="noreferrer">{b.thumb_url}</a> : "-"}</td></tr>
+              <tr><th>사진</th><td className="muted">{fmtJson(b.photos)}</td></tr>
+              <tr><th>SEO 제목</th><td>{b.seo_title || "-"}</td></tr>
+              <tr><th>SEO 키워드</th><td>{b.seo_keywords || "-"}</td></tr>
+              <tr><th>SEO 설명</th><td>{b.seo_description || "-"}</td></tr>
+              <tr><th>원본 동기화 시각</th><td>{fmt(b.synced_at)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <details style={{ marginTop: 12 }}>
+          <summary className="muted" style={{ cursor: "pointer", fontWeight: 700 }}>DrivingPlus 원본 JSON</summary>
+          <pre className="small" style={{ marginTop: 10, padding: 12, overflowX: "auto", background: "#f8fafc", border: "1px solid var(--line)", borderRadius: 8 }}>{fmtJsonPretty(b.raw_json)}</pre>
+        </details>
       </div>
 
-      {/* AI 조사 필드 (값 편집 + 검증상태 토글) */}
-      <h2>심층조사 필드 <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>
+      {/* AI 심층조사 필드 (값 편집 + 검증상태 토글) */}
+      <h2 style={{ marginTop: 28 }}>심층조사 필드 <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>
         {data.research?.researched_at ? `· ${data.research.research_engine || "AI"} · ${fmt(data.research.researched_at)}` : "· 미조사"}
       </span></h2>
       <div style={{ overflowX: "auto" }}>
@@ -145,8 +168,8 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
         </div>
       ) : <p className="muted">조사된 셔틀 노선이 없습니다.</p>}
 
-      {/* 후기 원문 (DrivingPlus review/blogReview) */}
-      <h2>후기 원문 <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>({data.reviews.length}) · DrivingPlus 출처</span></h2>
+      {/* DrivingPlus 원본 후기 (review/blogReview) */}
+      <h2>DrivingPlus 원본 후기 <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>({data.reviews.length})</span></h2>
       {data.reviews.length ? data.reviews.map((rv) => (
         <div key={rv.id} className="card card-pad" style={{ margin: "8px 0" }}>
           <div className="muted" style={{ fontSize: 12 }}>
@@ -162,7 +185,16 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
   );
 }
 
-function fmt(iso?: string | null): string { return iso ? String(iso).slice(0, 16).replace("T", " ") : "-"; }
+function fmt(iso?: string | null): string { return formatDateTime(iso); }
+function fmtJsonPretty(value: unknown): string {
+  if (value == null || value === "") return "-";
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return String(value);
+  }
+}
 function fmtJson(value: unknown): string {
   if (value == null) return "-";
   if (typeof value === "string") { try { const p = JSON.parse(value); return typeof p === "string" ? p : JSON.stringify(p); } catch { return value; } }

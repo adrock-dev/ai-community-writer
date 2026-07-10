@@ -8,6 +8,7 @@ export interface WebSource { url: string; title: string; text: string }
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 const MAX_SOURCES = 4;
 const MAX_CHARS_PER_SOURCE = 3500;
+const NEEDLE_FIELDS = ["셔틀", "노선", "운행", "시간", "가격", "수강료", "교육비", "주말", "야간"];
 
 // 학원 하나에 대해 후보 URL을 찾아 페이지 본문까지 수집.
 export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: number; timeoutMs?: number } = {}): Promise<WebSource[]> {
@@ -31,12 +32,15 @@ export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: 
   }
   const candidates = rankCandidates(dedupe(urls)).slice(0, maxSources);
 
-  // 2) 각 후보 페이지 본문 수집
+  // 2) 각 후보 페이지 본문 수집. 정적 HTML이 부족하면 Playwright 렌더링으로 보강.
   const sources: WebSource[] = [];
   for (const url of candidates) {
     try {
-      const page = await fetchReadable(url, timeoutMs);
-      if (page && page.text.length >= 200) sources.push(page);
+      let page = await fetchReadable(url, timeoutMs);
+      if (shouldTryRenderedFetch(page)) {
+        page = await fetchRenderedReadable(url, timeoutMs).catch(() => page);
+      }
+      if (page && page.text.length >= 200 && sourceMatchesTarget(base, page)) sources.push(page);
     } catch { /* 무시 */ }
     if (sources.length >= maxSources) break;
   }
@@ -111,10 +115,90 @@ function htmlToText(html: string): string {
     .trim();
 }
 
+function shouldTryRenderedFetch(source: WebSource | null): boolean {
+  if (!source) return true;
+  if (source.text.length < 900) return true;
+  return !NEEDLE_FIELDS.some((needle) => source.text.includes(needle));
+}
+
+async function fetchRenderedReadable(url: string, timeoutMs: number): Promise<WebSource | null> {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({
+      userAgent: UA,
+      locale: "ko-KR",
+      viewport: { width: 1365, height: 900 },
+    });
+    page.setDefaultTimeout(timeoutMs);
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+    await page.waitForLoadState("networkidle", { timeout: Math.min(timeoutMs, 5000) }).catch(() => undefined);
+    await expandLikelyContent(page);
+    const title = (await page.title()).replace(/\s+/g, " ").trim();
+    const text = normalizeText(await page.locator("body").innerText({ timeout: Math.min(timeoutMs, 5000) })).slice(0, MAX_CHARS_PER_SOURCE);
+    return { url, title, text };
+  } finally {
+    await browser.close().catch(() => undefined);
+  }
+}
+
+async function expandLikelyContent(page: import("playwright").Page): Promise<void> {
+  const labels = ["셔틀", "노선", "가격", "수강료", "교육비", "시간", "주말", "야간", "더보기", "자세히"];
+  for (const label of labels) {
+    const target = page.getByText(label, { exact: false }).first();
+    if (await target.count().catch(() => 0)) {
+      await target.click({ timeout: 1000 }).catch(() => undefined);
+      await page.waitForTimeout(150).catch(() => undefined);
+    }
+  }
+}
+
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 function timedFetch(url: string, timeoutMs: number, init: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...init, signal: controller.signal, redirect: "follow" }).finally(() => clearTimeout(timer));
+}
+
+function sourceMatchesTarget(base: ResearchBaseRef, source: WebSource): boolean {
+  const haystack = `${source.title} ${source.text}`;
+  return phoneMatches(base, haystack) || addressMatches(base.address, haystack);
+}
+
+function phoneMatches(base: ResearchBaseRef, text: string): boolean {
+  const textDigits = digits(text);
+  const phones = [base.phone, base.vphone]
+    .map((value) => digits(value ?? ""))
+    .filter((value) => value.length >= 7);
+  return phones.some((phone) => textDigits.includes(phone));
+}
+
+function addressMatches(address: string | null | undefined, text: string): boolean {
+  const tokens = addressTokens(address);
+  if (!tokens.length) return false;
+  const compactText = compactAddress(text);
+  const compactAddr = compactAddress(address ?? "");
+  if (compactAddr.length >= 12 && compactText.includes(compactAddr.slice(0, 12))) return true;
+  const matched = tokens.filter((token) => compactText.includes(compactAddress(token))).length;
+  return matched >= Math.min(3, tokens.length);
+}
+
+function addressTokens(address: string | null | undefined): string[] {
+  return String(address ?? "")
+    .split(/\s+/)
+    .map((part) => part.replace(/[(),]/g, "").trim())
+    .filter((part) => part.length >= 2 && !/^\d/.test(part));
+}
+
+function compactAddress(value: string): string {
+  return value.replace(/\s+/g, "").replace(/[(),.-]/g, "").toLowerCase();
+}
+
+function digits(value: string): string {
+  return value.replace(/\D/g, "");
 }
 
 // 수집한 소스 본문으로 추출 프롬프트 구성. "소스에 있는 것만" 강제.

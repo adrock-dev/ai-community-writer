@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 
 export type ResearchProvider = "claude" | "codex";
+export type ResearchProviderPreference = ResearchProvider | "auto";
 
 export interface ResearchBaseRef {
   external_id: string;
@@ -49,9 +50,14 @@ export interface ResearchResult {
 
 // CLI 존재 여부 감지(claude 우선). PATH에서 확인.
 export async function detectResearchProvider(): Promise<ResearchProvider | null> {
-  if (await hasCommand("claude")) return "claude";
-  if (await hasCommand("codex")) return "codex";
-  return null;
+  return (await detectResearchProviders())[0] ?? null;
+}
+
+export async function detectResearchProviders(): Promise<ResearchProvider[]> {
+  const providers: ResearchProvider[] = [];
+  if (await hasCommand("claude")) providers.push("claude");
+  if (await hasCommand("codex")) providers.push("codex");
+  return providers;
 }
 
 function hasCommand(cmd: string): Promise<boolean> {

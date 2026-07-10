@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  type AcademyBaseRow, type ResearchRun,
+  type AcademyBaseRow, type ResearchProvider, type ResearchRun,
   listAcademyResearch, listResearchRuns, researchRegion, syncRegion,
 } from "@/lib/academy-research";
 
 export default function AcademyResearchClient() {
-  const [region, setRegion] = useState("부산");
   const [q, setQ] = useState("");
   const [items, setItems] = useState<AcademyBaseRow[]>([]);
   const [runs, setRuns] = useState<ResearchRun[]>([]);
+  const [researchProvider, setResearchProvider] = useState<ResearchProvider>("auto");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -22,14 +22,14 @@ export default function AcademyResearchClient() {
     setLoading(true);
     setError("");
     try {
-      const res = await listAcademyResearch(region.trim() || undefined, q.trim() || undefined);
+      const res = await listAcademyResearch(undefined, q.trim() || undefined);
       setItems(res.items);
     } catch (e: any) {
       setError(e?.message || "목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [region, q]);
+  }, [q]);
 
   const loadRuns = useCallback(async () => {
     try {
@@ -54,12 +54,13 @@ export default function AcademyResearchClient() {
   }, [runs, loadRuns, load]);
 
   async function onSync() {
+    if (!confirm("DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요?")) return;
     setBusy("sync");
     setError("");
     setNotice("");
     try {
-      const res = await syncRegion(region.trim());
-      setNotice(`동기화 완료 — ${res.region}: ${res.matched}곳(전체 ${res.total}) · 리뷰 원문 ${res.reviews}건`);
+      const res = await syncRegion();
+      setNotice(`동기화 완료 — ${res.matched}곳(전체 ${res.total}) · 리뷰 원문 ${res.reviews}건`);
       await load();
     } catch (e: any) {
       setError(e?.message || "동기화 실패");
@@ -69,12 +70,12 @@ export default function AcademyResearchClient() {
   }
 
   async function onResearchAll() {
-    if (!confirm(`${region} 지역 전체 학원을 AI로 심층조사합니다(백그라운드). 진행할까요?`)) return;
+    if (!confirm(`동기화된 전체 학원을 ${researchProvider}로 심층조사합니다(백그라운드). 진행할까요?`)) return;
     setBusy("research");
     setError("");
     setNotice("");
     try {
-      const res = await researchRegion(region.trim());
+      const res = await researchRegion(researchProvider);
       if (!res.ok) throw new Error(res.error || "시작 실패");
       setNotice(`전체 조사 시작 — 대상 ${res.count}곳 (run: ${res.run_id?.slice(0, 8)})`);
       await loadRuns();
@@ -112,20 +113,26 @@ export default function AcademyResearchClient() {
         admin.db와 분리되어 초기화되지 않습니다.
       </p>
 
-      <div className="card card-pad" style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", margin: "16px 0" }}>
-        <label style={{ display: "grid", gap: 4 }}>
-          <span className="muted">지역</span>
-          <input className="input" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="부산" style={{ width: 120 }} />
-        </label>
-        <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 160 }}>
-          <span className="muted">검색(이름/주소)</span>
-          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
-        </label>
-        <button className="btn" onClick={load} disabled={loading}>새로고침</button>
-        <button className="btn" onClick={onSync} disabled={busy === "sync"}>{busy === "sync" ? "동기화 중…" : "DrivingPlus 동기화"}</button>
-        <button className="btn" onClick={onResearchAll} disabled={busy === "research" || Boolean(activeRun)}>
-          {activeRun ? "조사 진행 중…" : "전체 AI 조사"}
-        </button>
+      <div className="card card-pad grid" style={{ gap: 14, margin: "16px 0" }}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div className="row" style={{ alignItems: "center" }}>
+            <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>학원정보</span>
+            <button className="btn" onClick={onSync} disabled={busy === "sync"}>{busy === "sync" ? "동기화 중…" : "학원정보 동기화"}</button>
+          </div>
+          <div className="row" style={{ alignItems: "center" }}>
+            <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>
+            <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
+              <select className="select" value={researchProvider} onChange={(e) => setResearchProvider(e.target.value as ResearchProvider)} disabled={busy === "research" || Boolean(activeRun)} aria-label="전체 AI 조사 CLI 선택" style={{ width: "auto", minWidth: 112 }}>
+                <option value="auto">자동</option>
+                <option value="codex">Codex</option>
+                <option value="claude">Claude</option>
+              </select>
+              <button className="btn" onClick={onResearchAll} disabled={busy === "research" || Boolean(activeRun)} style={{ whiteSpace: "nowrap" }}>
+                {activeRun ? "조사 진행 중…" : "전체 AI 조사"}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       {notice && <div className="card card-pad" style={{ borderColor: "#1a9c5b", color: "#1a9c5b", margin: "8px 0" }}>{notice}</div>}
@@ -133,14 +140,21 @@ export default function AcademyResearchClient() {
 
       {activeRun && (
         <div className="card card-pad" style={{ margin: "8px 0" }}>
-          <b>전체 조사 진행</b> — {activeRun.region} · {activeRun.engine} · {activeRun.count_done}/{activeRun.count_total}
+          <b>전체 조사 진행</b> — {activeRun.region || "전체"} · {activeRun.engine} · {activeRun.count_done}/{activeRun.count_total}
           <div style={{ height: 8, background: "var(--surface-2, #eee)", borderRadius: 999, marginTop: 8, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${pct(activeRun)}%`, background: "#1f6feb" }} />
           </div>
         </div>
       )}
 
-      <p className="muted">{loading ? "불러오는 중…" : `${items.length}곳`}</p>
+      <div className="row" style={{ alignItems: "flex-end", margin: "18px 0 10px" }}>
+        <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 180 }}>
+          <span className="muted">목록 검색(이름/주소)</span>
+          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
+        </label>
+        <button className="btn" onClick={load} disabled={loading}>새로고침</button>
+        <span className="muted small" style={{ paddingBottom: 10 }}>{loading ? "불러오는 중…" : `${items.length}곳`}</span>
+      </div>
       <div style={{ overflowX: "auto" }}>
         <table className="table">
           <thead>
@@ -162,7 +176,7 @@ export default function AcademyResearchClient() {
             ))}
             {!loading && items.length === 0 && (
               <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 24 }}>
-                동기화된 학원이 없습니다. 위 <b>DrivingPlus 동기화</b>를 먼저 실행하세요.
+                동기화된 학원이 없습니다. 위 <b>학원정보 동기화</b>를 먼저 실행하세요.
               </td></tr>
             )}
           </tbody>
