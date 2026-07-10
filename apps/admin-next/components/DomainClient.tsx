@@ -1415,7 +1415,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
         </div>
         <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>제한 {effectiveTimeout}초</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
-        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 전국 작성은 지역을 라운드로빈으로 섞습니다.</p>
+        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 작성 대상은 무작위가 아니라 우선순위(검색량·경쟁도·weight) 상위 N개를 고르며, 전국 작성은 지역을 라운드로빈으로 섞습니다.</p>
       </div>
 
       <div className="card card-pad grid" data-tour="slots-list">
