@@ -96,7 +96,6 @@ export class AdminController {
     const payload: Row = {
       domain: domainConfig,
       axes: this.db.listAxes(domain),
-      design_presets: this.db.listDesignPresets(domain),
       slot_counts: this.db.countSlots(domain),
       custom_templates: this.db.listCustomTemplates(domain),
       settings: { indexing_has_key: Boolean(this.db.getSetting("google_sa_json")), indexing_url_template: this.indexingUrlTemplate() }
@@ -302,22 +301,8 @@ export class AdminController {
     return { ok: true, mode, imported, skipped, overrides_merged, templates_enabled, warnings };
   }
 
-  @Post("domains/:domain/design-presets")
-  createDesignPreset(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
-    checkAuth(req, headers); this.requireDomain(domain);
-    const html = String(body.html || body.source_html || "").trim();
-    const name = String(body.name || "").trim();
-    if (!html) throw new HttpException("html required", 400);
-    if (html.length > 500_000) throw new HttpException("html too large", 400);
-    const extracted = extractDesignPresetFromHtml(html, name);
-    return { ok: true, preset: this.db.createDesignPreset(domain, extracted) };
-  }
-
-  @Delete("domains/:domain/design-presets/:presetId")
-  deleteDesignPreset(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("presetId") presetId: string) {
-    checkAuth(req, headers); this.requireDomain(domain);
-    return { ok: true, deleted: this.db.deleteDesignPreset(domain, presetId) };
-  }
+  // 디자인 프리셋(HTML 업로드) 생성/삭제 엔드포인트 제거 — 미사용 기능 폐기(프론트 UI 제거됨).
+  // 남은 db.getDesignPreset/워커·렌더 소비 경로는 dormant(uploaded: 디자인 데이터 0). 심층 제거는 별도 정리.
 
   @Delete("domains/:domain")
   deleteDomain(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {

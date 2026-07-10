@@ -77,10 +77,6 @@ export const importTemplates = (domain: string, envelope: Record<string, unknown
 export const getCoherence = (domain: string) =>
   api<CoherenceReport>(`/domains/${encodeURIComponent(domain)}/templates/coherence`);
 
-export const createDesignPreset = (domain: string, body: { name: string; html: string }) =>
-  api<{ ok: true; preset: DesignPreset }>(`/domains/${encodeURIComponent(domain)}/design-presets`, { method: "POST", body: JSON.stringify(body) });
-export const deleteDesignPreset = (domain: string, id: string) =>
-  api<{ ok: true; deleted: number }>(`/domains/${encodeURIComponent(domain)}/design-presets/${encodeURIComponent(id)}`, { method: "DELETE" });
 export const replaceAxis = (domain: string, axis: Axis, values: AxisValue[]) =>
   api<{ ok: true }>(`/domains/${encodeURIComponent(domain)}/axes/${axis}`, { method: "PUT", body: JSON.stringify({ values }) });
 export const enqueueGenerate = (domain: string, body: Record<string, unknown>) =>

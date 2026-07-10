@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createDesignPreset, createTemplate, deleteDesignPreset, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -329,7 +329,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
 
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
       {view === "overview" && tab === "plan" && <Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
-      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} designPresets={payload.design_presets ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
+      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
       {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
@@ -628,17 +628,18 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
 // 도메인 디자인 설정의 특수값: 글마다 후보의 글 유형 기본 디자인(default_design)을 자동 적용한다.
 const AUTO_DESIGN_ID = "auto";
 
-function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; designPresets: DesignTemplateOption[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
+function Templates({ domain, options, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
   const allDesignTemplates: DesignTemplateOption[] = options.design_templates;
   const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const save = () => {
-    if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 디자인 설정만 저장할까요?")) return;
-    // 전체 디자인 강제 제거 — 항상 글 유형별 자동 매칭(auto)으로 정규화.
-    onSave({ templates_enabled: Array.from(enabled).sort(), design_template_id: AUTO_DESIGN_ID, custom_design_templates: custom.trim() });
+  const saveTemplates = () => {
+    if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 그래도 저장할까요?")) return;
+    onSave({ templates_enabled: Array.from(enabled).sort() });
   };
+  // 전체 디자인 강제 제거 — design_template_id 는 항상 auto(글유형별 자동 매칭)로 정규화.
+  const saveDesign = () => onSave({ design_template_id: AUTO_DESIGN_ID, custom_design_templates: custom.trim() });
   const builtinIds = Object.keys(options.template_specs);
   const activeBuiltins = builtinIds.filter((id) => enabled.has(id));
   const availableBuiltins = builtinIds.filter((id) => !enabled.has(id));
@@ -670,42 +671,41 @@ function Templates({ domain, options, designPresets, busy, onSave, onRefresh }: 
               </button>;
             })}</div>}
       </details>
+      <div className="row"><button className="btn primary" disabled={busy} onClick={saveTemplates}>{busy ? "저장 중..." : "글 유형 저장"}</button><span className="muted small">담은 글 유형이 저장됩니다.</span></div>
     </section>
 
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design">
         <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 아래 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
-        <details className="template-subsection" open>
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 글 유형의 기본 디자인(자동 매칭)이며, 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정합니다.</p></div><span className="badge info">설명 보기</span></div></summary>
-          <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
-            const bp = designBlueprintFor(tpl.id, tpl);
-            return <div key={tpl.id} className="info-panel">
-              <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.id}</span></div>
-              <p className="muted small">{tpl.summary}</p>
-              <p className="small"><b>추천:</b> {tpl.best_for}</p>
-              <p className="small"><b>톤:</b> {bp.tone}</p>
-              <div className="row">{bp.sections.slice(0, 4).map((section, index) => <span key={`${section}-${index}`} className="badge">{section}</span>)}</div>
-            </div>;
-          })}</div>
-        </details>
-        <details className="template-subsection">
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>직접 만드는 디자인 메모 (선택)</h3><p className="muted small">기본 디자인 밖의 레이아웃이 필요할 때만. 원하는 구조를 적고, 커스텀 글유형에서 디자인을 ‘커스텀’으로 지정하면 이 메모가 작성 프롬프트로 들어갑니다.</p></div><span className="badge">선택</span></div></summary>
-          <Field label="디자인 메모">
+        <div className="spread"><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 설명입니다(참고용). 실제 적용은 글 유형의 기본 디자인(자동 매칭)이며, 바꾸려면 아래 「커스텀 글유형」에서 복제해 조정합니다.</p></div><span className="badge info">참고</span></div>
+        <div className="grid grid-2">{allDesignTemplates.map((tpl) => {
+          const bp = designBlueprintFor(tpl.id, tpl);
+          return <div key={tpl.id} className="info-panel">
+            <div className="spread"><b>{tpl.name}</b><span className="badge">{tpl.id}</span></div>
+            <p className="muted small">{tpl.summary}</p>
+            <p className="small"><b>추천:</b> {tpl.best_for}</p>
+            <p className="small"><b>톤:</b> {bp.tone}</p>
+            <div className="row">{bp.sections.slice(0, 4).map((section, index) => <span key={`${section}-${index}`} className="badge">{section}</span>)}</div>
+          </div>;
+        })}</div>
+        <div className="template-subsection">
+          <div className="template-subsection-head"><div><h3>커스텀 디자인 메모 (선택)</h3><p className="muted small">기본 디자인 밖의 레이아웃이 필요할 때만. 원하는 구조를 적고, 커스텀 글유형에서 디자인을 ‘커스텀’으로 지정하면 이 메모가 작성 프롬프트로 들어갑니다.</p></div><span className="badge">선택</span></div>
+          <Field label="커스텀 디자인 메모">
             <textarea className="textarea" rows={7} value={custom} onChange={(e) => setCustom(e.target.value)} placeholder={`첫 화면에는 큰 제목과 핵심 요약 3개를 둔다.
 비교표는 본문 상단에 배치한다.
 CTA는 중간 1회, 마지막 1회만 사용한다.
 모바일에서는 카드형 목록으로 보이게 한다.`} />
           </Field>
-        </details>
-        <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "글 유형·디자인 메모 저장"}</button><span className="muted small">위에서 담은 글 유형과 디자인 메모가 함께 저장됩니다. 저장 후 새 글부터 적용됩니다.</span></div>
+          <div className="row"><button className="btn primary" disabled={busy} onClick={saveDesign}>{busy ? "저장 중..." : "커스텀 디자인 저장"}</button><span className="muted small">저장 후 새 글부터 적용됩니다.</span></div>
+        </div>
       </div>
     </section>
-    <CustomTemplatesManager domainConfig={domain} options={options} designPresets={designPresets} onSave={onSave} />
+    <CustomTemplatesManager domainConfig={domain} options={options} onSave={onSave} />
   </div>;
 }
 
 // 커스텀 글유형 관리: 목록 + 정합성 미리보기 + 생성/복제/편집/삭제 + 켜기/끄기.
-function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }: { domainConfig: DomainConfig; options: AdminOptions; designPresets: DesignTemplateOption[]; onSave: (f: Record<string, unknown>) => Promise<void> }) {
+function CustomTemplatesManager({ domainConfig, options, onSave }: { domainConfig: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void> }) {
   const domain = domainConfig.domain;
   const [custom, setCustom] = useState<CustomTemplate[]>([]);
   const [coherence, setCoherence] = useState<Record<string, CoherenceTemplate>>({});

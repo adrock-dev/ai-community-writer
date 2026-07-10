@@ -283,7 +283,6 @@ export interface DomainDetailPayload {
   domain: DomainConfig;
   axes: AxesMap;
   slot_counts: SlotCounts;
-  design_presets?: DesignPreset[];
   settings: { indexing_has_key: boolean; indexing_url_template: string };
   slots?: Slot[];
   posts?: PostSummary[];
