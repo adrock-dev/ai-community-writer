@@ -46,7 +46,7 @@ const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: Tou
     steps: [
       { mode: "basic", focus: "workflow", no: "기본 1", title: "흐름 개요", desc: "기본 흐름 한눈에 보기", tone: "primary" },
       { mode: "basic", focus: "source", no: "기본 2", title: "원천 데이터 준비", desc: "지역/학원 자료부터 동기화" },
-      { mode: "basic", focus: "slot-create", no: "기본 3", title: "글 후보 만들기", desc: "재료로 슬롯 후보 생성" },
+      { mode: "basic", focus: "slot-create", no: "기본 3", title: "글 후보 만들기", desc: "글유형·개수로 후보 생성" },
       { mode: "basic", focus: "test-write", no: "기본 4", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
     ],
   },
@@ -363,8 +363,8 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     target: "slots-generator",
     title: hasSlots ? "1단계 · 후보가 이미 있습니다" : "1단계 · 글 후보 만들기",
     body: hasSlots
-      ? "아래 목록에 후보가 있으면 1단계는 건너뛰어도 됩니다. 더 필요할 때만 「템플릿당 최대」를 조정하고 「재료로 글 후보 만들기」로 추가하세요."
-      : "1단계 카드에서 「템플릿당 최대」만 조정한 뒤 「재료로 글 후보 만들기」를 누르세요. LLM은 호출하지 않고 기획 축·글유형 조합만 만듭니다.",
+      ? "아래 목록에 후보가 있으면 1단계는 건너뛰어도 됩니다. 더 필요할 때만 「글유형」과 「개수」를 정하고 「글 후보 만들기」로 추가하세요."
+      : "1단계 카드에서 「글유형」을 고르고 「개수」를 정한 뒤 「글 후보 만들기」를 누르세요. LLM은 호출하지 않고 기획 축·글유형 조합만 만듭니다.",
     action: hasSlots ? "후보가 충분하면 다음 단계(2단계 글 작성)로 이동하세요." : "실행 후 맨 아래 후보 목록에 행이 생겼는지 확인하세요.",
   };
   const testWrite: TourStep = {
@@ -1405,7 +1405,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         <div>
           <p className="eyebrow">2단계</p>
           <h2>글 작성</h2>
-          <p className="muted small">후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.)</p>
+          <p className="muted small">후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 1단계 ‘글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.)</p>
         </div>
         <div className="grid grid-4">
           <Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field>

@@ -96,7 +96,7 @@ export default function SettingsClient() {
             <span className={`badge ${isDefault ? "" : "info"}`}>{isDefault ? "기본값" : "사용자 지정"}</span>
           </div>
           <p className="muted small" style={{ marginTop: 6 }}>
-            「재료로 글 후보 만들기 / 작성」 화면의 작성 엔진·모델·이미지 옵션 초기값입니다.
+            「글 후보 만들기 / 글 작성」 화면의 작성 엔진·모델·이미지 옵션 초기값입니다.
             자주 쓰는 조합을 저장해두면 매번 다시 고르지 않아도 됩니다.
           </p>
         </div>
