@@ -817,13 +817,14 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
   const designChoices = useMemo(() => [...options.design_templates, ...designPresets], [options.design_templates, designPresets]);
   const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const kindOptions = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, { label: string; primary: string }>();
     for (const spec of Object.values(options.template_specs)) {
       const k = spec.kind ?? "";
-      if (k && !map.has(k)) map.set(k, `${k} — ${spec.name} 계열`);
+      if (k && !map.has(k)) map.set(k, { label: `${k} — ${spec.name} 계열`, primary: spec.primary?.[0] ?? "keyword" });
     }
-    return [...map.entries()].map(([kind, label]) => ({ kind, label }));
+    return [...map.entries()].map(([kind, v]) => ({ kind, label: v.label, primary: v.primary }));
   }, [options.template_specs]);
+  const primaryOfKind = (kind: string) => kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword";
   const cloneSources = useMemo(() => [
     ...Object.entries(options.template_specs).map(([id, spec]) => ({ id, label: `${id} ${spec.name} (빌트인)` })),
     ...custom.map((t) => ({ id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)` })),
@@ -857,6 +858,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
       <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 "켜기"를 눌러야 생성에 쓰입니다.</p></div>
       <div className="row"><span className="badge info">{custom.length}개</span><button type="button" className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
     </div>
+    <p className="toast-info small"><b>주축</b>은 참조 아키타입이 결정합니다(직접 변경 불가). <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개합니다. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등)입니다.</p>
     {error && <p className="toast-warn">{error}</p>}
 
     <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} busy={busy}
@@ -891,6 +893,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
           </div>
           <div className="row">
             <span className={`badge ${on ? "success" : ""}`}>{on ? "사용 중" : "미사용"}</span>
+            <span className="badge">주축 {primaryOfKind(t.kind) === "region" ? "지역형" : "키워드형"}</span>
             {t.use_persona && <span className="badge">persona</span>}
             {t.with_intent && <span className="badge">intent</span>}
             {t.modifier_count > 0 && <span className="badge">modifier {t.modifier_count}</span>}
@@ -909,7 +912,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
 
 // 커스텀 글유형 생성/편집 폼.
 function CustomTemplateForm({ mode, initial, kindOptions, designChoices, busy, onSubmit, onCancel }: {
-  mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string }[]; designChoices: DesignTemplateOption[]; busy: boolean;
+  mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[]; busy: boolean;
   onSubmit: (body: Partial<CustomTemplate>) => void; onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -931,9 +934,12 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, busy, o
     <div className="spread"><b>{mode === "create" ? "새 커스텀 글유형" : `편집 · ${initial?.template_id}`}</b>{mode === "edit" && <span className="badge warn">편집 중</span>}</div>
     <div className="grid grid-2">
       <Field label="이름"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 심야 학원 특집" /></Field>
-      <Field label="참조 아키타입 (kind)"><select className="select" value={kind} onChange={(e) => setKind(e.target.value)} disabled={mode === "edit"}>
-        {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
-      </select></Field>
+      <Field label="참조 아키타입 (kind)">
+        <select className="select" value={kind} onChange={(e) => setKind(e.target.value)} disabled={mode === "edit"}>
+          {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
+        </select>
+        <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b> · 주키워드 규칙·품질 지침은 참조 아키타입이 결정합니다(직접 변경 불가).</p>
+      </Field>
       <Field label="디자인"><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
         {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
       </select></Field>
