@@ -1,13 +1,13 @@
 "use client";
 
-import { api, createDesignPreset, deleteDesignPreset, downloadPostExport, enqueueGenerate, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
+import { api, createDesignPreset, deleteDesignPreset, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
-import type { Academy, AdminOptions, Axis, AxisValue, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateOverride, TemplateSpec } from "@/lib/types";
+import type { Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateOverride, TemplateSpec } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -799,7 +799,57 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
       </div>
     </section>
     <TemplateOverridesEditor domain={domain} enabledTemplateIds={enabledTemplateIds} options={options} busy={busy} onSave={onSave} />
+    <CustomTemplatesManager domain={domain.domain} options={options} designPresets={designPresets} />
   </div>;
+}
+
+// 커스텀 글유형 관리(목록 + 정합성 미리보기). 생성/복제/편집/삭제는 다음 단계에서 추가.
+function CustomTemplatesManager({ domain, options, designPresets }: { domain: string; options: AdminOptions; designPresets: DesignTemplateOption[] }) {
+  const [custom, setCustom] = useState<CustomTemplate[]>([]);
+  const [coherence, setCoherence] = useState<Record<string, CoherenceTemplate>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const designNameOf = (id?: string) => [...options.design_templates, ...designPresets].find((d) => d.id === id)?.name ?? id ?? "local-guide";
+
+  async function reload() {
+    setLoading(true); setError("");
+    try {
+      const [tpl, coh] = await Promise.all([listTemplates(domain), getCoherence(domain)]);
+      setCustom(tpl.custom ?? []);
+      setCoherence(Object.fromEntries((coh.templates ?? []).map((t) => [t.template_id, t])));
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setLoading(false); }
+  }
+  useEffect(() => { void reload(); }, [domain]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return <section className="card card-pad grid">
+    <div className="spread">
+      <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다.</p></div>
+      <div className="row"><span className="badge info">{custom.length}개</span><button type="button" className="btn" disabled={loading} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
+    </div>
+    {error && <p className="toast-warn">{error}</p>}
+    {loading ? <p className="muted small">불러오는 중...</p> : custom.length === 0
+      ? <p className="muted small">아직 커스텀 글유형이 없습니다. (다음 단계에서 생성·복제 UI가 추가됩니다.)</p>
+      : <div className="grid">{custom.map((t) => {
+        const coh = coherence[t.template_id];
+        return <div key={t.template_id} className="info-panel grid">
+          <div className="spread"><b><span className="badge">{t.template_id}</span> {t.name}</b><span className="badge info">아키타입 {t.kind}</span></div>
+          <div className="row">
+            {t.use_persona && <span className="badge">persona</span>}
+            {t.with_intent && <span className="badge">intent</span>}
+            {t.modifier_count > 0 && <span className="badge">modifier {t.modifier_count}</span>}
+            <span className="badge">weight {t.weight}</span>
+            <span className="badge info">디자인 {designNameOf(t.default_design)}</span>
+            {coh && <span className={`badge ${coh.enabled ? "success" : ""}`}>{coh.enabled ? "사용 중" : "미사용"}</span>}
+          </div>
+          {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
+          {coh && <>
+            <p className="small"><b>예상 슬롯 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
+            {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}</p>)}</div>}
+          </>}
+        </div>;
+      })}</div>}
+  </section>;
 }
 
 type TaggedAxis = "persona" | "intent" | "modifier";
