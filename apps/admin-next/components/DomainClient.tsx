@@ -830,12 +830,12 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
     ...Object.entries(options.template_specs).map(([id, spec]) => ({
       id, label: `${id} ${spec.name} (빌트인)`, name: spec.name, kind: spec.kind ?? "",
       use_persona: spec.use_persona, with_intent: Boolean(spec.with_intent), modifier_count: spec.modifier_count,
-      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "",
+      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values,
     })),
     ...custom.map((t) => ({
       id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)`, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
-      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "",
+      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values,
     })),
   ], [options.template_specs, custom]);
 
@@ -919,7 +919,7 @@ function CustomTemplatesManager({ domainConfig, options, designPresets, onSave }
 }
 
 // 커스텀 만들기 '시작점' 옵션 형태(빌트인/커스텀 공통). 고르면 폼 값을 채운다.
-type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string };
+type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] } };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
 function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources, busy, onSubmit, onClone, onCancel }: {
@@ -934,6 +934,9 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
   const [withIntent, setWithIntent] = useState(initial?.with_intent ?? false);
   const [modifierCount, setModifierCount] = useState(initial?.modifier_count ?? 0);
   const [direction, setDirection] = useState(initial?.default_direction ?? "");
+  const [personaVals, setPersonaVals] = useState((initial?.axis_values?.persona ?? []).join("\n"));
+  const [intentVals, setIntentVals] = useState((initial?.axis_values?.intent ?? []).join("\n"));
+  const [modifierVals, setModifierVals] = useState((initial?.axis_values?.modifier ?? []).join("\n"));
   const [source, setSource] = useState(""); // 시작점(빈값=직접 입력). create 모드 전용.
   const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
 
@@ -948,14 +951,28 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
     setWithIntent(src.with_intent);
     setModifierCount(src.modifier_count);
     setDirection(src.default_direction ?? "");
+    setPersonaVals((src.axis_values?.persona ?? []).join("\n"));
+    setIntentVals((src.axis_values?.intent ?? []).join("\n"));
+    setModifierVals((src.axis_values?.modifier ?? []).join("\n"));
   }
+
+  // 축 값 수집: 해당 축이 켜졌고 값이 있을 때만 포함. 비우면 도메인 공통 축으로 폴백.
+  function collectAxisValues(): { persona?: string[]; intent?: string[]; modifier?: string[] } {
+    const out: { persona?: string[]; intent?: string[]; modifier?: string[] } = {};
+    if (usePersona) { const v = parseLines(personaVals); if (v.length) out.persona = v; }
+    if (withIntent) { const v = parseLines(intentVals); if (v.length) out.intent = v; }
+    if (modifierCount > 0) { const v = parseLines(modifierVals); if (v.length) out.modifier = v; }
+    return out;
+  }
+  function resetForm() { setName(""); setDirection(""); setSource(""); setPersonaVals(""); setIntentVals(""); setModifierVals(""); }
 
   function submit() {
     if (!name.trim()) { alert("이름을 입력하세요."); return; }
+    const axisValues = collectAxisValues();
     if (source && onClone) {
-      // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다 — 안 바꾼 값은 소스의 effective 설정(weight·축태그·기존 오버라이드)을 그대로 복제.
+      // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값은 폼이 source of truth(프리필=소스 값)이라 항상 반영.
       const src = sources?.find((s) => s.id === source);
-      const overrides: Record<string, unknown> = {};
+      const overrides: Record<string, unknown> = { axis_values: axisValues };
       if (src) {
         if (design !== src.default_design) overrides.default_design = design;
         if (usePersona !== src.use_persona) overrides.use_persona = usePersona;
@@ -964,12 +981,12 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
         if (direction.trim() !== (src.default_direction ?? "").trim()) overrides.default_direction = direction.trim() || null;
       }
       onClone(source, name.trim(), overrides);
-      if (mode === "create") { setName(""); setDirection(""); setSource(""); }
+      if (mode === "create") resetForm();
       return;
     }
     if (!kind) { alert("참조 아키타입을 선택하세요."); return; }
-    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined });
-    if (mode === "create") { setName(""); setDirection(""); setSource(""); }
+    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues });
+    if (mode === "create") resetForm();
   }
 
   return <div className="info-panel grid">
@@ -1001,6 +1018,12 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
       <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={withIntent} onChange={(e) => setWithIntent(e.target.checked)} /> intent 사용</label>
     </div>
     <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
+    {(usePersona || withIntent || modifierCount > 0) && <div className="grid" style={{ gap: 8 }}>
+      <div><b className="small">축 값 프리셋 (선택)</b><p className="muted small">채우면 이 글유형 전용 축 값으로 <b>도메인 공통 축을 대체</b>합니다. 비우면 도메인 공통 축을 사용합니다. 한 줄에 하나씩.</p></div>
+      {usePersona && <Field label="persona 값"><textarea className="textarea" rows={3} value={personaVals} onChange={(e) => setPersonaVals(e.target.value)} placeholder={"퇴근 후 배우는 직장인\n주말만 가능한 직장인"} /></Field>}
+      {withIntent && <Field label="intent 값"><textarea className="textarea" rows={3} value={intentVals} onChange={(e) => setIntentVals(e.target.value)} placeholder={"필기접수\n준비물"} /></Field>}
+      {modifierCount > 0 && <Field label="modifier 값"><textarea className="textarea" rows={3} value={modifierVals} onChange={(e) => setModifierVals(e.target.value)} placeholder={"필기시험부터\n상담전확인"} /></Field>}
+    </div>}
     <div className="row">
       <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
       {mode === "edit" && <button type="button" className="btn" disabled={busy} onClick={onCancel}>취소</button>}

@@ -147,6 +147,7 @@ export class AdminController {
       weight: body.weight,
       min_sv: body.min_sv,
       axis_tags: body.axis_tags,
+      axis_values: body.axis_values,
       default_direction: body.default_direction,
       default_design: body.default_design,
     });
@@ -192,6 +193,7 @@ export class AdminController {
       weight: spec.weight,
       min_sv: spec.min_sv,
       axis_tags,
+      axis_values: spec.axis_values,
       default_direction: direction || null,
       default_design: spec.default_design,
       ...inline,

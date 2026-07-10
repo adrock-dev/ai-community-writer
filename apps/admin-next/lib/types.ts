@@ -51,6 +51,7 @@ export interface CustomTemplate {
   weight: number;
   min_sv: number;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   default_direction?: string | null;
   default_design?: string;
   created_at?: string;
@@ -243,6 +244,7 @@ export interface TemplateSpec {
   default_design?: string;
   default_direction?: string;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
 }
 
 export interface AdminOptions {

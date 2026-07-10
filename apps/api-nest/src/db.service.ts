@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS custom_templates (
   weight REAL NOT NULL DEFAULT 1.0,
   min_sv INTEGER NOT NULL DEFAULT 0,
   axis_tags TEXT,
+  axis_values TEXT,
   default_direction TEXT,
   default_design TEXT NOT NULL DEFAULT 'local-guide',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -325,6 +326,8 @@ export class DbService implements OnModuleInit {
       ["synced_at", "ALTER TABLE academies ADD COLUMN synced_at TEXT"],
     ];
     for (const [col, sql] of academyMigrations) if (!academyCols.has(col)) this.db.exec(sql);
+    const customTemplateCols = new Set(this.all("PRAGMA table_info(custom_templates)").map((r) => r.name));
+    if (!customTemplateCols.has("axis_values")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN axis_values TEXT");
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
     this.db.exec(`CREATE TABLE IF NOT EXISTS design_presets (
       id TEXT PRIMARY KEY,
@@ -365,6 +368,7 @@ export class DbService implements OnModuleInit {
       weight REAL NOT NULL DEFAULT 1.0,
       min_sv INTEGER NOT NULL DEFAULT 0,
       axis_tags TEXT,
+      axis_values TEXT,
       default_direction TEXT,
       default_design TEXT NOT NULL DEFAULT 'local-guide',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -453,14 +457,15 @@ export class DbService implements OnModuleInit {
   // 커스텀 글유형 생성. id 는 여기서 발급(빌트인/기존 커스텀과 유니크). axis_tags 는 JSON 직렬화해 저장(트랩: TEXT 컬럼 write 는 반드시 stringify).
   createCustomTemplate(domain: string, input: Row): Row {
     const templateId = this.nextCustomTemplateId(domain);
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, default_direction, default_design)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, default_direction, default_design)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [domain, templateId, String(input.name || "").trim(), String(input.kind || "").trim(),
         input.use_persona ? 1 : 0, input.with_intent ? 1 : 0,
         clampModifierCount(input.modifier_count),
         Number.isFinite(Number(input.weight)) ? Number(input.weight) : 1.0,
         Number.isFinite(Number(input.min_sv)) ? Math.trunc(Number(input.min_sv)) : 0,
         serializeAxisTags(input.axis_tags),
+        serializeAxisTags(input.axis_values),
         input.default_direction != null && String(input.default_direction).trim() ? String(input.default_direction).trim() : null,
         String(input.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE]);
     return this.getCustomTemplate(domain, templateId)!;
@@ -504,6 +509,7 @@ export class DbService implements OnModuleInit {
     if (fields.weight !== undefined) push("weight", Number.isFinite(Number(fields.weight)) ? Number(fields.weight) : 1.0);
     if (fields.min_sv !== undefined) push("min_sv", Number.isFinite(Number(fields.min_sv)) ? Math.trunc(Number(fields.min_sv)) : 0);
     if (fields.axis_tags !== undefined) push("axis_tags", serializeAxisTags(fields.axis_tags));
+    if (fields.axis_values !== undefined) push("axis_values", serializeAxisTags(fields.axis_values));
     if (fields.default_direction !== undefined) push("default_direction", fields.default_direction != null && String(fields.default_direction).trim() ? String(fields.default_direction).trim() : null);
     if (fields.default_design !== undefined) push("default_design", String(fields.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE);
     if (!sets.length) return 0;
@@ -514,17 +520,18 @@ export class DbService implements OnModuleInit {
   // created_at 은 봉투 값 보존(없으면 CURRENT_TIMESTAMP), 충돌 시 기존 created_at 유지. axis_tags 는 stringify.
   // 빌트인 id/kind 검증은 호출측(컨트롤러)에서 수행한다.
   importCustomTemplate(domain: string, row: Row): void {
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, default_direction, default_design, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, default_direction, default_design, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
       ON CONFLICT(domain, template_id) DO UPDATE SET
         name=excluded.name, kind=excluded.kind, use_persona=excluded.use_persona, with_intent=excluded.with_intent,
         modifier_count=excluded.modifier_count, weight=excluded.weight, min_sv=excluded.min_sv,
-        axis_tags=excluded.axis_tags, default_direction=excluded.default_direction, default_design=excluded.default_design`,
+        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, default_direction=excluded.default_direction, default_design=excluded.default_design`,
       [domain, String(row.template_id || "").trim(), String(row.name || "").trim(), String(row.kind || "").trim(),
         row.use_persona ? 1 : 0, row.with_intent ? 1 : 0, clampModifierCount(row.modifier_count),
         Number.isFinite(Number(row.weight)) ? Number(row.weight) : 1.0,
         Number.isFinite(Number(row.min_sv)) ? Math.trunc(Number(row.min_sv)) : 0,
         serializeAxisTags(row.axis_tags),
+        serializeAxisTags(row.axis_values),
         row.default_direction != null && String(row.default_direction).trim() ? String(row.default_direction).trim() : null,
         String(row.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE,
         row.created_at != null && String(row.created_at).trim() ? String(row.created_at).trim() : null]);
@@ -981,6 +988,7 @@ function customTemplateSpec(row: Row): TemplateSpecShape {
     weight: Number(row.weight ?? 1),
     min_sv: Number(row.min_sv ?? 0),
     axis_tags: parseAxisTags(row.axis_tags),
+    axis_values: parseAxisTags(row.axis_values),
     default_direction: row.default_direction != null ? String(row.default_direction) : undefined,
     default_design: row.default_design != null ? String(row.default_design) : undefined,
   };
@@ -995,6 +1003,7 @@ export function customTemplateOut(row: Row): Row {
     weight: Number(row.weight ?? 1),
     min_sv: Number(row.min_sv ?? 0),
     axis_tags: parseAxisTags(row.axis_tags) ?? {},
+    axis_values: parseAxisTags(row.axis_values) ?? {},
     custom: true,
   };
 }
