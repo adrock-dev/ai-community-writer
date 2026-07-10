@@ -290,7 +290,7 @@ function renderUploadedPresetHtml({ post, domainConfig, domain, designPreset, bo
     </div>
   </header>
   <main><article><div class="wrap">
-    <div class="notice"><strong>확인 안내</strong> — 실제 글에서는 슬롯/검증 자료의 지역과 학원 정보를 사용합니다.</div>
+    <div class="notice"><strong>확인 안내</strong> — 실제 글에서는 후보/검증 자료의 지역과 학원 정보를 사용합니다.</div>
     ${contentHtml}
   </div></article></main>
 </body>

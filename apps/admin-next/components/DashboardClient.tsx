@@ -124,7 +124,7 @@ export default function DashboardClient() {
 
       <div className="grid grid-3" style={{ marginBottom: 22 }}>
         <Stat label="도메인" value={domains.length} />
-        <Stat label="전체 슬롯" value={domains.reduce((a, t) => a + (t.slot_count ?? 0), 0)} />
+        <Stat label="전체 후보" value={domains.reduce((a, t) => a + (t.slot_count ?? 0), 0)} />
         <Stat label="발행 글" value={domains.reduce((a, t) => a + (t.published_count ?? 0), 0)} accent />
       </div>
 
@@ -140,7 +140,7 @@ export default function DashboardClient() {
             <div className="spread" style={{ marginBottom: 10 }}>
               <div>
                 <h2>도메인 현황</h2>
-                <p className="muted small">전체 도메인의 슬롯·대기·발행 상태를 보고 필요한 화면으로 이동합니다.</p>
+                <p className="muted small">전체 도메인의 후보·대기·발행 상태를 보고 필요한 화면으로 이동합니다.</p>
               </div>
             </div>
             <div className="grid grid-3">
@@ -156,7 +156,7 @@ export default function DashboardClient() {
                   <p className="muted mono small">{t.domain}</p>
                   <RecommendedDomainAction domain={t} />
                   <div className="grid grid-3" style={{ gap: 8, marginTop: 16 }}>
-                    <Mini label="슬롯" value={t.slot_count ?? 0} />
+                    <Mini label="후보" value={t.slot_count ?? 0} />
                     <Mini label="대기" value={t.planned_count ?? 0} />
                     <Mini label="발행" value={t.published_count ?? 0} />
                   </div>

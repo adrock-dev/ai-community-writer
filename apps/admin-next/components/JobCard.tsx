@@ -64,7 +64,7 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         <b>실행 상태</b>
         <span>{activity.label}</span>
         {job.current_step && <span>단계 {job.current_step}</span>}
-        {job.current_slot_id && <span>현재 슬롯 <span className="mono">{job.current_slot_id}</span></span>}
+        {job.current_slot_id && <span>현재 후보 <span className="mono">{job.current_slot_id}</span></span>}
         <span>마지막 활동 {activity.lastSeen}</span>
         <span>처리 {processed}/{total}</span>
       </div>
@@ -77,7 +77,7 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         <span>이미지 {job.payload_obj?.enable_image_generation ? `생성 / ${String(job.payload_obj?.image_size || "1024x1024")}` : "미사용"}</span>
       </div>
       <p className="muted small">예약 {formatDateTime(job.scheduled_at)} · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)} · 대기 {String(job.payload_obj?.cooldown_sec ?? "-")}초 · 제한 {String(job.payload_obj?.timeout_sec ?? "-")}초</p>
-      {slotIds.length > 0 && <p className="muted small mono">슬롯 {slotIds.slice(0, 8).join(", ")}{slotIds.length > 8 ? ` 외 ${slotIds.length - 8}개` : ""}</p>}
+      {slotIds.length > 0 && <p className="muted small mono">후보 {slotIds.slice(0, 8).join(", ")}{slotIds.length > 8 ? ` 외 ${slotIds.length - 8}개` : ""}</p>}
       {job.kind === "generate" && job.domain && (
         <Link href={`/t/${encodeURIComponent(job.domain)}/posts?job=${encodeURIComponent(job.id)}`} className="btn" style={{ justifySelf: "start" }}>이 작업으로 만든 글 보기</Link>
       )}

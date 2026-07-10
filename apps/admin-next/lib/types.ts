@@ -5,7 +5,7 @@ export type JobStatus = "queued" | "running" | "done" | "failed";
 export type JobKind = "generate" | "dedup" | "indexing" | "prune";
 export type Provider = "claude" | "codex";
 export type DesignTemplateId = "editorial" | "comparison" | "local-guide" | "checklist" | "conversion" | "custom";
-// 도메인 설정값. "auto"면 글마다 슬롯의 글 유형 기본 디자인(default_design)이 적용된다.
+// 도메인 설정값. "auto"면 글마다 후보의 글 유형 기본 디자인(default_design)이 적용된다.
 export type DomainDesignSetting = string | "auto";
 
 export interface DesignTemplateOption {
