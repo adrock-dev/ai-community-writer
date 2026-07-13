@@ -1,7 +1,9 @@
 # 다음 세션 인수인계 (2026-07-14)
 
-> 이번 세션에서 **"키워드/지역 데이터화 + 탭 정리"** 를 한 덩어리로 마쳤다.
-> 남은 큰 과제는 **(b) writing_guide 재편 + 아키타입 통합** 하나(설계부터 새로).
+> **2026-07-13 갱신: (b) writing_guide 재편+아키타입 14→5 통합, 그리고 남은 B(dormant 일괄 클린업)·C 전부 완료.**
+> 커밋 `4d912dc`(b) · `0de4208`(B1+C design_presets) · `172dc74`(B2 academy_type_filter) · `e71c8fb`(B3 ai-fill) · `c222efb`(B4 PRESETS 세축).
+> 전건 골든406 0-diff·typecheck·company-clean·qa. LLM 실생성 스모크(codex)·:4300 라이브 확인 완료. 설계문서 `docs/archetype-consolidation-plan.md`.
+> 아래 §A/§B/§C 는 **완료된 과제의 기록**(참고용). 남은 선택 항목은 memory `archetype-refactor-roadmap` 「미해결(P5 이후 선택)」 참조.
 > ⚠️ 라인 번호는 이동하니 함수명/문자열로 재확인. 커밋은 develop, 파일 지정(사용자 병렬 작업 `academy-research.*`/`sync-summary.*` 섞임).
 
 ## 현재 아키텍처 핵심 (꼭 읽기)
@@ -44,21 +46,21 @@
 
 ## 남은 작업
 
-### A. (b) writing_guide 재편 + 아키타입 ~5종 통합 — **다음 큰 과제 (설계부터)**
+### A. (b) writing_guide 재편 + 아키타입 ~5종 통합 — **✅ 완료(`4d912dc`)**
 - **배경(합의됨)**: (a)로 키워드/지역이 데이터화되면서, 아키타입의 진짜 값어치는 **writing_guide(작성 방식) + academy 동작** 뿐임이 드러남. 사용자와 합의: 아키타입을 **작성방식 기준 ~5종**으로 통합하고 싶음.
 - **관찰**: 14 아키타입이 `article_type` 기준 ~5종으로 겹침 — local_best_comparison / general_best / cost_comparison / exam_best / local_access. `written_registration/tips/app`(필기 3형제)처럼 **구조 동일·패턴만 다른** 준중복 다수(패턴은 이제 keyword_filter로 대체 가능).
 - **핵심 제약(정직)**: `writing_guide`와 `primary`(지역 결합)가 **완전 독립 아님**. 예: `local_best` writing_guide는 "지역 안 학원 비교"를 전제 → 지역 끄면 지침 헛돎(텍스트 레벨, 치명적 실패는 아님). 그래서 **primary_override 완전 자유는 이 재편 후**. 지금 UI는 안내로만.
 - **접근(미착수, 설계 필요)**: writing_guide를 지역-중립/지역-인식으로 정리 → 준중복 아키타입 합치기 → 각 유형이 "작성방식(아키타입) + 키워드/지역/축(데이터)" 조합. **품질 바닥(writing_guide)** 이 흔들리므로 착수 전 설계안 + 사용자 확인 필수.
 - **리스크**: 높음(writing_guide=생성 품질 좌우). 전면 리팩터.
 
-### B. `design_presets` 심층 백엔드 클린업 + dormant 일괄 제거
+### B. `design_presets` 심층 백엔드 클린업 + dormant 일괄 제거 — **✅ 완료(`0de4208`·`172dc74`·`e71c8fb`·`c222efb`)**
 - **design_presets**(기존): db.service 테이블(2 CREATE+마이그레이션)·`list/get/create/deleteDesignPreset`·`designPresetOut`; admin.controller `extractDesignPresetFromHtml`·`getUploadedDesignPresetForPost`·글상세/렌더 uploaded 분기·export `"uploaded:"` 허용; worker `buildPrompt/buildRepairPrompt/designWritingGuide/designStructureGuide/uploadedPresetGuide`의 `designPreset` 파라미터·`isSelectableDesign`/토큰필터 `"uploaded:"`; lib/types `DesignPreset`(=아래 C). 데이터 안전: `design_presets` 0행·`uploaded:` 0 확인.
 - **academy_type_filter dormant**(academy_types 이관): `domains.academy_type_filter` 컬럼·`db.academyTypeFilter()`·`domainOut` 필드·PATCH 직렬화·`updateDomain` allow-list·`lib/types DomainConfig.academy_type_filter`.
 - **도메인 persona/intent/modifier 축 dormant**(폴백 제거): `PRESETS`의 세 축·`listAxes`가 채우지만 무효(생성/정합성 미사용). `AXES` 상수는 region/keyword만 유효. 정리 시 PRESETS/listAxes에서 세 축 제거 검토.
 - **`axes/ai-fill` 엔드포인트 dormant**: admin.controller `aiFill`(실제 AI 아니고 applyPreset 재호출). 프론트 호출부 0. 제거 시 docs/admin-json-api.md 확인.
 - **리스크**: worker·렌더 load-bearing(design_presets). 중~높음. **전체 점검 때 권장.**
 
-### C. `lib/types` `DesignPreset` 죽은 타입 — B와 함께 제거.
+### C. `lib/types` `DesignPreset` 죽은 타입 — **✅ 완료(B1 `0de4208`과 함께 제거).**
 
 ---
 
