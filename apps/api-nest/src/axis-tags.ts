@@ -75,12 +75,11 @@ export function filterAxisValues(axis: TaggedAxis, values: Row[], accepted: stri
   return values.filter((row) => valueMatchesAccepted(tagsForValue(axis, row.value), accepted));
 }
 
-// persona/intent/modifier 축 풀 결정: 글유형 프리셋(spec.axis_values)이 있으면 도메인 풀을 '대체'(태그 필터 없이 그대로),
-// 없으면 기존 동작(도메인 풀 + 수용 태그 필터)으로 폴백. region/keyword 는 대상 아님(호출측에서 안 넘김).
-export function resolveAxisPool(spec: TemplateSpecShape | undefined, axis: TaggedAxis, domainValues: Row[], override: TemplateOverride | undefined): Row[] {
+// persona/intent/modifier 축 풀: 글유형(spec.axis_values)이 단일 소스다. 값이 있으면 그것, 없으면 [](그 축 미사용).
+// 도메인 공통 축으로의 폴백은 제거됨(2026-07-14) — 축 값을 안 채운 유형은 그 축을 쓰지 않는다. region/keyword 는 도메인 실데이터(별도 경로).
+export function resolveAxisPool(spec: TemplateSpecShape | undefined, axis: TaggedAxis): Row[] {
   const preset = spec?.axis_values?.[axis];
-  if (Array.isArray(preset) && preset.length) return preset.map((value) => ({ value }));
-  return filterAxisValues(axis, domainValues, resolveAcceptedTags(spec, axis, override));
+  return Array.isArray(preset) && preset.length ? preset.map((value) => ({ value })) : [];
 }
 
 export type TemplateOverride = {

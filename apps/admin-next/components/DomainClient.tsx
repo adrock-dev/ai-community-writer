@@ -882,6 +882,10 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
 
   function submit() {
     if (!name.trim()) { alert("이름을 입력하세요."); return; }
+    // 축을 '사용'으로 켰으면 값 입력 필수(빈 채로 저장하면 그 축은 생성에서 무시됨 = 품질 이슈). 폴백 없음.
+    if (usePersona && !parseLines(personaVals).length) { alert("persona 사용을 켰으면 값을 한 줄 이상 입력하세요. (비우려면 사용을 끄세요)"); return; }
+    if (withIntent && !parseLines(intentVals).length) { alert("intent 사용을 켰으면 값을 한 줄 이상 입력하세요. (비우려면 사용을 끄세요)"); return; }
+    if (modifierCount > 0 && !parseLines(modifierVals).length) { alert("modifier 사용을 켰으면 값을 한 줄 이상 입력하세요. (비우려면 사용을 끄세요)"); return; }
     const axisValues = collectAxisValues();
     // 학원 타입: 지역형 글유형일 때만 반영(비우면 학원정보 미사용). 키워드형은 저장하지 않는다.
     const academyTypesArr = isRegionPrimary ? Array.from(academyTypes) : [];
@@ -928,14 +932,14 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
     </div>
     <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
     <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">쓸 축을 켜고 값을 채우면 이 글유형 전용 값으로 도메인 공통 축을 <b>대체</b>합니다(비우면 공통 축 사용). 직접 입력·시작점 복제 모두 여기서 조정합니다. 한 줄에 하나씩.</p></div>
+      <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">이 글유형이 쓸 persona·intent·modifier 값입니다. <b>쓸 축을 켜면 값을 반드시 입력하세요</b> — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩.</p></div>
       <div className="info-panel grid" style={{ gap: 6 }}>
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={usePersona} onChange={(e) => setUsePersona(e.target.checked)} /> <b>persona</b> 사용 — 누구에게 말할지(독자)</label>
-        {usePersona && <textarea className="textarea" rows={3} value={personaVals} onChange={(e) => setPersonaVals(e.target.value)} placeholder={"퇴근 후 배우는 직장인\n주말만 가능한 직장인   (비우면 도메인 공통 persona 사용)"} />}
+        {usePersona && <textarea className="textarea" rows={3} value={personaVals} onChange={(e) => setPersonaVals(e.target.value)} placeholder={"퇴근 후 배우는 직장인\n주말만 가능한 직장인   (한 줄에 하나씩 · 필수)"} />}
       </div>
       <div className="info-panel grid" style={{ gap: 6 }}>
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={withIntent} onChange={(e) => setWithIntent(e.target.checked)} /> <b>intent</b> 사용 — 사용자가 무엇을 알고 싶은지</label>
-        {withIntent && <textarea className="textarea" rows={3} value={intentVals} onChange={(e) => setIntentVals(e.target.value)} placeholder={"필기접수\n준비물   (비우면 도메인 공통 intent 사용)"} />}
+        {withIntent && <textarea className="textarea" rows={3} value={intentVals} onChange={(e) => setIntentVals(e.target.value)} placeholder={"필기접수\n준비물   (한 줄에 하나씩 · 필수)"} />}
       </div>
       <div className="info-panel grid" style={{ gap: 6 }}>
         <label className="row" style={{ gap: 6, alignItems: "center" }}>
@@ -945,7 +949,7 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
               <option value={1}>1</option><option value={2}>2</option>
             </select><span className="muted small">개 조합</span></>}
         </label>
-        {modifierCount > 0 && <textarea className="textarea" rows={3} value={modifierVals} onChange={(e) => setModifierVals(e.target.value)} placeholder={"필기시험부터\n상담전확인   (비우면 도메인 공통 modifier 사용)"} />}
+        {modifierCount > 0 && <textarea className="textarea" rows={3} value={modifierVals} onChange={(e) => setModifierVals(e.target.value)} placeholder={"필기시험부터\n상담전확인   (한 줄에 하나씩 · 필수)"} />}
       </div>
     </div>
     {isRegionPrimary && <div className="grid" style={{ gap: 8 }}>
@@ -1012,13 +1016,13 @@ function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes
   async function ai(form: HTMLFormElement) { setAiBusy(true); try { const fd = new FormData(form); await api(`/domains/${encodeURIComponent(domain.domain)}/axes/ai-fill`, { method: "POST", body: JSON.stringify({ provider: fd.get("provider"), model: fd.get("model"), extra_context: fd.get("extra_context"), timeout_sec: 300 }) }); await onRefresh(); } catch (e) { alert((e as Error).message); } finally { setAiBusy(false); } }
   return <div className="grid">
     <div className="card card-pad">
-      <div className="spread"><div><h2>축 — 생성용 배경 데이터</h2><p className="muted">글 후보를 만들 때 조합에 쓰이는 지역·키워드·의도·페르소나·수식어 값입니다. 프리셋 적용이나 학원 동기화로 채워지며, 평소 생성 때는 열지 않아도 됩니다. 후보 범위를 넓히거나 좁힐 때만 손봅니다.</p></div><span className="badge info">배경 데이터</span></div>
+      <div className="spread"><div><h2>축 — 생성용 배경 데이터</h2><p className="muted">글 후보의 <b>주축</b>인 지역·키워드 값입니다. 프리셋 적용이나 학원 동기화로 채워지며, 평소 생성 때는 열지 않아도 됩니다. 후보 범위를 넓히거나 좁힐 때만 손봅니다.</p><p className="muted small">페르소나·의도·수식어는 이제 도메인 공통 축이 아니라 <b>글유형별</b>로 관리합니다(글유형 탭의 커스텀 글유형 「축 구성·값 프리셋」).</p></div><span className="badge info">배경 데이터</span></div>
     </div>
     <div className="grid grid-2">
       <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); ai(e.currentTarget); }}><h2>🤖 AI로 축 자동 생성</h2><textarea className="textarea" name="extra_context" placeholder="추가 컨텍스트" /><div className="row"><select className="select" name="provider" style={{ maxWidth: 160 }}><option>codex</option><option>claude</option></select><input className="input" name="model" placeholder="모델 선택" style={{ maxWidth: 180 }} /><button className="btn primary" disabled={aiBusy}>{aiBusy ? "생성 중..." : "생성"}</button></div></form>
       <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); if (confirm("현재 축을 프리셋으로 덮어쓸까요?")) preset(e.currentTarget); }}><h2>프리셋 적용</h2><select className="select" name="preset_key">{options.preset_options.map((p) => <option key={p}>{p}</option>)}</select><button className="btn">덮어쓰기</button></form>
     </div>
-    {AXES.map((axis) => <form key={axis} className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); saveAxis(axis, e.currentTarget); }}><div className="spread"><h2>{axis} 축 ({axes[axis]?.length ?? 0}개)</h2><button className="btn primary">저장</button></div><textarea className="textarea mono" name="values" rows={6} defaultValue={(axes[axis] ?? []).map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" /></form>)}
+    {AXES.filter((axis) => axis === "region" || axis === "keyword").map((axis) => <form key={axis} className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); saveAxis(axis, e.currentTarget); }}><div className="spread"><h2>{axis} 축 ({axes[axis]?.length ?? 0}개)</h2><button className="btn primary">저장</button></div><textarea className="textarea mono" name="values" rows={6} defaultValue={(axes[axis] ?? []).map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" /></form>)}
   </div>;
 }
 
