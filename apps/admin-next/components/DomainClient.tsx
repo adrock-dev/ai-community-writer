@@ -14,7 +14,6 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-const AXES: Axis[] = ["region", "keyword", "intent", "persona", "modifier"];
 const AXIS_LABEL: Record<Axis, string> = {
   region: "어느 지역 글인가요?",
   keyword: "어떤 검색어를 노릴까요?",
@@ -30,8 +29,8 @@ const AXIS_PLACEHOLDER: Record<Axis, string> = {
   modifier: "셔틀 편리\n친절한 강사\n최단기",
 };
 const TABS = [
-  ["overview", "개요"], ["plan", "공통 설정"], ["templates", "글유형/디자인"], ["axes", "축"],
-  ["academies", "학원자료"], ["slots", "글 생성"], ["jobs", "작업 큐"], ["posts", "검수·내보내기"], ["settings", "설정"],
+  ["overview", "개요"], ["plan", "공통 설정"], ["templates", "글유형/디자인"],
+  ["academies", "원천 데이터"], ["slots", "글 생성"], ["jobs", "작업 큐"], ["posts", "검수·내보내기"], ["settings", "설정"],
 ] as const;
 
 const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: string }> = {
@@ -325,8 +324,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
       {view === "overview" && tab === "plan" && <><Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} /><KeywordMaster domain={domainConfig.domain} presetKey={domainConfig.vertical || "driving"} keywordAxis={(payload.axes?.keyword ?? []) as AxisValue[]} onRefresh={refresh} /></>}
       {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} customTemplates={payload.custom_templates ?? []} keywordPool={(payload.axes?.keyword ?? []).map((k) => String(k.value))} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
-      {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
-      {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
+      {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} regionAxis={(payload.axes?.region ?? []) as AxisValue[]} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
       {view === "overview" && tab === "jobs" && <Jobs domain={domainConfig} jobs={payload.jobs ?? []} onRefresh={refresh} />}
       {view === "overview" && tab === "posts" && <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />}
@@ -602,7 +600,7 @@ function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { t
   return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "기본 3 시작", mode: "basic", focus: "slot-create" };
 }
 
-// 공통원칙 탭: 모든 글 유형에 공통 적용되는 안전·데이터 원칙 + 제외어. 축 편집은 「축」 탭으로 일원화됐다.
+// 공통 설정 탭: 공통 작성 원칙 + 제외어 + 키워드 마스터. 지역 축은 「원천 데이터」 탭에서 관리한다.
 function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
   const [brief, setBrief] = useState(domain.common_principles ?? domain.content_brief ?? "");
   const [excludedKeywords, setExcludedKeywords] = useState(domain.excluded_keywords ?? "");
@@ -615,7 +613,7 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
     <p className="muted">모든 글 유형에 공통 적용되는 안전·데이터 원칙, 제외어, 그리고 <b>키워드 마스터</b>(아래 표)입니다. 글 유형별 방향성·축·키워드 선택은 「글유형/디자인」 탭의 커스텀 글유형에서 관리합니다.</p>
     <Field label="공통 작성 원칙 (모든 글 유형 공통)"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="확인된 데이터만 사용하고, 가격·합격률·셔틀은 자료가 있을 때만 단정한다. 확인 가능한 사실이 부족하면 숫자를 부풀리지 말고 확인 방법 중심으로 정직하게 작성한다." /></Field>
     <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 후보 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
-    <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형/방향성</button><button className="btn" onClick={() => onTab("axes")}>축 편집</button></div>
+    <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형/방향성</button><button className="btn" onClick={() => onTab("academies")}>원천 데이터</button></div>
   </div>;
 }
 
@@ -1106,23 +1104,12 @@ function uniquePreviewItems(items: string[]): string[] {
   });
 }
 
-function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; options: AdminOptions; onRefresh: () => Promise<void> }) {
-  async function saveAxis(axis: Axis, form: HTMLFormElement) {
-    const values = parseCsv(String(new FormData(form).get("values") || ""));
-    await replaceAxis(domain.domain, axis, values); await onRefresh();
-  }
-  async function preset(form: HTMLFormElement) { const preset_key = String(new FormData(form).get("preset_key") || ""); await api(`/domains/${encodeURIComponent(domain.domain)}/axes/preset`, { method: "POST", body: JSON.stringify({ preset_key }) }); await onRefresh(); }
-  return <div className="grid">
-    <div className="card card-pad">
-      <div className="spread"><div><h2>축 — 생성용 배경 데이터</h2><p className="muted">글 후보의 <b>주축</b>인 지역·키워드 값입니다. 프리셋 적용이나 학원 동기화로 채워지며, 평소 생성 때는 열지 않아도 됩니다. 후보 범위를 넓히거나 좁힐 때만 손봅니다.</p><p className="muted small">페르소나·의도·수식어는 이제 도메인 공통 축이 아니라 <b>글유형별</b>로 관리합니다(글유형 탭의 커스텀 글유형 「축 구성·값 프리셋」).</p></div><span className="badge info">배경 데이터</span></div>
-    </div>
-    <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); if (confirm("현재 지역·키워드 축을 프리셋으로 덮어쓸까요?")) preset(e.currentTarget); }}><h2>프리셋 적용</h2><p className="muted small">운전 도메인 기본 지역·키워드 축을 채웁니다. (persona·intent·modifier는 이제 글유형별로 관리 — 글유형 탭의 「AI로 축 값 제안」 참고)</p><select className="select" name="preset_key" style={{ maxWidth: 240 }}>{options.preset_options.map((p) => <option key={p}>{p}</option>)}</select><button className="btn">덮어쓰기</button></form>
-    {AXES.filter((axis) => axis === "region").map((axis) => <form key={axis} className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); saveAxis(axis, e.currentTarget); }}><div className="spread"><h2>{axis} 축 ({axes[axis]?.length ?? 0}개)</h2><button className="btn primary">저장</button></div><textarea className="textarea mono" name="values" rows={6} defaultValue={(axes[axis] ?? []).map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" /></form>)}
-    <p className="muted small">키워드는 이제 「공통 원칙」 탭의 <b>키워드 마스터</b> 표에서 관리합니다(월검색량·경쟁도 포함).</p>
-  </div>;
-}
 
-function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: DomainConfig; academies: Academy[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
+function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: { domain: DomainConfig; academies: Academy[]; regionAxis: AxisValue[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
+  async function saveRegionAxis(form: HTMLFormElement) {
+    const values = parseCsv(String(new FormData(form).get("values") || ""));
+    await replaceAxis(domain.domain, "region", values); await onRefresh();
+  }
   const [syncBusy, setSyncBusy] = useState("");
   const [regionLevel, setRegionLevel] = useState<"2" | "3" | "all">("2");
   const [replaceRegionAxis, setReplaceRegionAxis] = useState(true);
@@ -1223,6 +1210,13 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
           <div className="row" style={{ alignItems: "end" }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button></div>
         </div>
         <p className="muted small">최근 지역 동기화: {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
+        <details className="template-subsection">
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>지역 축 직접 편집 (고급)</h3><p className="muted small">보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요.</p></div><span className="badge info">{regionAxis.length}개</span></div></summary>
+          <form className="grid" style={{ marginTop: 8 }} onSubmit={(e) => { e.preventDefault(); saveRegionAxis(e.currentTarget); }}>
+            <textarea className="textarea mono" name="values" rows={8} defaultValue={regionAxis.map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" />
+            <div className="row"><button className="btn primary">지역 축 저장</button></div>
+          </form>
+        </details>
       </div>
       <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
         <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
@@ -1387,7 +1381,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy || !genType} onClick={gen}>{busy ? "만드는 중..." : "글 후보 만들기"}</button>
         </div>
         {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <button className="btn" onClick={() => onTab("templates")}>글유형/디자인 탭</button>에서 유형을 켜세요.</p>}
-        <p className="muted small">조합 재료는 「축」 탭 축 값·「글유형/디자인」 설정·「공통원칙」 탭 제외어를 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
+        <p className="muted small">조합 재료는 「원천 데이터」 탭 지역·「공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
       </div>
 
