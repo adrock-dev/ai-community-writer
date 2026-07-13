@@ -8,7 +8,7 @@ import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
 import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
-import { getArchetype } from "./archetypes.js";
+import { getArchetype, writingGuideLines } from "./archetypes.js";
 import { runLlm } from "./llm-runner.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
@@ -237,7 +237,7 @@ export class AdminController {
     if (!archetype) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
     const axes = (Array.isArray(body.axes) ? body.axes : []).map((a: any) => String(a)).filter((a: string) => ["persona", "intent", "modifier"].includes(a));
     if (!axes.length) throw new HttpException("axes required (persona/intent/modifier 중 하나 이상)", 400);
-    const prompt = buildAxisSuggestPrompt({ domainName: String(config.display_name || domain), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), axes, commonPrinciples: String(config.common_principles || ""), writingGuide: archetype.writing_guide });
+    const prompt = buildAxisSuggestPrompt({ domainName: String(config.display_name || domain), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), axes, commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype) });
     const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
     if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
     const suggestions = parseAxisSuggestion(result.summary, axes);

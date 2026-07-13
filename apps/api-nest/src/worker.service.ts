@@ -665,7 +665,7 @@ ${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignG
 템플릿 필수 구조:
 ${designStructureGuide(designTemplateId, designPreset)}
 원본 엑셀 기반 템플릿 작성법:
-${writingGuideForArchetype(archetype)}
+${writingGuideForArchetype(archetype, Boolean(slot.region))}
 원본 전체 글 패턴 기반 작성법:
 ${originalArticlePatternGuide(slot)}
 주 키워드: ${slot.primary_keyword}
@@ -749,7 +749,7 @@ ${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignG
 템플릿 필수 구조:
 ${designStructureGuide(designTemplateId, designPreset)}
 원본 엑셀 기반 템플릿 작성법:
-${writingGuideForArchetype(archetype)}
+${writingGuideForArchetype(archetype, Boolean(slot.region))}
 템플릿: ${slot.template_id}
 원본 전체 글 패턴 기반 작성법:
 ${originalArticlePatternGuide(slot)}
