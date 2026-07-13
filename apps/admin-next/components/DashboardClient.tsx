@@ -58,7 +58,6 @@ export default function DashboardClient() {
           domain: newDomain,
           display_name: String(fd.get("display_name") || "").trim(),
           vertical: String(fd.get("vertical") || "").trim(),
-          theme: String(fd.get("theme") || "clean"),
           brand_color: String(fd.get("brand_color") || "#2563eb"),
           daily_limit: Number(fd.get("daily_limit") || 0),
           apply_preset: fd.get("apply_preset") === "on",
@@ -107,8 +106,7 @@ export default function DashboardClient() {
             <Field label="표시 이름"><input className="input" name="display_name" placeholder="강남 운전면허센터" required /></Field>
           </div>
           <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v} value={v}>{v === "driving" ? "운전면허/운전학원" : v}</option>)}</select></Field>
-          <div className="grid grid-3">
-            <Field label="테마"><select className="select" name="theme">{options?.themes.map((v) => <option key={v}>{v}</option>)}</select></Field>
+          <div className="grid grid-2">
             <Field label="브랜드 컬러">
               <div className="row">
                 <input className="input-color" name="brand_color" type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} />
