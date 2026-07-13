@@ -1,5 +1,4 @@
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Param, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
-import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
@@ -330,9 +329,6 @@ export class AdminController {
     return { ok: true, mode, imported, skipped, overrides_merged, templates_enabled, warnings };
   }
 
-  // 디자인 프리셋(HTML 업로드) 생성/삭제 엔드포인트 제거 — 미사용 기능 폐기(프론트 UI 제거됨).
-  // 남은 db.getDesignPreset/워커·렌더 소비 경로는 dormant(uploaded: 디자인 데이터 0). 심층 제거는 별도 정리.
-
   @Delete("domains/:domain")
   deleteDomain(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
     checkAuth(req, headers); this.requireDomain(domain); this.db.deleteDomain(domain); return { ok: true };
@@ -419,7 +415,6 @@ export class AdminController {
       ...post,
       body_markdown: bodyMarkdown,
       images: Object.keys(mergedImages).length ? JSON.stringify(mergedImages) : post.images,
-      design_preset: getUploadedDesignPresetForPost(this.db, domain, post),
     };
     const payload: Row = { post: responsePost };
     if (rendered === "true" || rendered === "1") payload.body_html = renderMarkdown(bodyMarkdown, mergedImages);
@@ -650,138 +645,14 @@ function normalizeDesignOverrides(value: Row): Row {
   const designs = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
   return Object.fromEntries(Object.entries(value)
     .map(([templateId, designId]) => [String(templateId), String(designId || "")])
-    .filter((entry) => templates.has(entry[0] ?? "") && (designs.has(entry[1] ?? "") || String(entry[1] || "").startsWith("uploaded:"))));
+    .filter((entry) => templates.has(entry[0] ?? "") && designs.has(entry[1] ?? "")));
 }
 
-function extractDesignPresetFromHtml(html: string, fallbackName: string): Row {
-  const safeHtml = html.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<iframe[\s\S]*?<\/iframe>/gi, "");
-  const title = firstMatch(safeHtml, /<title[^>]*>([\s\S]*?)<\/title>/i) || firstMatch(safeHtml, /<h1[^>]*>([\s\S]*?)<\/h1>/i);
-  const headings = Array.from(safeHtml.matchAll(/<h([1-4])[^>]*>([\s\S]*?)<\/h\1>/gi))
-    .map((m) => cleanText(m[2] || ""))
-    .filter(Boolean)
-    .slice(0, 8);
-  const cssText = Array.from(safeHtml.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)).map((m) => String(m[1] || "").trim()).filter(Boolean).join("\n\n").slice(0, 12000);
-  const plain = sanitizeHtmlExampleContent(cleanText(safeHtml)).slice(0, 1200);
-  const colors = Array.from(new Set((safeHtml.match(/#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)/g) || []).slice(0, 12)));
-  const radii = Array.from(new Set((cssText.match(/border-radius\s*:\s*[^;]+/gi) || []).map((v) => v.split(":")[1]?.trim()).filter(Boolean))).slice(0, 4);
-  const vars = extractCssVars(cssText);
-  const structureGuide = headings.length
-    ? headings.map((heading, i) => `${i + 1}) ${generalizeHtmlSectionHeading(heading)} 섹션을 구성한다`)
-    : [
-      "상단에 제목과 핵심 요약을 배치한다",
-      "본문은 명확한 섹션 단위로 나눈다",
-      "비교표, 리스트, CTA 위치를 예시 HTML의 리듬에 맞춘다",
-    ];
-  return {
-    name: sanitizeHtmlExampleContent(fallbackName || title || `HTML 디자인 ${randomUUID().slice(0, 4)}`),
-    source_html: safeHtml,
-    extracted_summary: summarizeHtmlLayout(headings, plain, safeHtml),
-    best_for: inferBestFor(plain, safeHtml),
-    tone: inferTone(plain, safeHtml),
-    structure_guide: structureGuide,
-    css_text: cssText,
-    css_tokens: { colors, radii, vars },
-  };
-}
-
-function firstMatch(text: string, pattern: RegExp): string {
-  return cleanText(pattern.exec(text)?.[1] || "");
-}
-
-function cleanText(value: string): string {
-  return String(value || "")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractCssVars(cssText: string): Row {
-  return Object.fromEntries(Array.from(cssText.matchAll(/--([a-z0-9_-]+)\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/gi))
-    .map((match) => [match[1], match[2]]));
-}
-
-function sanitizeHtmlExampleContent(value: string): string {
-  return String(value || "")
-    .replace(/\b\d{2,3}-\d{3,4}-\d{4}\b/g, "[연락처]")
-    .replace(/\b010-\d{4}-\d{4}\b/g, "[연락처]")
-    .replace(/\b\d{1,3}(?:,\d{3})+\s*원\b/g, "[가격]")
-    .replace(/\b\d+\s*만\s*원\b/g, "[가격]")
-    .replace(/(?:서울|부산|대구|인천|광주|대전|울산|세종)\s*[가-힣]+구/g, "[지역]")
-    .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:시|군|구)/g, "[지역]")
-    .replace(/(?:[가-힣]+구)(?=(?:엔|에는|은|는|이|가|을|를|에서|으로|로|까지|부터|,|\.|\s|$))/g, "[지역]")
-    .replace(/[가-힣]+(?:시|군|구)\s+[가-힣]+(?:읍|면|동|리)/g, "[생활권]")
-    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:자동차운전전문학원|운전전문학원|자동차운전학원)/g, "[학원명]")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function generalizeHtmlSectionHeading(heading: string): string {
-  const text = sanitizeHtmlExampleContent(heading)
-    .replace(/\[지역\]/g, "지역")
-    .replace(/\[생활권\]/g, "생활권")
-    .replace(/\[학원명\]/g, "후보 학원")
-    .replace(/\[가격\]/g, "비용")
-    .replace(/\[연락처\]/g, "연락처")
-    .replace(/^[0-9]{1,2}[\s.)-]+/, "")
-    .trim();
-  if (/비교|BEST|순위|추천/.test(text)) return "후보 비교/추천";
-  if (/순서|목차/.test(text)) return "목차";
-  if (/가격|비용|수강료|할인/.test(text)) return "비용 확인";
-  if (/위치|주소|셔틀|거리|가까/.test(text)) return "동선/접근성";
-  if (/후기|평점|리뷰/.test(text)) return "후기/판단 근거";
-  if (/상담|예약|문의|전화/.test(text)) return "상담/CTA";
-  if (/준비|절차|방법|체크/.test(text)) return "절차/체크리스트";
-  if (/요약|핵심/.test(text)) return "핵심 요약";
-  return text.replace(/\[[^\]]+\]/g, "").trim() || "본문";
-}
-
-function summarizeHtmlLayout(headings: string[], plain: string, html = ""): string {
-  const sections = headings.map(generalizeHtmlSectionHeading).filter(Boolean).slice(0, 5);
-  const sectionText = sections.length ? ` 주요 섹션 흐름: ${Array.from(new Set(sections)).join(" -> ")}.` : "";
-  const patterns = [
-    isReportGuideHtml(html) ? "리포트/완벽 가이드형" : "",
-    /비교|BEST|추천|표/.test(plain) ? "비교/추천형" : "",
-    /상담|예약|문의/.test(plain) ? "상담 CTA형" : "",
-    /체크|절차|준비/.test(plain) ? "체크리스트형" : "",
-  ].filter(Boolean).join(", ");
-  return `업로드 HTML에서 구조와 스타일만 추출한 화면 구상입니다.${sectionText}${patterns ? ` 감지된 패턴: ${patterns}.` : ""}`;
-}
-
-function inferBestFor(text: string, html = ""): string {
-  if (isReportGuideHtml(html)) return "리포트형, 완벽 가이드, 표 비교 글";
-  if (/비교|BEST|추천|표/.test(text)) return "비교형, 추천형, BEST 글";
-  if (/체크|준비물|절차|시험/.test(text)) return "체크리스트형, 시험 준비 글";
-  if (/상담|예약|문의|비용/.test(text)) return "상담 전환형, 비용 문의 글";
-  return "브랜드 가이드, 정보성 글";
-}
-
-function inferTone(text: string, html = ""): string {
-  if (isReportGuideHtml(html)) return "검증 자료 중심의 차분한 리포트 톤";
-  if (/상담|예약|문의/.test(text)) return "전환을 유도하는 실무적인 톤";
-  if (/체크|절차|준비/.test(text)) return "간결하고 따라가기 쉬운 안내 톤";
-  if (/비교|추천|BEST/.test(text)) return "판단이 쉬운 비교 큐레이션 톤";
-  return "업로드 예시 기반 브랜드 톤";
-}
-
-function isReportGuideHtml(html: string): boolean {
-  return /class=["'][^"']*(masthead|dateline|tldr|callout|matrix-wrap|profile|serif)[^"']*["']/.test(html)
-    || /완벽\s*가이드|리포트|핵심\s*요약|정확성\s*안내/.test(cleanText(html).slice(0, 2000));
-}
 function normalizePostForAdminExport(db: DbService, domain: string, post: Row): Row {
   const dbImages = safeJson(post.images, {});
   const images = { ...fallbackImagesForPost(db, domain, post), ...(dbImages && typeof dbImages === "object" ? dbImages : {}) };
   const bodyMarkdown = ensureImageSlotsForRender(stripPseudoSlotsForRender(post.body_markdown || ""), images);
-  return { ...post, body_markdown: bodyMarkdown, body_html: renderMarkdown(bodyMarkdown, images), images, design_preset: getUploadedDesignPresetForPost(db, domain, post) };
-}
-
-function getUploadedDesignPresetForPost(db: DbService, domain: string, post: Row): Row | undefined {
-  const designId = String(post.design_template_id || "");
-  return designId.startsWith("uploaded:") ? db.getDesignPreset(domain, designId) : undefined;
+  return { ...post, body_markdown: bodyMarkdown, body_html: renderMarkdown(bodyMarkdown, images), images };
 }
 
 function renderSingleMarkdownExport(domain: string, post: Row): string {
@@ -817,14 +688,13 @@ function renderBulkMarkdownExport(domain: string, posts: Row[]): string {
 function renderSingleHtmlExport(domainConfig: Row, domain: string, post: Row): string {
   const rawDesignId = String(post.design_template_id || domainConfig.design_template_id || "");
   const designId = resolveDesignId(rawDesignId);
-  const designPreset = post.design_preset;
-  const design = designPreset ? uploadedDesignTheme(designPreset, domainConfig.brand_color) : getDesignTheme(designId, domainConfig.brand_color);
-  const articleClass = designPreset ? "design-uploaded" : `design-${designId}`;
-  const visibleDesignId = designPreset ? rawDesignId : designId;
+  const design = getDesignTheme(designId, domainConfig.brand_color);
+  const articleClass = `design-${designId}`;
+  const visibleDesignId = designId;
   const brand = publicBrandName(String(domainConfig.display_name || domain));
   const title = String(post.title || brand);
   const contentHtml = toPreviewBlocks(prepareBodyHtml(String(post.body_html || ""), title));
-  const chips = designPreset ? uploadedDesignChips(designPreset) : designChips(designId);
+  const chips = designChips(designId);
   return `<!doctype html>
 <html lang="ko">
 <head>
@@ -873,59 +743,6 @@ function designChips(designId: string): string[] {
     custom: ["상단 구성", "본문 규칙", "CTA 위치"],
   };
   return chips[designId] || chips["local-guide"]!;
-}
-
-function uploadedDesignChips(preset: Row): string[] {
-  return [
-    String(preset.best_for || "").split(",")[0]?.trim(),
-    String(preset.tone || "").replace(/\s*톤\s*$/u, "").trim(),
-    "업로드 프리셋",
-  ].filter((value): value is string => Boolean(value)).slice(0, 3);
-}
-
-function uploadedDesignTheme(preset: Row, brandColor?: string | null): ReturnType<typeof getDesignTheme> {
-  const base = getDesignTheme("custom", brandColor);
-  const tokens = safeJson(preset.css_tokens, {});
-  const vars = tokens && typeof tokens === "object" && !Array.isArray(tokens) && tokens.vars && typeof tokens.vars === "object" ? tokens.vars as Row : {};
-  const colors = Array.isArray(tokens?.colors) ? tokens.colors.map((value: unknown) => String(value)).filter(isCssColorToken) : [];
-  const accent = pickCssVar(vars, ["brand", "teal", "primary", "accent"], colors, base.accent);
-  const soft = pickCssVar(vars, ["brand-soft", "teal-soft", "surface", "sand"], colors.filter((color: string) => color !== accent), `color-mix(in srgb, ${accent} 12%, white)`);
-  const pageBg = pickCssVar(vars, ["paper", "bg", "background", "card"], colors, base.pageBg);
-  return { ...base, accent, soft, pageBg, label: sanitizeHtmlExampleContent(String(preset.name || "업로드 프리셋")).slice(0, 28) || "업로드 프리셋" };
-}
-
-function pickCssVar(vars: Row, names: string[], fallbackColors: string[], fallback: string): string {
-  for (const name of names) {
-    const value = vars[name];
-    if (typeof value === "string" && isCssColorToken(value)) return value;
-  }
-  if (names.some((name) => /soft|surface|sand|paper|bg|card/.test(name))) return fallbackColors.find(isSoftColor) || fallbackColors[0] || fallback;
-  return fallbackColors.find(isSaturatedHex) || fallbackColors.find((color) => !isSoftColor(color)) || fallback;
-}
-
-function isCssColorToken(value: string): boolean {
-  return /^#[0-9a-fA-F]{3,8}$/.test(value) || /^rgba?\([^)]+\)$/.test(value);
-}
-
-function isSoftColor(color: string): boolean {
-  if (!color.startsWith("#")) return false;
-  const rgb = hexToRgb(color);
-  return Boolean(rgb && rgb.r > 225 && rgb.g > 225 && rgb.b > 225);
-}
-
-function isSaturatedHex(color: string): boolean {
-  const rgb = hexToRgb(color);
-  if (!rgb) return false;
-  const max = Math.max(rgb.r, rgb.g, rgb.b);
-  const min = Math.min(rgb.r, rgb.g, rgb.b);
-  return max - min > 55 && max > 120 && min < 230;
-}
-
-function hexToRgb(color: string): { r: number; g: number; b: number } | null {
-  const hex = color.replace("#", "");
-  const full = hex.length === 3 ? hex.split("").map((v) => v + v).join("") : hex.slice(0, 6);
-  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
-  return { r: parseInt(full.slice(0, 2), 16), g: parseInt(full.slice(2, 4), 16), b: parseInt(full.slice(4, 6), 16) };
 }
 
 function prepareBodyHtml(html: string, title: string): string {

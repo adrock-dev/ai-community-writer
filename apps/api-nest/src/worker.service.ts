@@ -98,7 +98,6 @@ export class WorkerService {
       const templateSpec = this.db.getTemplateSpec(domain, String(slot.template_id || ""));
       // 디자인은 슬롯 단위로 결정: 요청 지정 → 도메인 설정 → template_overrides.design → 레거시 → 글유형(spec) 기본.
       const designTemplateId = resolveGenerationDesign(payload.design_template_id, domainMeta, slot.template_id, templateSpec?.default_design);
-      const designPreset = designTemplateId.startsWith("uploaded:") ? this.db.getDesignPreset(domain, designTemplateId) : undefined;
       this.db.updateSlotStatus(sid, "in_progress");
       try {
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 자료 구성 중`, slotId: sid, processed: ok, failed: fail });
@@ -130,7 +129,7 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, designPreset, archetype, templateDirection);
+        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, archetype, templateDirection);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
         const result = await runLlm(prompt, llmOpts);
@@ -146,7 +145,7 @@ export class WorkerService {
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
           this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 품질 보정 ${repairAttempt + 1}회차`, slotId: sid, processed: ok, failed: fail });
-          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, designPreset, markdown, qualityIssues, archetype, templateDirection), llmOpts);
+          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, markdown, qualityIssues, archetype, templateDirection), llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
           inputTokens += repair.input_tokens || 0;
@@ -650,20 +649,19 @@ function normalizeKoreanSpacing(text: string): string {
     .replace(/비교추천/g, "비교 추천");
 }
 
-function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset: Row | undefined, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string): string {
+function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
-  const uploadedDesignGuide = uploadedPresetGuide(designPreset);
   return `아래 Markdown 글은 품질 게이트를 통과하지 못했다. 확인된 콘텐츠 재료만 사용해서 같은 주제의 완성형 글로 다시 작성하라.
 
 브랜드: ${brand}
 디자인 템플릿: ${designTemplateId}
-디자인 작성 지침: ${designWritingGuide(designTemplateId, designPreset)}
-${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignGuide}\n` : ""}${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
+디자인 작성 지침: ${designWritingGuide(designTemplateId)}
+${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${designStructureGuide(designTemplateId, designPreset)}
+${designStructureGuide(designTemplateId)}
 원본 엑셀 기반 템플릿 작성법:
 ${writingGuideForArchetype(archetype, Boolean(slot.region))}
 원본 전체 글 패턴 기반 작성법:
@@ -727,27 +725,26 @@ export function resolveGenerationDesign(payloadDesign: unknown, domain: Row, tem
   return defaultDesignForTemplate(templateKey);
 }
 
-// 선택 가능한 디자인 id 인가(빌트인 DESIGN_TEMPLATES 또는 업로드 프리셋). safeDesignOverrides 필터와 동일 규칙.
+// 선택 가능한 디자인 id 인가(빌트인 DESIGN_TEMPLATES). safeDesignOverrides 필터와 동일 규칙.
 function isSelectableDesign(id: string): boolean {
   const value = String(id || "").trim();
-  return DESIGN_TEMPLATES.some((template) => template.id === value) || value.startsWith("uploaded:");
+  return DESIGN_TEMPLATES.some((template) => template.id === value);
 }
 
-function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, designPreset: Row | undefined, archetype: Archetype | undefined, direction: string): string {
+function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
-  const uploadedDesignGuide = uploadedPresetGuide(designPreset);
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 
 브랜드: ${brand}
 업종: ${domain.vertical || "driving"}
 디자인 템플릿: ${designTemplateId}
-디자인 작성 지침: ${designWritingGuide(designTemplateId, designPreset)}
-${uploadedDesignGuide ? `업로드 HTML 기반 화면 구상:\n${uploadedDesignGuide}\n` : ""}${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
+디자인 작성 지침: ${designWritingGuide(designTemplateId)}
+${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${designStructureGuide(designTemplateId, designPreset)}
+${designStructureGuide(designTemplateId)}
 원본 엑셀 기반 템플릿 작성법:
 ${writingGuideForArchetype(archetype, Boolean(slot.region))}
 템플릿: ${slot.template_id}
@@ -813,16 +810,7 @@ ${facts || "없음"}
 - 출력은 Markdown 본문만 제공하고 설명/주석은 쓰지 말 것.
 - 마지막에 참고자료/출처 목록을 붙이지 말 것. 단, 도로교통공단 등 외부 공신력 자료를 실제로 인용한 경우에만 간단히 남긴다.`;
 }
-function designWritingGuide(designTemplateId: string, designPreset?: Row): string {
-  if (designPreset) {
-    return [
-      `${sanitizeUploadedDesignText(designPreset.name)} 업로드 HTML 예시 기반.`,
-      sanitizeUploadedDesignText(designPreset.extracted_summary),
-      designPreset.best_for ? `추천 용도: ${sanitizeUploadedDesignText(designPreset.best_for)}` : "",
-      designPreset.tone ? `톤: ${sanitizeUploadedDesignText(designPreset.tone)}` : "",
-      "업로드 HTML은 레이아웃/시각 스타일 참고용이며, 예시 HTML 안의 지역명·학원명·주소·연락처·가격·후기 문구는 실제 글에 재사용하지 않는다.",
-    ].filter(Boolean).join(" ");
-  }
+function designWritingGuide(designTemplateId: string): string {
   const guides: Record<string, string> = {
     editorial: "원본 블로그형. 생활권 공감 도입, 실제 이미지 3~4개, 요약/비교표 1개, 관련 글 링크, 자연스러운 브랜드 CTA가 이어지도록 작성한다.",
     comparison: "BEST 비교형. 비교표를 앞쪽에 배치하고 후보별 장단점, 추천 대상, 가격·셔틀·과정 확인점을 명확히 작성한다.",
@@ -840,37 +828,7 @@ function safeDesignOverrides(value: unknown): Record<string, string> {
   const allowed = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
   return Object.fromEntries(Object.entries(raw as Record<string, unknown>)
     .map(([templateId, designId]) => [templateId, String(designId || "")])
-    .filter((entry) => allowed.has(entry[1] ?? "") || String(entry[1] || "").startsWith("uploaded:")));
-}
-
-function uploadedPresetGuide(designPreset: Row | undefined): string {
-  if (!designPreset) return "";
-  const guide = Array.isArray(designPreset.structure_guide) ? designPreset.structure_guide : [];
-  const cssTokens = designPreset.css_tokens && typeof designPreset.css_tokens === "object" ? designPreset.css_tokens : {};
-  const colors = Array.isArray(cssTokens.colors) ? cssTokens.colors.slice(0, 6).join(", ") : "";
-  const radii = Array.isArray(cssTokens.radii) ? cssTokens.radii.slice(0, 3).join(", ") : "";
-  return [
-    guide.length ? ["구조 지침:", ...guide.map((line: unknown) => `- ${sanitizeUploadedDesignText(line)}`)].join("\n") : "",
-    colors ? `색상 힌트: ${colors}` : "",
-    radii ? `모서리/카드 스타일 힌트: ${radii}` : "",
-    designPreset.css_text ? "CSS는 직접 출력하지 말고 색상, 카드감, 여백, CTA 강조 방식만 글 구조 지침으로 반영한다." : "",
-    "콘텐츠 사실은 슬롯과 검증된 콘텐츠 재료에서만 가져온다. 업로드 HTML의 예시 문장, 특정 지역, 특정 업체 정보는 모두 플레이스홀더로 간주한다.",
-  ].filter(Boolean).join("\n");
-}
-
-function sanitizeUploadedDesignText(value: unknown): string {
-  return String(value || "")
-    .replace(/\b\d{2,3}-\d{3,4}-\d{4}\b/g, "[연락처]")
-    .replace(/\b010-\d{4}-\d{4}\b/g, "[연락처]")
-    .replace(/\b\d{1,3}(?:,\d{3})+\s*원\b/g, "[가격]")
-    .replace(/\b\d+\s*만\s*원\b/g, "[가격]")
-    .replace(/(?:서울|부산|대구|인천|광주|대전|울산|세종)\s*[가-힣]+구/g, "[지역]")
-    .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:시|군|구)/g, "[지역]")
-    .replace(/(?:[가-힣]+구)(?=(?:엔|에는|은|는|이|가|을|를|에서|으로|로|까지|부터|,|\.|\s|$))/g, "[지역]")
-    .replace(/[가-힣]+(?:시|군|구)\s+[가-힣]+(?:읍|면|동|리)/g, "[생활권]")
-    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:자동차운전전문학원|운전전문학원|자동차운전학원)/g, "[학원명]")
-    .replace(/\s+/g, " ")
-    .trim();
+    .filter((entry) => allowed.has(entry[1] ?? "")));
 }
 
 function parseJsonObject(value: string): Record<string, unknown> {
@@ -949,10 +907,7 @@ function formatMetric(value: any, fallback: string): string {
   return Number.isFinite(n) ? String(n) : fallback;
 }
 
-function designStructureGuide(designTemplateId: string, designPreset?: Row): string {
-  if (designPreset && Array.isArray(designPreset.structure_guide) && designPreset.structure_guide.length) {
-    return designPreset.structure_guide.map((line: unknown) => `- ${sanitizeUploadedDesignText(line)}`).join("\n");
-  }
+function designStructureGuide(designTemplateId: string): string {
   const guides: Record<string, string[]> = {
     editorial: [
       "1) 상황 공감형 도입: 독자가 왜 지금 이 정보를 찾는지 2~3문장으로 시작",

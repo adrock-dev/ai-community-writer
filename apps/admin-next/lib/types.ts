@@ -20,16 +20,6 @@ export interface DesignTemplateOption {
   css_tokens?: Record<string, unknown>;
 }
 
-export interface DesignPreset extends DesignTemplateOption {
-  domain: string;
-  source_type: "uploaded_html";
-  source_html?: string | null;
-  extracted_summary?: string | null;
-  css_text?: string | null;
-  css_tokens?: Record<string, unknown>;
-  created_at: string;
-}
-
 export interface TemplateOverride {
   direction?: string;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
@@ -158,7 +148,6 @@ export interface PostSummary {
 export interface PostDetail extends PostSummary {
   body_markdown: string;
   images?: string | Record<string, string> | null;
-  design_preset?: DesignPreset | null;
   session_id?: string | null;
   input_tokens?: number;
   output_tokens?: number;

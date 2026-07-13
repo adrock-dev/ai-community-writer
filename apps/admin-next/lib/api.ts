@@ -1,4 +1,4 @@
-import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, DesignPreset, CustomTemplate, CoherenceReport } from "./types";
+import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, CustomTemplate, CoherenceReport } from "./types";
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/admin${path}`, {

@@ -118,22 +118,6 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
-CREATE TABLE IF NOT EXISTS design_presets (
-  id TEXT PRIMARY KEY,
-  domain TEXT NOT NULL,
-  name TEXT NOT NULL,
-  source_type TEXT NOT NULL DEFAULT 'uploaded_html',
-  source_html TEXT,
-  extracted_summary TEXT,
-  best_for TEXT,
-  tone TEXT,
-  structure_guide TEXT,
-  css_text TEXT,
-  css_tokens TEXT,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_design_presets_domain ON design_presets(domain, created_at DESC);
 CREATE TABLE IF NOT EXISTS academies (
   id TEXT PRIMARY KEY,
   domain TEXT NOT NULL,
@@ -335,22 +319,6 @@ export class DbService implements OnModuleInit {
     if (!customTemplateCols.has("keyword_filter")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN keyword_filter TEXT");
     if (!customTemplateCols.has("primary_override")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN primary_override TEXT");
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
-    this.db.exec(`CREATE TABLE IF NOT EXISTS design_presets (
-      id TEXT PRIMARY KEY,
-      domain TEXT NOT NULL,
-      name TEXT NOT NULL,
-      source_type TEXT NOT NULL DEFAULT 'uploaded_html',
-      source_html TEXT,
-      extracted_summary TEXT,
-      best_for TEXT,
-      tone TEXT,
-      structure_guide TEXT,
-      css_text TEXT,
-      css_tokens TEXT,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
-    )`);
-    this.db.exec("CREATE INDEX IF NOT EXISTS idx_design_presets_domain ON design_presets(domain, created_at DESC)");
     this.db.exec(`CREATE TABLE IF NOT EXISTS seo_regions (
       domain TEXT NOT NULL,
       level INTEGER NOT NULL,
@@ -723,34 +691,6 @@ export class DbService implements OnModuleInit {
     this.run(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP`, [key, value]);
   }
 
-  listDesignPresets(domain: string): Row[] {
-    return this.all("SELECT * FROM design_presets WHERE domain=? ORDER BY created_at ASC, id ASC", [domain]).map(designPresetOut);
-  }
-  getDesignPreset(domain: string, id: string): Row | undefined {
-    const row = this.get("SELECT * FROM design_presets WHERE domain=? AND id=?", [domain, id]);
-    return row ? designPresetOut(row) : undefined;
-  }
-  createDesignPreset(domain: string, input: Row): Row {
-    const id = `uploaded:${randomUUID().slice(0, 12)}`;
-    this.run(`INSERT INTO design_presets (id, domain, name, source_type, source_html, extracted_summary, best_for, tone, structure_guide, css_text, css_tokens)
-      VALUES (?, ?, ?, 'uploaded_html', ?, ?, ?, ?, ?, ?, ?)`, [
-      id,
-      domain,
-      String(input.name || "업로드 디자인").trim(),
-      input.source_html ?? null,
-      input.extracted_summary ?? null,
-      input.best_for ?? null,
-      input.tone ?? null,
-      JSON.stringify(input.structure_guide ?? []),
-      input.css_text ?? null,
-      JSON.stringify(input.css_tokens ?? {}),
-    ]);
-    return this.getDesignPreset(domain, id)!;
-  }
-  deleteDesignPreset(domain: string, id: string): number {
-    return this.run("DELETE FROM design_presets WHERE domain=? AND id=?", [domain, id]).changes ?? 0;
-  }
-
   upsertAcademies(domain: string, rows: Row[]): number {
     let n = 0;
     for (const r of rows) {
@@ -1048,18 +988,6 @@ export function customTemplateOut(row: Row): Row {
     custom: true,
   };
 }
-export function designPresetOut(row: Row): Row {
-  const cssTokens = safeJson(row.css_tokens, {});
-  const structureGuide = presetStructureGuideFromHtml(String(row.source_html || "")) || safeJson(row.structure_guide, []);
-  return {
-    ...row,
-    structure_guide: structureGuide,
-    css_tokens: {
-      ...cssTokens,
-      vars: cssTokens.vars && typeof cssTokens.vars === "object" ? cssTokens.vars : extractCssVars(String(row.css_text || "")),
-    },
-  };
-}
 export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
 export function nowSql(): string { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 
@@ -1067,76 +995,6 @@ function encodeJson(value: unknown): string | null {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "string") return value;
   try { return JSON.stringify(value); } catch { return null; }
-}
-
-function extractCssVars(cssText: string): Row {
-  return Object.fromEntries(Array.from(String(cssText || "").matchAll(/--([a-z0-9_-]+)\s*:\s*(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\))/gi))
-    .map((match) => [match[1], match[2]]));
-}
-
-function presetStructureGuideFromHtml(html: string): string[] | null {
-  if (!html) return null;
-  const headings = Array.from(html.matchAll(/<h([1-4])[^>]*>([\s\S]*?)<\/h\1>/gi))
-    .map((match) => presetCleanText(match[2] || ""))
-    .filter(Boolean)
-    .slice(0, 8);
-  if (!headings.length) return null;
-  const seen = new Set<string>();
-  return headings.map((heading, index) => `${index + 1}) ${presetGeneralizeHeading(heading)} 섹션을 구성한다`)
-    .filter((line) => {
-      const key = line.replace(/^\d+\)\s*/, "");
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 6);
-}
-
-function presetCleanText(value: string): string {
-  return String(value || "")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function presetGeneralizeHeading(heading: string): string {
-  const text = presetSanitizeText(heading)
-    .replace(/\[지역\]/g, "지역")
-    .replace(/\[생활권\]/g, "생활권")
-    .replace(/\[학원명\]/g, "후보 학원")
-    .replace(/\[가격\]/g, "비용")
-    .replace(/\[연락처\]/g, "연락처")
-    .replace(/^[0-9]{1,2}[\s.)-]+/, "")
-    .trim();
-  if (/비교|BEST|순위|추천/.test(text)) return "후보 비교/추천";
-  if (/순서|목차/.test(text)) return "목차";
-  if (/가격|비용|수강료|할인/.test(text)) return "비용 확인";
-  if (/위치|주소|셔틀|거리|가까/.test(text)) return "동선/접근성";
-  if (/후기|평점|리뷰/.test(text)) return "후기/판단 근거";
-  if (/상담|예약|문의|전화/.test(text)) return "상담/CTA";
-  if (/준비|절차|방법|체크/.test(text)) return "절차/체크리스트";
-  if (/요약|핵심/.test(text)) return "핵심 요약";
-  return text.replace(/\[[^\]]+\]/g, "").trim() || "본문";
-}
-
-function presetSanitizeText(value: string): string {
-  return String(value || "")
-    .replace(/\b\d{2,3}-\d{3,4}-\d{4}\b/g, "[연락처]")
-    .replace(/\b010-\d{4}-\d{4}\b/g, "[연락처]")
-    .replace(/\b\d{1,3}(?:,\d{3})+\s*원\b/g, "[가격]")
-    .replace(/\b\d+\s*만\s*원\b/g, "[가격]")
-    .replace(/(?:서울|부산|대구|인천|광주|대전|울산|세종)\s*[가-힣]+구/g, "[지역]")
-    .replace(/[가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:시|군|구)/g, "[지역]")
-    .replace(/(?:[가-힣]+구)(?=(?:엔|에는|은|는|이|가|을|를|에서|으로|로|까지|부터|,|\.|\s|$))/g, "[지역]")
-    .replace(/[가-힣]+(?:시|군|구)\s+[가-힣]+(?:읍|면|동|리)/g, "[생활권]")
-    .replace(/[가-힣A-Za-z0-9·&()\-\s]{2,40}(?:자동차운전전문학원|운전전문학원|자동차운전학원)/g, "[학원명]")
-    .replace(/\s+/g, " ")
-    .trim();
 }
 
 function nullableText(value: unknown): string | null {
