@@ -29,8 +29,8 @@ const AXIS_PLACEHOLDER: Record<Axis, string> = {
   modifier: "셔틀 편리\n친절한 강사\n최단기",
 };
 const TABS = [
-  ["overview", "개요"], ["plan", "글 공통 설정"], ["templates", "글유형/디자인"],
-  ["academies", "원천 데이터"], ["slots", "글 생성"], ["jobs", "작업 큐"], ["posts", "검수·내보내기"], ["settings", "설정"],
+  ["overview", "개요"], ["academies", "원천 데이터"], ["plan", "글 공통 설정"], ["templates", "글유형/디자인"],
+  ["slots", "글 생성"], ["jobs", "작업 큐"], ["posts", "검수·내보내기"], ["settings", "설정"],
 ] as const;
 
 const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: string }> = {
@@ -1124,6 +1124,11 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   const [filterError, setFilterError] = useState("");
   const [lastSync, setLastSync] = useState<SyncSummary>({});
   useEffect(() => { setLastSync(getSyncSummary(domain.domain)); }, [domain.domain]);
+  // 지역 축 편집창: 비제어 defaultValue 는 동기화/초기화로 regionAxis 가 바뀌어도 갱신되지 않으므로(개수 배지만 갱신되던 버그),
+  // content 시그니처로 로컬 draft 를 동기화한다. 사용자가 직접 편집하는 동안(regionAxis 불변)에는 리셋되지 않는다.
+  const regionAxisText = regionAxis.map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n");
+  const [regionDraft, setRegionDraft] = useState(regionAxisText);
+  useEffect(() => { setRegionDraft(regionAxisText); }, [regionAxisText]);
   // 학원 행에 남은 synced_at 중 가장 최근 값(다른 브라우저에서 동기화된 경우의 폴백).
   const academySyncedAt = useMemo(() => remoteAcademies.reduce<string | null>((max, a) => (a.synced_at && (!max || a.synced_at > max) ? a.synced_at : max), null), [remoteAcademies]);
   useEffect(() => { setRemoteAcademies(academies); setRemoteTotal(academies.length); }, [academies]);
@@ -1184,6 +1189,17 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
+  // region 축만 운전 프리셋 기본값으로 초기화(keyword 등 다른 축 미변경). 동기화 테스트 전 알려진 baseline 확보용.
+  async function resetRegions() {
+    if (!confirm("지역 축을 기본값(운전 프리셋 지역)으로 초기화할까요? 지금 지역 목록이 덮어써집니다.")) return;
+    setSyncBusy("regions");
+    try {
+      await api(`/domains/${encodeURIComponent(domain.domain)}/axes/preset`, { method: "POST", body: JSON.stringify({ preset_key: domain.vertical || "driving", axes: ["region"] }) });
+      setSyncResult("지역 축을 기본값으로 초기화했습니다.");
+      await onRefresh();
+    } catch (e) { alert((e as Error).message); }
+    finally { setSyncBusy(""); }
+  }
   return <div className="grid">
     <div className="card card-pad grid" data-tour="academies-sync">
       <div className="spread"><div><h2>학원/지역자료 — 생성용 배경 데이터</h2><p className="muted">DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
@@ -1201,17 +1217,24 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
         <div className="spread"><h3 style={{ margin: 0 }}>1단계 · 지역자료 동기화</h3><span className="badge">지역 데이터 · region 축</span></div>
         <p className="muted small">지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 <b>지역 동기화에만</b> 적용됩니다.</p>
-        <div className="grid grid-3">
+        <div className="grid grid-2">
           <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
           <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>
-          <div className="row" style={{ alignItems: "end" }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button></div>
         </div>
+        <div className="row" style={{ gap: 8 }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button><button className="btn" type="button" onClick={resetRegions} disabled={Boolean(syncBusy)} title="지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline)">기본값으로 초기화</button></div>
         <p className="muted small">최근 지역 동기화: {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
+        <div className="spread"><div><h3 style={{ margin: 0 }}>현재 지역 축</h3><p className="muted small">글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 <b>가중치·월검색량·KD</b>는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다.</p></div><span className="badge info">{regionAxis.length}개</span></div>
+        <p className="uploaded-notice" style={{ padding: "8px 12px", margin: "-8px 0" }}>⚠️ <b>월검색량·KD</b>는 실측이 아닌 추정 시드값으로 슬롯 <b>우선순위</b>에만 쓰이며 글 내용은 바꾸지 않습니다(추후 <b>네이버 검색광고 API</b> 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다.</p>
+        {regionAxis.length > 0
+          ? <div className="table-wrap" style={{ maxHeight: 340, overflow: "auto" }}><table>
+              <thead><tr><th>지역</th><th style={{ width: 90 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 100 }}>경쟁도(KD)</th></tr></thead>
+              <tbody>{regionAxis.map((r, i) => <tr key={i}><td>{r.value}</td><td>{r.weight}</td><td>{r.monthly_search_volume ?? "-"}</td><td>{r.competition_kd ?? "-"}</td></tr>)}</tbody>
+            </table></div>
+          : <p className="muted small">지역이 없습니다. 위 「지역 동기화」 또는 「기본값으로 초기화」로 채우세요.</p>}
         <details className="template-subsection">
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>지역 축 직접 편집 (고급)</h3><p className="muted small">보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요.</p></div><span className="badge info">{regionAxis.length}개</span></div></summary>
+          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>CSV로 직접 편집 (고급)</h3><p className="muted small">보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요. 한 줄에 하나: <code>값,가중치,월검색량,KD</code></p></div><span className="badge info">{regionAxis.length}개</span></div></summary>
           <form className="grid" style={{ marginTop: 8 }} onSubmit={(e) => { e.preventDefault(); saveRegionAxis(e.currentTarget); }}>
-            <p className="uploaded-notice" style={{ padding: "8px 12px", marginBottom: "-8px" }}>⚠️ <b>월검색량·KD</b>는 실측이 아닌 추정 시드값으로 슬롯 <b>우선순위</b>에만 쓰이며 글 내용은 바꾸지 않습니다(추후 <b>네이버 검색광고 API</b> 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다.</p>
-            <textarea className="textarea mono" name="values" rows={8} defaultValue={regionAxis.map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" />
+            <textarea className="textarea mono" name="values" rows={8} value={regionDraft} onChange={(e) => setRegionDraft(e.target.value)} placeholder="값,가중치,월검색량,KD" />
             <div className="row"><button className="btn primary">지역 축 저장</button></div>
           </form>
         </details>
