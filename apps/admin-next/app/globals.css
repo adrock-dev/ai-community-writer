@@ -55,6 +55,10 @@ p { line-height: 1.6; }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 12px 30px rgba(15, 23, 42, .04); }
 .card-pad { padding: 18px; }
 .grid { display: grid; gap: 16px; }
+/* 수동 자료 보완 등 보조 영역: 내부 여백을 촘촘하게 */
+.compact-pad { padding: 12px; gap: 10px; }
+.compact-pad .grid, .compact-pad form { gap: 8px; }
+.compact-pad h3 { margin: 0; }
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -63,7 +67,7 @@ p { line-height: 1.6; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-.btn { border: 1px solid var(--line); background: white; padding: 9px 13px; border-radius: 11px; display: inline-flex; gap: 7px; align-items: center; justify-content: center; font-weight: 700; color: #1e293b; }
+.btn { border: 1px solid var(--line); background: white; padding: 9px 13px; border-radius: 11px; display: inline-flex; gap: 7px; align-items: center; justify-content: center; font-weight: 700; color: #1e293b; white-space: nowrap; }
 .btn:hover { background: #f8fafc; }
 .btn.primary { border-color: var(--primary); background: var(--primary); color: white; }
 .btn.primary:hover { background: var(--primary-2); }

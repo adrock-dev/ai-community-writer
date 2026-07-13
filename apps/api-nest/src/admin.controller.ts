@@ -515,6 +515,14 @@ export class AdminController {
     checkAuth(req, headers); this.requireDomain(domain); return { ok: true, deleted: this.db.deleteAcademy(domain, academyId) };
   }
 
+  // 학원 자료 일괄 삭제. region 쿼리가 있으면 그 지역만, 없으면 도메인 전체.
+  @Delete("domains/:domain/academies")
+  deleteAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const region = String(query.region || "").trim();
+    return { ok: true, deleted: this.db.deleteAcademies(domain, region || undefined) };
+  }
+
   @Post("domains/:domain/jobs/generate")
   enqueueGenerate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); const domainMeta = this.requireDomain(domain);

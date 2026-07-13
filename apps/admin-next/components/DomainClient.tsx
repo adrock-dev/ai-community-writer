@@ -1110,7 +1110,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   const [syncBusy, setSyncBusy] = useState("");
   const [regionLevel, setRegionLevel] = useState<"2" | "3" | "all">("2");
   const [replaceRegionAxis, setReplaceRegionAxis] = useState(true);
-  const [syncResult, setSyncResult] = useState("");
+  const [regionMsg, setRegionMsg] = useState("");
+  const [academyMsg, setAcademyMsg] = useState("");
   const [q, setQ] = useState("");
   const [region, setRegion] = useState("");
   const [academyType, setAcademyType] = useState("");
@@ -1168,11 +1169,21 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   async function add(form: HTMLFormElement) { const fd = Object.fromEntries(new FormData(form).entries()); await api(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "POST", body: JSON.stringify(fd) }); form.reset(); await onRefresh(); }
   async function bulk(form: HTMLFormElement) { const text = String(new FormData(form).get("json") || ""); await api(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "POST", body: text }); form.reset(); await onRefresh(); }
   async function del(id: string) { if (!confirm("삭제할까요?")) return; await api(`/domains/${encodeURIComponent(domain.domain)}/academies/${id}`, { method: "DELETE" }); await onRefresh(); await loadAcademies(); }
+  async function delAll() {
+    if (!confirm("이 도메인의 학원 자료를 전부 삭제할까요? (검색/지역 필터와 무관하게 모두 삭제) 되돌릴 수 없습니다.")) return;
+    setSyncBusy("academies");
+    try {
+      const res = await api<{ deleted: number }>(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "DELETE" });
+      setAcademyMsg(`학원 자료 ${Number(res.deleted ?? 0).toLocaleString()}개를 모두 삭제했습니다.`);
+      await onRefresh(); await loadAcademies();
+    } catch (e) { alert((e as Error).message); }
+    finally { setSyncBusy(""); }
+  }
   async function syncAcademies() {
     setSyncBusy("academies");
     try {
       const res = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 });
-      setSyncResult(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
+      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
       setLastSync(recordSync(domain.domain, "academies", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개 · 리뷰 ${res.review_count}/블로그 ${res.blog_review_count}` }));
       await onRefresh();
       await loadAcademies();
@@ -1183,7 +1194,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     setSyncBusy("regions");
     try {
       const res = await syncDrivingplusRegions(domain.domain, { level: regionLevel, replace_axis: replaceRegionAxis, max: regionLevel === "3" ? 500 : 10000 });
-      setSyncResult(`지역 ${res.fetched}개 조회 · ${res.upserted}개 반영${res.axis_replaced ? " · region 축 교체" : ""}`);
+      setRegionMsg(`지역 ${res.fetched}개 조회 · ${res.upserted}개 반영${res.axis_replaced ? " · region 축 교체" : ""}`);
       setLastSync(recordSync(domain.domain, "regions", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개${res.axis_replaced ? " · region 축 교체" : ""}` }));
       await onRefresh();
     } catch (e) { alert((e as Error).message); }
@@ -1195,14 +1206,16 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     setSyncBusy("regions");
     try {
       await api(`/domains/${encodeURIComponent(domain.domain)}/axes/preset`, { method: "POST", body: JSON.stringify({ preset_key: domain.vertical || "driving", axes: ["region"] }) });
-      setSyncResult("지역 축을 기본값으로 초기화했습니다.");
+      setRegionMsg("지역 축을 기본값으로 초기화했습니다.");
       await onRefresh();
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
   return <div className="grid">
+    {/* 묶음 1 — 원천 데이터 개요 + 현재 적용 API */}
     <div className="card card-pad grid" data-tour="academies-sync">
-      <div className="spread"><div><h2>학원/지역자료 — 생성용 배경 데이터</h2><p className="muted">DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
+      <div><h2>학원/지역자료 — 생성용 배경 데이터</h2><p className="muted">DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다.</p></div>
+      <div className="row" style={{ gap: 10 }}><span className="badge info">지역 데이터 {regionAxis.length.toLocaleString()}개</span><span className="badge info">학원 데이터 {remoteTotal.toLocaleString()}개</span></div>
       <div className="writer-hint">
         <b>현재 적용 API</b>
         <span>관리자/Nest: <code>{runtimeApis?.admin_api_base ?? "확인 중..."}</code></span>
@@ -1214,50 +1227,50 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         {runtimeApis && <span>동기화 기본값: 일반 리뷰 {runtimeApis.sync_defaults.review_limit}개({runtimeApis.sync_defaults.review_sort}), 블로그 리뷰 {runtimeApis.sync_defaults.blog_review_limit}개</span>}
         {runtimeApis && <span className="muted small">{runtimeApis.sync_defaults.review_source_note}</span>}
       </div>
-      <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
-        <div className="spread"><h3 style={{ margin: 0 }}>1단계 · 지역자료 동기화</h3><span className="badge">지역 데이터 · region 축</span></div>
-        <p className="muted small">지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 <b>지역 동기화에만</b> 적용됩니다.</p>
-        <div className="grid grid-2">
-          <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
-          <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>
-        </div>
-        <div className="row" style={{ gap: 8 }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button><button className="btn" type="button" onClick={resetRegions} disabled={Boolean(syncBusy)} title="지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline)">기본값으로 초기화</button></div>
-        <p className="muted small">최근 지역 동기화: {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
-        <div className="spread"><div><h3 style={{ margin: 0 }}>현재 지역 축</h3><p className="muted small">글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 <b>가중치·월검색량·KD</b>는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다.</p></div><span className="badge info">{regionAxis.length}개</span></div>
-        <p className="uploaded-notice" style={{ padding: "8px 12px", margin: "-8px 0" }}>⚠️ <b>월검색량·KD</b>는 실측이 아닌 추정 시드값으로 슬롯 <b>우선순위</b>에만 쓰이며 글 내용은 바꾸지 않습니다(추후 <b>네이버 검색광고 API</b> 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다.</p>
-        {regionAxis.length > 0
-          ? <div className="table-wrap" style={{ maxHeight: 340, overflow: "auto" }}><table>
-              <thead><tr><th>지역</th><th style={{ width: 90 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 100 }}>경쟁도(KD)</th></tr></thead>
-              <tbody>{regionAxis.map((r, i) => <tr key={i}><td>{r.value}</td><td>{r.weight}</td><td>{r.monthly_search_volume ?? "-"}</td><td>{r.competition_kd ?? "-"}</td></tr>)}</tbody>
-            </table></div>
-          : <p className="muted small">지역이 없습니다. 위 「지역 동기화」 또는 「기본값으로 초기화」로 채우세요.</p>}
-        <details className="template-subsection">
-          <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>CSV로 직접 편집 (고급)</h3><p className="muted small">보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요. 한 줄에 하나: <code>값,가중치,월검색량,KD</code></p></div><span className="badge info">{regionAxis.length}개</span></div></summary>
-          <form className="grid" style={{ marginTop: 8 }} onSubmit={(e) => { e.preventDefault(); saveRegionAxis(e.currentTarget); }}>
-            <textarea className="textarea mono" name="values" rows={8} value={regionDraft} onChange={(e) => setRegionDraft(e.target.value)} placeholder="값,가중치,월검색량,KD" />
-            <div className="row"><button className="btn primary">지역 축 저장</button></div>
-          </form>
-        </details>
-      </div>
-      <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
-        <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
-        <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
-        <div className="row"><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button></div>
-        <p className="muted small">현재 {remoteTotal.toLocaleString()}개 보유 · 최근 동기화: {lastSync.academies ? `${formatDateTime(lastSync.academies.at)} · ${lastSync.academies.count.toLocaleString()}개 반영${lastSync.academies.detail ? ` (${lastSync.academies.detail})` : ""}` : academySyncedAt ? formatDateTime(academySyncedAt) : "아직 기록 없음"}</p>
-      </div>
-      {syncResult && <p className="small badge success" style={{ width: "fit-content" }}>{syncResult}</p>}
-      <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
-        <div className="spread"><div><h3 style={{ margin: 0 }}>선택 · 수동 자료 보완</h3><p className="muted small">DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
-      {manualToolsOpen && <>
-        <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>⚠️ 같은 학원(지역+이름)을 다시 등록하면 비운 항목이 기존 값을 덮어 지웁니다. 일부만 수정할 땐 나머지 항목도 함께 채워주세요. 단건·JSON 일괄 등록 모두 동일합니다.</p>
-        <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다.</p><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
-        <form className="grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h3>2. JSON 일괄 등록</h3><p className="muted small">여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다.</p><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">JSON 일괄 등록</button></form>
-      </>}
-      </div>
     </div>
+    {/* 묶음 2 — 지역자료 동기화 */}
     <div className="card card-pad grid">
-      <div className="spread"><h2>학원자료 목록 · 필터</h2><span className="muted small">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
-      <p className="muted small">아래 필터로 표에서 자료를 찾아봅니다. 글 생성에 쓰는 학원 타입은 이제 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p>
+      <div className="spread"><h3 style={{ margin: 0 }}>1단계 · 지역자료 동기화</h3><span className="badge">지역 데이터 · region 축</span></div>
+      <p className="muted small">지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 <b>지역 동기화에만</b> 적용됩니다.</p>
+      <div className="grid grid-2">
+        <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
+        <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>
+      </div>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button><button className="btn" type="button" onClick={resetRegions} disabled={Boolean(syncBusy)} title="지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline)">기본값으로 초기화</button></div>
+      {regionMsg && <p className="small badge success" style={{ width: "fit-content" }}>{regionMsg}</p>}
+      <p className="muted small">최근 지역 동기화: {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
+      <div className="spread"><div><h3 style={{ margin: 0 }}>현재 지역 축</h3><p className="muted small">글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 <b>가중치·월검색량·KD</b>는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다.</p></div><span className="badge info">{regionAxis.length}개</span></div>
+      <p className="uploaded-notice" style={{ padding: "8px 12px", margin: "-8px 0" }}>⚠️ <b>월검색량·KD</b>는 실측이 아닌 추정 시드값으로 슬롯 <b>우선순위</b>에만 쓰이며 글 내용은 바꾸지 않습니다(추후 <b>네이버 검색광고 API</b> 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다.</p>
+      {regionAxis.length > 0
+        ? <div className="table-wrap" style={{ maxHeight: 340, overflow: "auto" }}><table>
+            <thead><tr><th>지역</th><th style={{ width: 90 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 100 }}>경쟁도(KD)</th></tr></thead>
+            <tbody>{regionAxis.map((r, i) => <tr key={i}><td>{r.value}</td><td>{r.weight}</td><td>{r.monthly_search_volume ?? "-"}</td><td>{r.competition_kd ?? "-"}</td></tr>)}</tbody>
+          </table></div>
+        : <p className="muted small">지역이 없습니다. 위 「지역 동기화」 또는 「기본값으로 초기화」로 채우세요.</p>}
+      <details className="template-subsection">
+        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>CSV로 직접 편집 (고급)</h3><p className="muted small">보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요. 한 줄에 하나: <code>값,가중치,월검색량,KD</code></p></div><span className="badge info">{regionAxis.length}개</span></div></summary>
+        <form className="grid" style={{ marginTop: 8 }} onSubmit={(e) => { e.preventDefault(); saveRegionAxis(e.currentTarget); }}>
+          <textarea className="textarea mono" name="values" rows={8} value={regionDraft} onChange={(e) => setRegionDraft(e.target.value)} placeholder="값,가중치,월검색량,KD" />
+          <div className="row"><button className="btn primary">지역 축 저장</button></div>
+        </form>
+      </details>
+    </div>
+    {/* 묶음 3 — 학원자료 동기화 */}
+    <div className="card card-pad grid">
+      <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
+      <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button><button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
+      {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
+      <p className="muted small">최근 동기화: {lastSync.academies ? `${formatDateTime(lastSync.academies.at)} · ${lastSync.academies.count.toLocaleString()}개 반영${lastSync.academies.detail ? ` (${lastSync.academies.detail})` : ""}` : academySyncedAt ? formatDateTime(academySyncedAt) : "아직 기록 없음"}</p>
+      <div className="card card-pad grid compact-pad" style={{ background: "#f8fafc" }}>
+        <div className="spread"><div><h3 style={{ margin: 0 }}>선택 · 수동 자료 보완</h3><p className="muted small">DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
+        {manualToolsOpen && <>
+          <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>⚠️ 같은 학원(지역+이름)을 다시 등록하면 비운 항목이 기존 값을 덮어 지웁니다. 일부만 수정할 땐 나머지 항목도 함께 채워주세요. 단건·JSON 일괄 등록 모두 동일합니다.</p>
+          <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다.</p><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
+          <form className="grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h3>2. JSON 일괄 등록</h3><p className="muted small">여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다.</p><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">JSON 일괄 등록</button></form>
+        </>}
+      </div>
+      <div className="spread"><div><h3 style={{ margin: 0 }}>현재 학원 목록</h3><p className="muted small">동기화된 학원을 검색·지역으로 찾고, 필요 없는 자료는 삭제합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p></div><span className="badge info">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
       <div className="grid grid-4">
         <Field label="검색"><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명, 주소, SEO 설명" /></Field>
         <Field label="지역"><input className="input" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="서울, 부산, 강남구" /></Field>
@@ -1265,12 +1278,14 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         <Field label="사진"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={hasPhotos} onChange={(e) => setHasPhotos(e.target.checked)} /> 사진 있는 학원만</label></Field>
       </div>
       {filterError && <p className="small" style={{ color: "var(--danger)" }}>필터 오류: {filterError}</p>}
-      <div className="table-wrap"><table><thead><tr><th>지역</th><th>학원명</th><th>API 타입</th><th>전화/사진</th><th>SEO 설명</th><th>출처</th><th></th></tr></thead><tbody>{remoteAcademies.map((a) => {
-        const photoCount = parsePhotoCount(a.photos);
-        const reviewCount = parseJsonCount(a.review_json);
-        const blogReviewCount = parseJsonCount(a.blog_reviews);
-        return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => del(a.id)}>삭제</button></td></tr>;
-      })}</tbody></table></div>
+      {remoteAcademies.length > 0
+        ? <div className="table-wrap" style={{ maxHeight: 480, overflow: "auto" }}><table><thead><tr><th>지역</th><th>학원명</th><th>API 타입</th><th>전화/사진</th><th>SEO 설명</th><th>출처</th><th></th></tr></thead><tbody>{remoteAcademies.map((a) => {
+            const photoCount = parsePhotoCount(a.photos);
+            const reviewCount = parseJsonCount(a.review_json);
+            const blogReviewCount = parseJsonCount(a.blog_reviews);
+            return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => del(a.id)}>삭제</button></td></tr>;
+          })}</tbody></table></div>
+        : <p className="muted small">{loading ? "불러오는 중..." : "학원이 없습니다. 위 「학원 동기화」로 채우거나 검색 조건을 바꿔보세요."}</p>}
     </div>
   </div>;
 }
