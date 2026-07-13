@@ -771,8 +771,8 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
 
   return <section className="card card-pad grid">
     <div className="spread">
-      <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다.</p></div>
-      <div className="row" style={{ flexShrink: 0, whiteSpace: "nowrap" }}><span className="badge info">{custom.length}개</span><button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={loading || busy} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
+      <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다.</p><p className="muted small">「새로고침」은 목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다. 이 화면에서 만들기/편집/삭제한 뒤엔 자동 갱신되며, 다른 창·다른 사람이 바꾼 경우에만 수동으로 누르면 됩니다.</p></div>
+      <div className="row" style={{ flexShrink: 0, whiteSpace: "nowrap" }}><span className="badge info">{custom.length}개</span><button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={loading || busy} onClick={() => void reload()} title="목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다">{loading ? "..." : "새로고침"}</button></div>
     </div>
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
@@ -872,7 +872,13 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
     if (modifierCount > 0) { const v = parseLines(modifierVals); if (v.length) out.modifier = v; }
     return out;
   }
-  function resetForm() { setName(""); setDirection(""); setSource(""); setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); }
+  // 폼을 빈 새 유형 상태로 되돌린다(생성 후 자동 호출 + '초기화' 버튼 수동 호출).
+  function resetForm() {
+    setName(""); setKind(kindOptions[0]?.kind ?? ""); setDesign("local-guide");
+    setUsePersona(false); setWithIntent(false); setModifierCount(0);
+    setDirection(""); setSource("");
+    setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set());
+  }
 
   function submit() {
     if (!name.trim()) { alert("이름을 입력하세요."); return; }
@@ -918,7 +924,7 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
       </Field>
       <Field label="디자인"><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
         {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-      </select></Field>
+      </select><p className="muted small">각 디자인의 구성은 아래 「디자인」 영역에서 확인할 수 있고, 「커스텀」을 고르면 그 영역의 커스텀 디자인 메모가 적용됩니다.</p></Field>
     </div>
     <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
     <div className="grid" style={{ gap: 8 }}>
@@ -960,6 +966,7 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
     </details>
     <div className="row">
       <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
+      {mode === "create" && <button type="button" className="btn" disabled={busy} onClick={resetForm} title="입력한 내용을 모두 지우고 빈 폼으로 되돌립니다">초기화</button>}
       {mode === "edit" && <button type="button" className="btn" disabled={busy} onClick={onCancel}>취소</button>}
       {mode === "edit" && <span className="muted small">참조 아키타입(kind)은 만든 뒤 바꿀 수 없습니다.</span>}
     </div>
@@ -1111,8 +1118,15 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
     </div>
     <div className="card card-pad"><p className="muted">후보 지역과 일치하거나 가까운 원천 자료가 생성 프롬프트에 주입됩니다. 외부 원천 API 자료는 SEO 설명, vphone, 사진 URL, 별점 리뷰, 블로그 리뷰글도 함께 사용됩니다.</p></div>
     <div className="card card-pad grid">
-      <div className="spread"><h2>학원자료 필터</h2><span className="muted small">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
-      <p className="muted small">아래 필터는 표에서 자료를 찾아보는 용도입니다. 글 생성에 쓰는 학원 타입은 이제 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p>
+      <div className="spread"><div><h2>수동 학원자료 등록</h2><p className="muted small">DrivingPlus 동기화에 없는 검증 자료를 직접 보완할 때 사용합니다. 단건 등록 또는 JSON 일괄 등록 중 하나를 선택하세요.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
+      {manualToolsOpen && <>
+        <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다.</p><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
+        <form className="grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h3>2. JSON 일괄 등록</h3><p className="muted small">여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다.</p><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">JSON 일괄 등록</button></form>
+      </>}
+    </div>
+    <div className="card card-pad grid">
+      <div className="spread"><h2>학원자료 목록 · 필터</h2><span className="muted small">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
+      <p className="muted small">아래 필터로 표에서 자료를 찾아봅니다. 글 생성에 쓰는 학원 타입은 이제 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p>
       <div className="grid grid-4">
         <Field label="검색"><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명, 주소, SEO 설명" /></Field>
         <Field label="지역"><input className="input" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="서울, 부산, 강남구" /></Field>
@@ -1120,20 +1134,13 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
         <Field label="사진"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={hasPhotos} onChange={(e) => setHasPhotos(e.target.checked)} /> 사진 있는 학원만</label></Field>
       </div>
       {filterError && <p className="small" style={{ color: "var(--danger)" }}>필터 오류: {filterError}</p>}
+      <div className="table-wrap"><table><thead><tr><th>지역</th><th>학원명</th><th>API 타입</th><th>전화/사진</th><th>SEO 설명</th><th>출처</th><th></th></tr></thead><tbody>{remoteAcademies.map((a) => {
+        const photoCount = parsePhotoCount(a.photos);
+        const reviewCount = parseJsonCount(a.review_json);
+        const blogReviewCount = parseJsonCount(a.blog_reviews);
+        return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => del(a.id)}>삭제</button></td></tr>;
+      })}</tbody></table></div>
     </div>
-    <div className="card card-pad grid">
-      <div className="spread"><div><h2>수동 학원자료 등록</h2><p className="muted small">DrivingPlus 동기화에 없는 검증 자료를 직접 보완할 때 사용합니다. 단건 등록 또는 JSON 일괄 등록 중 하나를 선택하세요.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
-      {manualToolsOpen && <>
-        <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다.</p><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
-        <form className="grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h3>2. JSON 일괄 등록</h3><p className="muted small">여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다.</p><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">JSON 일괄 등록</button></form>
-      </>}
-    </div>
-    <div className="table-wrap"><table><thead><tr><th>지역</th><th>학원명</th><th>API 타입</th><th>전화/사진</th><th>SEO 설명</th><th>출처</th><th></th></tr></thead><tbody>{remoteAcademies.map((a) => {
-      const photoCount = parsePhotoCount(a.photos);
-      const reviewCount = parseJsonCount(a.review_json);
-      const blogReviewCount = parseJsonCount(a.blog_reviews);
-      return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => del(a.id)}>삭제</button></td></tr>;
-    })}</tbody></table></div>
   </div>;
 }
 
