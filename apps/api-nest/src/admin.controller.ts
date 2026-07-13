@@ -355,7 +355,9 @@ export class AdminController {
     checkAuth(req, headers); this.requireDomain(domain);
     const preset_key = String(body.preset_key || "").trim();
     if (!preset_key) throw new HttpException("preset_key required", 400);
-    this.slots.applyPreset(domain, preset_key);
+    // axes 필터(선택): 지정하면 그 축만 프리셋으로 채운다(예 ["keyword"] — region 등 동기화 축 보존).
+    const onlyAxes = Array.isArray(body.axes) ? (body.axes as unknown[]).map((a) => String(a)).filter((a): a is AxisName => ["region", "keyword", "intent", "persona", "modifier"].includes(a)) : undefined;
+    this.slots.applyPreset(domain, preset_key, onlyAxes);
     return { ok: true, preset_key, axes: this.db.listAxes(domain) };
   }
 

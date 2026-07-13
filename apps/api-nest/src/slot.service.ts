@@ -12,12 +12,13 @@ type Row = Record<string, any>;
 export class SlotService {
   constructor(@Inject(DbService) private readonly db: DbService) {}
 
-  applyPreset(domain: string, key: string): Record<string, number> {
+  applyPreset(domain: string, key: string, onlyAxes?: AxisName[]): Record<string, number> {
     const presetKey = VERTICAL_TO_PRESET[key] || key;
     const preset = PRESETS[presetKey];
     if (!preset) return {};
     const summary: Record<string, number> = {};
     for (const [axis, values] of Object.entries(preset) as [AxisName, Row[]][]) {
+      if (onlyAxes && !onlyAxes.includes(axis)) continue; // axes 필터: 지정된 축만 채운다(예 keyword 만).
       if (!values.length) continue;
       this.db.bulkReplaceAxis(domain, axis, values);
       summary[axis] = values.length;
