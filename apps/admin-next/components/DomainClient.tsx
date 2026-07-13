@@ -29,7 +29,7 @@ const AXIS_PLACEHOLDER: Record<Axis, string> = {
   modifier: "셔틀 편리\n친절한 강사\n최단기",
 };
 const TABS = [
-  ["overview", "개요"], ["plan", "공통 설정"], ["templates", "글유형/디자인"],
+  ["overview", "개요"], ["plan", "글 공통 설정"], ["templates", "글유형/디자인"],
   ["academies", "원천 데이터"], ["slots", "글 생성"], ["jobs", "작업 큐"], ["posts", "검수·내보내기"], ["settings", "설정"],
 ] as const;
 
@@ -507,7 +507,7 @@ function tourTooltipStyle(rect: DOMRect | null): React.CSSProperties {
 function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; counts: SlotCounts; active: string; onTab: (v: string) => void }) {
   const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
   const steps = [
-    { tab: "plan", title: "공통 설정", done: Boolean(domain.common_principles), count: domain.common_principles ? "완료" : "필요" },
+    { tab: "plan", title: "글 공통 설정", done: Boolean(domain.common_principles), count: domain.common_principles ? "완료" : "필요" },
     { tab: "templates", title: "유형/디자인", done: domain.templates_enabled.length > 0, count: `${domain.templates_enabled.length}개` },
     { tab: "slots", title: "후보/작성", done: totalSlots > 0, count: `${totalSlots}개` },
     { tab: "jobs", title: "작업", done: counts.in_progress > 0 || counts.published > 0, count: counts.in_progress > 0 ? `${counts.in_progress}개 진행` : "상태 확인" },
@@ -536,7 +536,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <Stat label="대기 후보" value={counts.planned} /><Stat label="진행" value={counts.in_progress} /><Stat label="발행" value={counts.published} accent /><Stat label="실패" value={counts.failed} />
     </div>
     <div className="grid grid-2">
-      <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>공통 설정 열기</button></div>
+      <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>글 공통 설정 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>글유형/디자인 열기</button></div>
     </div>
     <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 탭에서 진행 상태 확인</li><li>검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
@@ -596,7 +596,7 @@ function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { t
   return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "기본 3 시작", mode: "basic", focus: "slot-create" };
 }
 
-// 공통 설정 탭: 공통 작성 원칙 + 제외어 + 키워드 마스터. 지역 축은 「원천 데이터」 탭에서 관리한다.
+// 글 공통 설정 탭: 공통 작성 원칙 + 제외어 + 키워드 마스터. 지역 축은 「원천 데이터」 탭에서 관리한다.
 function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: DomainConfig; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void>; onTab: (v: string) => void }) {
   const [brief, setBrief] = useState(domain.common_principles ?? domain.content_brief ?? "");
   const [excludedKeywords, setExcludedKeywords] = useState(domain.excluded_keywords ?? "");
@@ -606,7 +606,7 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
   }
   return <div className="card card-pad grid" data-tour="plan-brief">
     <h2>공통 작성 원칙</h2>
-    <p className="muted">모든 글 유형에 공통 적용되는 안전·데이터 원칙, 제외어, 그리고 <b>키워드 마스터</b>(아래 표)입니다. 글 유형별 방향성·축·키워드 선택은 「글유형/디자인」 탭의 커스텀 글유형에서 관리합니다.</p>
+    <p className="muted" style={{ margin: "-8px 0" }}>모든 글 유형에 공통 적용되는 안전·데이터 원칙, 제외어, 그리고 <b>키워드 마스터</b>(아래 표)입니다. 글 유형별 방향성·축·키워드 선택은 「글유형/디자인」 탭의 커스텀 글유형에서 관리합니다.</p>
     <Field label="공통 작성 원칙 (모든 글 유형 공통)"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="확인된 데이터만 사용하고, 가격·합격률·셔틀은 자료가 있을 때만 단정한다. 확인 가능한 사실이 부족하면 숫자를 부풀리지 말고 확인 방법 중심으로 정직하게 작성한다." /></Field>
     <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 후보 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
     <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형/방향성</button><button className="btn" onClick={() => onTab("academies")}>원천 데이터</button></div>
@@ -643,6 +643,7 @@ function KeywordMaster({ domain, presetKey, keywordAxis, onRefresh }: { domain: 
   }
   return <div className="card card-pad grid" style={{ marginTop: 16 }}>
     <div className="spread"><div><h2>키워드 마스터</h2><p className="muted small">글유형이 고르는 키워드 풀 + SEO 메트릭입니다. 월검색량·경쟁도(KD)는 슬롯 우선순위에 쓰입니다. 직접 편집하거나 「기본값으로 초기화」로 운전 프리셋 18개를 채웁니다.</p></div><span className="badge info">{rows.length}개</span></div>
+    <p className="uploaded-notice" style={{ padding: "8px 12px", margin: "-8px 0" }}>⚠️ <b>월검색량·경쟁도(KD)</b>는 실측이 아닌 초기 추정 시드값입니다. 슬롯 생성 <b>우선순위</b> 계산에만 쓰이며, 글의 내용·품질·길이는 바꾸지 않습니다. 추후 <b>네이버 검색광고 API</b> 연동 시 실측값으로 자동 갱신될 예정입니다. (<b>가중치</b>는 검색 데이터가 아닌 운영 우선순위 값으로, 수기 관리 항목입니다.)</p>
     <div className="table-wrap"><table>
       <thead><tr><th>키워드</th><th style={{ width: 100 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 110 }}>경쟁도(KD)</th><th style={{ width: 72 }}></th></tr></thead>
       <tbody>
@@ -1209,6 +1210,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         <details className="template-subsection">
           <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>지역 축 직접 편집 (고급)</h3><p className="muted small">보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요.</p></div><span className="badge info">{regionAxis.length}개</span></div></summary>
           <form className="grid" style={{ marginTop: 8 }} onSubmit={(e) => { e.preventDefault(); saveRegionAxis(e.currentTarget); }}>
+            <p className="uploaded-notice" style={{ padding: "8px 12px", marginBottom: "-8px" }}>⚠️ <b>월검색량·KD</b>는 실측이 아닌 추정 시드값으로 슬롯 <b>우선순위</b>에만 쓰이며 글 내용은 바꾸지 않습니다(추후 <b>네이버 검색광고 API</b> 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다.</p>
             <textarea className="textarea mono" name="values" rows={8} defaultValue={regionAxis.map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" />
             <div className="row"><button className="btn primary">지역 축 저장</button></div>
           </form>
@@ -1377,7 +1379,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy || !genType} onClick={gen}>{busy ? "만드는 중..." : "글 후보 만들기"}</button>
         </div>
         {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <button className="btn" onClick={() => onTab("templates")}>글유형/디자인 탭</button>에서 유형을 켜세요.</p>}
-        <p className="muted small">조합 재료는 「원천 데이터」 탭 지역·「공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
+        <p className="muted small">조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
       </div>
 

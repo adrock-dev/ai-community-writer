@@ -31,7 +31,8 @@ export class SlotService {
     if (!domainConfig) throw new Error(`unknown domain: ${domain}`);
     const axes = this.db.listAxes(domain);
     const enabled = opts.templates?.length ? opts.templates : safeJson(domainConfig.templates_enabled, []);
-    const templateIds = enabled.length ? enabled : Object.keys(TEMPLATE_SPECS);
+    // 켜진 글유형이 없으면 슬롯을 만들지 않는다(전체 템플릿으로 폴백하지 않음 — 빈 상태는 0개 생성).
+    const templateIds = enabled;
     const maxPerTemplate = opts.maxPerTemplate ?? 200;
     const overrides = safeTemplateOverrides(domainConfig.template_overrides);
     const summary: Record<string, number> = {};

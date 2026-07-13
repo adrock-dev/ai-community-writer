@@ -30,7 +30,8 @@ export const DRIVING_ORIGINAL_TEMPLATE_IDS = [
   "T01", "T03", "T04", "T05", "T06", "T07",
   "T08", "T09", "T10", "T11", "T12", "T13", "T14", "T15"
 ] as const;
-export const DEFAULT_DRIVING_TEMPLATE_IDS = ["T01"] as const;
+// 새 도메인은 글유형이 아무것도 켜지지 않은 빈 상태로 시작한다(운영자가 「글유형/디자인」 탭에서 직접 켠다).
+export const DEFAULT_DRIVING_TEMPLATE_IDS: readonly string[] = [];
 
 // default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
 // default_direction: 이 글유형의 기본 방향성(공통원칙 위에 얹히는 오버레이). 도메인 template_overrides 로 재정의 가능.
