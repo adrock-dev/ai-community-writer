@@ -118,7 +118,6 @@ export class AdminController {
     if (Array.isArray(fields.templates_enabled)) fields.templates_enabled = JSON.stringify(fields.templates_enabled);
     if (fields.design_template_overrides && typeof fields.design_template_overrides === "object") fields.design_template_overrides = JSON.stringify(normalizeDesignOverrides(fields.design_template_overrides));
     if (fields.template_overrides && typeof fields.template_overrides === "object") fields.template_overrides = JSON.stringify(safeTemplateOverrides(fields.template_overrides));
-    if (Array.isArray(fields.academy_type_filter)) fields.academy_type_filter = JSON.stringify(fields.academy_type_filter.map((v: any) => String(v || "").trim()).filter(Boolean));
     this.db.updateDomain(domain, fields);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }

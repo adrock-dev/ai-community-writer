@@ -88,7 +88,6 @@ export interface DomainConfig {
   content_brief?: string | null;
   common_principles?: string | null;
   excluded_keywords?: string | null;
-  academy_type_filter?: string[];
   daily_limit: number;
   created_at: string;
   slot_count?: number;

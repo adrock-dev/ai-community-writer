@@ -34,7 +34,6 @@ CREATE TABLE IF NOT EXISTS domains (
   content_brief TEXT,
   common_principles TEXT,
   excluded_keywords TEXT,
-  academy_type_filter TEXT,
   daily_limit INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -221,7 +220,6 @@ export class DbService implements OnModuleInit {
       custom_design_templates TEXT,
       content_brief TEXT,
       excluded_keywords TEXT,
-      academy_type_filter TEXT,
       daily_limit INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
@@ -276,7 +274,6 @@ export class DbService implements OnModuleInit {
       this.db.exec("UPDATE domains SET common_principles = content_brief WHERE common_principles IS NULL AND content_brief IS NOT NULL");
     }
     if (!domainCols.has("excluded_keywords")) this.db.exec("ALTER TABLE domains ADD COLUMN excluded_keywords TEXT");
-    if (!domainCols.has("academy_type_filter")) this.db.exec("ALTER TABLE domains ADD COLUMN academy_type_filter TEXT");
     this.run(`UPDATE domains SET templates_enabled=?
        WHERE vertical='driving' AND templates_enabled IN ('["T01","T03","T05","T07"]', '["T01","T03","T04","T05","T06","T07"]')`, [JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)]);
     const postCols = new Set(this.all("PRAGMA table_info(posts)").map((r) => r.name));
@@ -377,17 +374,12 @@ export class DbService implements OnModuleInit {
       FROM domains t ORDER BY t.created_at DESC`);
   }
   getDomain(domain: string): Row | undefined { return this.get("SELECT * FROM domains WHERE domain=?", [domain]); }
-  academyTypeFilter(domain: string): string[] {
-    return safeJson(this.getDomain(domain)?.academy_type_filter, [])
-      .map((value: any) => String(value || "").trim())
-      .filter(Boolean);
-  }
   createDomain(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number; templates_enabled?: string }): void {
     this.run(`INSERT INTO domains (domain, display_name, vertical, theme, brand_color, daily_limit, templates_enabled) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0, input.templates_enabled || JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS)]);
   }
   updateDomain(domain: string, fields: Row): void {
-    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords", "academy_type_filter"]);
+    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords"]);
     const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
     if (!entries.length) return;
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
@@ -914,7 +906,6 @@ export function domainOut(row: Row): Row {
     templates_enabled: safeJson(row.templates_enabled, []),
     design_template_overrides: safeJson(row.design_template_overrides, {}),
     template_overrides: safeJson(row.template_overrides, {}),
-    academy_type_filter: safeJson(row.academy_type_filter, []),
   };
 }
 // 커스텀 글유형 axis_tags 는 {persona?,intent?,modifier?: string[]} 만 허용해 정규화한다.
@@ -933,7 +924,7 @@ function serializeAxisTags(value: unknown): string | null {
   const parsed = typeof value === "string" ? parseAxisTags(value) : parseAxisTags(JSON.stringify(value ?? null));
   return parsed ? JSON.stringify(parsed) : null;
 }
-// 글유형 academy_types(문자열 배열). 도메인 academy_type_filter 와 동일 저장형(JSON 배열, 빈/무효는 null).
+// 글유형 academy_types(문자열 배열, JSON 배열 저장, 빈/무효는 null).
 function parseAcademyTypes(value: unknown): string[] {
   const raw = safeJson(value, []);
   return Array.isArray(raw) ? raw.map((v) => String(v || "").trim()).filter(Boolean) : [];
