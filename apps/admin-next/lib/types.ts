@@ -54,6 +54,7 @@ export interface CustomTemplate {
   axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   academy_types?: string[];
   keyword_filter?: string[];
+  primary_override?: "region" | "keyword";
   default_direction?: string | null;
   default_design?: string;
   created_at?: string;
@@ -249,6 +250,7 @@ export interface TemplateSpec {
   axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   academy_types?: string[];
   keyword_filter?: string[];
+  primary_override?: "region" | "keyword";
 }
 
 export interface AdminOptions {

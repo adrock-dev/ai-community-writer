@@ -740,12 +740,12 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
     ...Object.entries(options.template_specs).map(([id, spec]) => ({
       id, label: `${id} ${spec.name} (빌트인)`, name: spec.name, kind: spec.kind ?? "",
       use_persona: spec.use_persona, with_intent: Boolean(spec.with_intent), modifier_count: spec.modifier_count,
-      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types, keyword_filter: spec.keyword_filter,
+      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types, keyword_filter: spec.keyword_filter, primary_override: spec.primary_override,
     })),
     ...custom.map((t) => ({
       id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)`, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
-      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter,
+      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter, primary_override: t.primary_override,
     })),
   ], [options.template_specs, custom]);
 
@@ -823,7 +823,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
 }
 
 // 커스텀 만들기 '시작점' 옵션 형태(빌트인/커스텀 공통). 고르면 폼 값을 채운다.
-type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[]; keyword_filter?: string[] };
+type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[]; keyword_filter?: string[]; primary_override?: "region" | "keyword" };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
 function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
@@ -843,6 +843,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   const [modifierVals, setModifierVals] = useState((initial?.axis_values?.modifier ?? []).join("\n"));
   const [academyTypes, setAcademyTypes] = useState<Set<string>>(new Set(initial?.academy_types ?? []));
   const [keywordFilter, setKeywordFilter] = useState<Set<string>>(new Set(initial?.keyword_filter ?? []));
+  const [primaryOverride, setPrimaryOverride] = useState<string>(initial?.primary_override ?? ""); // ""=아키타입 기본
   const [source, setSource] = useState(""); // 시작점(빈값=직접 입력). create 모드 전용.
   const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
   // 학원 타입은 지역형(primary=region) 글유형에서만 효과가 있으므로(키워드형은 지역이 없어 학원 미수집) 그때만 노출한다.
@@ -884,6 +885,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setModifierVals((src.axis_values?.modifier ?? []).join("\n"));
     setAcademyTypes(new Set(src.academy_types ?? []));
     setKeywordFilter(new Set(src.keyword_filter ?? []));
+    setPrimaryOverride(src.primary_override ?? "");
   }
 
   // 축 값 수집: 해당 축이 켜졌고 값이 있을 때만 포함. 비우면 도메인 공통 축으로 폴백.
@@ -899,7 +901,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setName(""); setKind(kindOptions[0]?.kind ?? ""); setDesign("local-guide");
     setUsePersona(false); setWithIntent(false); setModifierCount(0);
     setDirection(""); setSource("");
-    setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); setKeywordFilter(new Set());
+    setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); setKeywordFilter(new Set()); setPrimaryOverride("");
   }
 
   function submit() {
@@ -913,10 +915,11 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     const academyTypesArr = isRegionPrimary ? Array.from(academyTypes) : [];
     // keyword 필터: 비우면 도메인 keyword 풀 전체(부분집합 아님). 항상 폼이 source of truth.
     const keywordFilterArr = Array.from(keywordFilter);
+    const primaryOverrideVal = primaryOverride === "region" || primaryOverride === "keyword" ? primaryOverride : undefined;
     if (source && onClone) {
       // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값·학원 타입·키워드 필터는 폼이 source of truth(프리필=소스 값)이라 항상 반영.
       const src = sources?.find((s) => s.id === source);
-      const overrides: Record<string, unknown> = { axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr };
+      const overrides: Record<string, unknown> = { axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr, primary_override: primaryOverrideVal ?? null };
       if (src) {
         if (design !== src.default_design) overrides.default_design = design;
         if (usePersona !== src.use_persona) overrides.use_persona = usePersona;
@@ -929,7 +932,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       return;
     }
     if (!kind) { alert("참조 아키타입을 선택하세요."); return; }
-    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr });
+    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr, primary_override: primaryOverrideVal });
     if (mode === "create") resetForm();
   }
 
@@ -990,7 +993,15 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </div>
     </div>}
     <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">키워드 필터 (선택)</b><p className="muted small">이 글유형이 도메인 키워드 풀 중에서 쓸 키워드를 고릅니다. <b>비우면 풀 전체</b>(기존 동작). 참조 아키타입의 키워드 규칙(pick/지역결합)은 이 부분집합 위에 그대로 적용됩니다.</p></div>
+      <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 도메인 키워드 풀에서 직접 고릅니다. <b>고르면 그 키워드를 그대로 사용</b>(아키타입 정규식 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택(기존 동작). 아래 「주축」과 함께 지역 결합 여부까지 유형이 통제합니다.</p></div>
+      <Field label="주축(지역 결합)">
+        <select className="select" value={primaryOverride} onChange={(e) => setPrimaryOverride(e.target.value)} style={{ maxWidth: 320 }}>
+          <option value="">아키타입 기본 ({(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형" : "키워드형"})</option>
+          <option value="region">지역형 — 지역 × 키워드 (예: &quot;강남 운전면허학원&quot;)</option>
+          <option value="keyword">키워드형 — 지역 없이 키워드만</option>
+        </select>
+        <p className="muted small">위에서 키워드를 고른 경우에만 적용됩니다(키워드 미선택 시 아키타입 규칙을 따름).</p>
+      </Field>
       <div className="info-panel grid grid-2" style={{ gap: 6 }}>
         {(keywordPool ?? []).map((kw) => <label key={kw} className="row" style={{ gap: 6 }}>
           <input type="checkbox" checked={keywordFilter.has(kw)} onChange={(e) => setKeywordFilter((prev) => { const next = new Set(prev); if (e.target.checked) next.add(kw); else next.delete(kw); return next; })} /> {kw}

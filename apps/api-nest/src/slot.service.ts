@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
-import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
+import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
-import { getArchetype, buildKeyword } from "./archetypes.js";
+import { getArchetype, buildKeyword, type Archetype } from "./archetypes.js";
 
 type Row = Record<string, any>;
 
@@ -42,15 +42,10 @@ export class SlotService {
       if (!spec) continue;
       const archetype = getArchetype(String(spec.kind || ""));
       const override = overrides[tid];
-      // 주축(region/keyword)은 아키타입이 소유. 미상 유형은 keyword 로 폴백.
-      const primaryAxis = (archetype?.primary ?? "keyword") as AxisName;
-      // 글유형 keyword 필터: 있으면 도메인 keyword 풀을 그 부분집합으로 좁힌다(비면 전체 = 기존 동작).
-      // 키워드형 주축 값 + buildKeyword 의 pick 풀 둘 다에 적용된다. region/persona 등과 달리 '대체'가 아니라 '부분집합'.
-      const keywordPool = spec.keyword_filter?.length
-        ? (axes.keyword || []).filter((k) => spec.keyword_filter!.includes(String(k.value || "")))
-        : (axes.keyword || []);
-      const primaryValues = primaryAxis === "keyword" ? keywordPool : (axes[primaryAxis] || []);
-      if (!primaryValues.length) { summary[tid] = 0; continue; }
+      // (a) 주제(topic) 결정 — keyword_filter 있으면 free 모드(그 키워드를 권위로 직접 사용 + primary_override 로 지역 결합 여부),
+      //     없으면 아키타입 폴백 모드(keyword_rule 패턴 + archetype.primary). 폴백은 기존과 byte-동일 = 골든 0-diff.
+      const topicUnits = buildTopicUnits(spec, archetype, axes);
+      if (!topicUnits.length) { summary[tid] = 0; continue; }
       // 글유형 수용 태그로 축 값을 부분집합화한다. 부합 값이 없으면 해당 축을 생략(null)해 미스매치를 피한다.
       // 프리셋(spec.axis_values) 있으면 도메인 풀 대체, 없으면 도메인 풀+태그필터 폴백.
       const personaPool = resolveAxisPool(spec, "persona");
@@ -62,19 +57,14 @@ export class SlotService {
       const intentValues = recipe.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
       const modifierCombos = modifierPairs(modifierPool, recipe.modifier_count);
       const candidatesByPrimary: Row[][] = [];
-      for (const pv of primaryValues) {
-        // 주키워드 생성은 아키타입 인터프리터로 통합됨(archetypes.ts). axes.keyword 는 listAxes 정렬(weight DESC).
-        const primaryKeyword = archetype ? buildKeyword(archetype, String(pv.value || ""), keywordPool) : "";
-        if (!primaryKeyword) continue;
-        const sv = numberOrNull(pv.monthly_search_volume);
-        if (sv !== null && sv < spec.min_sv) continue;
+      for (const topic of topicUnits) {
         const primaryRows: Row[] = [];
         for (const persona of personaValues) for (const intent of intentValues) for (const [m1, m2] of modifierCombos) {
-          const parts = [pv.value || "", persona.value || "", intent.value || "", m1 || "", m2 || ""];
+          const parts = [topic.hashKey, persona.value || "", intent.value || "", m1 || "", m2 || ""];
           primaryRows.push({
-            slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: primaryKeyword,
-            region: primaryAxis === "region" ? pv.value : null, persona: persona.value ?? null, intent: intent.value ?? null,
-            modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(sv, numberOrNull(pv.competition_kd), spec.weight)
+            slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: topic.primaryKeyword,
+            region: topic.region, persona: persona.value ?? null, intent: intent.value ?? null,
+            modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(topic.sv, topic.kd, spec.weight)
           });
         }
         if (primaryRows.length) candidatesByPrimary.push(primaryRows);
@@ -113,12 +103,11 @@ export class SlotService {
       if (!spec) continue;
       const archetype = getArchetype(String(spec.kind || ""));
       const override = overrides[tid];
-      const primary = (archetype?.primary ?? "keyword") as AxisName;
-      // 생성과 동일한 keyword 필터(부분집합) 적용 — 정합성 경고도 필터된 풀 기준으로 맞춘다.
-      const keywordPool = spec.keyword_filter?.length
-        ? (axes.keyword || []).filter((k) => spec.keyword_filter!.includes(String(k.value || "")))
-        : (axes.keyword || []);
-      const primaryValues = primary === "keyword" ? keywordPool : (axes[primary] || []);
+      // (a) 생성과 동일 모델: keyword_filter 있으면 free 모드(primary_override), 없으면 아키타입 폴백.
+      const kwFilterSet = (spec.keyword_filter ?? []).map((k) => String(k || "").trim()).filter(Boolean);
+      const primary = ((kwFilterSet.length ? (spec.primary_override ?? archetype?.primary) : archetype?.primary) ?? "keyword") as AxisName;
+      const topicUnits = buildTopicUnits(spec, archetype, axes);
+      const regionValues = primary === "region" ? (axes.region || []) : [];
       const recipe = resolveRecipeFlags(spec, override);
       const warnings: Array<{ level: string; code: string; message: string }> = [];
 
@@ -134,15 +123,16 @@ export class SlotService {
         if (usedByAxis[axis] && pool.length === 0) warnings.push({ level: "warn", code: `${axis}_pool_empty`, message: `${axis} 축을 쓰지만 이 글유형에 ${axis} 축 값이 없어(0) 조합에서 무시됩니다. 글유형 편집에서 값을 입력하세요.` });
       }
 
-      // 키워드 규칙 매칭: pick/region_plus_pick 이 0이면 주키워드가 폴백(일반적)으로 생성됨. keyword 필터 반영된 풀 기준.
-      const keywordAxis = keywordPool;
+      // 키워드: free 모드(keyword_filter)면 그 키워드가 곧 사용 키워드, 폴백이면 아키타입 패턴 매칭.
+      const keywordAxis = axes.keyword || [];
       const kr = archetype?.keyword_rule;
       let matched_keyword_count: number | null = null;
-      if (kr) {
+      if (kwFilterSet.length) matched_keyword_count = kwFilterSet.length;
+      else if (kr) {
         if (kr.format === "plain") matched_keyword_count = keywordAxis.length;
         else if (kr.format === "pick" || kr.format === "region_plus_pick") matched_keyword_count = keywordAxis.filter((k) => kr.pattern.test(String(k.value || ""))).length;
       }
-      if ((kr?.format === "pick" || kr?.format === "region_plus_pick") && keywordAxis.length > 0 && matched_keyword_count === 0) {
+      if (!kwFilterSet.length && (kr?.format === "pick" || kr?.format === "region_plus_pick") && keywordAxis.length > 0 && matched_keyword_count === 0) {
         warnings.push({ level: "warn", code: "keyword_rule_no_match", message: "키워드 규칙에 맞는 키워드가 없어 주키워드가 폴백(일반적)으로 생성됩니다." });
       }
 
@@ -151,28 +141,22 @@ export class SlotService {
       let academy: Row;
       if (academyApplicable) {
         let withAny = 0, withMin = 0;
-        for (const pv of primaryValues) {
+        for (const pv of regionValues) {
           const value = String(pv.value || "").trim();
           if (!value) continue;
           const count = academyRegions.filter((ar) => ar.includes(value)).length;
           if (count >= 1) withAny++;
           if (count >= ACADEMY_MIN_FOR_BEST) withMin++;
         }
-        academy = { applicable: true, regions_total: primaryValues.length, regions_with_academies: withAny, regions_with_min_for_best: withMin };
+        academy = { applicable: true, regions_total: regionValues.length, regions_with_academies: withAny, regions_with_min_for_best: withMin };
         if (withMin === 0) warnings.push({ level: "error", code: "no_academy_data_for_best", message: `학원 근거가 필요한 유형이지만 학원 ${ACADEMY_MIN_FOR_BEST}곳 이상인 지역이 없어 근거 없는 BEST가 될 위험이 큽니다.` });
-        else if (withMin < primaryValues.length * 0.5) warnings.push({ level: "warn", code: "low_academy_coverage", message: `학원 데이터가 충분한 지역이 ${withMin}/${primaryValues.length} 뿐입니다.` });
+        else if (withMin < regionValues.length * 0.5) warnings.push({ level: "warn", code: "low_academy_coverage", message: `학원 데이터가 충분한 지역이 ${withMin}/${regionValues.length} 뿐입니다.` });
       } else {
         academy = { applicable: false };
       }
 
-      // 예상 슬롯 상한(rough): 생성 조합 규칙과 동일한 팩터로. 0 이면 이 유형은 슬롯을 못 만든다.
-      let usablePrimary = 0;
-      for (const pv of primaryValues) {
-        const sv = Number(pv.monthly_search_volume);
-        if (Number.isFinite(sv) && sv < spec.min_sv) continue;
-        if (!archetype || buildKeyword(archetype, String(pv.value || ""), keywordAxis) === "") continue;
-        usablePrimary++;
-      }
+      // 예상 슬롯 상한(rough): topic 수(주키워드·min_sv 반영) × 축 팩터. 0 이면 이 유형은 슬롯을 못 만든다.
+      const usablePrimary = topicUnits.length;
       const personaFactor = recipe.use_persona && (poolSizes.persona ?? 0) > 0 ? (poolSizes.persona ?? 0) : 1;
       const intentFactor = recipe.with_intent && (poolSizes.intent ?? 0) > 0 ? (poolSizes.intent ?? 0) : 1;
       const mPool = poolSizes.modifier ?? 0;
@@ -182,8 +166,8 @@ export class SlotService {
 
       templates.push({
         template_id: tid, name: spec.name, kind: spec.kind, custom: customIdSet.has(tid), enabled: enabledSet.has(tid),
-        primary_axis: primary, primary_value_count: primaryValues.length,
-        keyword_rule: { format: kr?.format ?? null, matched_keyword_count, keyword_total: keywordAxis.length },
+        primary_axis: primary, primary_value_count: topicUnits.length,
+        keyword_rule: { format: kwFilterSet.length ? "filter" : (kr?.format ?? null), matched_keyword_count, keyword_total: keywordAxis.length },
         axes: axesReport, academy, estimated_slot_upperbound, warnings,
       });
     }
@@ -200,6 +184,49 @@ export class SlotService {
 function slotId(domain: string, templateId: string, parts: string[]): string {
   const h = createHash("sha1").update([domain, templateId, ...parts].join("|")).digest("hex").slice(0, 8);
   return `${templateId}_${h}`;
+}
+type TopicUnit = { primaryKeyword: string; region: string | null; sv: number | null; kd: number | null; hashKey: string };
+// (a) 주제(topic) 단위 산출. keyword_filter 있으면 free 모드(그 키워드를 권위로 직접 사용 + primary_override 로 지역 결합),
+// 없으면 아키타입 폴백(keyword_rule 패턴 + archetype.primary) — 기존 로직과 byte-동일해야 골든 0-diff.
+function buildTopicUnits(spec: TemplateSpecShape, archetype: Archetype | undefined, axes: Record<AxisName, Row[]>): TopicUnit[] {
+  const filterSet = (spec.keyword_filter ?? []).map((k) => String(k || "").trim()).filter(Boolean);
+  const units: TopicUnit[] = [];
+  if (!filterSet.length) {
+    const primaryAxis = (archetype?.primary ?? "keyword") as AxisName;
+    const primaryValues = primaryAxis === "keyword" ? (axes.keyword || []) : (axes[primaryAxis] || []);
+    for (const pv of primaryValues) {
+      const primaryKeyword = archetype ? buildKeyword(archetype, String(pv.value || ""), axes.keyword || []) : "";
+      if (!primaryKeyword) continue;
+      const sv = numberOrNull(pv.monthly_search_volume);
+      if (sv !== null && sv < spec.min_sv) continue;
+      units.push({ primaryKeyword, region: primaryAxis === "region" ? (pv.value as string) : null, sv, kd: numberOrNull(pv.competition_kd), hashKey: pv.value || "" });
+    }
+    return units;
+  }
+  // free 모드: keyword_filter 를 권위로. primary_override 없으면 archetype.primary.
+  const primary = spec.primary_override ?? archetype?.primary ?? "keyword";
+  if (primary === "region") {
+    for (const r of (axes.region || [])) {
+      const region = String(r.value || "").trim();
+      if (!region) continue;
+      const sv = numberOrNull(r.monthly_search_volume);
+      if (sv !== null && sv < spec.min_sv) continue;
+      const kd = numberOrNull(r.competition_kd);
+      for (const kw of filterSet) {
+        const primaryKeyword = `${region} ${kw}`.replace(/\s+/g, " ").trim();
+        units.push({ primaryKeyword, region, sv, kd, hashKey: primaryKeyword });
+      }
+    }
+  } else {
+    const kwRows = new Map((axes.keyword || []).map((k) => [String(k.value || ""), k]));
+    for (const kw of filterSet) {
+      const row = kwRows.get(kw);
+      const sv = numberOrNull(row?.monthly_search_volume);
+      if (sv !== null && sv < spec.min_sv) continue;
+      units.push({ primaryKeyword: kw, region: null, sv, kd: numberOrNull(row?.competition_kd), hashKey: kw });
+    }
+  }
+  return units;
 }
 function numberOrNull(v: any): number | null { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function priority(sv: number | null, kd: number | null, weight: number): number {

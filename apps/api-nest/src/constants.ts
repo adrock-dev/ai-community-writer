@@ -69,9 +69,12 @@ export type TemplateSpecShape = {
   // 글유형별 학원 타입(academy_type) — 학원 사용의 단일 소스. 선택값이 있으면 그 타입 학원만 생성/렌더에 쓰고,
   // 비어 있으면 학원정보를 아예 쓰지 않는다(지역형이어도 가이드/체크리스트 중심). 지역 유무와 무관하게 이 값이 게이트다.
   academy_types?: string[];
-  // 글유형별 keyword 필터 — 도메인 keyword 풀의 '부분집합'(대체 아님). 있으면 이 글유형은 고른 키워드만 쓰고,
-  // 비면 도메인 풀 전체(기존 동작). keyword_rule(pick/plain/region_plus_*) 은 이 부분집합 위에 그대로 적용된다.
+  // 글유형별 keyword 필터. (a) 이후 '권위': 값이 있으면 아키타입 keyword_rule 패턴을 무시하고 이 키워드를 직접 사용,
+  // 비면 아키타입 패턴 폴백(기존 동작 = 골든 0-diff). primary_override 와 함께 유형별 키워드/지역 자유 통제.
   keyword_filter?: string[];
+  // 주축(region|keyword) 유형별 재정의. 미지정이면 아키타입 primary. keyword_filter 가 있는 free 모드에서만 효과.
+  // region: 지역 × keyword_filter 조합("지역 키워드"), keyword: keyword_filter 각각을 주키워드로.
+  primary_override?: "region" | "keyword";
   default_direction?: string;
   default_design?: string;
 };
