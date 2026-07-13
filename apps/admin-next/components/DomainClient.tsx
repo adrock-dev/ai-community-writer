@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
+import { getSyncSummary, recordSync, type SyncSummary } from "@/lib/sync-summary";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
 import type { Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec } from "@/lib/types";
@@ -1127,6 +1128,10 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   const [runtimeApis, setRuntimeApis] = useState<RuntimeApis | null>(null);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
+  const [lastSync, setLastSync] = useState<SyncSummary>({});
+  useEffect(() => { setLastSync(getSyncSummary(domain.domain)); }, [domain.domain]);
+  // 학원 행에 남은 synced_at 중 가장 최근 값(다른 브라우저에서 동기화된 경우의 폴백).
+  const academySyncedAt = useMemo(() => remoteAcademies.reduce<string | null>((max, a) => (a.synced_at && (!max || a.synced_at > max) ? a.synced_at : max), null), [remoteAcademies]);
   useEffect(() => { setRemoteAcademies(academies); setRemoteTotal(academies.length); }, [academies]);
   useEffect(() => {
     let cancelled = false;
@@ -1169,6 +1174,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
     try {
       const res = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 });
       setSyncResult(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
+      setLastSync(recordSync(domain.domain, "academies", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개 · 리뷰 ${res.review_count}/블로그 ${res.blog_review_count}` }));
       await onRefresh();
       await loadAcademies();
     } catch (e) { alert((e as Error).message); }
@@ -1179,6 +1185,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
     try {
       const res = await syncDrivingplusRegions(domain.domain, { level: regionLevel, replace_axis: replaceRegionAxis, max: regionLevel === "3" ? 500 : 10000 });
       setSyncResult(`지역 ${res.fetched}개 조회 · ${res.upserted}개 반영${res.axis_replaced ? " · region 축 교체" : ""}`);
+      setLastSync(recordSync(domain.domain, "regions", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개${res.axis_replaced ? " · region 축 교체" : ""}` }));
       await onRefresh();
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
@@ -1205,21 +1212,23 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
           <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>
           <div className="row" style={{ alignItems: "end" }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button></div>
         </div>
+        <p className="muted small">최근 지역 동기화: {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
       </div>
       <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
         <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
         <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
         <div className="row"><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button></div>
+        <p className="muted small">현재 {remoteTotal.toLocaleString()}개 보유 · 최근 동기화: {lastSync.academies ? `${formatDateTime(lastSync.academies.at)} · ${lastSync.academies.count.toLocaleString()}개 반영${lastSync.academies.detail ? ` (${lastSync.academies.detail})` : ""}` : academySyncedAt ? formatDateTime(academySyncedAt) : "아직 기록 없음"}</p>
       </div>
       {syncResult && <p className="small badge success" style={{ width: "fit-content" }}>{syncResult}</p>}
-    </div>
-    <div className="card card-pad grid">
-      <div className="spread"><div><h2>수동 학원자료 등록</h2><p className="muted small">DrivingPlus 동기화에 없는 검증 자료를 직접 보완할 때 사용합니다. 단건 등록 또는 JSON 일괄 등록 중 하나를 선택하세요.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
+      <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
+        <div className="spread"><div><h3 style={{ margin: 0 }}>선택 · 수동 자료 보완</h3><p className="muted small">DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
       {manualToolsOpen && <>
         <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>⚠️ 같은 학원(지역+이름)을 다시 등록하면 비운 항목이 기존 값을 덮어 지웁니다. 일부만 수정할 땐 나머지 항목도 함께 채워주세요. 단건·JSON 일괄 등록 모두 동일합니다.</p>
         <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다.</p><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
         <form className="grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h3>2. JSON 일괄 등록</h3><p className="muted small">여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다.</p><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">JSON 일괄 등록</button></form>
       </>}
+      </div>
     </div>
     <div className="card card-pad grid">
       <div className="spread"><h2>학원자료 목록 · 필터</h2><span className="muted small">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
