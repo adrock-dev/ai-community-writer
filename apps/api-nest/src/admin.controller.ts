@@ -152,6 +152,7 @@ export class AdminController {
       axis_tags: body.axis_tags,
       axis_values: body.axis_values,
       academy_types: body.academy_types,
+      keyword_filter: body.keyword_filter,
       default_direction: body.default_direction,
       default_design: body.default_design,
     });
@@ -199,6 +200,7 @@ export class AdminController {
       axis_tags,
       axis_values: spec.axis_values,
       academy_types: spec.academy_types,
+      keyword_filter: spec.keyword_filter,
       default_direction: direction || null,
       default_design: spec.default_design,
       ...inline,
@@ -257,7 +259,7 @@ export class AdminController {
     const custom_templates = this.db.listCustomTemplates(domain).map((t) => ({
       template_id: t.template_id, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
-      weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags, axis_values: t.axis_values, academy_types: t.academy_types,
+      weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags, axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter,
       default_direction: t.default_direction ?? null, default_design: t.default_design,
       created_at: t.created_at,
     }));

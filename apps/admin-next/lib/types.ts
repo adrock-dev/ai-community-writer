@@ -53,6 +53,7 @@ export interface CustomTemplate {
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   academy_types?: string[];
+  keyword_filter?: string[];
   default_direction?: string | null;
   default_design?: string;
   created_at?: string;
@@ -247,6 +248,7 @@ export interface TemplateSpec {
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   academy_types?: string[];
+  keyword_filter?: string[];
 }
 
 export interface AdminOptions {

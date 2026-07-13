@@ -44,7 +44,12 @@ export class SlotService {
       const override = overrides[tid];
       // 주축(region/keyword)은 아키타입이 소유. 미상 유형은 keyword 로 폴백.
       const primaryAxis = (archetype?.primary ?? "keyword") as AxisName;
-      const primaryValues = axes[primaryAxis] || [];
+      // 글유형 keyword 필터: 있으면 도메인 keyword 풀을 그 부분집합으로 좁힌다(비면 전체 = 기존 동작).
+      // 키워드형 주축 값 + buildKeyword 의 pick 풀 둘 다에 적용된다. region/persona 등과 달리 '대체'가 아니라 '부분집합'.
+      const keywordPool = spec.keyword_filter?.length
+        ? (axes.keyword || []).filter((k) => spec.keyword_filter!.includes(String(k.value || "")))
+        : (axes.keyword || []);
+      const primaryValues = primaryAxis === "keyword" ? keywordPool : (axes[primaryAxis] || []);
       if (!primaryValues.length) { summary[tid] = 0; continue; }
       // 글유형 수용 태그로 축 값을 부분집합화한다. 부합 값이 없으면 해당 축을 생략(null)해 미스매치를 피한다.
       // 프리셋(spec.axis_values) 있으면 도메인 풀 대체, 없으면 도메인 풀+태그필터 폴백.
@@ -59,7 +64,7 @@ export class SlotService {
       const candidatesByPrimary: Row[][] = [];
       for (const pv of primaryValues) {
         // 주키워드 생성은 아키타입 인터프리터로 통합됨(archetypes.ts). axes.keyword 는 listAxes 정렬(weight DESC).
-        const primaryKeyword = archetype ? buildKeyword(archetype, String(pv.value || ""), axes.keyword) : "";
+        const primaryKeyword = archetype ? buildKeyword(archetype, String(pv.value || ""), keywordPool) : "";
         if (!primaryKeyword) continue;
         const sv = numberOrNull(pv.monthly_search_volume);
         if (sv !== null && sv < spec.min_sv) continue;
@@ -109,7 +114,11 @@ export class SlotService {
       const archetype = getArchetype(String(spec.kind || ""));
       const override = overrides[tid];
       const primary = (archetype?.primary ?? "keyword") as AxisName;
-      const primaryValues = axes[primary] || [];
+      // 생성과 동일한 keyword 필터(부분집합) 적용 — 정합성 경고도 필터된 풀 기준으로 맞춘다.
+      const keywordPool = spec.keyword_filter?.length
+        ? (axes.keyword || []).filter((k) => spec.keyword_filter!.includes(String(k.value || "")))
+        : (axes.keyword || []);
+      const primaryValues = primary === "keyword" ? keywordPool : (axes[primary] || []);
       const recipe = resolveRecipeFlags(spec, override);
       const warnings: Array<{ level: string; code: string; message: string }> = [];
 
@@ -125,8 +134,8 @@ export class SlotService {
         if (usedByAxis[axis] && pool.length === 0) warnings.push({ level: "warn", code: `${axis}_pool_empty`, message: `${axis} 축을 쓰지만 이 글유형에 ${axis} 축 값이 없어(0) 조합에서 무시됩니다. 글유형 편집에서 값을 입력하세요.` });
       }
 
-      // 키워드 규칙 매칭: pick/region_plus_pick 이 0이면 주키워드가 폴백(일반적)으로 생성됨.
-      const keywordAxis = axes.keyword || [];
+      // 키워드 규칙 매칭: pick/region_plus_pick 이 0이면 주키워드가 폴백(일반적)으로 생성됨. keyword 필터 반영된 풀 기준.
+      const keywordAxis = keywordPool;
       const kr = archetype?.keyword_rule;
       let matched_keyword_count: number | null = null;
       if (kr) {

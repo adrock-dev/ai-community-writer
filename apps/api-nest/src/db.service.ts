@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS custom_templates (
   axis_tags TEXT,
   axis_values TEXT,
   academy_types TEXT,
+  keyword_filter TEXT,
   default_direction TEXT,
   default_design TEXT NOT NULL DEFAULT 'local-guide',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -330,6 +331,7 @@ export class DbService implements OnModuleInit {
     const customTemplateCols = new Set(this.all("PRAGMA table_info(custom_templates)").map((r) => r.name));
     if (!customTemplateCols.has("axis_values")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN axis_values TEXT");
     if (!customTemplateCols.has("academy_types")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN academy_types TEXT");
+    if (!customTemplateCols.has("keyword_filter")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN keyword_filter TEXT");
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
     this.db.exec(`CREATE TABLE IF NOT EXISTS design_presets (
       id TEXT PRIMARY KEY,
@@ -372,6 +374,7 @@ export class DbService implements OnModuleInit {
       axis_tags TEXT,
       axis_values TEXT,
       academy_types TEXT,
+      keyword_filter TEXT,
       default_direction TEXT,
       default_design TEXT NOT NULL DEFAULT 'local-guide',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -437,6 +440,7 @@ export class DbService implements OnModuleInit {
         axis_tags: builtin.axis_tags,
         axis_values: builtin.axis_values,
         academy_types: builtin.academy_types,
+        keyword_filter: builtin.keyword_filter,
         default_direction: builtin.default_direction,
         default_design: builtin.default_design,
       };
@@ -461,8 +465,8 @@ export class DbService implements OnModuleInit {
   // 커스텀 글유형 생성. id 는 여기서 발급(빌트인/기존 커스텀과 유니크). axis_tags 는 JSON 직렬화해 저장(트랩: TEXT 컬럼 write 는 반드시 stringify).
   createCustomTemplate(domain: string, input: Row): Row {
     const templateId = this.nextCustomTemplateId(domain);
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, default_direction, default_design)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, default_direction, default_design)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [domain, templateId, String(input.name || "").trim(), String(input.kind || "").trim(),
         input.use_persona ? 1 : 0, input.with_intent ? 1 : 0,
         clampModifierCount(input.modifier_count),
@@ -471,6 +475,7 @@ export class DbService implements OnModuleInit {
         serializeAxisTags(input.axis_tags),
         serializeAxisTags(input.axis_values),
         serializeAcademyTypes(input.academy_types),
+        serializeAcademyTypes(input.keyword_filter),
         input.default_direction != null && String(input.default_direction).trim() ? String(input.default_direction).trim() : null,
         String(input.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE]);
     return this.getCustomTemplate(domain, templateId)!;
@@ -516,6 +521,7 @@ export class DbService implements OnModuleInit {
     if (fields.axis_tags !== undefined) push("axis_tags", serializeAxisTags(fields.axis_tags));
     if (fields.axis_values !== undefined) push("axis_values", serializeAxisTags(fields.axis_values));
     if (fields.academy_types !== undefined) push("academy_types", serializeAcademyTypes(fields.academy_types));
+    if (fields.keyword_filter !== undefined) push("keyword_filter", serializeAcademyTypes(fields.keyword_filter));
     if (fields.default_direction !== undefined) push("default_direction", fields.default_direction != null && String(fields.default_direction).trim() ? String(fields.default_direction).trim() : null);
     if (fields.default_design !== undefined) push("default_design", String(fields.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE);
     if (!sets.length) return 0;
@@ -526,12 +532,12 @@ export class DbService implements OnModuleInit {
   // created_at 은 봉투 값 보존(없으면 CURRENT_TIMESTAMP), 충돌 시 기존 created_at 유지. axis_tags 는 stringify.
   // 빌트인 id/kind 검증은 호출측(컨트롤러)에서 수행한다.
   importCustomTemplate(domain: string, row: Row): void {
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, default_direction, default_design, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, default_direction, default_design, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
       ON CONFLICT(domain, template_id) DO UPDATE SET
         name=excluded.name, kind=excluded.kind, use_persona=excluded.use_persona, with_intent=excluded.with_intent,
         modifier_count=excluded.modifier_count, weight=excluded.weight, min_sv=excluded.min_sv,
-        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, default_direction=excluded.default_direction, default_design=excluded.default_design`,
+        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, keyword_filter=excluded.keyword_filter, default_direction=excluded.default_direction, default_design=excluded.default_design`,
       [domain, String(row.template_id || "").trim(), String(row.name || "").trim(), String(row.kind || "").trim(),
         row.use_persona ? 1 : 0, row.with_intent ? 1 : 0, clampModifierCount(row.modifier_count),
         Number.isFinite(Number(row.weight)) ? Number(row.weight) : 1.0,
@@ -539,6 +545,7 @@ export class DbService implements OnModuleInit {
         serializeAxisTags(row.axis_tags),
         serializeAxisTags(row.axis_values),
         serializeAcademyTypes(row.academy_types),
+        serializeAcademyTypes(row.keyword_filter),
         row.default_direction != null && String(row.default_direction).trim() ? String(row.default_direction).trim() : null,
         String(row.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE,
         row.created_at != null && String(row.created_at).trim() ? String(row.created_at).trim() : null]);
@@ -1007,6 +1014,7 @@ function customTemplateSpec(row: Row): TemplateSpecShape {
     axis_tags: parseAxisTags(row.axis_tags),
     axis_values: parseAxisTags(row.axis_values),
     academy_types: parseAcademyTypes(row.academy_types),
+    keyword_filter: parseAcademyTypes(row.keyword_filter),
     default_direction: row.default_direction != null ? String(row.default_direction) : undefined,
     default_design: row.default_design != null ? String(row.default_design) : undefined,
   };
@@ -1023,6 +1031,7 @@ export function customTemplateOut(row: Row): Row {
     axis_tags: parseAxisTags(row.axis_tags) ?? {},
     axis_values: parseAxisTags(row.axis_values) ?? {},
     academy_types: parseAcademyTypes(row.academy_types),
+    keyword_filter: parseAcademyTypes(row.keyword_filter),
     custom: true,
   };
 }

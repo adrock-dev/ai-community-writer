@@ -323,7 +323,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
 
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
       {view === "overview" && tab === "plan" && <Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
-      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} customTemplates={payload.custom_templates ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
+      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} customTemplates={payload.custom_templates ?? []} keywordPool={(payload.axes?.keyword ?? []).map((k) => String(k.value))} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
       {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
@@ -621,7 +621,7 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
 // 도메인 디자인 설정의 특수값: 글마다 후보의 글 유형 기본 디자인(default_design)을 자동 적용한다.
 const AUTO_DESIGN_ID = "auto";
 
-function Templates({ domain, options, customTemplates, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; customTemplates: CustomTemplate[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
+function Templates({ domain, options, customTemplates, keywordPool, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; customTemplates: CustomTemplate[]; keywordPool: string[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
   // 즉시 저장 모델: 토글하면 바로 저장·refresh. refresh 로 갱신된 domain.templates_enabled 에 로컬 상태를 동기화.
@@ -682,7 +682,7 @@ function Templates({ domain, options, customTemplates, busy, onSave, onRefresh }
       </details>
     </section>
 
-    <CustomTemplatesManager domainConfig={domain} options={options} onSave={onSave} onRefresh={onRefresh} />
+    <CustomTemplatesManager domainConfig={domain} options={options} keywordPool={keywordPool} onSave={onSave} onRefresh={onRefresh} />
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design" style={{ gap: 12 }}>
         <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 위 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
@@ -709,7 +709,7 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
 }
 
 // 커스텀 글유형 관리: 목록 + 정합성 미리보기 + 생성/복제/편집/삭제. on/off 는 상단 '이 도메인의 글 유형'에서.
-function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { domainConfig: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
+function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, onRefresh }: { domainConfig: DomainConfig; options: AdminOptions; keywordPool: string[]; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const domain = domainConfig.domain;
   const [custom, setCustom] = useState<CustomTemplate[]>([]);
   const [coherence, setCoherence] = useState<Record<string, CoherenceTemplate>>({});
@@ -740,12 +740,12 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
     ...Object.entries(options.template_specs).map(([id, spec]) => ({
       id, label: `${id} ${spec.name} (빌트인)`, name: spec.name, kind: spec.kind ?? "",
       use_persona: spec.use_persona, with_intent: Boolean(spec.with_intent), modifier_count: spec.modifier_count,
-      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types,
+      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types, keyword_filter: spec.keyword_filter,
     })),
     ...custom.map((t) => ({
       id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)`, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
-      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types,
+      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter,
     })),
   ], [options.template_specs, custom]);
 
@@ -777,7 +777,7 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
 
-    <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+    <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
       onSubmit={(body) => run(() => createTemplate(domain, body))}
       onClone={(sourceId, name, overrides) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name, overrides }))} />
 
@@ -785,7 +785,7 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
       ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
-        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" domain={domain} initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" domain={domain} initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
           onCancel={() => setEditId(null)}
           onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
         return <div key={t.template_id} className="info-panel grid">
@@ -823,12 +823,12 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
 }
 
 // 커스텀 만들기 '시작점' 옵션 형태(빌트인/커스텀 공통). 고르면 폼 값을 채운다.
-type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[] };
+type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[]; keyword_filter?: string[] };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
-function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
+function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
   mode: "create" | "edit"; domain: string; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
-  sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; brandColor?: string | null; brand?: string; busy: boolean;
+  sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; keywordPool?: string[]; brandColor?: string | null; brand?: string; busy: boolean;
   onSubmit: (body: Partial<CustomTemplate>) => void; onClone?: (sourceId: string, name: string, overrides: Record<string, unknown>) => void; onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -842,6 +842,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   const [intentVals, setIntentVals] = useState((initial?.axis_values?.intent ?? []).join("\n"));
   const [modifierVals, setModifierVals] = useState((initial?.axis_values?.modifier ?? []).join("\n"));
   const [academyTypes, setAcademyTypes] = useState<Set<string>>(new Set(initial?.academy_types ?? []));
+  const [keywordFilter, setKeywordFilter] = useState<Set<string>>(new Set(initial?.keyword_filter ?? []));
   const [source, setSource] = useState(""); // 시작점(빈값=직접 입력). create 모드 전용.
   const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
   // 학원 타입은 지역형(primary=region) 글유형에서만 효과가 있으므로(키워드형은 지역이 없어 학원 미수집) 그때만 노출한다.
@@ -882,6 +883,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setIntentVals((src.axis_values?.intent ?? []).join("\n"));
     setModifierVals((src.axis_values?.modifier ?? []).join("\n"));
     setAcademyTypes(new Set(src.academy_types ?? []));
+    setKeywordFilter(new Set(src.keyword_filter ?? []));
   }
 
   // 축 값 수집: 해당 축이 켜졌고 값이 있을 때만 포함. 비우면 도메인 공통 축으로 폴백.
@@ -897,7 +899,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setName(""); setKind(kindOptions[0]?.kind ?? ""); setDesign("local-guide");
     setUsePersona(false); setWithIntent(false); setModifierCount(0);
     setDirection(""); setSource("");
-    setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set());
+    setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); setKeywordFilter(new Set());
   }
 
   function submit() {
@@ -909,10 +911,12 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     const axisValues = collectAxisValues();
     // 학원 타입: 지역형 글유형일 때만 반영(비우면 학원정보 미사용). 키워드형은 저장하지 않는다.
     const academyTypesArr = isRegionPrimary ? Array.from(academyTypes) : [];
+    // keyword 필터: 비우면 도메인 keyword 풀 전체(부분집합 아님). 항상 폼이 source of truth.
+    const keywordFilterArr = Array.from(keywordFilter);
     if (source && onClone) {
-      // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값·학원 타입은 폼이 source of truth(프리필=소스 값)이라 항상 반영.
+      // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값·학원 타입·키워드 필터는 폼이 source of truth(프리필=소스 값)이라 항상 반영.
       const src = sources?.find((s) => s.id === source);
-      const overrides: Record<string, unknown> = { axis_values: axisValues, academy_types: academyTypesArr };
+      const overrides: Record<string, unknown> = { axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr };
       if (src) {
         if (design !== src.default_design) overrides.default_design = design;
         if (usePersona !== src.use_persona) overrides.use_persona = usePersona;
@@ -925,7 +929,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       return;
     }
     if (!kind) { alert("참조 아키타입을 선택하세요."); return; }
-    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues, academy_types: academyTypesArr });
+    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr });
     if (mode === "create") resetForm();
   }
 
@@ -985,6 +989,15 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         {!(academyTypeOptions ?? []).length && <p className="muted small">먼저 학원 동기화를 실행하면 타입 목록이 표시됩니다.</p>}
       </div>
     </div>}
+    <div className="grid" style={{ gap: 8 }}>
+      <div><b className="small">키워드 필터 (선택)</b><p className="muted small">이 글유형이 도메인 키워드 풀 중에서 쓸 키워드를 고릅니다. <b>비우면 풀 전체</b>(기존 동작). 참조 아키타입의 키워드 규칙(pick/지역결합)은 이 부분집합 위에 그대로 적용됩니다.</p></div>
+      <div className="info-panel grid grid-2" style={{ gap: 6 }}>
+        {(keywordPool ?? []).map((kw) => <label key={kw} className="row" style={{ gap: 6 }}>
+          <input type="checkbox" checked={keywordFilter.has(kw)} onChange={(e) => setKeywordFilter((prev) => { const next = new Set(prev); if (e.target.checked) next.add(kw); else next.delete(kw); return next; })} /> {kw}
+        </label>)}
+        {!(keywordPool ?? []).length && <p className="muted small">도메인 키워드 축이 비어 있습니다. 「축」 탭(또는 프리셋 적용)에서 키워드를 먼저 채우세요.</p>}
+      </div>
+    </div>
     <details className="template-subsection">
       <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>미리보기 (디자인 목업)</h3><p className="muted small">선택한 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info">열기</span></div></summary>
       {(() => {
