@@ -1146,7 +1146,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   }
   return <div className="grid">
     <div className="card card-pad grid" data-tour="academies-sync">
-      <div className="spread"><div><h2>학원자료 — 생성용 배경 데이터</h2><p className="muted">DrivingPlus 원천 API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 한 번 준비해두면 생성 때 다시 열 필요는 없습니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
+      <div className="spread"><div><h2>학원/지역자료 — 생성용 배경 데이터</h2><p className="muted">DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
       <div className="writer-hint">
         <b>현재 적용 API</b>
         <span>관리자/Nest: <code>{runtimeApis?.admin_api_base ?? "확인 중..."}</code></span>
@@ -1158,13 +1158,21 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
         {runtimeApis && <span>동기화 기본값: 일반 리뷰 {runtimeApis.sync_defaults.review_limit}개({runtimeApis.sync_defaults.review_sort}), 블로그 리뷰 {runtimeApis.sync_defaults.blog_review_limit}개</span>}
         {runtimeApis && <span className="muted small">{runtimeApis.sync_defaults.review_source_note}</span>}
       </div>
-      <div className="grid grid-3">
-        <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
-        <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>
-        <div className="row" style={{ alignItems: "end" }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button></div>
+      <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
+        <div className="spread"><h3 style={{ margin: 0 }}>1단계 · 지역자료 동기화</h3><span className="badge">지역 데이터 · region 축</span></div>
+        <p className="muted small">지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 <b>지역 동기화에만</b> 적용됩니다.</p>
+        <div className="grid grid-3">
+          <Field label="지역 레벨"><select className="select" value={regionLevel} onChange={(e) => setRegionLevel(e.target.value as "2" | "3" | "all")}><option value="2">시군구(level=2, 권장)</option><option value="3">읍면동(level=3, 최대 500개)</option><option value="all">전체</option></select></Field>
+          <Field label="지역 축 반영"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={replaceRegionAxis} onChange={(e) => setReplaceRegionAxis(e.target.checked)} /> axes.region 교체</label></Field>
+          <div className="row" style={{ alignItems: "end" }}><button className="btn" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button></div>
+        </div>
+      </div>
+      <div className="card card-pad grid" style={{ background: "#f8fafc" }}>
+        <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
+        <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
+        <div className="row"><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button></div>
       </div>
       {syncResult && <p className="small badge success" style={{ width: "fit-content" }}>{syncResult}</p>}
-      <p className="muted small">권장 순서: 지역 동기화(level=2, 축 교체) → 학원 동기화(사진·별점리뷰·블로그 리뷰 포함) → 글 생성 탭에서 후보 생성.</p>
     </div>
     <div className="card card-pad grid">
       <div className="spread"><div><h2>수동 학원자료 등록</h2><p className="muted small">DrivingPlus 동기화에 없는 검증 자료를 직접 보완할 때 사용합니다. 단건 등록 또는 JSON 일괄 등록 중 하나를 선택하세요.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
