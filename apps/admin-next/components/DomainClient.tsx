@@ -639,7 +639,7 @@ function KeywordMaster({ domain, presetKey, keywordAxis, onRefresh }: { domain: 
   }
   // 키워드 축만 프리셋 기본값(18개+메트릭)으로 초기화. region 등 다른 축은 안 건드림(axes 필터).
   async function reset() {
-    if (!confirm("키워드 마스터를 기본값(운전 프리셋)으로 초기화할까요? 지금 표의 키워드·직접 추가한 값이 덮어써집니다. (지역 등 다른 축은 그대로)")) return;
+    if (!confirm("키워드 마스터를 기본값(운전 프리셋 18개)으로 초기화할까요? 지금 표의 키워드·직접 추가한 값이 덮어써집니다.")) return;
     setBusy(true); setErr("");
     try {
       await api(`/domains/${encodeURIComponent(domain)}/axes/preset`, { method: "POST", body: JSON.stringify({ preset_key: presetKey, axes: ["keyword"] }) });
@@ -663,7 +663,7 @@ function KeywordMaster({ domain, presetKey, keywordAxis, onRefresh }: { domain: 
       </tbody>
     </table></div>
     {err && <p className="toast-warn small">{err}</p>}
-    <div className="row"><button type="button" className="btn" onClick={() => setRows((prev) => [...prev, { value: "", weight: "", msv: "", kd: "" }])}>+ 행 추가</button><button type="button" className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "키워드 저장"}</button><button type="button" className="btn" style={{ marginLeft: "auto" }} onClick={reset} disabled={busy} title="키워드 축만 운전 프리셋 기본값(18개+메트릭)으로 되돌립니다(지역 등은 그대로)">기본값으로 초기화</button></div>
+    <div className="row"><button type="button" className="btn" onClick={() => setRows((prev) => [...prev, { value: "", weight: "", msv: "", kd: "" }])}>+ 행 추가</button><button type="button" className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "키워드 저장"}</button><button type="button" className="btn" style={{ marginLeft: "auto" }} onClick={reset} disabled={busy} title="키워드 마스터를 운전 프리셋 기본값(18개+메트릭)으로 되돌립니다">기본값으로 초기화</button></div>
   </div>;
 }
 
