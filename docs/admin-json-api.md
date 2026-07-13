@@ -349,16 +349,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 { "ok": true, "preset_key": "driving", "axes": {} }
 ```
 
-### `POST /api/admin/domains/{domain}/axes/ai-fill`
-
-현재 Nest 런타임에서는 외부 축 생성 대신 도메인 업종 프리셋을 안전하게 다시 적용한다.
-
-응답:
-
-```json
-{ "ok": true, "summary": { "applied_preset": "driving" }, "axes": {} }
-```
-
 ### `GET /api/admin/domains/{domain}/slots`
 
 쿼리:

@@ -356,14 +356,6 @@ export class AdminController {
     return { ok: true, preset_key, axes: this.db.listAxes(domain) };
   }
 
-  @Post("domains/:domain/axes/ai-fill")
-  aiFill(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
-    checkAuth(req, headers); const domainConfig = this.requireDomain(domain);
-    // Nest runtime no longer shells through Python ai_axes; keep endpoint explicit and safe.
-    const summary = this.slots.applyPreset(domain, domainConfig.vertical || DEFAULT_DRIVING_VERTICAL);
-    return { ok: true, summary: { applied_preset: domainConfig.vertical, ...summary }, axes: this.db.listAxes(domain) };
-  }
-
   @Get("domains/:domain/slots")
   listSlots(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
