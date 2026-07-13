@@ -842,7 +842,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   const [intentVals, setIntentVals] = useState((initial?.axis_values?.intent ?? []).join("\n"));
   const [modifierVals, setModifierVals] = useState((initial?.axis_values?.modifier ?? []).join("\n"));
   const [academyTypes, setAcademyTypes] = useState<Set<string>>(new Set(initial?.academy_types ?? []));
-  const [keywordFilter, setKeywordFilter] = useState<Set<string>>(new Set(initial?.keyword_filter ?? []));
+  const [keywordVals, setKeywordVals] = useState((initial?.keyword_filter ?? []).join("\n")); // 선택 키워드(한 줄에 하나). 비면 아키타입 패턴.
   const [primaryOverride, setPrimaryOverride] = useState<string>(initial?.primary_override ?? ""); // ""=아키타입 기본
   const [source, setSource] = useState(""); // 시작점(빈값=직접 입력). create 모드 전용.
   const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
@@ -884,7 +884,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setIntentVals((src.axis_values?.intent ?? []).join("\n"));
     setModifierVals((src.axis_values?.modifier ?? []).join("\n"));
     setAcademyTypes(new Set(src.academy_types ?? []));
-    setKeywordFilter(new Set(src.keyword_filter ?? []));
+    setKeywordVals((src.keyword_filter ?? []).join("\n"));
     setPrimaryOverride(src.primary_override ?? "");
   }
 
@@ -901,7 +901,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setName(""); setKind(kindOptions[0]?.kind ?? ""); setDesign("local-guide");
     setUsePersona(false); setWithIntent(false); setModifierCount(0);
     setDirection(""); setSource("");
-    setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); setKeywordFilter(new Set()); setPrimaryOverride("");
+    setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); setKeywordVals(""); setPrimaryOverride("");
   }
 
   function submit() {
@@ -914,7 +914,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     // 학원 타입: 지역형 글유형일 때만 반영(비우면 학원정보 미사용). 키워드형은 저장하지 않는다.
     const academyTypesArr = isRegionPrimary ? Array.from(academyTypes) : [];
     // keyword 필터: 비우면 도메인 keyword 풀 전체(부분집합 아님). 항상 폼이 source of truth.
-    const keywordFilterArr = Array.from(keywordFilter);
+    const keywordFilterArr = parseLines(keywordVals);
     const primaryOverrideVal = primaryOverride === "region" || primaryOverride === "keyword" ? primaryOverride : undefined;
     if (source && onClone) {
       // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값·학원 타입·키워드 필터는 폼이 source of truth(프리필=소스 값)이라 항상 반영.
@@ -993,21 +993,24 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </div>
     </div>}
     <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 도메인 키워드 풀에서 직접 고릅니다. <b>고르면 그 키워드를 그대로 사용</b>(아키타입 정규식 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택(기존 동작). 아래 「주축」과 함께 지역 결합 여부까지 유형이 통제합니다.</p></div>
+      <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 한 줄에 하나씩 적습니다. <b>적으면 그 키워드를 그대로 사용</b>(아키타입 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택. 아래 풀에서 클릭하면 추가되고, 풀에 없는 키워드도 직접 입력할 수 있습니다.</p></div>
       <Field label="주축(지역 결합)">
         <select className="select" value={primaryOverride} onChange={(e) => setPrimaryOverride(e.target.value)} style={{ maxWidth: 320 }}>
           <option value="">아키타입 기본 ({(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형" : "키워드형"})</option>
           <option value="region">지역형 — 지역 × 키워드 (예: &quot;강남 운전면허학원&quot;)</option>
           <option value="keyword">키워드형 — 지역 없이 키워드만</option>
         </select>
-        <p className="muted small">위에서 키워드를 고른 경우에만 적용됩니다(키워드 미선택 시 아키타입 규칙을 따름).</p>
+        <p className="muted small">위에서 키워드를 적은 경우에만 적용됩니다(미입력 시 아키타입 규칙을 따름).</p>
       </Field>
-      <div className="info-panel grid grid-2" style={{ gap: 6 }}>
-        {(keywordPool ?? []).map((kw) => <label key={kw} className="row" style={{ gap: 6 }}>
-          <input type="checkbox" checked={keywordFilter.has(kw)} onChange={(e) => setKeywordFilter((prev) => { const next = new Set(prev); if (e.target.checked) next.add(kw); else next.delete(kw); return next; })} /> {kw}
-        </label>)}
-        {!(keywordPool ?? []).length && <p className="muted small">도메인 키워드 축이 비어 있습니다. 「축」 탭(또는 프리셋 적용)에서 키워드를 먼저 채우세요.</p>}
-      </div>
+      <textarea className="textarea" rows={3} value={keywordVals} onChange={(e) => setKeywordVals(e.target.value)} placeholder={"운전면허학원\n자동차운전전문학원   (한 줄에 하나 · 비우면 아키타입 패턴)"} />
+      {(keywordPool ?? []).length > 0 && <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
+        <span className="muted small" style={{ alignSelf: "center" }}>풀에서 추가:</span>
+        {(keywordPool ?? []).map((kw) => {
+          const has = parseLines(keywordVals).includes(kw);
+          return <button key={kw} type="button" className={`btn small ${has ? "primary" : ""}`} style={{ padding: "2px 8px" }}
+            onClick={() => setKeywordVals((prev) => { const list = parseLines(prev); return (has ? list.filter((k) => k !== kw) : [...list, kw]).join("\n"); })}>{has ? "✓ " : "+ "}{kw}</button>;
+        })}
+      </div>}
     </div>
     <details className="template-subsection">
       <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>미리보기 (디자인 목업)</h3><p className="muted small">선택한 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info">열기</span></div></summary>
