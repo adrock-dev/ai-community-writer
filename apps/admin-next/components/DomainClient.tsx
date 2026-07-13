@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, suggestTemplateAxes, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -777,7 +777,7 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
 
-    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+    <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
       onSubmit={(body) => run(() => createTemplate(domain, body))}
       onClone={(sourceId, name, overrides) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name, overrides }))} />
 
@@ -785,7 +785,7 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
       ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
-        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" domain={domain} initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
           onCancel={() => setEditId(null)}
           onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
         return <div key={t.template_id} className="info-panel grid">
@@ -826,8 +826,8 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
 type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[] };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
-function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources, academyTypeOptions, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
-  mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
+function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
+  mode: "create" | "edit"; domain: string; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
   sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; brandColor?: string | null; brand?: string; busy: boolean;
   onSubmit: (body: Partial<CustomTemplate>) => void; onClone?: (sourceId: string, name: string, overrides: Record<string, unknown>) => void; onCancel?: () => void;
 }) {
@@ -846,6 +846,26 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
   const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
   // 학원 타입은 지역형(primary=region) 글유형에서만 효과가 있으므로(키워드형은 지역이 없어 학원 미수집) 그때만 노출한다.
   const isRegionPrimary = (kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region";
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  // 켜 놓은 축(persona/intent/modifier)의 값을 LLM 이 이 글유형(kind/이름/방향성)에 맞게 제안해 텍스트영역을 채운다.
+  // 제안일 뿐이라 사용자가 검토/수정 후 저장(품질 관문=사람). 저장은 하지 않는다.
+  async function suggestAxes() {
+    const wanted: string[] = [];
+    if (usePersona) wanted.push("persona");
+    if (withIntent) wanted.push("intent");
+    if (modifierCount > 0) wanted.push("modifier");
+    if (!wanted.length) { setAiError("먼저 제안받을 축(persona·intent·modifier)을 ‘사용’으로 켜세요."); return; }
+    setAiBusy(true); setAiError("");
+    try {
+      const res = await suggestTemplateAxes(domain, { kind, name: name.trim(), direction: direction.trim(), axes: wanted });
+      if (res.suggestions.persona) setPersonaVals(res.suggestions.persona.join("\n"));
+      if (res.suggestions.intent) setIntentVals(res.suggestions.intent.join("\n"));
+      if (res.suggestions.modifier) setModifierVals(res.suggestions.modifier.join("\n"));
+    } catch (e) { setAiError(e instanceof Error ? e.message : String(e)); }
+    finally { setAiBusy(false); }
+  }
 
   function selectSource(id: string) {
     setSource(id);
@@ -932,7 +952,11 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
     </div>
     <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
     <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">이 글유형이 쓸 persona·intent·modifier 값입니다. <b>쓸 축을 켜면 값을 반드시 입력하세요</b> — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩.</p></div>
+      <div className="spread">
+        <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">이 글유형이 쓸 persona·intent·modifier 값입니다. <b>쓸 축을 켜면 값을 반드시 입력하세요</b> — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩.</p></div>
+        <button type="button" className="btn" style={{ flexShrink: 0, whiteSpace: "nowrap" }} disabled={aiBusy || busy} onClick={() => void suggestAxes()} title="켜 놓은 축의 값을 LLM 이 이 글유형(이름·방향성·아키타입)에 맞게 제안해 채웁니다. 제안이므로 검토·수정 후 저장하세요.">{aiBusy ? "AI 제안 중..." : "🤖 AI로 축 값 제안"}</button>
+      </div>
+      {aiError && <p className="toast-warn small">{aiError}</p>}
       <div className="info-panel grid" style={{ gap: 6 }}>
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={usePersona} onChange={(e) => setUsePersona(e.target.checked)} /> <b>persona</b> 사용 — 누구에게 말할지(독자)</label>
         {usePersona && <textarea className="textarea" rows={3} value={personaVals} onChange={(e) => setPersonaVals(e.target.value)} placeholder={"퇴근 후 배우는 직장인\n주말만 가능한 직장인   (한 줄에 하나씩 · 필수)"} />}
@@ -1007,21 +1031,16 @@ function uniquePreviewItems(items: string[]): string[] {
 }
 
 function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes: DomainDetailPayload["axes"]; options: AdminOptions; onRefresh: () => Promise<void> }) {
-  const [aiBusy, setAiBusy] = useState(false);
   async function saveAxis(axis: Axis, form: HTMLFormElement) {
     const values = parseCsv(String(new FormData(form).get("values") || ""));
     await replaceAxis(domain.domain, axis, values); await onRefresh();
   }
   async function preset(form: HTMLFormElement) { const preset_key = String(new FormData(form).get("preset_key") || ""); await api(`/domains/${encodeURIComponent(domain.domain)}/axes/preset`, { method: "POST", body: JSON.stringify({ preset_key }) }); await onRefresh(); }
-  async function ai(form: HTMLFormElement) { setAiBusy(true); try { const fd = new FormData(form); await api(`/domains/${encodeURIComponent(domain.domain)}/axes/ai-fill`, { method: "POST", body: JSON.stringify({ provider: fd.get("provider"), model: fd.get("model"), extra_context: fd.get("extra_context"), timeout_sec: 300 }) }); await onRefresh(); } catch (e) { alert((e as Error).message); } finally { setAiBusy(false); } }
   return <div className="grid">
     <div className="card card-pad">
       <div className="spread"><div><h2>축 — 생성용 배경 데이터</h2><p className="muted">글 후보의 <b>주축</b>인 지역·키워드 값입니다. 프리셋 적용이나 학원 동기화로 채워지며, 평소 생성 때는 열지 않아도 됩니다. 후보 범위를 넓히거나 좁힐 때만 손봅니다.</p><p className="muted small">페르소나·의도·수식어는 이제 도메인 공통 축이 아니라 <b>글유형별</b>로 관리합니다(글유형 탭의 커스텀 글유형 「축 구성·값 프리셋」).</p></div><span className="badge info">배경 데이터</span></div>
     </div>
-    <div className="grid grid-2">
-      <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); ai(e.currentTarget); }}><h2>🤖 AI로 축 자동 생성</h2><textarea className="textarea" name="extra_context" placeholder="추가 컨텍스트" /><div className="row"><select className="select" name="provider" style={{ maxWidth: 160 }}><option>codex</option><option>claude</option></select><input className="input" name="model" placeholder="모델 선택" style={{ maxWidth: 180 }} /><button className="btn primary" disabled={aiBusy}>{aiBusy ? "생성 중..." : "생성"}</button></div></form>
-      <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); if (confirm("현재 축을 프리셋으로 덮어쓸까요?")) preset(e.currentTarget); }}><h2>프리셋 적용</h2><select className="select" name="preset_key">{options.preset_options.map((p) => <option key={p}>{p}</option>)}</select><button className="btn">덮어쓰기</button></form>
-    </div>
+    <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); if (confirm("현재 지역·키워드 축을 프리셋으로 덮어쓸까요?")) preset(e.currentTarget); }}><h2>프리셋 적용</h2><p className="muted small">운전 도메인 기본 지역·키워드 축을 채웁니다. (persona·intent·modifier는 이제 글유형별로 관리 — 글유형 탭의 「AI로 축 값 제안」 참고)</p><select className="select" name="preset_key" style={{ maxWidth: 240 }}>{options.preset_options.map((p) => <option key={p}>{p}</option>)}</select><button className="btn">덮어쓰기</button></form>
     {AXES.filter((axis) => axis === "region" || axis === "keyword").map((axis) => <form key={axis} className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); saveAxis(axis, e.currentTarget); }}><div className="spread"><h2>{axis} 축 ({axes[axis]?.length ?? 0}개)</h2><button className="btn primary">저장</button></div><textarea className="textarea mono" name="values" rows={6} defaultValue={(axes[axis] ?? []).map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" /></form>)}
   </div>;
 }

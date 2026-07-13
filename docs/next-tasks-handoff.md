@@ -36,6 +36,7 @@
   - worker.service: `buildPrompt`/`buildRepairPrompt`/`designWritingGuide`/`designStructureGuide`/`uploadedPresetGuide`의 `designPreset` 파라미터, `isSelectableDesign`의 `"uploaded:"` 허용, 디자인 토큰 필터의 `"uploaded:"`.
   - lib/types: `DesignPreset`(죽은 타입, #4).
 - **추가 dormant(2026-07-14, #1에서 발생)**: `domains.academy_type_filter` 컬럼 + `db.academyTypeFilter()` + `domainOut` 의 `academy_type_filter` 필드 + admin.controller PATCH 직렬화(L118 근처) + `updateDomain` allow-list 의 `academy_type_filter` + `lib/types` `DomainConfig.academy_type_filter`. 학원 타입이 글유형 단일 소스로 이관돼 더는 읽지 않음. #2와 함께 정리 권장.
+- **추가 dormant(2026-07-14, AI 축 값 제안 기능에서 발생)**: `POST /domains/:domain/axes/ai-fill` 엔드포인트(admin.controller `aiFill`). 원래 "🤖 AI로 축 자동 생성" 버튼이 호출했으나 실제론 AI 아니고 `applyPreset` 재호출(프리셋 적용 중복)이었음. 프론트 버튼 제거로 이제 **호출부 0**. 안전한 preset-apply 라 무해하나 정리 대상(엔드포인트 제거 시 docs/admin-json-api.md 도 확인).
 - **추가 dormant(2026-07-14, 축 폴백 제거에서 발생)**: 도메인 **persona/intent/modifier 축**. `resolveAxisPool`이 이제 글유형 `axis_values` 전용(폴백 제거)이라, 도메인 이 세 축은 생성/정합성에서 안 쓰임. 남은 dormant: `AXES` 상수(5종 유지)·`listAxes`·`PRESETS`의 세 축·`axes/ai-fill`·`axes/preset`가 여전히 채우지만 무효. region/keyword 만 유효. UI 「축」 탭은 이미 region/keyword 만 노출. 정리 시 PRESETS/ai-fill/listAxes에서 세 축 제거 검토.
 - **데이터 안전**: 이번 세션에 `design_presets` 0행 / posts·customs·domains의 `uploaded:` 디자인 0 확인.
 - **접근**: 워커 시그니처에서 `designPreset` 제거(리팩터), 렌더 분기 제거, db 함수·테이블 제거, `"uploaded:"` 허용 제거.

@@ -9,6 +9,7 @@ import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, strip
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
 import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
 import { getArchetype } from "./archetypes.js";
+import { runLlm } from "./llm-runner.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 
@@ -219,6 +220,25 @@ export class AdminController {
     if (body.kind !== undefined && !getArchetype(String(body.kind || "").trim())) throw new HttpException(`unknown archetype kind: ${String(body.kind || "").trim() || "(empty)"}`, 400);
     this.db.updateCustomTemplate(domain, templateId, body);
     return { ok: true, template: this.db.getCustomTemplate(domain, templateId) };
+  }
+
+  // 커스텀 글유형 축 값(persona/intent/modifier) AI 제안 — LLM 에 유형 맥락(kind/이름/방향성)을 주고 후보를 생성한다.
+  // 저장하지 않고 '제안'만 반환한다(프론트가 폼에 채우고 사용자가 검토/수정 후 저장 — 품질 관문은 사람).
+  @Post("domains/:domain/templates/suggest-axes")
+  async suggestAxes(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers);
+    const config = domainOut(this.requireDomain(domain));
+    const kind = String(body.kind || "").trim();
+    const archetype = getArchetype(kind);
+    if (!archetype) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    const axes = (Array.isArray(body.axes) ? body.axes : []).map((a: any) => String(a)).filter((a: string) => ["persona", "intent", "modifier"].includes(a));
+    if (!axes.length) throw new HttpException("axes required (persona/intent/modifier 중 하나 이상)", 400);
+    const prompt = buildAxisSuggestPrompt({ domainName: String(config.display_name || domain), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), axes });
+    const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
+    if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
+    const suggestions = parseAxisSuggestion(result.summary, axes);
+    if (!Object.keys(suggestions).length) throw new HttpException("LLM 응답에서 축 값을 추출하지 못했습니다. 다시 시도해 주세요.", 502);
+    return { ok: true, suggestions, provider: result.provider, model: result.model };
   }
 
   // 레시피↔데이터 정합성(coherence) — 읽기/계산 전용. 생성 전에 얇은/근거없는 조합을 사전 경고(전 빌트인+커스텀).
@@ -1012,6 +1032,43 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_, n) => {
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   return c >>> 0;
 });
+// 축 값 AI 제안 프롬프트: 유형 맥락 + 축별 정의/개수 + 도메인 제약 + JSON-only 출력 지시.
+function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: string; name: string; direction: string; axes: string[] }): string {
+  const axisSpec: Record<string, string> = {
+    persona: 'persona: 이 글의 독자(누구에게 말하는가). 구체적 상황·니즈를 담은 짧은 명사구. 예: "주말만 가능한 직장인", "집 근처 학원을 찾는 수강생".',
+    intent: 'intent: 사용자가 알고 싶어하는 정보 의도. 짧은 명사구. 예: "준비물", "비용확인", "근처학원".',
+    modifier: 'modifier: 주키워드에 붙는 짧은 강조 수식어. 예: "가까운", "비용절약", "야간반".',
+  };
+  const counts: Record<string, string> = { persona: "10~14개", intent: "4~6개", modifier: "5~8개" };
+  const wanted = o.axes.map((a) => `- ${axisSpec[a]} (${counts[a]})`).join("\n");
+  return [
+    "너는 한국 운전면허·운전학원 SEO 콘텐츠의 축(axis) 값을 제안하는 도우미다.",
+    `대상 글유형: "${o.name || o.kind}" (아키타입 kind=${o.kind}, 주축=${o.primary === "region" ? "지역형(지역+키워드)" : "키워드형"}).`,
+    o.direction ? `이 글유형의 방향성: ${o.direction}` : "",
+    "이 글유형에 어울리는 아래 축 값을 제안하라:",
+    wanted,
+    "규칙: 운전면허·운전학원 도메인에 현실적으로 맞는 한국어 값만. 각 값은 짧고 서로 중복 없이. 가격·합격률 등 확인 불가한 수치를 값에 넣지 말 것.",
+    '출력은 오직 JSON 하나. 키는 요청한 축만 포함. 예: {"persona":["...","..."],"modifier":["..."]}. JSON 외 다른 텍스트·코드펜스 금지.',
+  ].filter(Boolean).join("\n\n");
+}
+
+// LLM 응답 텍스트에서 첫 JSON 블록을 추출·검증해 요청한 축의 문자열 배열만 반환(코드펜스/설명 섞여도 방어).
+function parseAxisSuggestion(text: string, axes: string[]): Record<string, string[]> {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return {};
+  let obj: any;
+  try { obj = JSON.parse(m[0]); } catch { return {}; }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+  const out: Record<string, string[]> = {};
+  for (const axis of axes) {
+    const list = obj[axis];
+    if (!Array.isArray(list)) continue;
+    const clean = [...new Set(list.map((v: unknown) => String(v ?? "").trim()).filter(Boolean))].slice(0, 20);
+    if (clean.length) out[axis] = clean;
+  }
+  return out;
+}
+
 function publicBrandName(value: string): string { return value.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || value; }
 function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function escapeHtml(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c)); }
