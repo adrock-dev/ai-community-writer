@@ -29,7 +29,7 @@ const AXIS_PLACEHOLDER: Record<Axis, string> = {
   modifier: "셔틀 편리\n친절한 강사\n최단기",
 };
 const TABS = [
-  ["overview", "개요"], ["plan", "공통원칙"], ["templates", "글유형/디자인"], ["axes", "축"],
+  ["overview", "개요"], ["plan", "공통 설정"], ["templates", "글유형/디자인"], ["axes", "축"],
   ["academies", "학원자료"], ["slots", "글 생성"], ["jobs", "작업 큐"], ["posts", "검수·내보내기"], ["settings", "설정"],
 ] as const;
 
@@ -512,7 +512,7 @@ function tourTooltipStyle(rect: DOMRect | null): React.CSSProperties {
 function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; counts: SlotCounts; active: string; onTab: (v: string) => void }) {
   const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
   const steps = [
-    { tab: "plan", title: "공통원칙", done: Boolean(domain.common_principles), count: domain.common_principles ? "완료" : "필요" },
+    { tab: "plan", title: "공통 설정", done: Boolean(domain.common_principles), count: domain.common_principles ? "완료" : "필요" },
     { tab: "templates", title: "유형/디자인", done: domain.templates_enabled.length > 0, count: `${domain.templates_enabled.length}개` },
     { tab: "slots", title: "후보/작성", done: totalSlots > 0, count: `${totalSlots}개` },
     { tab: "jobs", title: "작업", done: counts.in_progress > 0 || counts.published > 0, count: counts.in_progress > 0 ? `${counts.in_progress}개 진행` : "상태 확인" },
@@ -541,7 +541,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <Stat label="대기 후보" value={counts.planned} /><Stat label="진행" value={counts.in_progress} /><Stat label="발행" value={counts.published} accent /><Stat label="실패" value={counts.failed} />
     </div>
     <div className="grid grid-2">
-      <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>공통원칙 열기</button></div>
+      <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>공통 설정 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>글유형/디자인 열기</button></div>
     </div>
     <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 탭에서 진행 상태 확인</li><li>검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
@@ -636,7 +636,7 @@ function KeywordMaster({ domain, keywordAxis, onRefresh }: { domain: string; key
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
-  return <div className="card card-pad grid">
+  return <div className="card card-pad grid" style={{ marginTop: 16 }}>
     <div className="spread"><div><h2>키워드 마스터</h2><p className="muted small">글유형이 고르는 키워드 풀 + SEO 메트릭입니다. 월검색량·경쟁도(KD)는 슬롯 우선순위에 쓰입니다. 프리셋 적용으로 채우거나 아래 표에서 직접 편집하세요.</p></div><span className="badge info">{rows.length}개</span></div>
     <div className="table-wrap"><table>
       <thead><tr><th>키워드</th><th style={{ width: 100 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 110 }}>경쟁도(KD)</th><th style={{ width: 72 }}></th></tr></thead>
