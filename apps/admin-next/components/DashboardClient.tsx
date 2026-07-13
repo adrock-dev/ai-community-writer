@@ -4,7 +4,7 @@ import { api, getOptions, listDomains } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { getDesignTheme } from "@/lib/design-theme";
 import { notifyDomainsChanged } from "@/lib/domain-events";
-import { getRecentDomains } from "@/lib/recent-domain";
+import { getRecentDomains, rememberDomain } from "@/lib/recent-domain";
 import type { AdminOptions, DomainConfig, Job } from "@/lib/types";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
@@ -50,11 +50,12 @@ export default function DashboardClient() {
     const form = e.currentTarget;
     setBusy(true); setError("");
     const fd = new FormData(form);
+    const newDomain = String(fd.get("domain") || "").trim();
     try {
       await api("/domains", {
         method: "POST",
         body: JSON.stringify({
-          domain: String(fd.get("domain") || "").trim(),
+          domain: newDomain,
           display_name: String(fd.get("display_name") || "").trim(),
           vertical: String(fd.get("vertical") || "").trim(),
           theme: String(fd.get("theme") || "clean"),
@@ -66,6 +67,9 @@ export default function DashboardClient() {
       form.reset();
       setBrandColor(DEFAULT_BRAND_COLOR);
       setOpen(false);
+      // 방금 만든 도메인을 "최근 접근"으로 기록해 도메인 현황 목록 맨 위에 오게 한다.
+      rememberDomain(newDomain);
+      setRecentDomains(getRecentDomains());
       await refresh();
       notifyDomainsChanged(); // 사이드바(AppShell) 도메인 드롭다운 즉시 갱신
     } catch (err) {
