@@ -322,7 +322,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
       </div>}
 
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
-      {view === "overview" && tab === "plan" && <Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
+      {view === "overview" && tab === "plan" && <><Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} /><KeywordMaster domain={domainConfig.domain} keywordAxis={(payload.axes?.keyword ?? []) as AxisValue[]} onRefresh={refresh} /></>}
       {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} customTemplates={payload.custom_templates ?? []} keywordPool={(payload.axes?.keyword ?? []).map((k) => String(k.value))} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
       {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
@@ -611,10 +611,48 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
   }
   return <div className="card card-pad grid" data-tour="plan-brief">
     <h2>공통 작성 원칙</h2>
-    <p className="muted">모든 글 유형에 공통 적용되는 안전·데이터 원칙과 제외어입니다. 글 유형별 방향성·축은 「글유형/디자인」 탭의 커스텀 글유형에서, 공통 축 값은 「축」 탭에서 관리합니다.</p>
+    <p className="muted">모든 글 유형에 공통 적용되는 안전·데이터 원칙, 제외어, 그리고 <b>키워드 마스터</b>(아래 표)입니다. 글 유형별 방향성·축·키워드 선택은 「글유형/디자인」 탭의 커스텀 글유형에서 관리합니다.</p>
     <Field label="공통 작성 원칙 (모든 글 유형 공통)"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="확인된 데이터만 사용하고, 가격·합격률·셔틀은 자료가 있을 때만 단정한다. 확인 가능한 사실이 부족하면 숫자를 부풀리지 말고 확인 방법 중심으로 정직하게 작성한다." /></Field>
     <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 후보 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
     <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "저장"}</button><button className="btn" onClick={() => onTab("templates")}>글 유형/방향성</button><button className="btn" onClick={() => onTab("axes")}>축 편집</button></div>
+  </div>;
+}
+
+// 키워드 마스터: 글유형이 고르는 키워드 풀 + SEO 메트릭(월검색량·경쟁도). 슬롯 우선순위 소스라 표로 편집한다.
+type KwRow = { value: string; weight: string; msv: string; kd: string };
+const toKwRow = (r: AxisValue): KwRow => ({ value: String(r.value ?? ""), weight: r.weight == null ? "" : String(r.weight), msv: r.monthly_search_volume == null ? "" : String(r.monthly_search_volume), kd: r.competition_kd == null ? "" : String(r.competition_kd) });
+function KeywordMaster({ domain, keywordAxis, onRefresh }: { domain: string; keywordAxis: AxisValue[]; onRefresh: () => Promise<void> }) {
+  const [rows, setRows] = useState<KwRow[]>(() => keywordAxis.map(toKwRow));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => { setRows(keywordAxis.map(toKwRow)); }, [keywordAxis]); // 저장·새로고침 후 서버 값과 재동기화
+  const set = (i: number, k: keyof KwRow, v: string) => setRows((prev) => prev.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  async function save() {
+    setBusy(true); setErr("");
+    try {
+      const values: AxisValue[] = rows.map((r) => ({ value: r.value.trim(), weight: Number(r.weight || 3), monthly_search_volume: r.msv.trim() === "" ? null : Number(r.msv), competition_kd: r.kd.trim() === "" ? null : Number(r.kd) })).filter((v) => v.value);
+      await replaceAxis(domain, "keyword", values);
+      await onRefresh();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  return <div className="card card-pad grid">
+    <div className="spread"><div><h2>키워드 마스터</h2><p className="muted small">글유형이 고르는 키워드 풀 + SEO 메트릭입니다. 월검색량·경쟁도(KD)는 슬롯 우선순위에 쓰입니다. 프리셋 적용으로 채우거나 아래 표에서 직접 편집하세요.</p></div><span className="badge info">{rows.length}개</span></div>
+    <div className="table-wrap"><table>
+      <thead><tr><th>키워드</th><th style={{ width: 100 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 110 }}>경쟁도(KD)</th><th style={{ width: 60 }}></th></tr></thead>
+      <tbody>
+        {rows.map((r, i) => <tr key={i}>
+          <td><input className="input" value={r.value} onChange={(e) => set(i, "value", e.target.value)} placeholder="운전면허학원" /></td>
+          <td><input className="input" value={r.weight} onChange={(e) => set(i, "weight", e.target.value)} inputMode="numeric" placeholder="3" /></td>
+          <td><input className="input" value={r.msv} onChange={(e) => set(i, "msv", e.target.value)} inputMode="numeric" placeholder="-" /></td>
+          <td><input className="input" value={r.kd} onChange={(e) => set(i, "kd", e.target.value)} inputMode="numeric" placeholder="-" /></td>
+          <td><button type="button" className="btn danger" onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}>삭제</button></td>
+        </tr>)}
+        {!rows.length && <tr><td colSpan={5} className="muted small">키워드가 없습니다. 「행 추가」 또는 「축」 탭의 프리셋 적용으로 채우세요.</td></tr>}
+      </tbody>
+    </table></div>
+    {err && <p className="toast-warn small">{err}</p>}
+    <div className="row"><button type="button" className="btn" onClick={() => setRows((prev) => [...prev, { value: "", weight: "", msv: "", kd: "" }])}>+ 행 추가</button><button type="button" className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "키워드 저장"}</button></div>
   </div>;
 }
 
@@ -1068,7 +1106,8 @@ function Axes({ domain, axes, options, onRefresh }: { domain: DomainConfig; axes
       <div className="spread"><div><h2>축 — 생성용 배경 데이터</h2><p className="muted">글 후보의 <b>주축</b>인 지역·키워드 값입니다. 프리셋 적용이나 학원 동기화로 채워지며, 평소 생성 때는 열지 않아도 됩니다. 후보 범위를 넓히거나 좁힐 때만 손봅니다.</p><p className="muted small">페르소나·의도·수식어는 이제 도메인 공통 축이 아니라 <b>글유형별</b>로 관리합니다(글유형 탭의 커스텀 글유형 「축 구성·값 프리셋」).</p></div><span className="badge info">배경 데이터</span></div>
     </div>
     <form className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); if (confirm("현재 지역·키워드 축을 프리셋으로 덮어쓸까요?")) preset(e.currentTarget); }}><h2>프리셋 적용</h2><p className="muted small">운전 도메인 기본 지역·키워드 축을 채웁니다. (persona·intent·modifier는 이제 글유형별로 관리 — 글유형 탭의 「AI로 축 값 제안」 참고)</p><select className="select" name="preset_key" style={{ maxWidth: 240 }}>{options.preset_options.map((p) => <option key={p}>{p}</option>)}</select><button className="btn">덮어쓰기</button></form>
-    {AXES.filter((axis) => axis === "region" || axis === "keyword").map((axis) => <form key={axis} className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); saveAxis(axis, e.currentTarget); }}><div className="spread"><h2>{axis} 축 ({axes[axis]?.length ?? 0}개)</h2><button className="btn primary">저장</button></div><textarea className="textarea mono" name="values" rows={6} defaultValue={(axes[axis] ?? []).map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" /></form>)}
+    {AXES.filter((axis) => axis === "region").map((axis) => <form key={axis} className="card card-pad grid" onSubmit={(e) => { e.preventDefault(); saveAxis(axis, e.currentTarget); }}><div className="spread"><h2>{axis} 축 ({axes[axis]?.length ?? 0}개)</h2><button className="btn primary">저장</button></div><textarea className="textarea mono" name="values" rows={6} defaultValue={(axes[axis] ?? []).map((r) => `${r.value},${r.weight},${r.monthly_search_volume ?? ""},${r.competition_kd ?? ""}`).join("\n")} placeholder="값,가중치,월검색량,KD" /></form>)}
+    <p className="muted small">키워드는 이제 「공통 원칙」 탭의 <b>키워드 마스터</b> 표에서 관리합니다(월검색량·경쟁도 포함).</p>
   </div>;
 }
 
