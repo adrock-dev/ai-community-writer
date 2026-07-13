@@ -1,8 +1,9 @@
 // 골든 슬롯 러너 — 아키타입/글유형 리팩터의 "동작 불변" 회귀 테스트.
 // 전 빌트인 글유형으로 슬롯을 생성해 golden-slots.json 과 완전 비교(0 diff 여야 통과).
 // 사용:
-//   npm run test:golden                                            # 비교(diff). 불일치 시 exit 1
-//   cd apps/api-nest && npx tsx scripts/tests/golden-runner.ts --update  # 골든 재생성(레시피/프리셋을 의도적으로 바꿨을 때만)
+//   npm run test:golden                                            # 비교. 불일치 시 유형별 요약 + exit 1
+//   cd apps/api-nest && npx tsx scripts/tests/golden-runner.ts --verbose  # 위 + 개별 슬롯 diff 전체 출력
+//   cd apps/api-nest && npx tsx scripts/tests/golden-runner.ts --update   # 골든 재생성(레시피/프리셋을 의도적으로 바꿨을 때만)
 //
 // 주의:
 // - Db/Slot 서비스를 직접 인스턴스화(HTTP/포트 없음). 임시 DB 는 OS tmpdir 에 만든다(repo 오염 없음).
@@ -42,21 +43,37 @@ if (process.argv.includes("--update")) {
   process.exit(0);
 }
 
-// 비교
+// 비교 — diff 를 유형(template_id)별로 집계해 요약 출력(어느 글유형이 바뀌었는지 한눈에).
+// slot_id 는 `${template_id}_${hash}` 라 prefix 가 곧 유형. 개별 슬롯 diff 는 --verbose 로만.
 const golden = JSON.parse(readFileSync(GOLDEN, "utf8"));
 const j = (x: unknown) => JSON.stringify(x);
+const verbose = process.argv.includes("--verbose");
 const gm = new Map(golden.map((s: any) => [s.slot_id, s]));
 const sm = new Map(snap.map((s) => [s.slot_id, s]));
+const tidOf = (id: string) => id.split("_")[0] || "?";
+const per: Record<string, { changed: number; removed: number; added: number }> = {};
+const details: string[] = [];
 let diff = 0;
-const show = (msg: string) => { if (diff < 20) console.log(msg); };
-if (snap.length !== golden.length) { console.log(`❌ 슬롯 수: 골든 ${golden.length} vs 현재 ${snap.length}`); diff++; }
-for (const [id, g] of gm) { const s = sm.get(id); if (!s) { show(`❌ 누락: ${id}`); diff++; } else if (j(g) !== j(s)) { show(`❌ 불일치: ${id}\n  골든: ${j(g)}\n  현재: ${j(s)}`); diff++; } }
-for (const id of sm.keys()) { if (!gm.has(id)) { show(`❌ 신규(골든에 없음): ${id}`); diff++; } }
+const bump = (id: string, k: "changed" | "removed" | "added") => { (per[tidOf(id)] ??= { changed: 0, removed: 0, added: 0 })[k]++; diff++; };
+
+if (snap.length !== golden.length) console.log(`ℹ️ 슬롯 수: 골든 ${golden.length} → 현재 ${snap.length}`);
+for (const [id, g] of gm) {
+  const s = sm.get(id);
+  if (!s) { bump(id, "removed"); if (verbose) details.push(`- 삭제 ${id}: ${j(g)}`); }
+  else if (j(g) !== j(s)) { bump(id, "changed"); if (verbose) details.push(`~ 변경 ${id}\n    골든: ${j(g)}\n    현재: ${j(s)}`); }
+}
+for (const id of sm.keys()) if (!gm.has(id)) { bump(id, "added"); if (verbose) details.push(`+ 신규 ${id}: ${j(sm.get(id))}`); }
 
 if (diff === 0) {
   console.log(`✅ 골든 0-diff: ${snap.length} 슬롯 동작 불변`);
   process.exit(0);
-} else {
-  console.log(`\n❌ 골든 불일치 ${diff}건 — 의도된 변경이면 --update, 아니면 회귀. (레시피/프리셋을 안 바꿨는데 diff 면 버그.)`);
-  process.exit(1);
 }
+console.log(`❌ 골든 불일치 ${diff}건 (유형별):`);
+for (const t of Object.keys(per).sort()) {
+  const p = per[t]!;
+  const parts = [p.changed && `변경 ${p.changed}`, p.removed && `삭제 ${p.removed}`, p.added && `신규 ${p.added}`].filter(Boolean).join(", ");
+  console.log(`  ${t}: ${parts}  (골든 ${golden.filter((s: any) => tidOf(s.slot_id) === t).length} → 현재 ${snap.filter((s) => tidOf(s.slot_id) === t).length})`);
+}
+console.log(verbose ? `\n${details.join("\n")}` : `\n(개별 슬롯 diff 는 --verbose 로)`);
+console.log(`\n의도된 변경이면 --update, 아니면 회귀. (레시피/프리셋 안 바꿨는데 diff 면 버그.)`);
+process.exit(1);
