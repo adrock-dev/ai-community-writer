@@ -292,9 +292,6 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
         <div className="row">
           <span className="badge">{domainConfig.vertical}</span>
           <span className="badge">{domainConfig.theme}</span>
-          <Link className={`btn ${view === "generate" ? "primary" : ""}`} href={`/t/${encodeURIComponent(domainConfig.domain)}/generate`}>글 생성</Link>
-          <Link className={`btn ${view === "posts" ? "primary" : ""}`} href={`/t/${encodeURIComponent(domainConfig.domain)}/posts`}>검수·내보내기</Link>
-          <Link href="/jobs" className="btn">작업 큐</Link>
         </div>
       </div>
 
