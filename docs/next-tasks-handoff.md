@@ -1,7 +1,7 @@
 # 다음 세션 인수인계 (2026-07-13)
 
 > 이번 세션에서 "축 값 프리셋 + 디자인/글유형 탭 대정비 + 글유형 on/off 통합"을 마쳤고,
-> 아래 4개를 **다음 작업**으로 남겼다. 상세 세션 이력·핵심 모델은 memory `archetype-refactor-roadmap` 참조.
+> 아래를 **다음 작업**으로 남겼다(그 중 #3은 이후 검증 결과 **오탐으로 종료**). 상세 세션 이력·핵심 모델은 memory `archetype-refactor-roadmap` 참조.
 > ⚠️ 라인 번호는 이동할 수 있으니 함수명/문자열로 재확인할 것.
 
 ## 이번 세션 완료 요약 (커밋 `b4fa6c3` ~ `fa5cb81`, develop)
@@ -33,11 +33,10 @@
 - **검증**: 골든 0-diff(슬롯 생성 무관) + **실생성 1건 + 글 상세 렌더 확인**(프롬프트/렌더 경로 변경이므로).
 - **리스크**: 워커·렌더 load-bearing. 중~높음. **프로젝트 전체 점검 때 권장.**
 
-### 3. 커스텀 clone 시작점 `axis_values` 프리필 버그 (Stage 2b부터)
-- **증상**: 커스텀 만들기 폼 '시작점'에서 **커스텀**을 고르면 축 값 프리필이 안 됨(빌트인 소스는 정상).
-- **원인**: `CustomTemplatesManager`의 `createSources`가 커스텀 소스로 raw 커스텀 row(`listTemplates.custom`)를 쓰는데 `axis_values`가 JSON **문자열**(미파싱) → `src.axis_values?.persona`가 undefined. 빌트인 소스(`spec.axis_values`=객체)만 동작.
-- **접근**: 커스텀 소스의 axis_values 를 파싱하거나, 백엔드 `listCustomTemplates`/`/templates` 응답이 파싱된 객체를 반환하도록(customTemplateOut 경유).
-- **리스크**: 낮음.
+### 3. ~~커스텀 clone 시작점 `axis_values` 프리필 버그~~ — **오탐, 종료(2026-07-14)**
+- **결론: 버그 아님. 코드 수정 불필요.** `listCustomTemplates`(db.service:445)는 `.map(customTemplateOut)`을 거치고, `customTemplateOut`(≈L1006)이 `axis_values: parseAxisTags(row.axis_values) ?? {}`로 **이미 파싱**한다. `getDomainDetail`·`/templates` 모두 이 경로를 씀. 인수인계서에 적힌 "raw JSON 문자열 미파싱"은 오독이었음(dba960c/Stage2b 시점부터 파싱됨).
+- **빈 채로 보였던 이유**: DB의 기존 커스텀들이 Stage 2b 이전 생성이라 `axis_values`가 비어 있어, 복제 시 빈 값이 그대로 채워진 것(정상 동작). 실제 값을 넣고 복제하면 프리필 정상 — 다음 세션이 probe DB로 검증함.
+- 원 세션이 브라우저로 재현하지 않고 코드에서 추측한 **오탐**(원인 진단도 틀림). 참고용 기록으로만 남김.
 
 ### 4. `lib/types` `DesignPreset` 죽은 타입 — #2와 함께 제거.
 
