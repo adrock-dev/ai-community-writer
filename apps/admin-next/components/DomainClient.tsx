@@ -323,7 +323,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
       </div>}
 
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
-      {view === "overview" && tab === "plan" && <><Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} /><KeywordMaster domain={domainConfig.domain} keywordAxis={(payload.axes?.keyword ?? []) as AxisValue[]} onRefresh={refresh} /></>}
+      {view === "overview" && tab === "plan" && <><Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} /><KeywordMaster domain={domainConfig.domain} presetKey={domainConfig.vertical || "driving"} keywordAxis={(payload.axes?.keyword ?? []) as AxisValue[]} onRefresh={refresh} /></>}
       {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} customTemplates={payload.custom_templates ?? []} keywordPool={(payload.axes?.keyword ?? []).map((k) => String(k.value))} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
       {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
@@ -622,7 +622,7 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
 // 키워드 마스터: 글유형이 고르는 키워드 풀 + SEO 메트릭(월검색량·경쟁도). 슬롯 우선순위 소스라 표로 편집한다.
 type KwRow = { value: string; weight: string; msv: string; kd: string };
 const toKwRow = (r: AxisValue): KwRow => ({ value: String(r.value ?? ""), weight: r.weight == null ? "" : String(r.weight), msv: r.monthly_search_volume == null ? "" : String(r.monthly_search_volume), kd: r.competition_kd == null ? "" : String(r.competition_kd) });
-function KeywordMaster({ domain, keywordAxis, onRefresh }: { domain: string; keywordAxis: AxisValue[]; onRefresh: () => Promise<void> }) {
+function KeywordMaster({ domain, presetKey, keywordAxis, onRefresh }: { domain: string; presetKey: string; keywordAxis: AxisValue[]; onRefresh: () => Promise<void> }) {
   const [rows, setRows] = useState<KwRow[]>(() => keywordAxis.map(toKwRow));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
@@ -637,8 +637,18 @@ function KeywordMaster({ domain, keywordAxis, onRefresh }: { domain: string; key
     } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
+  // 키워드 축만 프리셋 기본값(18개+메트릭)으로 초기화. region 등 다른 축은 안 건드림(axes 필터).
+  async function reset() {
+    if (!confirm("키워드 마스터를 기본값(운전 프리셋)으로 초기화할까요? 지금 표의 키워드·직접 추가한 값이 덮어써집니다. (지역 등 다른 축은 그대로)")) return;
+    setBusy(true); setErr("");
+    try {
+      await api(`/domains/${encodeURIComponent(domain)}/axes/preset`, { method: "POST", body: JSON.stringify({ preset_key: presetKey, axes: ["keyword"] }) });
+      await onRefresh();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
   return <div className="card card-pad grid" style={{ marginTop: 16 }}>
-    <div className="spread"><div><h2>키워드 마스터</h2><p className="muted small">글유형이 고르는 키워드 풀 + SEO 메트릭입니다. 월검색량·경쟁도(KD)는 슬롯 우선순위에 쓰입니다. 프리셋 적용으로 채우거나 아래 표에서 직접 편집하세요.</p></div><span className="badge info">{rows.length}개</span></div>
+    <div className="spread"><div><h2>키워드 마스터</h2><p className="muted small">글유형이 고르는 키워드 풀 + SEO 메트릭입니다. 월검색량·경쟁도(KD)는 슬롯 우선순위에 쓰입니다. 직접 편집하거나 「기본값으로 초기화」로 운전 프리셋 18개를 채웁니다.</p></div><span className="badge info">{rows.length}개</span></div>
     <div className="table-wrap"><table>
       <thead><tr><th>키워드</th><th style={{ width: 100 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 110 }}>경쟁도(KD)</th><th style={{ width: 72 }}></th></tr></thead>
       <tbody>
@@ -649,11 +659,11 @@ function KeywordMaster({ domain, keywordAxis, onRefresh }: { domain: string; key
           <td><input className="input" value={r.kd} onChange={(e) => set(i, "kd", e.target.value)} inputMode="numeric" placeholder="-" /></td>
           <td><button type="button" className="btn danger" style={{ whiteSpace: "nowrap" }} onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}>삭제</button></td>
         </tr>)}
-        {!rows.length && <tr><td colSpan={5} className="muted small">키워드가 없습니다. 「행 추가」 또는 「축」 탭의 프리셋 적용으로 채우세요.</td></tr>}
+        {!rows.length && <tr><td colSpan={5} className="muted small">키워드가 없습니다. 「행 추가」 또는 「기본값으로 초기화」로 채우세요.</td></tr>}
       </tbody>
     </table></div>
     {err && <p className="toast-warn small">{err}</p>}
-    <div className="row"><button type="button" className="btn" onClick={() => setRows((prev) => [...prev, { value: "", weight: "", msv: "", kd: "" }])}>+ 행 추가</button><button type="button" className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "키워드 저장"}</button></div>
+    <div className="row"><button type="button" className="btn" onClick={() => setRows((prev) => [...prev, { value: "", weight: "", msv: "", kd: "" }])}>+ 행 추가</button><button type="button" className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "키워드 저장"}</button><button type="button" className="btn" style={{ marginLeft: "auto" }} onClick={reset} disabled={busy} title="키워드 축만 운전 프리셋 기본값(18개+메트릭)으로 되돌립니다(지역 등은 그대로)">기본값으로 초기화</button></div>
   </div>;
 }
 
