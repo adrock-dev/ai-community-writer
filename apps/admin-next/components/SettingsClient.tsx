@@ -1,9 +1,9 @@
 "use client";
 
-import { getOptions } from "@/lib/api";
+import { addVertical, deleteVertical, getOptions, listVerticals } from "@/lib/api";
 import { DEFAULT_GENERATION_DEFAULTS, useGenerationDefaults } from "@/lib/generation-defaults";
 import { useTourEnabled } from "@/lib/tour";
-import type { Provider } from "@/lib/types";
+import type { Provider, Vertical } from "@/lib/types";
 import { useEffect, useState } from "react";
 
 const IMAGE_SIZES: Array<{ value: string; label: string }> = [
@@ -19,6 +19,11 @@ export default function SettingsClient() {
   const [genDraft, setGenDraft] = useState(savedGen);
   const [providers, setProviders] = useState<Provider[]>(["codex", "claude"]);
   const [localNotice, setLocalNotice] = useState("");
+  const [verticals, setVerticals] = useState<Vertical[]>([]);
+  const [vKey, setVKey] = useState("");
+  const [vLabel, setVLabel] = useState("");
+  const [vErr, setVErr] = useState("");
+  const [vBusy, setVBusy] = useState(false);
 
   async function loadOptions() {
     const opts = await getOptions();
@@ -28,7 +33,23 @@ export default function SettingsClient() {
   useEffect(() => {
     // 백엔드 미연결 시 provider 내장 목록/빈 색인값을 유지한다.
     loadOptions().catch(() => {});
+    listVerticals().then((r) => setVerticals(r.items)).catch(() => {});
   }, []);
+
+  async function onAddVertical() {
+    setVBusy(true); setVErr("");
+    try {
+      const r = await addVertical(vKey.trim().toLowerCase(), vLabel.trim());
+      setVerticals(r.items); setVKey(""); setVLabel("");
+    } catch (e) { setVErr(e instanceof Error ? e.message : String(e)); }
+    finally { setVBusy(false); }
+  }
+  async function onDeleteVertical(key: string) {
+    if (!confirm(`업종 '${key}'을(를) 삭제할까요?`)) return;
+    setVErr("");
+    try { const r = await deleteVertical(key); setVerticals(r.items); }
+    catch (e) { setVErr(e instanceof Error ? e.message : String(e)); }
+  }
 
   useEffect(() => {
     setTourDraft(savedTourEnabled);
@@ -144,6 +165,36 @@ export default function SettingsClient() {
           }}>기본값으로 초기화</button>
         </div>
         <p className="muted small">저장 후 이미 열려 있는 작성 화면에는 다음에 그 화면을 다시 열 때부터 반영됩니다.</p>
+      </section>
+
+      <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
+        <div>
+          <div className="row" style={{ gap: 8 }}>
+            <h2 style={{ margin: 0 }}>업종 관리</h2>
+            <span className="badge info">{verticals.length}개</span>
+          </div>
+          <p className="muted small" style={{ marginTop: 6 }}>
+            도메인 생성 시 고르는 업종 목록입니다. <b>key</b>는 프리셋·프롬프트에 쓰는 슬러그, <b>표시명</b>은 화면 표시용입니다.
+            새 업종은 전용 프리셋이 없어 도메인이 빈 축으로 시작합니다(현재 실질 생성은 driving 기준). 이 설정은 서버에 저장되어 즉시 반영됩니다.
+          </p>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th style={{ width: 200 }}>key</th><th>표시명</th><th style={{ width: 80 }}></th></tr></thead>
+          <tbody>
+            {verticals.map((v) => <tr key={v.key}>
+              <td className="mono small">{v.key}</td>
+              <td>{v.label}</td>
+              <td>{v.key === "driving" ? <span className="muted small">기본</span> : <button className="btn danger" onClick={() => onDeleteVertical(v.key)}>삭제</button>}</td>
+            </tr>)}
+            {!verticals.length && <tr><td colSpan={3} className="muted small">업종이 없습니다.</td></tr>}
+          </tbody>
+        </table></div>
+        <div className="grid grid-2">
+          <label><span className="label">key (영문 소문자·숫자·하이픈)</span><input className="input mono" value={vKey} onChange={(e) => setVKey(e.target.value)} placeholder="food" /></label>
+          <label><span className="label">표시명</span><input className="input" value={vLabel} onChange={(e) => setVLabel(e.target.value)} placeholder="음식점" /></label>
+        </div>
+        {vErr && <p className="toast-warn small">{vErr}</p>}
+        <div className="row"><button className="btn primary" disabled={vBusy || !vKey.trim() || !vLabel.trim()} onClick={onAddVertical}>{vBusy ? "추가 중..." : "업종 추가"}</button></div>
       </section>
 
       <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>

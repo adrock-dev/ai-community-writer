@@ -105,7 +105,7 @@ export default function DashboardClient() {
             <Field label="도메인"><input className="input" name="domain" placeholder="drive.example.com" required pattern="[a-z0-9.\-]+" /></Field>
             <Field label="표시 이름"><input className="input" name="display_name" placeholder="강남 운전면허센터" required /></Field>
           </div>
-          <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v} value={v}>{v === "driving" ? "운전면허/운전학원" : v}</option>)}</select></Field>
+          <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</select></Field>
           <div className="grid grid-2">
             <Field label="브랜드 컬러">
               <div className="row">
@@ -152,7 +152,7 @@ export default function DashboardClient() {
                     <h3>{t.display_name}</h3>
                     <div className="domain-card-badges">
                       {t.domain === latestDomain && <span className="badge info">최근 접근</span>}
-                      <span className="badge">{t.vertical}</span>
+                      <span className="badge">{options?.verticals.find((v) => v.key === t.vertical)?.label ?? t.vertical}</span>
                     </div>
                   </div>
                   <p className="muted mono small">{t.domain}</p>

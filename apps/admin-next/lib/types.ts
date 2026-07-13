@@ -241,8 +241,13 @@ export interface TemplateSpec {
   primary_override?: "region" | "keyword";
 }
 
+export interface Vertical {
+  key: string;
+  label: string;
+}
+
 export interface AdminOptions {
-  verticals: string[];
+  verticals: Vertical[];
   themes: string[];
   templates: string[];
   template_specs: Record<string, TemplateSpec>;

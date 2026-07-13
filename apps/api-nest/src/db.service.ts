@@ -683,6 +683,24 @@ export class DbService implements OnModuleInit {
     this.run(`INSERT INTO app_settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP`, [key, value]);
   }
 
+  // 업종 레지스트리(라벨 MVP): app_settings 에 {key,label}[] 로 저장. 미저장 시 driving 시드.
+  // key 는 프리셋 선택/프롬프트에 쓰는 슬러그, label 은 화면 표시명(생성폼·설정·뱃지 공통 소스).
+  getVerticals(): Array<{ key: string; label: string }> {
+    const raw = this.getSetting("verticals");
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const list = parsed.filter((v): v is { key: string; label: string } => v && typeof v.key === "string" && typeof v.label === "string" && v.key.trim() !== "");
+          if (list.length) return list;
+        }
+      } catch { /* 손상 시 시드로 폴백 */ }
+    }
+    return [{ key: "driving", label: "운전면허/운전학원" }];
+  }
+  setVerticals(list: Array<{ key: string; label: string }>): void { this.setSetting("verticals", JSON.stringify(list)); }
+  countDomainsByVertical(key: string): number { return Number(this.get("SELECT COUNT(*) AS n FROM domains WHERE vertical=?", [key])?.n ?? 0); }
+
   upsertAcademies(domain: string, rows: Row[]): number {
     let n = 0;
     for (const r of rows) {

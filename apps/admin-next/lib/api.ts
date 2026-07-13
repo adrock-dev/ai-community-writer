@@ -1,4 +1,8 @@
-import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, CustomTemplate, CoherenceReport } from "./types";
+import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, CustomTemplate, CoherenceReport, Vertical } from "./types";
+
+export const listVerticals = () => api<{ items: Vertical[] }>("/settings/verticals");
+export const addVertical = (key: string, label: string) => api<{ ok: true; items: Vertical[] }>("/settings/verticals", { method: "POST", body: JSON.stringify({ key, label }) });
+export const deleteVertical = (key: string) => api<{ ok: true; items: Vertical[] }>(`/settings/verticals/${encodeURIComponent(key)}`, { method: "DELETE" });
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/admin${path}`, {

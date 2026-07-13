@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -27,7 +27,7 @@ export class AdminController {
   options(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers);
     return {
-      verticals: [...DRIVING_VERTICALS],
+      verticals: this.db.getVerticals(),
       themes: ["clean", "modern", "pro"],
       templates: Object.keys(TEMPLATE_SPECS),
       template_specs: TEMPLATE_SPECS,
@@ -81,7 +81,7 @@ export class AdminController {
     const display_name = String(body.display_name || "").trim();
     const vertical = String(body.vertical || DEFAULT_DRIVING_VERTICAL).trim();
     if (!domain || !display_name) throw new HttpException("domain, display_name required", 400);
-    if (!DRIVING_VERTICALS.includes(vertical as any)) throw new HttpException("Adrock 회사용 운영본은 driving 도메인만 지원합니다", 400);
+    if (!this.db.getVerticals().some((v) => v.key === vertical)) throw new HttpException("등록되지 않은 업종입니다. 작업환경에서 먼저 추가하세요.", 400);
     if (this.db.getDomain(domain)) throw new HttpException("domain already exists", 409);
     this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit, templates_enabled: JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS) });
     // 새 도메인은 디자인 자동 매칭으로 시작한다: 글마다 슬롯의 글 유형 기본 디자인을 적용(docs/design-template-mapping.md).
@@ -622,6 +622,37 @@ export class AdminController {
     if (sa) this.db.setSetting("google_sa_json", sa);
     if (String(body.url_template || "").trim()) this.db.setSetting("indexing_url_template", String(body.url_template).trim());
     return { ok: true, has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() };
+  }
+
+  // 업종 레지스트리(라벨 MVP): 작업환경에서 key/label 추가·삭제. key 는 프리셋 선택·프롬프트에 쓰인다.
+  // 주의: 새 key 는 프리셋(PRESETS)이 없어 해당 도메인은 축이 빈 상태로 시작한다(생성은 driving 프리셋만 실효).
+  @Get("settings/verticals")
+  listVerticals(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers); return { items: this.db.getVerticals() };
+  }
+  @Post("settings/verticals")
+  addVertical(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const key = String(body.key || "").trim().toLowerCase();
+    const label = String(body.label || "").trim();
+    if (!/^[a-z0-9-]+$/.test(key)) throw new HttpException("업종 key는 영문 소문자·숫자·하이픈만 사용하세요.", 400);
+    if (!label) throw new HttpException("표시명(label)을 입력하세요.", 400);
+    const list = this.db.getVerticals();
+    if (list.some((v) => v.key === key)) throw new HttpException("이미 존재하는 업종 key 입니다.", 409);
+    list.push({ key, label });
+    this.db.setVerticals(list);
+    return { ok: true, items: list };
+  }
+  @Delete("settings/verticals/:key")
+  deleteVertical(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("key") key: string) {
+    checkAuth(req, headers);
+    if (key === "driving") throw new HttpException("기본 업종(driving)은 삭제할 수 없습니다.", 400);
+    const inUse = this.db.countDomainsByVertical(key);
+    if (inUse > 0) throw new HttpException(`이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다.`, 409);
+    const list = this.db.getVerticals().filter((v) => v.key !== key);
+    if (!list.length) throw new HttpException("최소 1개 업종은 남겨야 합니다.", 400);
+    this.db.setVerticals(list);
+    return { ok: true, items: list };
   }
 
   private requireDomain(domain: string): Row { const domainConfig = this.db.getDomain(domain); if (!domainConfig) throw new HttpException("domain not found", 404); return domainConfig; }
