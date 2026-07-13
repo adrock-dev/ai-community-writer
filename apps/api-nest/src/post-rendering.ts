@@ -44,10 +44,13 @@ export function ensureImageSlotsForRender(markdown: string, images: Record<strin
 export function fallbackImagesForPost(db: DbService, domain: string, post: Row): Record<string, string> {
   const slot = post.slot_id ? db.getSlot(post.slot_id) : null;
   if (!slot?.region) return {};
+  // 학원 이미지 폴백도 생성과 동일하게 글유형 academy_types 를 단일 소스로 쓴다. 선택값 없으면 학원 이미지 미사용.
+  const spec = db.getTemplateSpec(domain, String(slot.template_id || ""));
+  const academyTypes = Array.isArray(spec?.academy_types) && spec.academy_types.length ? spec.academy_types : [];
+  if (!academyTypes.length) return {};
   const images: Record<string, string> = {};
   const region = String(slot.region);
-  const academyTypes = db.academyTypeFilter(domain);
-  const typeFilter = academyTypes.length ? { academy_types: academyTypes } : {};
+  const typeFilter = { academy_types: academyTypes };
   let academies = db.listAcademies(domain, { region, ...typeFilter, limit: 5 });
   if (!academies.length) {
     academies = db.listAcademies(domain, { ...typeFilter, limit: 5000 }).filter((academy) => String(academy.region || "") === region || String(academy.address || "").includes(region)).slice(0, 5);

@@ -72,12 +72,6 @@ const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: Tou
   },
 ];
 
-const ACADEMY_TYPE_COPY: Record<string, { label: string; desc: string; tone: "success" | "warn" | "danger" | "info" }> = {
-  exam_academy: { label: "운전면허시험/전문학원", desc: "지역 운전면허 학원 BEST 글에 우선 사용하는 타입", tone: "success" },
-  academy: { label: "일반 자동차학원", desc: "실제 학원 후보로 함께 넣어도 되는 보조 타입", tone: "info" },
-  indoor_academy: { label: "실내운전연습장", desc: "사용자가 원치 않으면 글 생성에서 빼야 하는 타입", tone: "danger" },
-};
-
 const PREVIEW_DESIGN_SPECS: Record<string, { topCta: string; bottomCta: string }> = {
   editorial: { topCta: "지금 바로 비교·예약", bottomCta: "상담/예약하러 가기" },
   comparison: { topCta: "BEST 한눈에 비교", bottomCta: "내게 맞는 곳 찾기" },
@@ -394,7 +388,6 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 켜고 끄면 즉시 저장됩니다. 너무 많이 켜면 후보가 빠르게 늘어나니 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "필요한 유형만 켜세요. 커스텀 유형은 아래에서 만들어 함께 켤 수 있습니다." },
     { focus: "template-design", tab: "templates", target: "templates-design", title: "디자인 (자동 매칭)", body: "글 유형마다 기본 디자인이 자동으로 적용됩니다. 여기서는 디자인 종류를 참고하거나, 특별한 레이아웃이 필요하면 커스텀 디자인 메모를 남길 수 있습니다. 특정 글의 디자인을 바꾸려면 「커스텀 글유형」에서 그 유형을 복제해 조정하세요.", action: "대부분 그대로 두면 됩니다." },
     sourceSync,
-    { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
     { focus: "slot-filter", tab: "slots", target: "slots-filter", title: "후보 목록에서 조건 좁히기", body: "필터 줄에서 상태·유형·검색어로 범위를 줄입니다. 「현재 검색 10개 작성」도 이 조건 안에서 선별합니다.", action: "필요한 후보만 남긴 뒤 2단계 글 작성으로 넘어가세요." },
     testWrite,
@@ -720,7 +713,13 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
   const domain = domainConfig.domain;
   const [custom, setCustom] = useState<CustomTemplate[]>([]);
   const [coherence, setCoherence] = useState<Record<string, CoherenceTemplate>>({});
+  const [academyTypeCounts, setAcademyTypeCounts] = useState<Array<{ value: string; count: number }>>([]);
   const [loading, setLoading] = useState(true);
+  // 학원 타입 체크박스: 정식 5종(options.academy_types) 전부 노출 + 동기화 데이터 집계 카운트 병합.
+  const academyTypeOptions = useMemo(() => {
+    const counts = new Map(academyTypeCounts.map((t) => [t.value, t.count]));
+    return (options.academy_types ?? academyTypeCounts.map((t) => t.value)).map((v) => ({ value: v, count: counts.get(v) ?? 0 }));
+  }, [options.academy_types, academyTypeCounts]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
@@ -741,21 +740,22 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
     ...Object.entries(options.template_specs).map(([id, spec]) => ({
       id, label: `${id} ${spec.name} (빌트인)`, name: spec.name, kind: spec.kind ?? "",
       use_persona: spec.use_persona, with_intent: Boolean(spec.with_intent), modifier_count: spec.modifier_count,
-      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values,
+      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types,
     })),
     ...custom.map((t) => ({
       id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)`, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
-      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values,
+      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types,
     })),
   ], [options.template_specs, custom]);
 
   async function reload() {
     setLoading(true); setError("");
     try {
-      const [tpl, coh] = await Promise.all([listTemplates(domain), getCoherence(domain)]);
+      const [tpl, coh, aca] = await Promise.all([listTemplates(domain), getCoherence(domain), listAcademies(domain, { limit: 1 })]);
       setCustom(tpl.custom ?? []);
       setCoherence(Object.fromEntries((coh.templates ?? []).map((t) => [t.template_id, t])));
+      setAcademyTypeCounts(aca.academy_types ?? []);
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setLoading(false); }
   }
@@ -777,7 +777,7 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
 
-    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} sources={createSources} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+    <CustomTemplateForm mode="create" kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
       onSubmit={(body) => run(() => createTemplate(domain, body))}
       onClone={(sourceId, name, overrides) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name, overrides }))} />
 
@@ -785,7 +785,7 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
       ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
-        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" initial={t} kindOptions={kindOptions} designChoices={designChoices} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
           onCancel={() => setEditId(null)}
           onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
         return <div key={t.template_id} className="info-panel grid">
@@ -823,12 +823,12 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
 }
 
 // 커스텀 만들기 '시작점' 옵션 형태(빌트인/커스텀 공통). 고르면 폼 값을 채운다.
-type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] } };
+type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[] };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
-function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
+function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources, academyTypeOptions, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
   mode: "create" | "edit"; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
-  sources?: TemplateSource[]; brandColor?: string | null; brand?: string; busy: boolean;
+  sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; brandColor?: string | null; brand?: string; busy: boolean;
   onSubmit: (body: Partial<CustomTemplate>) => void; onClone?: (sourceId: string, name: string, overrides: Record<string, unknown>) => void; onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -841,8 +841,11 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
   const [personaVals, setPersonaVals] = useState((initial?.axis_values?.persona ?? []).join("\n"));
   const [intentVals, setIntentVals] = useState((initial?.axis_values?.intent ?? []).join("\n"));
   const [modifierVals, setModifierVals] = useState((initial?.axis_values?.modifier ?? []).join("\n"));
+  const [academyTypes, setAcademyTypes] = useState<Set<string>>(new Set(initial?.academy_types ?? []));
   const [source, setSource] = useState(""); // 시작점(빈값=직접 입력). create 모드 전용.
   const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
+  // 학원 타입은 지역형(primary=region) 글유형에서만 효과가 있으므로(키워드형은 지역이 없어 학원 미수집) 그때만 노출한다.
+  const isRegionPrimary = (kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region";
 
   function selectSource(id: string) {
     setSource(id);
@@ -858,6 +861,7 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
     setPersonaVals((src.axis_values?.persona ?? []).join("\n"));
     setIntentVals((src.axis_values?.intent ?? []).join("\n"));
     setModifierVals((src.axis_values?.modifier ?? []).join("\n"));
+    setAcademyTypes(new Set(src.academy_types ?? []));
   }
 
   // 축 값 수집: 해당 축이 켜졌고 값이 있을 때만 포함. 비우면 도메인 공통 축으로 폴백.
@@ -868,15 +872,17 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
     if (modifierCount > 0) { const v = parseLines(modifierVals); if (v.length) out.modifier = v; }
     return out;
   }
-  function resetForm() { setName(""); setDirection(""); setSource(""); setPersonaVals(""); setIntentVals(""); setModifierVals(""); }
+  function resetForm() { setName(""); setDirection(""); setSource(""); setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); }
 
   function submit() {
     if (!name.trim()) { alert("이름을 입력하세요."); return; }
     const axisValues = collectAxisValues();
+    // 학원 타입: 지역형 글유형일 때만 반영(비우면 학원정보 미사용). 키워드형은 저장하지 않는다.
+    const academyTypesArr = isRegionPrimary ? Array.from(academyTypes) : [];
     if (source && onClone) {
-      // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값은 폼이 source of truth(프리필=소스 값)이라 항상 반영.
+      // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값·학원 타입은 폼이 source of truth(프리필=소스 값)이라 항상 반영.
       const src = sources?.find((s) => s.id === source);
-      const overrides: Record<string, unknown> = { axis_values: axisValues };
+      const overrides: Record<string, unknown> = { axis_values: axisValues, academy_types: academyTypesArr };
       if (src) {
         if (design !== src.default_design) overrides.default_design = design;
         if (usePersona !== src.use_persona) overrides.use_persona = usePersona;
@@ -889,7 +895,7 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
       return;
     }
     if (!kind) { alert("참조 아키타입을 선택하세요."); return; }
-    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues });
+    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues, academy_types: academyTypesArr });
     if (mode === "create") resetForm();
   }
 
@@ -936,6 +942,15 @@ function CustomTemplateForm({ mode, initial, kindOptions, designChoices, sources
         {modifierCount > 0 && <textarea className="textarea" rows={3} value={modifierVals} onChange={(e) => setModifierVals(e.target.value)} placeholder={"필기시험부터\n상담전확인   (비우면 도메인 공통 modifier 사용)"} />}
       </div>
     </div>
+    {isRegionPrimary && <div className="grid" style={{ gap: 8 }}>
+      <div><b className="small">학원 타입 (선택)</b><p className="muted small">이 글유형이 후보로 쓸 학원 타입입니다. <b>비우면 학원정보를 쓰지 않고</b> 지역 가이드/체크리스트 중심으로 작성합니다. 지역형 글유형에만 적용됩니다.</p></div>
+      <div className="info-panel grid grid-3" style={{ gap: 6 }}>
+        {(academyTypeOptions ?? []).map((t) => <label key={t.value} className="row" style={{ gap: 6 }}>
+          <input type="checkbox" checked={academyTypes.has(t.value)} onChange={(e) => setAcademyTypes((prev) => { const next = new Set(prev); if (e.target.checked) next.add(t.value); else next.delete(t.value); return next; })} /> {t.value} <span className="muted small">({t.count})</span>
+        </label>)}
+        {!(academyTypeOptions ?? []).length && <p className="muted small">먼저 학원 동기화를 실행하면 타입 목록이 표시됩니다.</p>}
+      </div>
+    </div>}
     <details className="template-subsection">
       <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>미리보기 (디자인 목업)</h3><p className="muted small">선택한 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info">열기</span></div></summary>
       {(() => {
@@ -1012,13 +1027,11 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
   const [remoteAcademies, setRemoteAcademies] = useState(academies);
   const [remoteTotal, setRemoteTotal] = useState(academies.length);
   const [academyTypes, setAcademyTypes] = useState<Array<{ value: string; count: number }>>([]);
-  const [generationTypes, setGenerationTypes] = useState(new Set(domain.academy_type_filter ?? []));
   const [manualToolsOpen, setManualToolsOpen] = useState(false);
   const [runtimeApis, setRuntimeApis] = useState<RuntimeApis | null>(null);
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
   useEffect(() => { setRemoteAcademies(academies); setRemoteTotal(academies.length); }, [academies]);
-  useEffect(() => { setGenerationTypes(new Set(domain.academy_type_filter ?? [])); }, [domain.academy_type_filter]);
   useEffect(() => {
     let cancelled = false;
     getRuntimeApis()
@@ -1074,22 +1087,6 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
-  function toggleGenerationType(type: string) {
-    setGenerationTypes((prev) => {
-      const next = new Set(prev);
-      next.has(type) ? next.delete(type) : next.add(type);
-      return next;
-    });
-  }
-  async function saveGenerationTypes() {
-    await onSave({ academy_type_filter: Array.from(generationTypes) });
-    await onRefresh();
-  }
-  const knownTypeValues = academyTypes.map((type) => type.value);
-  const includedTypes = generationTypes.size ? knownTypeValues.filter((type) => generationTypes.has(type)) : knownTypeValues;
-  const excludedTypes = generationTypes.size ? knownTypeValues.filter((type) => !generationTypes.has(type)) : [];
-  const generationRuleText = generationTypes.size ? `${includedTypes.map(typeLabel).join(", ")}만 사용` : "전체 타입 사용";
-  const recommendedTypes = knownTypeValues.filter((type) => type !== "indoor_academy");
   return <div className="grid">
     <div className="card card-pad grid" data-tour="academies-sync">
       <div className="spread"><div><h2>학원자료 — 생성용 배경 데이터</h2><p className="muted">DrivingPlus 원천 API의 학원/지역 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 한 번 준비해두면 생성 때 다시 열 필요는 없습니다.</p></div><span className="badge info">{remoteTotal}개 학원</span></div>
@@ -1115,7 +1112,7 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
     <div className="card card-pad"><p className="muted">후보 지역과 일치하거나 가까운 원천 자료가 생성 프롬프트에 주입됩니다. 외부 원천 API 자료는 SEO 설명, vphone, 사진 URL, 별점 리뷰, 블로그 리뷰글도 함께 사용됩니다.</p></div>
     <div className="card card-pad grid">
       <div className="spread"><h2>학원자료 필터</h2><span className="muted small">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
-      <p className="muted small">아래 필터는 표에서 자료를 찾아보는 용도입니다. 글 생성 기준을 바꾸려면 다음 카드의 “글 생성 사용 타입”을 저장하세요.</p>
+      <p className="muted small">아래 필터는 표에서 자료를 찾아보는 용도입니다. 글 생성에 쓰는 학원 타입은 이제 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p>
       <div className="grid grid-4">
         <Field label="검색"><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명, 주소, SEO 설명" /></Field>
         <Field label="지역"><input className="input" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="서울, 부산, 강남구" /></Field>
@@ -1123,26 +1120,6 @@ function Academies({ domain, academies, busy, onSave, onRefresh }: { domain: Dom
         <Field label="사진"><label className="row small" style={{ minHeight: 42 }}><input type="checkbox" checked={hasPhotos} onChange={(e) => setHasPhotos(e.target.checked)} /> 사진 있는 학원만</label></Field>
       </div>
       {filterError && <p className="small" style={{ color: "var(--danger)" }}>필터 오류: {filterError}</p>}
-    </div>
-    <div className="card card-pad grid" data-tour="academies-types">
-      <div className="spread"><div><h2>글 생성 사용 타입</h2><p className="muted small">저장한 타입만 글 생성 프롬프트의 학원 후보로 들어갑니다. 실내운전연습장을 빼고 싶으면 추천 설정을 쓰면 됩니다.</p></div><button className="btn primary" onClick={saveGenerationTypes} disabled={busy || !academyTypes.length}>{busy ? "저장 중..." : "생성 타입 저장"}</button></div>
-      <div className="writer-hint"><b>현재 생성 기준</b><span>{generationRuleText}</span>{excludedTypes.length > 0 && <span>제외: {excludedTypes.map(typeLabel).join(", ")}</span>}</div>
-      <div className="row">
-        <button className="btn" onClick={() => setGenerationTypes(new Set(recommendedTypes))} disabled={!recommendedTypes.length}>추천 적용: 실내운전연습장 제외</button>
-        <button className="btn" onClick={() => setGenerationTypes(new Set(["exam_academy"].filter((type) => knownTypeValues.includes(type))))} disabled={!knownTypeValues.includes("exam_academy")}>전문학원만</button>
-        <button className="btn" onClick={() => setGenerationTypes(new Set())}>전체 타입 사용</button>
-      </div>
-      <div className="grid grid-3">{academyTypes.map((type) => {
-        const copy = ACADEMY_TYPE_COPY[type.value] ?? { label: type.value, desc: "DrivingPlus API에서 받은 원천 타입", tone: "info" as const };
-        const active = generationTypes.size ? generationTypes.has(type.value) : true;
-        return <button key={type.value} className={`option-card ${active ? "active" : ""}`} onClick={() => toggleGenerationType(type.value)}>
-          <div className="spread"><b>{copy.label}</b><span className={`badge ${copy.tone}`}>{type.count}개</span></div>
-          <p className="muted small">{copy.desc}</p>
-          <p className="muted small mono">{type.value}</p>
-          <span className={`badge ${active ? "success" : "danger"}`}>{active ? "글 생성에 포함" : "글 생성에서 제외"}</span>
-        </button>;
-      })}</div>
-      {!academyTypes.length && <p className="muted small">먼저 학원 동기화를 실행하면 API 타입 목록이 표시됩니다.</p>}
     </div>
     <div className="card card-pad grid">
       <div className="spread"><div><h2>수동 학원자료 등록</h2><p className="muted small">DrivingPlus 동기화에 없는 검증 자료를 직접 보완할 때 사용합니다. 단건 등록 또는 JSON 일괄 등록 중 하나를 선택하세요.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
@@ -1579,7 +1556,6 @@ function PreviewBlock({ block }: { block: typeof DESIGN_BLUEPRINTS[string]["bloc
 function Stat({ label, value, accent }: { label: string; value: number; accent?: boolean }) { return <div className="card stat"><div className="muted small">{label}</div><div className="num" style={{ color: accent ? "var(--success)" : undefined }}>{value}</div></div>; }
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="label">{label}</span>{children}</label>; }
 function Status({ status }: { status: string }) { const cls = status === "published" || status === "done" ? "success" : status === "failed" ? "danger" : status === "running" || status === "in_progress" ? "info" : status === "planned" || status === "queued" ? "warn" : ""; return <span className={`badge ${cls}`}>{status}</span>; }
-function typeLabel(type: string): string { return ACADEMY_TYPE_COPY[type]?.label ?? type; }
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

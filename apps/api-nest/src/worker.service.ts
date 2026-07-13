@@ -110,9 +110,11 @@ export class WorkerService {
         // 학원 중심 타입(아키타입 academy_centric: T01/T14/T11)은 학원별로 그 학원 사진을 넣는다(학원당 1장, 최대 5장).
         // 그 외 타입은 학원 사진 최소화(1장) + 내용 기반 생성으로 총 3장.
         const academyImageType = archetype?.academy_centric ?? false;
+        // 학원 타입: 글유형 spec.academy_types 가 단일 소스. 선택값 있으면 그 타입 학원만, 비어 있으면 학원정보 미사용.
+        const academyTypes = this.resolveAcademyTypes(templateSpec);
         const facts = academyImageType
-          ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 })
-          : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 });
+          ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 }, academyTypes)
+          : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 }, academyTypes);
         const factsMatches = findMatchedExclusionTerms(facts.text, exclusionTerms);
         if (factsMatches.length) {
           const message = `excluded by domain rule in facts: ${factsMatches.join(", ")}`;
@@ -216,13 +218,13 @@ export class WorkerService {
         await sleep(Number(payload.cooldown_sec || 60) * 1000);
       }
     }
-    return { ok, fail, skipped, academy_type_filter: this.db.academyTypeFilter(domain), generation_gate_version: "adrock-domain-surface-v1", per_slot };
+    return { ok, fail, skipped, generation_gate_version: "adrock-domain-surface-v1", per_slot };
   }
 
-  private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}): GenerationFacts {
+  private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}, academyTypes?: string[]): GenerationFacts {
     if (!slot.region) return { text: "", images: {} };
     const region = String(slot.region);
-    const academies = this.pickAcademiesForRegion(domain, region, 5);
+    const academies = this.pickAcademiesForRegion(domain, region, 5, academyTypes);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
     const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
@@ -276,9 +278,16 @@ export class WorkerService {
       .slice(0, 5);
   }
 
-  private pickAcademiesForRegion(domain: string, region: string, limit: number): Row[] {
-    const academyTypes = this.db.academyTypeFilter(domain);
-    const typeFilter = academyTypes.length ? { academy_types: academyTypes } : {};
+  // 학원 타입은 글유형(spec.academy_types)이 단일 소스다. 선택값이 있으면 그 타입만, 비어 있으면 학원정보를 쓰지 않는다(빈 배열).
+  private resolveAcademyTypes(spec: { academy_types?: string[] } | undefined): string[] {
+    const preset = spec?.academy_types;
+    return Array.isArray(preset) && preset.length ? preset : [];
+  }
+
+  // 선택된 학원 타입이 없으면 학원정보 미사용(후보 0). 있으면 그 타입 후보만 지역 기준으로 모은다.
+  private pickAcademiesForRegion(domain: string, region: string, limit: number, academyTypes: string[] = []): Row[] {
+    if (!academyTypes.length) return [];
+    const typeFilter = { academy_types: academyTypes };
     const exact = this.db.listAcademies(domain, { region, ...typeFilter, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
     if (exact.length) return exact.slice(0, limit);
     const all = this.db.listAcademies(domain, { ...typeFilter, limit: 5000 }).filter(isUsableAcademy);
@@ -339,7 +348,9 @@ export class WorkerService {
     const targets: Row[] = [];
     for (const r of rows) {
       const slot = r.slot_id ? this.db.getSlot(String(r.slot_id)) : null;
-      const candidateCount = slot?.region ? this.pickAcademiesForRegion(domain, String(slot.region), 5).length : 0;
+      // 후보 수 재평가도 생성과 동일한 글유형별 학원 타입으로 맞춘다(academy_types 없으면 학원정보 미사용 → 후보 0).
+      const pruneSpec = slot ? this.db.getTemplateSpec(domain, String(slot.template_id || "")) : undefined;
+      const candidateCount = slot?.region ? this.pickAcademiesForRegion(domain, String(slot.region), 5, this.resolveAcademyTypes(pruneSpec)).length : 0;
       const issues = postSurfaceQualityIssues(r, minChars, candidateCount);
       if (issues.length) targets.push({ id: r.id, title: r.title, chars: r.chars, issues });
     }

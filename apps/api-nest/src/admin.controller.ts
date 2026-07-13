@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -31,6 +31,9 @@ export class AdminController {
       themes: ["clean", "modern", "pro"],
       templates: Object.keys(TEMPLATE_SPECS),
       template_specs: TEMPLATE_SPECS,
+      // 학원 타입 정식 목록(5종). 커스텀 폼 학원 타입 체크박스가 이걸로 5종 전부 노출한다.
+      // (커스텀 폼은 지역형 kind 일 때만 이 필드를 노출한다 — academy_types 는 지역형에서만 효과.)
+      academy_types: [...ACADEMY_TYPES],
       axis_tag_vocab: AXIS_TAG_VOCAB,
       design_templates: DESIGN_TEMPLATES,
       providers: ["codex", "claude"],
@@ -147,6 +150,7 @@ export class AdminController {
       min_sv: body.min_sv,
       axis_tags: body.axis_tags,
       axis_values: body.axis_values,
+      academy_types: body.academy_types,
       default_direction: body.default_direction,
       default_design: body.default_design,
     });
@@ -193,6 +197,7 @@ export class AdminController {
       min_sv: spec.min_sv,
       axis_tags,
       axis_values: spec.axis_values,
+      academy_types: spec.academy_types,
       default_direction: direction || null,
       default_design: spec.default_design,
       ...inline,
@@ -232,7 +237,7 @@ export class AdminController {
     const custom_templates = this.db.listCustomTemplates(domain).map((t) => ({
       template_id: t.template_id, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
-      weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags,
+      weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags, axis_values: t.axis_values, academy_types: t.academy_types,
       default_direction: t.default_direction ?? null, default_design: t.default_design,
       created_at: t.created_at,
     }));

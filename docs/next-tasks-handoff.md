@@ -1,8 +1,9 @@
 # 다음 세션 인수인계 (2026-07-13)
 
 > 이번 세션에서 "축 값 프리셋 + 디자인/글유형 탭 대정비 + 글유형 on/off 통합"을 마쳤고,
-> 아래를 **다음 작업**으로 남겼다(그 중 #3은 이후 검증 결과 **오탐으로 종료**). 상세 세션 이력·핵심 모델은 memory `archetype-refactor-roadmap` 참조.
+> 아래를 **다음 작업**으로 남겼다(#3은 검증 결과 **오탐 종료**, #1은 **2026-07-14 완료**). 상세 세션 이력·핵심 모델은 memory `archetype-refactor-roadmap` 참조.
 > ⚠️ 라인 번호는 이동할 수 있으니 함수명/문자열로 재확인할 것.
+> **남은 작업: #2 + #4(design_presets 심층 클린업 + 죽은 타입) 뿐.**
 
 ## 이번 세션 완료 요약 (커밋 `b4fa6c3` ~ `fa5cb81`, develop)
 - **축 값 프리셋**: Stage1 배선(`resolveAxisPool` @ axis-tags.ts — spec.axis_values 있으면 도메인 축 풀 '대체', 없으면 태그필터 폴백) → Stage2b 커스텀 axis_values(컬럼+폼) → Stage2a 빌트인 14종 콘텐츠(골든 556→560).
@@ -14,13 +15,19 @@
 
 ## 남은 작업 (우선순위)
 
-### 1. 글유형별 `academy_types` 분기 (기능 — 사용자 제안, 이관 합의)
-- **목표**: 학원 타입 필터를 도메인 레벨 → 글유형별로. **축 값 프리셋(axis_values)과 동일 패턴.**
-- **현재**: `worker.service.ts` 학원 facts 수집부(≈L280)에서 `this.db.academyTypeFilter(domain)`(도메인 레벨)을 **모든 유형에 동일 적용** → `listAcademies(domain, { region, academy_types })`.
-- **접근**: `TEMPLATE_SPECS`에 `academy_types?: string[]`(빌트인=코드) + `custom_templates`에 컬럼(커스텀). 워커가 "유형 프리셋 있으면 그것, 없으면 도메인 `academy_type_filter` 폴백"(=`resolveAxisPool`과 동형). UI: 커스텀 폼에 입력 추가, 「학원자료」 탭의 도메인 필터는 **기본값**으로 유지.
-- **효과 범위(중요)**: `academy_centric` 유형만 — **T01 local_best · T11 test_center · T14 academy_profile + 그 kind 커스텀**. 나머지 정보성 유형은 학원 facts 자체를 안 모으므로 무관.
-- **검증**: 골든(도메인만 설정 시 0-diff), 실생성 1건으로 학원 facts 필터 확인.
-- **리스크**: 워커(생성) load-bearing. 중.
+### 1. 글유형별 `academy_types` 분기 — **완료(2026-07-14)**
+- **핵심 모델(중요)**: 학원 타입은 **글유형 `academy_types`가 단일 소스**. 선택값 있으면 그 타입 학원만, **비어 있으면 학원정보를 아예 안 씀**(지역형이어도 가이드/체크리스트 중심). 지역 유무와 무관하게 academy_types 가 게이트. 도메인 레벨 폴백/필터는 **제거**(아래).
+- **빌트인 기본값**(사용자 지정): T01=`[exam_academy,academy]` · T07=`[exam_academy,academy]` · T11=`[license_test_course,license_center]`(⚠️ 현재 데이터에 해당 타입 0건 → T11 당장은 학원 후보 0. 서버가 그 타입 내려주면 채워짐) · T14=`[exam_academy]` · T15=`[exam_academy,academy]`. 나머지(키워드형 등)는 미설정=학원 미사용.
+- **학원 타입 5종 정식 목록**: `constants.ts ACADEMY_TYPES = [academy, exam_academy, license_test_course, indoor_academy, license_center]`. 서버는 현재 2종만 내려주지만 5종 전부를 커스텀 폼 체크박스에 노출(`/options.academy_types`).
+- **도메인 「글 생성 사용 타입」 제거**: 이제 학원 타입은 글유형별 단일 소스라 도메인 레벨 필터는 삭제. `Academies` 패널의 해당 섹션·상태(`generationTypes`)·핸들러·투어 스텝(`academy-types`)·`ACADEMY_TYPE_COPY`/`typeLabel` 제거. **`domains.academy_type_filter` 컬럼·`db.academyTypeFilter()`·domainOut 필드·PATCH 직렬화·updateDomain allow-list 는 dormant**(design_presets 처럼 후속 정리 대상). 워커 generate 결과의 `academy_type_filter` 필드도 제거.
+- **변경 위치**:
+  - `constants.ts`: `TemplateSpecShape.academy_types?: string[]`, `ACADEMY_TYPES`, T01/T07/T11/T14/T15 값.
+  - `db.service.ts`: `custom_templates.academy_types` 컬럼(스키마 2곳+마이그레이션), `parseAcademyTypes`/`serializeAcademyTypes`, `getTemplateSpec`(빌트인 통과)·`customTemplateSpec`·`customTemplateOut`·create/update/import 직렬화.
+  - `admin.controller.ts`: create/clone(`spec.academy_types` 복사)/update(body 통과)/export 배선 + `/options.academy_types`. **덤: export 맵이 `axis_values`도 누락하던 것 함께 보정**.
+  - `worker.service.ts`: `resolveAcademyTypes(spec)`(preset 있으면 그것, 없으면 `[]`) + `pickAcademiesForRegion(…, academyTypes)`(빈 배열=후보 0)·`buildFacts` 스레딩. 생성 루프·prune 통일.
+  - `post-rendering.ts`: `fallbackImagesForPost` 도 포스트 글유형 academy_types 기준(없으면 학원 이미지 폴백 없음). **렌더 경로라 load-bearing**.
+  - UI(`DomainClient.tsx`,`types.ts`): 커스텀 폼 학원 타입 체크박스(5종, 기본 미선택, 집계 카운트 병합). **지역형 kind(primary=region)일 때만 노출**(academy_centric 아님 — regional_hub/local_exam_mix 도 학원 씀).
+- **검증 완료**: 골든 0-diff, typecheck(양쪽), qa:posts, verify:company-clean, **DbService 직접 종단검증 15건**(빌트인 값 / resolve preset·empty / listAcademies 실필터 academy 7·exam_academy 329·둘 336·시험장계열 0). LLM 실생성·라이브 UI 조작은 미실행(수동 확인 필요).
 
 ### 2. `design_presets` 심층 백엔드 클린업 (dormant 완전 제거)
 - **현재**: 프론트 UI·POST/DELETE 엔드포인트·getDomainDetail 포함은 제거됨(`cbcb740`). **남은 dormant**:
@@ -28,6 +35,7 @@
   - admin.controller: `extractDesignPresetFromHtml`, `getUploadedDesignPresetForPost`, 글 상세/렌더의 uploaded 테마 분기(`uploadedDesignTheme`/`uploadedDesignChips`), export 필터의 `"uploaded:"` 허용.
   - worker.service: `buildPrompt`/`buildRepairPrompt`/`designWritingGuide`/`designStructureGuide`/`uploadedPresetGuide`의 `designPreset` 파라미터, `isSelectableDesign`의 `"uploaded:"` 허용, 디자인 토큰 필터의 `"uploaded:"`.
   - lib/types: `DesignPreset`(죽은 타입, #4).
+- **추가 dormant(2026-07-14, #1에서 발생)**: `domains.academy_type_filter` 컬럼 + `db.academyTypeFilter()` + `domainOut` 의 `academy_type_filter` 필드 + admin.controller PATCH 직렬화(L118 근처) + `updateDomain` allow-list 의 `academy_type_filter` + `lib/types` `DomainConfig.academy_type_filter`. 학원 타입이 글유형 단일 소스로 이관돼 더는 읽지 않음. #2와 함께 정리 권장.
 - **데이터 안전**: 이번 세션에 `design_presets` 0행 / posts·customs·domains의 `uploaded:` 디자인 0 확인.
 - **접근**: 워커 시그니처에서 `designPreset` 제거(리팩터), 렌더 분기 제거, db 함수·테이블 제거, `"uploaded:"` 허용 제거.
 - **검증**: 골든 0-diff(슬롯 생성 무관) + **실생성 1건 + 글 상세 렌더 확인**(프롬프트/렌더 경로 변경이므로).

@@ -52,6 +52,7 @@ export interface CustomTemplate {
   min_sv: number;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  academy_types?: string[];
   default_direction?: string | null;
   default_design?: string;
   created_at?: string;
@@ -245,6 +246,7 @@ export interface TemplateSpec {
   default_direction?: string;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
   axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] };
+  academy_types?: string[];
 }
 
 export interface AdminOptions {
@@ -252,6 +254,7 @@ export interface AdminOptions {
   themes: string[];
   templates: string[];
   template_specs: Record<string, TemplateSpec>;
+  academy_types?: string[];
   axis_tag_vocab: { persona: string[]; intent: string[]; modifier: string[] };
   design_templates: DesignTemplateOption[];
   providers: Provider[];
