@@ -390,9 +390,9 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
 
   const steps: TourStep[] = [
     sharedStart,
-    { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
-    { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 너무 많이 켜면 후보가 많아지므로 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "유형을 확인한 뒤 디자인으로 넘어갑니다." },
-    { focus: "template-design", tab: "templates", target: "templates-design", title: "발행 디자인 저장", body: "기본은 글 유형별 자동 매칭이라 대부분 그대로 두면 됩니다. 글 유형별로 디자인·방향성·축을 바꾸려면 아래 「커스텀 글유형」에서 그 유형을 복제해 조정하세요.", action: "‘글 유형·디자인 메모 저장’을 누르면 새 글부터 적용됩니다." },
+    { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭의 커스텀 글유형에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
+    { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 켜고 끄면 즉시 저장됩니다. 너무 많이 켜면 후보가 빠르게 늘어나니 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "필요한 유형만 켜세요. 커스텀 유형은 아래에서 만들어 함께 켤 수 있습니다." },
+    { focus: "template-design", tab: "templates", target: "templates-design", title: "디자인 (자동 매칭)", body: "글 유형마다 기본 디자인이 자동으로 적용됩니다. 여기서는 디자인 종류를 참고하거나, 특별한 레이아웃이 필요하면 커스텀 디자인 메모를 남길 수 있습니다. 특정 글의 디자인을 바꾸려면 「커스텀 글유형」에서 그 유형을 복제해 조정하세요.", action: "대부분 그대로 두면 됩니다." },
     sourceSync,
     { focus: "academy-types", tab: "academies", target: "academies-types", title: "글에 넣을 학원 타입 제한", body: "운영 정책에 맞지 않는 타입은 글 생성에서 제외합니다. 예를 들어 실내운전연습장을 빼고 싶으면 추천 설정을 적용하세요.", action: "‘생성 타입 저장’ 후 후보 작성 단계로 이동합니다." },
     slotGenerate,
@@ -549,7 +549,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
     </div>
     <div className="grid grid-2">
       <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>공통원칙 열기</button></div>
-      <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>디자인 고르기</button></div>
+      <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>글유형/디자인 열기</button></div>
     </div>
     <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 탭에서 진행 상태 확인</li><li>검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
   </div>;
