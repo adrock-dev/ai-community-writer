@@ -329,7 +329,7 @@ export default function DomainClient({ domain, view = "overview" }: { domain: st
 
       {view === "overview" && tab === "overview" && <Overview domain={domainConfig} counts={counts} onTab={setTab} onStartFlow={startTour} />}
       {view === "overview" && tab === "plan" && <Principles domain={domainConfig} busy={busy} onSave={saveDomain} onRefresh={refresh} onTab={setTab} />}
-      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
+      {view === "overview" && tab === "templates" && <Templates domain={domainConfig} options={options} customTemplates={payload.custom_templates ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "axes" && <Axes domain={domainConfig} axes={payload.axes} options={options} onRefresh={refresh} />}
       {view === "overview" && tab === "academies" && <Academies domain={domainConfig} academies={payload.academies ?? []} busy={busy} onSave={saveDomain} onRefresh={refresh} />}
       {view === "overview" && tab === "slots" && <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />}
@@ -628,50 +628,65 @@ function Principles({ domain, busy, onSave, onRefresh, onTab }: { domain: Domain
 // 도메인 디자인 설정의 특수값: 글마다 후보의 글 유형 기본 디자인(default_design)을 자동 적용한다.
 const AUTO_DESIGN_ID = "auto";
 
-function Templates({ domain, options, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
+function Templates({ domain, options, customTemplates, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; customTemplates: CustomTemplate[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
+  // 즉시 저장 모델: 토글하면 바로 저장·refresh. refresh 로 갱신된 domain.templates_enabled 에 로컬 상태를 동기화.
+  useEffect(() => { setEnabled(new Set(domain.templates_enabled)); }, [domain.templates_enabled]);
   const allDesignTemplates: DesignTemplateOption[] = options.design_templates;
   const designNameOf = (id?: string) => allDesignTemplates.find((d) => d.id === id)?.name ?? id ?? "local-guide";
-  const toggle = (id: string) => setEnabled((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const saveTemplates = () => {
-    if (enabled.size === 0 && !confirm("글 유형이 0개면 새 글 후보를 만들 수 없습니다. 그래도 저장할까요?")) return;
-    onSave({ templates_enabled: Array.from(enabled).sort() });
+  // ①에서 빌트인+커스텀 on/off 를 즉시 저장으로 제어(커스텀 매니저의 켜기/끄기 대체).
+  const toggle = async (id: string) => {
+    const next = new Set(enabled);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setEnabled(next);
+    await onSave({ templates_enabled: Array.from(next).sort() });
   };
   // 전체 디자인 강제 제거 — design_template_id 는 항상 auto(글유형별 자동 매칭)로 정규화.
   const saveDesign = () => onSave({ design_template_id: AUTO_DESIGN_ID, custom_design_templates: custom.trim() });
-  const builtinIds = Object.keys(options.template_specs);
-  const activeBuiltins = builtinIds.filter((id) => enabled.has(id));
-  const availableBuiltins = builtinIds.filter((id) => !enabled.has(id));
+  // 빌트인(코드) + 커스텀(DB)을 하나의 글 유형 목록으로 병합.
+  type TypeItem = { id: string; name: string; isCustom: boolean; spec?: TemplateSpec; custom?: CustomTemplate };
+  const allItems: TypeItem[] = [
+    ...Object.entries(options.template_specs).map(([id, spec]) => ({ id, name: spec.name, isCustom: false, spec })),
+    ...customTemplates.map((t) => ({ id: t.template_id, name: t.name, isCustom: true, custom: t })),
+  ];
+  const activeItems = allItems.filter((it) => enabled.has(it.id));
+  const availableItems = allItems.filter((it) => !enabled.has(it.id));
+  const availableBuiltins = availableItems.filter((it) => !it.isCustom);
+  const availableCustoms = availableItems.filter((it) => it.isCustom);
   const specMeta = (spec: TemplateSpec) => `primary: ${spec.primary.join(", ")} · persona ${spec.use_persona ? "사용" : "미사용"} · intent ${spec.with_intent ? "사용" : "미사용"} · modifier ${spec.modifier_count}`;
   const specBadges = (spec: TemplateSpec) => <div className="row">{spec.primary.map((axis) => <span key={axis} className="badge">{axis}</span>)}{spec.use_persona && <span className="badge">persona</span>}{spec.with_intent && <span className="badge">intent</span>}{spec.modifier_count > 0 && <span className="badge">modifier {spec.modifier_count}</span>}<span className="badge info">디자인 {designNameOf(spec.default_design)}</span></div>;
+  const customBadges = (t: CustomTemplate) => <div className="row"><span className="badge">아키타입 {t.kind}</span>{t.use_persona ? <span className="badge">persona</span> : null}{t.with_intent ? <span className="badge">intent</span> : null}{t.modifier_count > 0 ? <span className="badge">modifier {t.modifier_count}</span> : null}<span className="badge info">디자인 {designNameOf(t.default_design)}</span></div>;
+  const itemBody = (it: TypeItem) => it.isCustom ? customBadges(it.custom!) : <><p className="muted small">{specMeta(it.spec!)}</p>{specBadges(it.spec!)}</>;
+  const cardOf = (it: TypeItem, mode: "active" | "add") => mode === "active"
+    ? <div key={it.id} className="option-card active"><div className="spread"><b><span className="badge">{it.id}</span> {it.name}</b><button type="button" className="btn ghost" style={{ padding: "2px 8px" }} disabled={busy} onClick={() => toggle(it.id)}>제거</button></div>{itemBody(it)}</div>
+    : <button key={it.id} type="button" className="option-card" disabled={busy} onClick={() => toggle(it.id)}><div className="spread"><b><span className="badge">{it.id}</span> {it.name}</b><span className="badge success">+ 추가</span></div>{itemBody(it)}</button>;
+  // 빌트인/커스텀을 소제목으로 나눠 렌더(비어있는 그룹은 생략).
+  const cardGroup = (items: TypeItem[], mode: "active" | "add") => {
+    const bi = items.filter((it) => !it.isCustom), cu = items.filter((it) => it.isCustom);
+    return <>
+      {bi.length > 0 && <div className="grid" style={{ gap: 8 }}><span className="muted small" style={{ fontWeight: 600 }}>빌트인 ({bi.length})</span><div className="grid grid-2">{bi.map((it) => cardOf(it, mode))}</div></div>}
+      {cu.length > 0 && <div className="grid" style={{ gap: 8, marginTop: bi.length > 0 ? 10 : 0 }}><span className="muted small" style={{ fontWeight: 600 }}>커스텀 ({cu.length})</span><div className="grid grid-2">{cu.map((it) => cardOf(it, mode))}</div></div>}
+    </>;
+  };
   return <div className="grid">
     <section className="card card-pad grid" data-tour="templates-types">
-      <div className="spread"><div><h2>이 도메인의 글 유형</h2><p className="muted">필요한 유형만 담아 씁니다. 더 필요하면 아래 카탈로그에서 추가하세요. 커스텀 유형은 맨 아래에서 만들고 켭니다.</p></div><span className="badge info">{enabled.size}개 사용 중</span></div>
-      {activeBuiltins.length === 0
-        ? <p className="muted small">담긴 빌트인 글 유형이 없습니다. 아래 카탈로그에서 필요한 유형을 추가하세요.</p>
-        : <div className="grid grid-2">{activeBuiltins.map((id) => {
-            const spec = options.template_specs[id]!;
-            return <div key={id} className="option-card active">
-              <div className="spread"><b><span className="badge">{id}</span> {spec.name}</b><button type="button" className="btn ghost" style={{ padding: "2px 8px" }} onClick={() => toggle(id)}>제거</button></div>
-              <p className="muted small">{specMeta(spec)}</p>
-              {specBadges(spec)}
-            </div>;
-          })}</div>}
+      <div className="spread"><div><h2>이 도메인의 글 유형</h2><p className="muted">이 도메인에서 쓸 글 유형을 켜고 끕니다(빌트인·커스텀 함께, 즉시 저장). 커스텀 유형은 맨 아래에서 만들고 여기서 켜세요.</p></div><span className="badge info">{enabled.size}개 사용 중</span></div>
+      {activeItems.length === 0
+        ? <p className="muted small">담긴 글 유형이 없습니다. 아래 카탈로그에서 필요한 유형을 추가하세요.</p>
+        : cardGroup(activeItems, "active")}
       <details className="template-subsection">
-        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>글 유형 카탈로그에서 추가</h3><p className="muted small">빌트인 글 유형 중 필요한 것만 담습니다. DB를 초기화해도 코드에서 복구되는 기본 유형입니다.</p></div><span className="badge info">{availableBuiltins.length}개 추가 가능</span></div></summary>
+        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>빌트인 추가</h3><p className="muted small">아직 안 켠 빌트인 글 유형입니다(코드 소유·초기화에도 복구).</p></div><span className="badge info">{availableBuiltins.length}개</span></div></summary>
         {availableBuiltins.length === 0
           ? <p className="muted small">모든 빌트인 글 유형이 이미 담겨 있습니다.</p>
-          : <div className="grid grid-2">{availableBuiltins.map((id) => {
-              const spec = options.template_specs[id]!;
-              return <button key={id} type="button" className="option-card" onClick={() => toggle(id)}>
-                <div className="spread"><b><span className="badge">{id}</span> {spec.name}</b><span className="badge success">+ 추가</span></div>
-                <p className="muted small">{specMeta(spec)}</p>
-                {specBadges(spec)}
-              </button>;
-            })}</div>}
+          : <div className="grid grid-2">{availableBuiltins.map((it) => cardOf(it, "add"))}</div>}
       </details>
-      <div className="row"><button className="btn primary" disabled={busy} onClick={saveTemplates}>{busy ? "저장 중..." : "글 유형 저장"}</button><span className="muted small">담은 글 유형이 저장됩니다.</span></div>
+      <details className="template-subsection">
+        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>커스텀 추가</h3><p className="muted small">아직 안 켠 커스텀 글 유형입니다. 맨 아래에서 만들 수 있어요.</p></div><span className="badge info">{availableCustoms.length}개</span></div></summary>
+        {availableCustoms.length === 0
+          ? <p className="muted small">추가할 커스텀 글 유형이 없습니다. 맨 아래에서 만들어 보세요.</p>
+          : <div className="grid grid-2">{availableCustoms.map((it) => cardOf(it, "add"))}</div>}
+      </details>
     </section>
 
     <section className="grid">
@@ -696,12 +711,12 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
         <div className="row"><button className="btn primary" disabled={busy} onClick={saveDesign}>{busy ? "저장 중..." : "커스텀 디자인 저장"}</button><span className="muted small">저장 후 새 글부터 적용됩니다.</span></div>
       </div>
     </section>
-    <CustomTemplatesManager domainConfig={domain} options={options} onSave={onSave} />
+    <CustomTemplatesManager domainConfig={domain} options={options} onSave={onSave} onRefresh={onRefresh} />
   </div>;
 }
 
-// 커스텀 글유형 관리: 목록 + 정합성 미리보기 + 생성/복제/편집/삭제 + 켜기/끄기.
-function CustomTemplatesManager({ domainConfig, options, onSave }: { domainConfig: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void> }) {
+// 커스텀 글유형 관리: 목록 + 정합성 미리보기 + 생성/복제/편집/삭제. on/off 는 상단 '이 도메인의 글 유형'에서.
+function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { domainConfig: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const domain = domainConfig.domain;
   const [custom, setCustom] = useState<CustomTemplate[]>([]);
   const [coherence, setCoherence] = useState<Record<string, CoherenceTemplate>>({});
@@ -709,7 +724,6 @@ function CustomTemplatesManager({ domainConfig, options, onSave }: { domainConfi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
-  const enabledSet = new Set(domainConfig.templates_enabled);
 
   const designChoices = useMemo(() => [...options.design_templates], [options.design_templates]);
   const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
@@ -749,19 +763,15 @@ function CustomTemplatesManager({ domainConfig, options, onSave }: { domainConfi
 
   async function run(fn: () => Promise<unknown>) {
     setBusy(true); setError("");
-    try { await fn(); await reload(); }
+    // 생성/편집/삭제 후 상단 목록(①)도 갱신되도록 onRefresh 로 도메인 페이로드를 다시 불러온다.
+    try { await fn(); await reload(); await onRefresh(); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
-  }
-  function toggleEnabled(tid: string, on: boolean) {
-    const next = new Set(domainConfig.templates_enabled);
-    on ? next.add(tid) : next.delete(tid);
-    void run(() => onSave({ templates_enabled: Array.from(next).sort() }));
   }
 
   return <section className="card card-pad grid">
     <div className="spread">
-      <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 "켜기"를 눌러야 생성에 쓰입니다.</p></div>
+      <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다.</p></div>
       <div className="row"><span className="badge info">{custom.length}개</span><button type="button" className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
     </div>
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
@@ -775,7 +785,6 @@ function CustomTemplatesManager({ domainConfig, options, onSave }: { domainConfi
       ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
-        const on = enabledSet.has(t.template_id);
         if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" initial={t} kindOptions={kindOptions} designChoices={designChoices} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
           onCancel={() => setEditId(null)}
           onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
@@ -784,7 +793,6 @@ function CustomTemplatesManager({ domainConfig, options, onSave }: { domainConfi
             <b><span className="badge">{t.template_id}</span> {t.name}</b>
             <div className="row">
               <span className="badge info">아키타입 {t.kind}</span>
-              <button type="button" className={`btn ${on ? "" : "primary"}`} disabled={busy} onClick={() => toggleEnabled(t.template_id, !on)}>{on ? "끄기" : "켜기"}</button>
               <button type="button" className="btn" disabled={busy} onClick={() => setEditId(t.template_id)}>편집</button>
               <button type="button" className="btn danger" disabled={busy} onClick={() => {
                 if (!confirm(`커스텀 글유형 '${t.name}'을 삭제할까요? 이미 생성된 글에는 영향이 없습니다.`)) return;
@@ -797,7 +805,6 @@ function CustomTemplatesManager({ domainConfig, options, onSave }: { domainConfi
             </div>
           </div>
           <div className="row">
-            <span className={`badge ${on ? "success" : ""}`}>{on ? "사용 중" : "미사용"}</span>
             <span className="badge">주축 {primaryOfKind(t.kind) === "region" ? "지역형" : "키워드형"}</span>
             {t.use_persona && <span className="badge">persona</span>}
             {t.with_intent && <span className="badge">intent</span>}
