@@ -639,14 +639,14 @@ function KeywordMaster({ domain, keywordAxis, onRefresh }: { domain: string; key
   return <div className="card card-pad grid">
     <div className="spread"><div><h2>키워드 마스터</h2><p className="muted small">글유형이 고르는 키워드 풀 + SEO 메트릭입니다. 월검색량·경쟁도(KD)는 슬롯 우선순위에 쓰입니다. 프리셋 적용으로 채우거나 아래 표에서 직접 편집하세요.</p></div><span className="badge info">{rows.length}개</span></div>
     <div className="table-wrap"><table>
-      <thead><tr><th>키워드</th><th style={{ width: 100 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 110 }}>경쟁도(KD)</th><th style={{ width: 60 }}></th></tr></thead>
+      <thead><tr><th>키워드</th><th style={{ width: 100 }}>가중치</th><th style={{ width: 120 }}>월검색량</th><th style={{ width: 110 }}>경쟁도(KD)</th><th style={{ width: 72 }}></th></tr></thead>
       <tbody>
         {rows.map((r, i) => <tr key={i}>
           <td><input className="input" value={r.value} onChange={(e) => set(i, "value", e.target.value)} placeholder="운전면허학원" /></td>
           <td><input className="input" value={r.weight} onChange={(e) => set(i, "weight", e.target.value)} inputMode="numeric" placeholder="3" /></td>
           <td><input className="input" value={r.msv} onChange={(e) => set(i, "msv", e.target.value)} inputMode="numeric" placeholder="-" /></td>
           <td><input className="input" value={r.kd} onChange={(e) => set(i, "kd", e.target.value)} inputMode="numeric" placeholder="-" /></td>
-          <td><button type="button" className="btn danger" onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}>삭제</button></td>
+          <td><button type="button" className="btn danger" style={{ whiteSpace: "nowrap" }} onClick={() => setRows((prev) => prev.filter((_, j) => j !== i))}>삭제</button></td>
         </tr>)}
         {!rows.length && <tr><td colSpan={5} className="muted small">키워드가 없습니다. 「행 추가」 또는 「축」 탭의 프리셋 적용으로 채우세요.</td></tr>}
       </tbody>
