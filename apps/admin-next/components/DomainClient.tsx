@@ -689,9 +689,10 @@ function Templates({ domain, options, customTemplates, busy, onSave, onRefresh }
       </details>
     </section>
 
+    <CustomTemplatesManager domainConfig={domain} options={options} onSave={onSave} onRefresh={onRefresh} />
     <section className="grid">
       <div className="card card-pad grid template-config-card" data-tour="templates-design" style={{ gap: 12 }}>
-        <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 아래 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
+        <div><h2>디자인</h2><p className="muted">글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 위 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요.</p></div>
         <div className="template-subsection-head" style={{ borderBottom: "none", paddingBottom: 0 }}><div><h3>디자인 종류</h3><p className="muted small">각 디자인이 어떤 화면인지 보여주는 참고용 목록입니다.</p></div></div>
         <div className="table-wrap">
           <table>
@@ -711,7 +712,6 @@ CTA는 중간 1회, 마지막 1회만 사용한다.
         <div className="row"><button className="btn primary" disabled={busy} onClick={saveDesign}>{busy ? "저장 중..." : "커스텀 디자인 저장"}</button><span className="muted small">저장 후 새 글부터 적용됩니다.</span></div>
       </div>
     </section>
-    <CustomTemplatesManager domainConfig={domain} options={options} onSave={onSave} onRefresh={onRefresh} />
   </div>;
 }
 
@@ -772,7 +772,7 @@ function CustomTemplatesManager({ domainConfig, options, onSave, onRefresh }: { 
   return <section className="card card-pad grid">
     <div className="spread">
       <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다.</p></div>
-      <div className="row"><span className="badge info">{custom.length}개</span><button type="button" className="btn" disabled={loading || busy} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
+      <div className="row" style={{ flexShrink: 0, whiteSpace: "nowrap" }}><span className="badge info">{custom.length}개</span><button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={loading || busy} onClick={() => void reload()}>{loading ? "..." : "새로고침"}</button></div>
     </div>
     <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
