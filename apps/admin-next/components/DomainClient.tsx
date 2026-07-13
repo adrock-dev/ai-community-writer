@@ -1198,6 +1198,10 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     const spec = options.template_specs[id];
     return { id, name: meta?.name ?? spec?.name ?? id, upper: meta?.estimated_slot_upperbound };
   });
+  // 후보 목록 '유형' 필터: 빌트인+커스텀 전 유형(getCoherence). 로드 전이면 빌트인 id 로 폴백.
+  const typeFilterOptions = Object.keys(typeMeta).length
+    ? Object.values(typeMeta).map((t) => ({ id: t.template_id, name: t.name }))
+    : options.templates.map((id) => ({ id, name: options.template_specs[id]?.name ?? "" }));
 
   useEffect(() => { setRemoteSlots(slots); setRemoteTotal(slots.length); }, [slots]);
 
@@ -1321,7 +1325,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         </div>
         <div className="row" data-tour="slots-filter">
           <select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select>
-          <select className="select" style={{ width: 150 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{options.templates.map((t) => <option key={t}>{t}</option>)}</select>
+          <select className="select" style={{ width: 200 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{typeFilterOptions.map((o) => <option key={o.id} value={o.id}>{o.id} {o.name}</option>)}</select>
           <input className="input" style={{ width: 320 }} placeholder="지역/키워드/후보 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />
           {["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}
           <span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span>
