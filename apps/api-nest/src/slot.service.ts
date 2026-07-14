@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
-import { ACADEMY_MAX_CANDIDATES, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, buildKeyword, type Archetype } from "./archetypes.js";
@@ -94,7 +94,6 @@ export class SlotService {
     // 학원(좌표 포함) 전체를 한 번 불러 글유형별 academy_types 로 필터 + 지역 좌표 맵으로 인근 계산.
     const allAcademies = this.db.listAcademies(domain, { limit: 100000 });
     const regionCoords = this.buildRegionCoords(domain);
-    const ACADEMY_MIN_FOR_BEST = 2;
 
     const customRows = this.db.listCustomTemplates(domain);
     const customIdSet = new Set(customRows.map((r) => String(r.template_id)));
@@ -234,7 +233,6 @@ export class SlotService {
     const kwFilterSet = (spec.keyword_filter ?? []).map((k: unknown) => String(k || "").trim()).filter(Boolean);
     const primary = (kwFilterSet.length ? (spec.primary_override ?? archetype?.primary) : archetype?.primary) ?? "keyword";
     const academyTypes = (spec.academy_types ?? []).map((t: unknown) => String(t || "").trim()).filter(Boolean);
-    const ACADEMY_MIN_FOR_BEST = 2;
     const applicable = Boolean(archetype?.academy_centric) && primary === "region" && academyTypes.length > 0;
     if (!applicable) return { template_id: templateId, name: spec.name, applicable: false, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, nearby_km: ACADEMY_NEARBY_MAX_KM, regions: [] };
     const regionValues = axes.region || [];
@@ -255,7 +253,7 @@ export class SlotService {
     const directMin = regions.filter((r) => r.direct >= ACADEMY_MIN_FOR_BEST).length;
     // 부족(count 낮은) 지역을 위로 정렬해 운영자가 먼저 보게 한다.
     regions.sort((a, b) => Number(a.sufficient) - Number(b.sufficient) || a.count - b.count || a.region.localeCompare(b.region, "ko"));
-    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, nearby_km: ACADEMY_NEARBY_MAX_KM, max_candidates: ACADEMY_MAX_CANDIDATES, used_per_post: ACADEMY_USED_PER_POST, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions };
+    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, nearby_km: ACADEMY_NEARBY_MAX_KM, max_candidates: ACADEMY_MAX_CANDIDATES, used_per_post: ACADEMY_USED_PER_POST, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions };
   }
 }
 

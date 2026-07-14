@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
-import { ACADEMY_MAX_CANDIDATES, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
@@ -302,7 +302,8 @@ export class WorkerService {
     const targetLng = finiteNumber(targetRegion?.longitude);
     const keyOf = (a: Row) => String(a.external_id || a.id || a.name);
     const directKeys = new Set(direct.map(keyOf));
-    const supplements = all
+    const withDist = (r: { academy: Row; distanceKm: number | null }) => r.distanceKm === null ? r.academy : { ...r.academy, distance_km: Math.round((r.distanceKm ?? 0) * 10) / 10 };
+    const scored = all
       .filter((a) => !directKeys.has(keyOf(a)))
       .map((a) => {
         const addr = String(a.address || "");
@@ -314,11 +315,24 @@ export class WorkerService {
         else if (sameAdministrativePrefix(rowRegion, region) || sameAdministrativePrefix(addr, region)) score = 3; // 같은 행정구역
         else if (distanceKm !== null && distanceKm <= ACADEMY_NEARBY_MAX_KM) score = 2; // 반경 내 인근(거리 게이트)
         return { academy: a, score, distanceKm };
-      })
+      });
+    const supplements = scored
       .filter((r) => Number.isFinite(r.score))
       .sort((a, b) => a.score - b.score || (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY) || String(a.academy.name).localeCompare(String(b.academy.name), "ko"))
-      .map((r) => r.distanceKm === null ? r.academy : { ...r.academy, distance_km: Math.round((r.distanceKm ?? 0) * 10) / 10 });
-    return [...direct, ...supplements].slice(0, limit);
+      .map(withDist);
+    const result = [...direct, ...supplements].slice(0, limit);
+    // 최소 보장(B안): 직접+인근이 ACADEMY_MIN_FOR_BEST 미만이면, 반경 밖이라도 좌표 기준 '가장 가까운 순'으로
+    // ACADEMY_MIN_GUARANTEE_MAX_KM 안에서 최소 개수까지 채운다. 그 안에도 없으면 부족한 대로 둔다(가이드형).
+    if (result.length < ACADEMY_MIN_FOR_BEST) {
+      const usedKeys = new Set(result.map(keyOf));
+      const far = scored
+        .filter((r) => r.distanceKm !== null && r.distanceKm <= ACADEMY_MIN_GUARANTEE_MAX_KM && !usedKeys.has(keyOf(r.academy)))
+        .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY))
+        .slice(0, ACADEMY_MIN_FOR_BEST - result.length)
+        .map(withDist);
+      result.push(...far);
+    }
+    return result;
   }
 
   private processDedup(domain: string, payload: Row): Row {
