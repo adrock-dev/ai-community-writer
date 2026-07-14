@@ -204,10 +204,11 @@ function RecommendedDomainAction({ domain, large }: { domain: DomainConfig; larg
 // 열리고, OFF 면 그 흐름의 첫 실작업 탭으로 조용히 이동한다. (/generate·/posts 는 focusedPage 라 탭 앵커가
 // 없어 튜토리얼이 깨지므로 개요 라우트로 보낸다.)
 function getRecommendedDomainAction(domain: DomainConfig): { title: string; desc: string; cta: string; href: string } {
-  if ((domain.slot_count ?? 0) === 0) return { title: "도메인 개요 확인", desc: "새 도메인입니다. 도메인 관리 개요에서 기본 생성 흐름을 확인하세요.", cta: "개요 열기", href: domainTourHref(domain.domain, "basic") };
-  if ((domain.planned_count ?? 0) > 0) return { title: "글 생성 이어가기", desc: `${(domain.planned_count ?? 0).toLocaleString()}개 대기 후보 중 하나만 먼저 작성해 품질을 확인하세요.`, cta: "글 생성", href: domainTourHref(domain.domain, "basic", "test-write") };
+  if ((domain.templates_enabled?.length ?? 0) === 0) return { title: "글 유형 켜기", desc: "새 도메인입니다. 글 유형을 하나도 켜지 않으면 후보를 만들 수 없어요. 글유형 켜기부터 시작하세요.", cta: "글유형 켜기", href: domainTourHref(domain.domain, "basic", "template-type") };
+  if ((domain.slot_count ?? 0) === 0) return { title: "원천 데이터 준비", desc: "글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 후보를 만드세요.", cta: "원천 데이터", href: domainTourHref(domain.domain, "basic", "source") };
+  if ((domain.planned_count ?? 0) > 0) return { title: "글 생성 이어가기", desc: `${(domain.planned_count ?? 0).toLocaleString()}개 대기 후보 중 하나만 먼저 작성해 품질을 확인하세요.`, cta: "테스트 작성", href: domainTourHref(domain.domain, "basic", "test-write") };
   if ((domain.published_count ?? 0) > 0) return { title: "완성 글 검수", desc: `${(domain.published_count ?? 0).toLocaleString()}개 발행 글을 미리보기/export/indexing으로 마감하세요.`, cta: "검수", href: domainTourHref(domain.domain, "review", "posts") };
-  return { title: "글 후보 만들기", desc: "운영을 시작할 후보를 먼저 만들어야 합니다.", cta: "글 생성", href: domainTourHref(domain.domain, "basic", "slot-create") };
+  return { title: "글 후보 만들기", desc: "운영을 시작할 후보를 먼저 만들어야 합니다.", cta: "후보 만들기", href: domainTourHref(domain.domain, "basic", "slot-create") };
 }
 
 function domainHref(domain: string) {

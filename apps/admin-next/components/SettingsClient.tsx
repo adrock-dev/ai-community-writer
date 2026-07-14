@@ -83,7 +83,7 @@ export default function SettingsClient() {
             <span className={`badge ${savedTourEnabled ? "success" : ""}`}>{savedTourEnabled ? "켜짐" : "꺼짐"}</span>
           </div>
           <p className="muted small" style={{ marginTop: 6 }}>
-            「기본/고급/검수 흐름 시작」이나 「기본 N 시작」을 누르면 단계별 가이드가 표시됩니다.
+            도메인 개요나 대시보드에서 「글 생성 / 검수 흐름 시작」(또는 세부 단계 시작)을 누르면 단계별 가이드가 표시됩니다.
             × 또는 Esc로 이번 안내만 닫을 수 있고, 「더 이상 안 보기」는 이후 자동 제안을 끕니다.
           </p>
         </div>

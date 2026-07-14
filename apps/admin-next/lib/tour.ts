@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-export type TourMode = "basic" | "advanced" | "review";
+export type TourMode = "basic" | "review";
 export type TourFocus =
   | "workflow"
   | "source"
@@ -43,7 +43,7 @@ export function useTourEnabled(): [boolean, (enabled: boolean) => void] {
 }
 
 export function isTourMode(value: string | null): value is TourMode {
-  return value === "basic" || value === "advanced" || value === "review";
+  return value === "basic" || value === "review";
 }
 
 export function isTourFocus(value: string | null): value is TourFocus {

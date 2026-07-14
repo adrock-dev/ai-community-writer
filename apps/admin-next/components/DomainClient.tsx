@@ -34,40 +34,29 @@ const TABS = [
 ] as const;
 
 const TOUR_MODE_COPY: Record<TourMode, { label: string; short: string; desc: string }> = {
-  basic: { label: "기본 글 생성", short: "기본", desc: "원천 데이터 → 후보 → 테스트 작성 → 검수만 따라가는 가장 쉬운 시작" },
-  advanced: { label: "고급 후보 생성", short: "고급", desc: "기획, 글 유형, 디자인, 학원 타입까지 세밀하게 잡는 운영자용 흐름" },
+  basic: { label: "글 생성", short: "생성", desc: "글유형 켜기 → 원천 데이터 → 후보 → 테스트 작성까지 순서대로 안내하는 생성 흐름" },
   review: { label: "검수/내보내기", short: "검수", desc: "작업 상태와 완성 글을 확인하고 export/indexing으로 넘기는 마감 흐름" },
 };
 
 const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: TourMode; focus: TourFocus; no: string; title: string; desc: string; tone?: "primary" }> }> = [
   {
-    title: "기본 글 생성",
-    desc: "처음 시작할 때 가장 안전한 최소 클릭 순서",
+    title: "글 생성",
+    desc: "새 도메인은 글유형 켜기부터 · 필요한 단계만 눌러도 됩니다",
     steps: [
-      { mode: "basic", focus: "workflow", no: "기본 1", title: "흐름 개요", desc: "기본 흐름 한눈에 보기", tone: "primary" },
-      { mode: "basic", focus: "source", no: "기본 2", title: "원천 데이터 준비", desc: "지역/학원 자료부터 동기화" },
-      { mode: "basic", focus: "slot-create", no: "기본 3", title: "글 후보 만들기", desc: "글유형·개수로 후보 생성" },
-      { mode: "basic", focus: "test-write", no: "기본 4", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
-    ],
-  },
-  {
-    title: "고급 후보 생성",
-    desc: "기획과 생성 조건을 세밀하게 잡을 때",
-    steps: [
-      { mode: "advanced", focus: "workflow", no: "고급 1", title: "흐름 개요", desc: "고급 흐름 한눈에 보기", tone: "primary" },
-      { mode: "advanced", focus: "plan", no: "고급 2", title: "공통원칙/제외어", desc: "공통 작성 원칙과 금지어 정리" },
-      { mode: "advanced", focus: "template-design", no: "고급 3", title: "유형/디자인", desc: "글 종류와 디자인 선택" },
-      { mode: "advanced", focus: "academy-types", no: "고급 4", title: "학원 타입 제한", desc: "추천에 쓸 원천 타입 제한" },
-      { mode: "advanced", focus: "slot-filter", no: "고급 5", title: "후보 필터/확장", desc: "조건을 좁혀 후보 운영" },
+      { mode: "basic", focus: "template-type", no: "생성 1", title: "글유형 켜기", desc: "만들 글 유형 선택(새 도메인 필수)", tone: "primary" },
+      { mode: "basic", focus: "source", no: "생성 2", title: "원천 데이터 준비", desc: "지역/학원 자료 동기화" },
+      { mode: "basic", focus: "plan", no: "선택", title: "공통원칙/제외어", desc: "공통 작성 원칙·금지어(선택)" },
+      { mode: "basic", focus: "template-design", no: "선택", title: "디자인", desc: "유형별 자동 매칭 확인(선택)" },
+      { mode: "basic", focus: "slot-create", no: "생성 3", title: "글 후보 만들기", desc: "글유형·개수로 후보 생성" },
+      { mode: "basic", focus: "test-write", no: "생성 4", title: "1개 테스트 작성", desc: "대량 작성 전 안전 확인" },
     ],
   },
   {
     title: "검수/마감",
     desc: "생성 이후 확인, 내보내기, 색인 요청",
     steps: [
-      { mode: "review", focus: "workflow", no: "검수 1", title: "흐름 개요", desc: "검수 흐름 한눈에 보기", tone: "primary" },
-      { mode: "review", focus: "jobs", no: "검수 2", title: "작업 상태", desc: "대기·진행·실패 확인" },
-      { mode: "review", focus: "posts", no: "검수 3", title: "완성 글 검수", desc: "미리보기/export/indexing" },
+      { mode: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "대기·진행·실패 확인", tone: "primary" },
+      { mode: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "미리보기/export/indexing" },
     ],
   },
 ];
@@ -344,8 +333,10 @@ type TourStep = {
 function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[] {
   const hasSlots = Boolean(counts && Object.values(counts).reduce((sum, value) => sum + value, 0) > 0);
   const hasPosts = Boolean(counts && counts.published > 0);
-  const sharedStart: TourStep = { focus: "workflow", tab: "overview", target: "workflow", title: `${TOUR_MODE_COPY[mode].label} 흐름을 먼저 봅니다`, body: `지금은 ${TOUR_MODE_COPY[mode].desc}입니다. 초록은 끝난 단계, 강조된 카드는 현재 단계라서 어디서 시작할지 바로 알 수 있습니다.`, action: "포커스되는 영역만 순서대로 따라가면 됩니다." };
-  const sourceSync: TourStep = { focus: "source", tab: "academies", target: "academies-sync", title: "원천 데이터를 먼저 준비", body: "지역과 학원 데이터를 가져와야 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다.", action: "데이터가 이미 있으면 다음 단계로 넘어가도 됩니다." };
+  const templateType: TourStep = { focus: "template-type", tab: "templates", target: "templates-types", title: "먼저 만들 글 유형을 켜세요", body: "새 도메인은 글 유형이 하나도 켜져 있지 않아 이 단계 없이는 후보를 만들 수 없습니다. 비교형·지역형·체크리스트형처럼 어떤 검색 의도에 맞출지 고르고 켜면 즉시 저장됩니다. (상단 진행 막대가 전체 흐름입니다.)", action: "운영 초반엔 필요한 유형만 켜세요. 너무 많이 켜면 후보가 급증합니다." };
+  const planBrief: TourStep = { focus: "plan", tab: "plan", target: "plan-brief", title: "(선택) 공통 원칙과 제외어", body: "모든 글에 공통 적용될 안전·데이터 원칙과 절대 넣지 말 키워드를 정합니다. 지금 건너뛰고 나중에 정해도 됩니다.", action: "입력 후 ‘저장’을 누르거나, 필요 없으면 다음으로 넘어가세요." };
+  const templateDesign: TourStep = { focus: "template-design", tab: "templates", target: "templates-design", title: "(선택) 디자인 (자동 매칭)", body: "글 유형마다 기본 디자인이 자동 적용됩니다. 대부분 그대로 두면 되고, 특별한 레이아웃이 필요할 때만 커스텀 디자인 메모나 커스텀 글유형 복제로 조정합니다.", action: "특별한 요구가 없으면 그대로 두고 넘어가세요." };
+  const sourceSync: TourStep = { focus: "source", tab: "academies", target: "academies-sync", title: "원천 데이터를 준비", body: "지역과 학원 데이터를 가져와야 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다.", action: "데이터가 이미 있으면 다음 단계로 넘어가도 됩니다." };
   const slotGenerate: TourStep = {
     focus: "slot-create",
     tab: "slots",
@@ -369,27 +360,11 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
   const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 검수·내보내기 탭에서 결과를 검수합니다." };
   const postsReview: TourStep = { focus: "posts", tab: "posts", target: "posts-actions", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: "이 흐름이 안정적이면 현재 검색 10개, 이후 100개로 확장하세요." };
 
-  if (mode === "basic") {
-    return [sharedStart, sourceSync, slotGenerate, testWrite, jobsBoard, postsReview];
-  }
-
   if (mode === "review") {
-    return [sharedStart, jobsBoard, postsReview];
+    return [jobsBoard, postsReview];
   }
-
-  const steps: TourStep[] = [
-    sharedStart,
-    { focus: "plan", tab: "plan", target: "plan-brief", title: "공통 원칙과 제외어를 저장", body: "모든 글 유형에 공통 적용될 안전·데이터 원칙과, 절대 넣지 말아야 할 키워드를 먼저 정합니다. 글 유형별 방향성은 「글유형/디자인」 탭의 커스텀 글유형에서 지정합니다.", action: "입력 후 ‘저장’을 누르고 다음으로 이동하세요." },
-    { focus: "template-type", tab: "templates", target: "templates-types", title: "만들 글 유형 선택", body: "비교형, 지역형, 체크리스트형처럼 어떤 검색 의도에 맞출지 고릅니다. 켜고 끄면 즉시 저장됩니다. 너무 많이 켜면 후보가 빠르게 늘어나니 운영 초반엔 필요한 유형만 켜는 편이 안전합니다.", action: "필요한 유형만 켜세요. 커스텀 유형은 아래에서 만들어 함께 켤 수 있습니다." },
-    { focus: "template-design", tab: "templates", target: "templates-design", title: "디자인 (자동 매칭)", body: "글 유형마다 기본 디자인이 자동으로 적용됩니다. 여기서는 디자인 종류를 참고하거나, 특별한 레이아웃이 필요하면 커스텀 디자인 메모를 남길 수 있습니다. 특정 글의 디자인을 바꾸려면 「커스텀 글유형」에서 그 유형을 복제해 조정하세요.", action: "대부분 그대로 두면 됩니다." },
-    sourceSync,
-    slotGenerate,
-    { focus: "slot-filter", tab: "slots", target: "slots-filter", title: "후보 목록에서 조건 좁히기", body: "필터 줄에서 상태·유형·검색어로 범위를 줄입니다. 「현재 검색 10개 작성」도 이 조건 안에서 선별합니다.", action: "필요한 후보만 남긴 뒤 2단계 글 작성으로 넘어가세요." },
-    testWrite,
-    jobsBoard,
-    postsReview,
-  ];
-  return steps;
+  // 통합 「글 생성」 흐름: 글유형 켜기(필수) → (선택)공통원칙·디자인 → 원천 데이터 → 후보 → 테스트 → 작업큐 → 검수.
+  return [templateType, planBrief, templateDesign, sourceSync, slotGenerate, testWrite, jobsBoard, postsReview];
 }
 
 function OperatorTour({ mode, steps, stepIndex, onStepChange, onTab, onClose, onDismissPermanently }: { mode: TourMode; steps: TourStep[]; stepIndex: number; onStepChange: (value: number | null) => void; onTab: (value: string) => void; onClose: () => void; onDismissPermanently: () => void }) {
@@ -523,11 +498,10 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <div>
         <p className="eyebrow">운영 시작</p>
         <h2 id="flow-start-title">지금 하려는 작업을 고르면 화면이 그 흐름으로 바뀝니다</h2>
-        <p className="muted">처음 운영자는 기본 글 생성만 누르면 되고, 세부 조건을 만질 때만 고급 후보 생성을 쓰면 됩니다.</p>
+        <p className="muted">새 도메인은 「글 생성」 흐름의 글유형 켜기부터 시작합니다. 공통원칙·디자인 같은 세부 설정은 흐름 안에서 선택적으로 다룹니다.</p>
       </div>
-      <div className="grid grid-3">
-        <FlowStartCard title="기본 글 생성" badge="추천" body="원천 데이터 → 1단계 후보 만들기 → 2단계 테스트 작성 → 검수까지 순서대로 안내합니다." cta="기본 흐름 시작" tone="primary" onClick={() => onStartFlow("basic")} />
-        <FlowStartCard title="고급 후보 생성" badge="운영자용" body="기획·글유형·디자인·학원 타입·필터를 직접 조정하고 대량 후보로 확장합니다." cta="고급 흐름 시작" onClick={() => onStartFlow("advanced")} />
+      <div className="grid grid-2">
+        <FlowStartCard title="글 생성" badge="추천" body="글유형 켜기 → 원천 데이터 → 후보 만들기 → 테스트 작성까지 순서대로 안내합니다. 공통원칙·디자인은 선택 단계입니다." cta="글 생성 흐름 시작" tone="primary" onClick={() => onStartFlow("basic")} />
         <FlowStartCard title="검수/내보내기" badge="마감" body="작업 큐와 완성 글만 빠르게 확인해서 Markdown/HTML export와 색인 요청으로 넘깁니다." cta="검수 흐름 시작" onClick={() => onStartFlow("review")} />
       </div>
     </section>
@@ -539,7 +513,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>글 공통 설정 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>글유형/디자인 열기</button></div>
     </div>
-    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>대시보드나 이 화면에서 기본/고급/검수 흐름 선택</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 탭에서 진행 상태 확인</li><li>검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「기본 글 생성」을 누르면 분리된 카드 영역만 순서대로 포커싱합니다.</p></div>
+    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>글유형/디자인 탭에서 만들 글 유형 켜기(새 도메인 필수)</li><li>원천 데이터 탭에서 지역/학원 동기화</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 탭에서 진행 상태 확인</li><li>검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「글 생성 흐름 시작」을 누르면 위 순서대로 카드 영역을 포커싱합니다.</p></div>
   </div>;
 }
 
@@ -587,13 +561,14 @@ function RecommendedNextAction({ domain, counts, onStartFlow }: { domain: Domain
 
 function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { title: string; desc: string; cta: string; mode: TourMode; focus: TourFocus } {
   const totalSlots = Object.values(counts).reduce((sum, value) => sum + value, 0);
-  if (counts.failed > 0) return { title: "실패 작업부터 확인하세요", desc: `${counts.failed.toLocaleString()}개 실패가 있어 같은 조건으로 다시 만들기 전에 에러를 먼저 봐야 합니다.`, cta: "검수 2 시작", mode: "review", focus: "jobs" };
-  if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "검수 2 시작", mode: "review", focus: "jobs" };
-  if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "기본 4 시작", mode: "basic", focus: "test-write" };
-  if (totalSlots === 0) return { title: "기본 흐름 개요부터 보기", desc: "새 도메인입니다. 기본 생성 흐름을 개요로 훑어본 뒤 원천 데이터 준비로 이어가세요.", cta: "기본 1 시작", mode: "basic", focus: "workflow" };
-  if (!domain.common_principles) return { title: "공통 원칙을 먼저 저장하세요", desc: "후보는 있지만 공통 작성 원칙이 비어 있습니다. 확인된 데이터 사용·과장 금지 같은 공통 기준을 잡으면 생성 품질이 안정됩니다.", cta: "고급 2 시작", mode: "advanced", focus: "plan" };
-  if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "검수 3 시작", mode: "review", focus: "posts" };
-  return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "기본 3 시작", mode: "basic", focus: "slot-create" };
+  if (counts.failed > 0) return { title: "실패 작업부터 확인하세요", desc: `${counts.failed.toLocaleString()}개 실패가 있어 같은 조건으로 다시 만들기 전에 에러를 먼저 봐야 합니다.`, cta: "작업 상태 확인", mode: "review", focus: "jobs" };
+  if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "작업 상태 확인", mode: "review", focus: "jobs" };
+  if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "테스트 작성 시작", mode: "basic", focus: "test-write" };
+  if (domain.templates_enabled.length === 0) return { title: "먼저 글 유형을 켜세요", desc: "새 도메인은 글 유형이 하나도 켜져 있지 않아 후보를 만들 수 없습니다. 「글 생성」 흐름의 글유형 켜기부터 시작하세요.", cta: "글유형 켜기", mode: "basic", focus: "template-type" };
+  if (totalSlots === 0) return { title: "원천 데이터부터 준비하세요", desc: "글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 글 후보를 만드세요.", cta: "원천 데이터 준비", mode: "basic", focus: "source" };
+  if (!domain.common_principles) return { title: "공통 원칙을 먼저 저장하세요", desc: "후보는 있지만 공통 작성 원칙이 비어 있습니다. 확인된 데이터 사용·과장 금지 같은 공통 기준을 잡으면 생성 품질이 안정됩니다.", cta: "공통 원칙 열기", mode: "basic", focus: "plan" };
+  if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "완성 글 검수", mode: "review", focus: "posts" };
+  return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "후보 만들기", mode: "basic", focus: "slot-create" };
 }
 
 // 글 공통 설정 탭: 공통 작성 원칙 + 제외어 + 키워드 마스터. 지역 축은 「원천 데이터」 탭에서 관리한다.
