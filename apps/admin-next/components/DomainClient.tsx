@@ -857,7 +857,8 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
           {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
           {coh && <>
             <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
-            {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}{(w.code === "low_academy_coverage" || w.code === "no_academy_data_for_best") && <button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button>}</p>)}</div>}
+            {coh.academy?.applicable && <p className="small"><b>학원 커버리지:</b> 충분 {coh.academy.regions_with_min_for_best}/{coh.academy.regions_total} <span className="muted">(직접만 {coh.academy.regions_with_min_direct} · 인근 {coh.academy.nearby_km}km 포함)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
+            {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}</p>)}</div>}
           </>}
         </div>;
       })}</div>}

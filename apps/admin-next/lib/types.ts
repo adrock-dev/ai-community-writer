@@ -63,7 +63,7 @@ export interface CoherenceTemplate {
   primary_value_count: number;
   keyword_rule: { format: string | null; matched_keyword_count: number | null; keyword_total: number };
   axes: Record<"persona" | "intent" | "modifier", { used: boolean; accepted_tags: string[]; pool_size: number; total: number }>;
-  academy: { applicable: boolean; regions_total?: number; regions_with_academies?: number; regions_with_min_for_best?: number };
+  academy: { applicable: boolean; academy_types?: string[]; nearby_km?: number; regions_total?: number; regions_with_academies?: number; regions_with_min_for_best?: number; regions_with_min_direct?: number };
   estimated_slot_upperbound: number;
   warnings: CoherenceWarning[];
 }
