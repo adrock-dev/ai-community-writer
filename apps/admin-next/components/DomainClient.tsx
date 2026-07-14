@@ -857,7 +857,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
           {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
           {coh && <>
             <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
-            {coh.academy?.applicable && <p className="small"><b>학원 커버리지:</b> 충분 {coh.academy.regions_with_min_for_best}/{coh.academy.regions_total} <span className="muted">(직접만 {coh.academy.regions_with_min_direct} · 인근 {coh.academy.nearby_km}km 포함)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
+            {coh.academy?.applicable && <p className="small"><b>학원 커버리지</b>(/{coh.academy.regions_total}): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · <span style={{ color: (coh.academy.regions_short ?? 0) > 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.regions_short}</span> <span className="muted">(20km/보장 {coh.academy.min_guarantee_km}km)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
             {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}</p>)}</div>}
           </>}
         </div>;
@@ -883,19 +883,19 @@ function AcademyCoverageModal({ domain, templateId, onClose }: { domain: string;
       {!data && !err && <p className="muted small">불러오는 중...</p>}
       {data && !data.applicable && <p className="muted small">이 글유형은 학원 근거형이 아니거나 학원 타입이 선택되지 않아 커버리지 정보가 없습니다.</p>}
       {data && data.applicable && <>
-        <p className="muted small">학원 타입: {data.academy_types.join(", ")} · 충분 기준 <b>{data.threshold}곳 이상</b> · 충분한 지역 <b>{data.regions_with_min_for_best}/{data.regions_total}</b>(직접만이면 {data.regions_with_min_direct}/{data.regions_total}) · 학원 있는 지역 {data.regions_with_academies}/{data.regions_total}. <b>직접</b>(지역 문자열) + <b>인근</b>(반경 {data.nearby_km}km) 합산 = 후보 풀(지역별 최대 <b>{data.max_candidates}곳</b>, 가까운 순)입니다. 생성 시 이 풀에서 <b>{data.used_per_post}곳</b>을 슬롯별 랜덤으로 뽑아 씁니다. <b>부족(&lt;{data.threshold})</b> 지역도 생성 시 반경 밖 <b>{data.min_guarantee_km}km</b> 안에서 가장 가까운 순으로 최소 {data.threshold}곳까지 채웁니다.</p>
+        <p className="muted small">학원 타입: {data.academy_types.join(", ")} · 충분 기준 <b>{data.threshold}곳 이상</b>. 상태: <b>충분</b>(직접+인근 {data.nearby_km}km로 {data.threshold}곳) <b>{data.regions_with_min_for_best}</b> · <b>보장</b>({data.min_guarantee_km}km 인근 보강으로 {data.threshold}곳) <b>{data.regions_guaranteed}</b> · <b>부족</b>({data.min_guarantee_km}km 안에도 미달) <b>{data.regions_short}</b> / {data.regions_total}. 후보 풀 지역별 최대 <b>{data.max_candidates}곳</b>, 생성 시 <b>{data.used_per_post}곳</b>을 슬롯별 랜덤 사용.</p>
         <div className="table-wrap"><table>
-          <thead><tr><th>지역</th><th style={{ width: 120 }}>학원 수(직접+인근)</th><th style={{ width: 64 }}>상태</th><th style={{ width: 64 }}></th></tr></thead>
+          <thead><tr><th>지역</th><th style={{ width: 140 }}>학원 수(직접+인근+보장)</th><th style={{ width: 64 }}>상태</th><th style={{ width: 64 }}></th></tr></thead>
           <tbody>{data.regions.map((r) => <Fragment key={r.region}>
             <tr>
               <td>{r.region}</td>
-              <td><b>{r.count}</b> <span className="muted small">({r.direct}+{r.nearby})</span></td>
-              <td>{r.sufficient ? <span className="badge success">충분</span> : <span className="badge warn">부족</span>}</td>
-              <td>{r.count > 0 && <button type="button" className="btn" style={{ padding: "1px 8px", fontSize: 12 }} onClick={() => setOpenRegion(openRegion === r.region ? null : r.region)}>{openRegion === r.region ? "접기" : "학원"}</button>}</td>
+              <td><b>{r.effective}</b> <span className="muted small">({r.direct}+{r.nearby}+{r.guaranteed})</span></td>
+              <td>{r.status === "sufficient" ? <span className="badge success">충분</span> : r.status === "guaranteed" ? <span className="badge info">보장</span> : <span className="badge warn">부족</span>}</td>
+              <td>{r.effective > 0 && <button type="button" className="btn" style={{ padding: "1px 8px", fontSize: 12 }} onClick={() => setOpenRegion(openRegion === r.region ? null : r.region)}>{openRegion === r.region ? "접기" : "학원"}</button>}</td>
             </tr>
             {openRegion === r.region && <tr><td colSpan={4}>
               <div className="grid" style={{ gap: 4 }}>
-                {r.academies.map((a, i) => <div key={i} className="small">{a.nearby ? <span className="badge" style={{ marginRight: 4 }}>인근 {a.distance_km}km</span> : <span className="badge info" style={{ marginRight: 4 }}>직접</span>}<b>{a.name}</b> <span className="muted">{a.academy_type}{a.address ? ` · ${a.address}` : ""}</span> {a.missing.length > 0 ? <span className="toast-warn small" style={{ padding: "0 6px" }}>빠진 데이터: {a.missing.join(", ")}</span> : <span className="badge success">데이터 완비</span>}</div>)}
+                {r.academies.map((a, i) => <div key={i} className="small">{a.tier === "direct" ? <span className="badge info" style={{ marginRight: 4 }}>직접</span> : a.tier === "nearby" ? <span className="badge" style={{ marginRight: 4 }}>인근 {a.distance_km}km</span> : <span className="badge warn" style={{ marginRight: 4 }}>보장 {a.distance_km}km</span>}<b>{a.name}</b> <span className="muted">{a.academy_type}{a.address ? ` · ${a.address}` : ""}</span> {a.missing.length > 0 ? <span className="toast-warn small" style={{ padding: "0 6px" }}>빠진 데이터: {a.missing.join(", ")}</span> : <span className="badge success">데이터 완비</span>}</div>)}
                 {r.truncated && <p className="muted small">…일부만 표시(상위 50곳)</p>}
               </div>
             </td></tr>}

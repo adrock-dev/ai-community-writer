@@ -145,22 +145,26 @@ export class SlotService {
       const academyApplicable = Boolean(archetype?.academy_centric) && primary === "region" && academyTypes.length > 0;
       let academy: Row;
       if (academyApplicable) {
-        // 생성과 동일하게 직접(region 문자열) + 인근(반경 ACADEMY_NEARBY_MAX_KM) 합으로 판정.
+        // 생성과 동일하게 충분(직접+인근 20km) / 보장(50km 보강으로 최소치) / 부족(그마저 없음)으로 판정.
         const typeSet = new Set(academyTypes);
         const typed = allAcademies.filter((a) => typeSet.has(String(a.academy_type || "")));
-        let withAny = 0, withMin = 0, directMin = 0;
+        let withAny = 0, withMin = 0, directMin = 0, withGuaranteed = 0, withShort = 0;
         for (const pv of regionValues) {
           const value = String(pv.value || "").trim();
           if (!value) continue;
-          const { direct, nearby } = this.matchRegionAcademies(value, typed, regionCoords.get(value));
+          const { direct, nearby, guaranteed } = this.matchRegionAcademies(value, typed, regionCoords.get(value));
           const count = direct.length + nearby.length;
-          if (count >= 1) withAny++;
+          const effective = count + guaranteed.length;
+          if (effective >= 1) withAny++;
           if (count >= ACADEMY_MIN_FOR_BEST) withMin++;
+          else if (effective >= ACADEMY_MIN_FOR_BEST) withGuaranteed++;
+          else withShort++;
           if (direct.length >= ACADEMY_MIN_FOR_BEST) directMin++;
         }
-        academy = { applicable: true, academy_types: academyTypes, nearby_km: ACADEMY_NEARBY_MAX_KM, regions_total: regionValues.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin };
-        if (withMin === 0) warnings.push({ level: "error", code: "no_academy_data_for_best", message: `학원 근거가 필요한 유형이지만 학원 ${ACADEMY_MIN_FOR_BEST}곳 이상인 지역이 없어(직접+인근 ${ACADEMY_NEARBY_MAX_KM}km) 근거 없는 BEST가 될 위험이 큽니다.` });
-        else if (withMin < regionValues.length * 0.5) warnings.push({ level: "warn", code: "low_academy_coverage", message: `학원 데이터가 충분한 지역이 ${withMin}/${regionValues.length} 뿐입니다(직접+인근 ${ACADEMY_NEARBY_MAX_KM}km 반영).` });
+        academy = { applicable: true, academy_types: academyTypes, nearby_km: ACADEMY_NEARBY_MAX_KM, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, regions_total: regionValues.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions_guaranteed: withGuaranteed, regions_short: withShort };
+        // 경고는 '생성해도 2곳을 못 채우는 부족 지역(short)' 기준으로 낸다(보장으로 채워지는 지역은 문제 아님).
+        if (withMin + withGuaranteed === 0) warnings.push({ level: "error", code: "no_academy_data_for_best", message: `학원 근거가 필요한 유형이지만 ${ACADEMY_MIN_GUARANTEE_MAX_KM}km 안에도 학원 ${ACADEMY_MIN_FOR_BEST}곳을 채울 지역이 없어 근거 없는 BEST가 될 위험이 큽니다.` });
+        else if (withShort > 0) warnings.push({ level: "warn", code: "low_academy_coverage", message: `${withShort}개 지역은 ${ACADEMY_MIN_GUARANTEE_MAX_KM}km 안에도 학원이 부족해 가이드형으로 작성됩니다(충분 ${withMin} · 인근 보장 ${withGuaranteed}).` });
       } else {
         academy = { applicable: false };
         // academy_centric·지역형인데 학원 타입 미선택 → 학원정보 미사용(가이드/체크리스트로 작성). 정보용 안내.
@@ -200,26 +204,33 @@ export class SlotService {
     return new Map([...map].map(([k, v]) => [k, { lat: v.lat, lng: v.lng }]));
   }
 
-  // 한 지역 값에 대해 직접(region 문자열 포함) 매칭과 인근(반경 ACADEMY_NEARBY_MAX_KM 내, 직접 제외) 매칭을 나눠 반환.
-  // 생성(worker.pickAcademiesForRegion)과 판정 기준을 맞춘다: 인근은 총 ACADEMY_MAX_CANDIDATES 를
-  // 채우는 만큼만 가까운 순으로 취한다(밀집 지역이 반경 안 학원을 과다 카운트하지 않도록).
-  private matchRegionAcademies(region: string, typedAcademies: Row[], coords: { lat: number; lng: number } | undefined): { direct: Row[]; nearby: Array<Row & { distance_km: number }> } {
+  // 한 지역 값에 대해 학원을 3분류로 반환 — 생성(worker.pickAcademiesForRegion)과 판정 기준을 맞춘다.
+  //  direct: region 문자열 포함(그 지역 학원). nearby: 반경 ACADEMY_NEARBY_MAX_KM 내(직접 제외, 총 상한 채우는 만큼).
+  //  guaranteed: 직접+인근이 ACADEMY_MIN_FOR_BEST 미만일 때만, 반경~ACADEMY_MIN_GUARANTEE_MAX_KM 사이 가장 가까운 순으로 최소치까지 보강.
+  private matchRegionAcademies(region: string, typedAcademies: Row[], coords: { lat: number; lng: number } | undefined): { direct: Row[]; nearby: Array<Row & { distance_km: number }>; guaranteed: Array<Row & { distance_km: number }> } {
     const direct = typedAcademies.filter((a) => String(a.region || "").includes(region));
     const directKeys = new Set(direct.map(academyKey));
     const nearbyRoom = Math.max(0, ACADEMY_MAX_CANDIDATES - direct.length);
     const nearby: Array<Row & { distance_km: number }> = [];
-    if (coords && nearbyRoom > 0) {
-      for (const a of typedAcademies) {
-        if (directKeys.has(academyKey(a))) continue;
-        const alat = finiteNum(a.latitude), alng = finiteNum(a.longitude);
-        if (alat === null || alng === null) continue;
-        const km = haversineKm(coords.lat, coords.lng, alat, alng);
-        if (km <= ACADEMY_NEARBY_MAX_KM) nearby.push({ ...a, distance_km: Math.round(km * 10) / 10 });
+    const guaranteed: Array<Row & { distance_km: number }> = [];
+    if (coords) {
+      // 거리 있는 후보를 한 번에 계산해 인근/보장으로 나눈다.
+      const scored = typedAcademies
+        .filter((a) => !directKeys.has(academyKey(a)))
+        .map((a) => ({ a, alat: finiteNum(a.latitude), alng: finiteNum(a.longitude) }))
+        .filter((r): r is { a: Row; alat: number; alng: number } => r.alat !== null && r.alng !== null)
+        .map((r) => ({ academy: { ...r.a, distance_km: Math.round(haversineKm(coords.lat, coords.lng, r.alat, r.alng) * 10) / 10 }, km: haversineKm(coords.lat, coords.lng, r.alat, r.alng) }))
+        .sort((x, y) => x.km - y.km);
+      for (const r of scored) if (r.km <= ACADEMY_NEARBY_MAX_KM && nearby.length < nearbyRoom) nearby.push(r.academy);
+      // 보장: 직접+인근이 최소치 미만이면 반경 밖(~보장 상한) 가장 가까운 순으로 채움.
+      if (direct.length + nearby.length < ACADEMY_MIN_FOR_BEST) {
+        for (const r of scored) {
+          if (direct.length + nearby.length + guaranteed.length >= ACADEMY_MIN_FOR_BEST) break;
+          if (r.km > ACADEMY_NEARBY_MAX_KM && r.km <= ACADEMY_MIN_GUARANTEE_MAX_KM) guaranteed.push(r.academy);
+        }
       }
-      nearby.sort((x, y) => x.distance_km - y.distance_km);
-      nearby.splice(nearbyRoom); // 총 개수 상한을 채우는 만큼만(가까운 순)
     }
-    return { direct, nearby };
+    return { direct, nearby, guaranteed };
   }
 
   // 특정 글유형의 지역별 학원 커버리지(팝업 L1/L2용). 정합성과 동일한 매칭:
@@ -239,21 +250,27 @@ export class SlotService {
     const typed = this.db.listAcademies(domain, { academy_types: academyTypes, limit: 100000 });
     const coordsMap = this.buildRegionCoords(domain);
     const PER_REGION_CAP = 50;
-    const toEntry = (a: Row, nearby: boolean) => ({ name: String(a.name || ""), region: String(a.region || ""), academy_type: String(a.academy_type || ""), address: String(a.address || ""), nearby, distance_km: nearby ? (a.distance_km ?? null) : null, missing: academyMissingFields(a) });
+    const toEntry = (a: Row, tier: "direct" | "nearby" | "guaranteed") => ({ name: String(a.name || ""), region: String(a.region || ""), academy_type: String(a.academy_type || ""), address: String(a.address || ""), tier, distance_km: tier === "direct" ? null : (a.distance_km ?? null), missing: academyMissingFields(a) });
     const regions = regionValues.map((pv) => {
       const value = String(pv.value || "").trim();
       if (!value) return null;
-      const { direct, nearby } = this.matchRegionAcademies(value, typed, coordsMap.get(value));
-      const count = direct.length + nearby.length;
-      const entries = [...direct.map((a) => toEntry(a, false)), ...nearby.map((a) => toEntry(a, true))];
-      return { region: value, direct: direct.length, nearby: nearby.length, count, sufficient: count >= ACADEMY_MIN_FOR_BEST, academies: entries.slice(0, PER_REGION_CAP), truncated: entries.length > PER_REGION_CAP };
+      const { direct, nearby, guaranteed } = this.matchRegionAcademies(value, typed, coordsMap.get(value));
+      const count = direct.length + nearby.length;             // 20km 기준(데이터 밀도)
+      const effective = count + guaranteed.length;             // 생성 실제(보장 포함)
+      // status: 충분(20km 내 2곳) / 보장(20km 부족하나 50km 보장으로 2곳) / 부족(50km 안에도 없음)
+      const status: "sufficient" | "guaranteed" | "short" = count >= ACADEMY_MIN_FOR_BEST ? "sufficient" : effective >= ACADEMY_MIN_FOR_BEST ? "guaranteed" : "short";
+      const entries = [...direct.map((a) => toEntry(a, "direct")), ...nearby.map((a) => toEntry(a, "nearby")), ...guaranteed.map((a) => toEntry(a, "guaranteed"))];
+      return { region: value, direct: direct.length, nearby: nearby.length, guaranteed: guaranteed.length, count, effective, status, sufficient: count >= ACADEMY_MIN_FOR_BEST, academies: entries.slice(0, PER_REGION_CAP), truncated: entries.length > PER_REGION_CAP };
     }).filter((r): r is NonNullable<typeof r> => r !== null);
-    const withMin = regions.filter((r) => r.sufficient).length;
-    const withAny = regions.filter((r) => r.count >= 1).length;
+    const withMin = regions.filter((r) => r.status === "sufficient").length;
+    const withGuaranteed = regions.filter((r) => r.status === "guaranteed").length;
+    const withShort = regions.filter((r) => r.status === "short").length;
+    const withAny = regions.filter((r) => r.effective >= 1).length;
     const directMin = regions.filter((r) => r.direct >= ACADEMY_MIN_FOR_BEST).length;
-    // 부족(count 낮은) 지역을 위로 정렬해 운영자가 먼저 보게 한다.
-    regions.sort((a, b) => Number(a.sufficient) - Number(b.sufficient) || a.count - b.count || a.region.localeCompare(b.region, "ko"));
-    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, nearby_km: ACADEMY_NEARBY_MAX_KM, max_candidates: ACADEMY_MAX_CANDIDATES, used_per_post: ACADEMY_USED_PER_POST, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions };
+    // 상태 나쁜(부족→보장→충분) 순으로 위에 오게 정렬해 운영자가 문제 지역부터 보게 한다.
+    const rank = { short: 0, guaranteed: 1, sufficient: 2 } as const;
+    regions.sort((a, b) => rank[a.status] - rank[b.status] || a.effective - b.effective || a.region.localeCompare(b.region, "ko"));
+    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, nearby_km: ACADEMY_NEARBY_MAX_KM, max_candidates: ACADEMY_MAX_CANDIDATES, used_per_post: ACADEMY_USED_PER_POST, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions_guaranteed: withGuaranteed, regions_short: withShort, regions };
   }
 }
 

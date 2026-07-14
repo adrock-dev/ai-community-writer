@@ -63,7 +63,7 @@ export interface CoherenceTemplate {
   primary_value_count: number;
   keyword_rule: { format: string | null; matched_keyword_count: number | null; keyword_total: number };
   axes: Record<"persona" | "intent" | "modifier", { used: boolean; accepted_tags: string[]; pool_size: number; total: number }>;
-  academy: { applicable: boolean; academy_types?: string[]; nearby_km?: number; regions_total?: number; regions_with_academies?: number; regions_with_min_for_best?: number; regions_with_min_direct?: number };
+  academy: { applicable: boolean; academy_types?: string[]; nearby_km?: number; min_guarantee_km?: number; regions_total?: number; regions_with_academies?: number; regions_with_min_for_best?: number; regions_with_min_direct?: number; regions_guaranteed?: number; regions_short?: number };
   estimated_slot_upperbound: number;
   warnings: CoherenceWarning[];
 }
@@ -72,8 +72,8 @@ export interface CoherenceReport {
   thresholds: { academy_min_for_best: number };
   templates: CoherenceTemplate[];
 }
-export interface AcademyCoverageAcademy { name: string; region: string; academy_type: string; address: string; nearby: boolean; distance_km: number | null; missing: string[]; }
-export interface AcademyCoverageRegion { region: string; direct: number; nearby: number; count: number; sufficient: boolean; academies: AcademyCoverageAcademy[]; truncated: boolean; }
+export interface AcademyCoverageAcademy { name: string; region: string; academy_type: string; address: string; tier: "direct" | "nearby" | "guaranteed"; distance_km: number | null; missing: string[]; }
+export interface AcademyCoverageRegion { region: string; direct: number; nearby: number; guaranteed: number; count: number; effective: number; status: "sufficient" | "guaranteed" | "short"; sufficient: boolean; academies: AcademyCoverageAcademy[]; truncated: boolean; }
 export interface AcademyCoverage {
   template_id: string;
   name: string;
@@ -88,6 +88,8 @@ export interface AcademyCoverage {
   regions_with_academies?: number;
   regions_with_min_for_best?: number;
   regions_with_min_direct?: number;
+  regions_guaranteed?: number;
+  regions_short?: number;
   regions: AcademyCoverageRegion[];
 }
 
