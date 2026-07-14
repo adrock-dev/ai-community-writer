@@ -846,9 +846,9 @@ type TemplateSource = { id: string; label: string; name: string; kind: string; u
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
 // 커스텀 글유형 폼 영역 구분자: "소제목 ──────" 형태로 유사 기능 그룹을 시각적으로 나눈다.
-function FormDivider({ label }: { label: string }) {
+function FormDivider({ label }: { label?: string }) {
   return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-    <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "var(--primary)", padding: "3px 10px", borderRadius: 999, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{label}</span>
+    {label && <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "var(--primary)", padding: "3px 10px", borderRadius: 999, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{label}</span>}
     <hr style={{ flex: 1, border: "none", borderTop: "1px solid #d8d0f5", margin: 0 }} />
   </div>;
 }
@@ -1081,7 +1081,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         return <DesignPreview blueprint={designBlueprintFor(design, opt)} designId={design} designOption={opt} brandColor={brandColor} brand={brand ?? "브랜드"} title={opt?.name ?? design} summary={opt?.summary ?? ""} />;
       })()}
     </details>
-    <FormDivider label={mode === "edit" ? "저장" : "만들기"} />
+    <FormDivider />
     <div className="row">
       <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
       {mode === "create" && <button type="button" className="btn" disabled={busy} onClick={resetForm} title="입력한 내용을 모두 지우고 빈 폼으로 되돌립니다">초기화</button>}
