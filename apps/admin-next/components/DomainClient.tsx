@@ -1081,6 +1081,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         return <DesignPreview blueprint={designBlueprintFor(design, opt)} designId={design} designOption={opt} brandColor={brandColor} brand={brand ?? "브랜드"} title={opt?.name ?? design} summary={opt?.summary ?? ""} />;
       })()}
     </details>
+    <FormDivider label={mode === "edit" ? "저장" : "만들기"} />
     <div className="row">
       <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
       {mode === "create" && <button type="button" className="btn" disabled={busy} onClick={resetForm} title="입력한 내용을 모두 지우고 빈 폼으로 되돌립니다">초기화</button>}
