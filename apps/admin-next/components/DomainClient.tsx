@@ -1045,14 +1045,6 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     </div>}
     <div className="grid" style={{ gap: 8 }}>
       <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 한 줄에 하나씩 적습니다. <b>적으면 그 키워드를 그대로 사용</b>(아키타입 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택. 아래 풀에서 클릭하면 추가되고, 풀에 없는 키워드도 직접 입력할 수 있습니다.</p></div>
-      <Field label="주축(지역 결합)">
-        <select className="select" value={primaryOverride} onChange={(e) => setPrimaryOverride(e.target.value)} style={{ maxWidth: 320 }}>
-          <option value="">아키타입 기본 ({(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형" : "키워드형"})</option>
-          <option value="region">지역형 — 지역 × 키워드 (예: &quot;강남 운전면허학원&quot;)</option>
-          <option value="keyword">키워드형 — 지역 없이 키워드만</option>
-        </select>
-        <p className="muted small">위에서 키워드를 적은 경우에만 적용됩니다(미입력 시 아키타입 규칙을 따름).</p>
-      </Field>
       <textarea className="textarea" rows={3} value={keywordVals} onChange={(e) => setKeywordVals(e.target.value)} placeholder={"운전면허학원\n자동차운전전문학원   (한 줄에 하나 · 비우면 아키타입 패턴)"} />
       {(keywordPool ?? []).length > 0 && <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
         <span className="muted small" style={{ alignSelf: "center" }}>풀에서 추가:</span>
