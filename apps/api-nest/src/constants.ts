@@ -68,6 +68,20 @@ export const ACADEMY_MIN_FOR_BEST = 2;
 // 반경 밖이라도 '가장 가까운 순'으로 이 거리 안에서 최소 개수까지 채운다(전국 아무거나 방지). 그 안에도 없으면 부족한 대로 둠.
 export const ACADEMY_MIN_GUARANTEE_MAX_KM = Number(process.env.SEO_ACADEMY_MIN_GUARANTEE_MAX_KM) || 50;
 
+// 제목 규칙: 생성 시점에 '실제 후보 수(academies.length)'로 해석해 제목을 확정한다(LLM 즉흥 방지).
+//  min_generate: 실제 후보 수가 이 값 미만이면 생성하지 않는다(부족 지역 차단).
+//  tiers: min_count 내림차순으로 첫 매칭 template 사용. fallback: 어떤 tier도 안 맞을 때.
+//  플레이스홀더: {지역} {개수}(=직접+인근 합) {키워드} {학원명}(첫 후보).
+export type TitleRule = { min_generate?: number; tiers: { min_count: number; template: string }[]; fallback?: string };
+
+// 빌트인 글유형 제목 규칙. 커스텀 글유형은 spec.title_rule(DB)을 쓰고, 빌트인은 이 맵을 폴백으로 쓴다.
+// 규칙 없는 유형(가이드·시험 등)은 기존대로 LLM 이 H1 을 정한다(하위호환).
+export const TITLE_RULES: Record<string, TitleRule> = {
+  T01: { min_generate: 2, tiers: [{ min_count: 3, template: "{지역} 운전학원 BEST {개수}" }, { min_count: 2, template: "{지역} 추천 운전학원" }] },
+  T14: { min_generate: 1, tiers: [{ min_count: 1, template: "{지역} {학원명}" }] },
+  T11: { min_generate: 1, tiers: [{ min_count: 1, template: "{지역} 운전면허시험장" }] },
+};
+
 // default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
 // default_direction: 이 글유형의 기본 방향성(공통원칙 위에 얹히는 오버레이). 도메인 template_overrides 로 재정의 가능.
 // axis_tags: 이 글유형이 수용하는 축 값 태그(axis-tags.ts). 미지정 축은 전체 허용(["*"]). region/keyword 는 정규식 경로라 제외.
@@ -113,6 +127,8 @@ export type TemplateSpecShape = {
   primary_override?: "region" | "keyword";
   default_direction?: string;
   default_design?: string;
+  // 제목 규칙(생성 시점 해석). 빌트인은 TITLE_RULES 맵 폴백, 커스텀은 이 값(DB). 없으면 LLM 이 H1 결정.
+  title_rule?: TitleRule;
 };
 
 // 글 유형의 기본 디자인. 알 수 없는 유형은 기본 디자인으로 폴백한다.

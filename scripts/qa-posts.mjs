@@ -20,7 +20,7 @@ if (postId) { filters.push('p.id = ?'); filterArgs.push(postId); }
 if (slotId) { filters.push('p.slot_id = ?'); filterArgs.push(slotId); }
 if (domain) { filters.push('p.domain = ?'); filterArgs.push(domain); }
 const where = filters.join(' and ');
-const rows = db.prepare(`select p.id, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id,
+const rows = db.prepare(`select p.id, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id, p.academy_count,
   (select count(*) from academies a join slots s2 on s2.slot_id=p.slot_id where a.domain=p.domain and s2.region is not null and a.region=s2.region) as exact_academy_count
   from posts p where ${where} order by p.generated_at desc`).all(...filterArgs);
 const hasTargetFilter = Boolean(postId || slotId || domain);
@@ -58,7 +58,7 @@ function issuesFor(row) {
   if (/운전선생|Driving\s*Plus|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|localhost:\d+|127\.0\.0\.1|샘플|데모|sample|demo|dummy|placeholder|TODO|FIXME|내부\s*(?:API|데이터|자료)|검증된\s*(?:API|자료|데이터)|API\s*(?:URL|자료|데이터)|참고\s*API|긍정\s*(?:수강생|블로그)\s*리뷰(?:글)?\s*보충자료|짧은\s*실제\s*문구/i.test(body + row.title)) issues.push('internal_or_wrong_brand_leak');
   if (/\d+\s*일\s*(?:만|컷|완성)|삼\s*일\s*(?:만|컷|완성)|하루\s*만|당일\s*합\s*격|무조건\s*합\s*격|합\s*격\s*보장|보장\s*합\s*격/u.test(body + row.title)) issues.push('risky_duration_or_pass_guarantee_claim');
   const inflated = inflatedCandidateCountClaim(`${row.title}
-${body}`, Math.min(Number(row.exact_academy_count || 0), 5));
+${body}`, Math.min(Number(row.academy_count ?? row.exact_academy_count ?? 0), 5));
   if (inflated) issues.push(`inflated_candidate_count:${inflated.claimed}>${inflated.actual}`);
   if (/[가-힣]+(?:시|군|구|읍|면|동)운전면허학원/.test(String(row.title || '') + '\n' + body)) issues.push('keyword_spacing_issue');
   if (/상담전확인|동선확인|비용절약|셔틀편리|비교추천/.test(body + row.title)) issues.push('compact_korean_spacing');

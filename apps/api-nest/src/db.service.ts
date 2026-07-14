@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS posts (
   job_id TEXT,
   image_count INTEGER DEFAULT 0,
   image_cost_usd REAL DEFAULT 0,
+  academy_count INTEGER,
   generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (domain, slug),
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE,
@@ -281,6 +282,7 @@ export class DbService implements OnModuleInit {
     if (!postCols.has("job_id")) this.db.exec("ALTER TABLE posts ADD COLUMN job_id TEXT");
     if (!postCols.has("image_count")) this.db.exec("ALTER TABLE posts ADD COLUMN image_count INTEGER DEFAULT 0");
     if (!postCols.has("image_cost_usd")) this.db.exec("ALTER TABLE posts ADD COLUMN image_cost_usd REAL DEFAULT 0");
+    if (!postCols.has("academy_count")) this.db.exec("ALTER TABLE posts ADD COLUMN academy_count INTEGER");
     const jobCols = new Set(this.all("PRAGMA table_info(jobs)").map((r) => r.name));
     if (!jobCols.has("paused")) this.db.exec("ALTER TABLE jobs ADD COLUMN paused INTEGER NOT NULL DEFAULT 0");
     if (!jobCols.has("cancel_requested")) this.db.exec("ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0");
@@ -665,10 +667,10 @@ export class DbService implements OnModuleInit {
   }
   insertPost(input: Row): string {
     const id = randomUUID();
-    this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens, job_id, image_count, image_cost_usd)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, job_id=excluded.job_id, image_count=excluded.image_count, image_cost_usd=excluded.image_cost_usd, generated_at=CURRENT_TIMESTAMP`,
-      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0, input.job_id ?? null, input.image_count ?? 0, input.image_cost_usd ?? 0]);
+    this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens, job_id, image_count, image_cost_usd, academy_count)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, job_id=excluded.job_id, image_count=excluded.image_count, image_cost_usd=excluded.image_cost_usd, academy_count=excluded.academy_count, generated_at=CURRENT_TIMESTAMP`,
+      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0, input.job_id ?? null, input.image_count ?? 0, input.image_cost_usd ?? 0, input.academy_count ?? null]);
     return id;
   }
   deletePost(postId: string): void { this.run("DELETE FROM posts WHERE id=?", [postId]); }
