@@ -56,7 +56,7 @@ export default function SettingsClient() {
 
   function saveLocalSettings() {
     setSavedGen(genDraft);
-    setLocalNotice("전역 설정 저장됨");
+    setLocalNotice("생성 옵션 저장됨");
   }
 
   const patch = (fields: Partial<typeof genDraft>) => {
@@ -91,10 +91,7 @@ export default function SettingsClient() {
           <input
             type="checkbox"
             checked={savedTourEnabled}
-            onChange={(e) => {
-              setSavedTourEnabled(e.target.checked);
-              setLocalNotice(e.target.checked ? "튜토리얼 켜짐 — 즉시 저장됨" : "튜토리얼 꺼짐 — 즉시 저장됨");
-            }}
+            onChange={(e) => setSavedTourEnabled(e.target.checked)}
           />
           <span>흐름 시작 시 튜토리얼 표시 (기본값) · 즉시 저장</span>
         </label>
@@ -152,13 +149,16 @@ export default function SettingsClient() {
           <span>Codex 이미지 생성</span>
         </label>
 
-        <div className="row">
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn primary" disabled={!localDirty} onClick={saveLocalSettings}>생성 옵션 저장</button>
           <button className="btn" disabled={isDefault} onClick={() => {
             setGenDraft(DEFAULT_GENERATION_DEFAULTS);
             setLocalNotice("");
           }}>기본값으로 초기화</button>
+          {localNotice && <span className="badge success">{localNotice}</span>}
+          {localDirty && <span className="badge warn">저장되지 않은 변경</span>}
         </div>
-        <p className="muted small">저장 후 이미 열려 있는 작성 화면에는 다음에 그 화면을 다시 열 때부터 반영됩니다.</p>
+        <p className="muted small">이 브라우저에만 저장됩니다. 저장 후 이미 열려 있는 작성 화면에는 다음에 그 화면을 다시 열 때부터 반영됩니다.</p>
       </section>
 
       <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
@@ -189,20 +189,6 @@ export default function SettingsClient() {
         </div>
         {vErr && <p className="toast-warn small">{vErr}</p>}
         <div className="row"><button className="btn primary" disabled={vBusy || !vKey.trim() || !vLabel.trim()} onClick={onAddVertical}>{vBusy ? "추가 중..." : "업종 추가"}</button></div>
-      </section>
-
-      <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
-        <div>
-          <h2 style={{ margin: 0 }}>변경사항 저장</h2>
-          <p className="muted small" style={{ marginTop: 6 }}>
-            생성 옵션 기본값 변경사항을 이 브라우저에 저장합니다. (운영 튜토리얼 토글은 즉시 저장됩니다.)
-          </p>
-        </div>
-        <div className="row">
-          <button className="btn primary" disabled={!localDirty} onClick={saveLocalSettings}>전역 설정 저장</button>
-          {localNotice && <span className="badge success">{localNotice}</span>}
-          {localDirty && <span className="badge warn">저장되지 않은 변경</span>}
-        </div>
       </section>
     </div>
   );
