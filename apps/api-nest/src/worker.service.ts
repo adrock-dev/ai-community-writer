@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
 import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
-import { academyMin, academyPool, getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
+import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -691,7 +691,7 @@ ${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${designStructureGuide(designTemplateId)}
+${structureGuideForArchetype(archetype)}
 원본 엑셀 기반 템플릿 작성법:
 ${writingGuideForArchetype(archetype, Boolean(slot.region))}
 원본 전체 글 패턴 기반 작성법:
@@ -774,7 +774,7 @@ ${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${designStructureGuide(designTemplateId)}
+${structureGuideForArchetype(archetype)}
 원본 엑셀 기반 템플릿 작성법:
 ${writingGuideForArchetype(archetype, Boolean(slot.region))}
 템플릿: ${slot.template_id}
@@ -831,14 +831,16 @@ ${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` :
 - 출력은 Markdown 본문만 제공하고 설명/주석은 쓰지 말 것.
 - 마지막에 참고자료/출처 목록을 붙이지 말 것. 단, 도로교통공단 등 외부 공신력 자료를 실제로 인용한 경우에만 간단히 남긴다.`;
 }
+// 디자인의 프롬프트 역할은 '톤/보이스/CTA 강조'만 담당한다. 섹션 배치·구조는 글유형(structureGuideForArchetype)이
+// 소유하고, 시각 레이아웃(CSS/컬러)은 공개 렌더 키트가 담당한다. 여기서 구조 문구를 다시 쓰면 글유형 구조와 이중 지시가 된다.
 function designWritingGuide(designTemplateId: string): string {
   const guides: Record<string, string> = {
-    editorial: "원본 블로그형. 생활권 공감 도입, 실제 이미지 3~4개, 요약/비교표 1개, 관련 글 링크, 자연스러운 브랜드 CTA가 이어지도록 작성한다.",
-    comparison: "BEST 비교형. 비교표를 앞쪽에 배치하고 후보별 장단점, 추천 대상, 가격·셔틀·과정 확인점을 명확히 작성한다.",
-    "local-guide": "지역 추천형. 지역명, 생활권, 셔틀/동선, 가까운 후보 요약/비교표를 중심으로 로컬 큐레이터처럼 작성한다.",
-    checklist: "체크리스트형. 필기시험/접수/준비물처럼 따라 하기 쉬운 순서와 실수 방지 확인표를 앞쪽에 배치한다.",
-    conversion: "예약 전환형. 상담, 예약, 비용 문의로 이어지되 원본처럼 과장보다 구체적인 확인 질문과 후보 사진을 강조한다.",
-    custom: "사용자 지정형. 저장된 기획 메모와 템플릿 구조를 우선 따르되, 섹션을 명확히 나눠 작성한다.",
+    editorial: "매거진/블로그 톤. 부드럽고 정보성 있는 서술과 자연스러운 브랜드 CTA로 이어간다.",
+    comparison: "비교·선택을 돕는 톤. 군더더기 없이 기준을 명확히 제시하는 어조로 쓴다.",
+    "local-guide": "동네를 잘 아는 로컬 큐레이터 톤. 생활권·동선을 챙기는 친근한 어조로 쓴다.",
+    checklist: "따라 하기 쉬운 안내 톤. 단계별로 명확하고 간결하게 쓴다.",
+    conversion: "상담·예약으로 이어지는 전환 톤. 과장 없이 지금 할 행동을 권하는 어조로 쓴다.",
+    custom: "사용자 지정 톤. 저장된 디자인 메모의 의도를 우선 반영한다.",
   };
   return guides[designTemplateId] || guides["local-guide"] || guides.editorial!;
 }
@@ -928,47 +930,6 @@ function formatMetric(value: any, fallback: string): string {
   return Number.isFinite(n) ? String(n) : fallback;
 }
 
-function designStructureGuide(designTemplateId: string): string {
-  const guides: Record<string, string[]> = {
-    editorial: [
-      "1) 상황 공감형 도입: 독자가 왜 지금 이 정보를 찾는지 2~3문장으로 시작",
-      "2) 원본형 핵심 기준: 비용·동선·과정·셔틀·후기 여부를 묶어 설명",
-      "3) 후보 소개: 각 후보를 생활권/추천 대상/상담 확인점/사진으로 풀어쓰기",
-      "4) 요약/비교표: 후보 수와 관계없이 핵심 차이 또는 핵심 정보를 표로 정리",
-      "5) 관련 글 링크와 자연스러운 상담 CTA로 마무리",
-    ],
-    comparison: [
-      "1) 첫 H2 또는 두 번째 H2 안에 '한눈에 비교표'를 배치",
-      "2) 후보별 장단점과 추천 대상을 분리",
-      "3) 선택 기준은 가격 단정이 아니라 상담 확인 질문으로 표현",
-      "4) 마지막에 '이런 사람에게 이 후보' 식의 결론을 제공",
-    ],
-    "local-guide": [
-      "1) 지역 생활권/출발지/동선 고민을 먼저 설명",
-      "2) 같은 구·동 생활권의 직접 매칭 후보만 소개",
-      "3) 셔틀·대중교통·자주 가는 생활권 기준의 선택 팁 포함",
-      "4) 상담 전 체크리스트는 '내 출발지 기준' 질문으로 구성",
-    ],
-    checklist: [
-      "1) 초반에 상담 전 체크리스트를 배치",
-      "2) 절차/준비물/비용 확인/시험 방식 순서로 짧고 명확하게 정리",
-      "3) 각 체크 항목 뒤에 왜 필요한지 1문장 설명",
-      "4) FAQ는 검색 의도가 질문형일 때만 실수 방지 질문 중심으로 구성",
-    ],
-    conversion: [
-      "1) 문제 공감 → 해결 기준 → 후보/상담 → CTA 순서 유지",
-      "2) 상담 버튼으로 이어질 만한 문장과 질문을 명확히 작성",
-      "3) 비용·일정·면허 종류를 상담에서 확인하도록 유도",
-      "4) 마지막 CTA는 과장 없이 지금 할 행동을 제시",
-    ],
-    custom: [
-      "1) 브랜드/작성 메모가 있으면 해당 의도를 최우선 반영",
-      "2) 상단 구성, 표/이미지 위치, CTA 위치를 메모와 맞춘다",
-      "3) 메모가 없으면 editorial 구조를 따른다",
-    ],
-  };
-  return (guides[designTemplateId] || guides["local-guide"] || guides.editorial!).map((line) => `- ${line}`).join("\n");
-}
 
 function publicBrandName(domain: Row): string {
   return String(domain.display_name || domain.domain || "서비스").replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || "서비스";

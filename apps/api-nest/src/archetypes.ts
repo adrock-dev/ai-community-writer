@@ -17,7 +17,10 @@ export type KeywordRule =
 // writing_guide: 지역 중립 core(항상 주입) + region_overlay(이 조합이 region-primary 일 때만 추가).
 // 이 분해로 writing_guide↔region 연성결합을 끊는다 — 같은 아키타입을 지역 있는/없는 글유형에
 // 써도 지침이 헛돌지 않으므로, primary_override(지역 결합 자유)가 안전해진다.
-export type WritingGuide = { core: string[]; region_overlay?: string[] };
+// structure: '템플릿 필수 구조'(섹션 순서/배치). 예전엔 디자인(designStructureGuide)이 갖던 지침을
+// 글유형(아키타입)으로 이관했다 — 구조는 '무엇을 쓰나'(기획)의 일부라 디자인(시각/톤)보다 글유형에 속한다.
+// 하위 글유형이 갈리는 아키타입(exam·local_single)은 허용적으로 써서 글유형 default_direction 이 세부를 정하게 둔다.
+export type WritingGuide = { core: string[]; region_overlay?: string[]; structure?: string[] };
 
 export type Archetype = {
   id: string;                     // 아키타입 정체성 (= 글유형의 kind). 재사용 가능한 키.
@@ -50,6 +53,12 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "도입에서 지역 생활권과 출퇴근/통학 동선을 짚고, 후보별로 '### 후보명' 소제목과 위치/생활권을 붙인다",
         "후보별 사진과 지역 기준 거리를 비교표에 반영한다",
       ],
+      structure: [
+        "첫 H2 또는 두 번째 H2 안에 '한눈에 비교표'를 배치(후보가 1곳이면 비교표 대신 요약표)",
+        "후보별 장단점과 추천 대상을 분리해 소개",
+        "선택 기준은 가격 단정이 아니라 상담 확인 질문으로 표현",
+        "마지막에 '이런 사람에게 이 후보' 식의 결론을 제공",
+      ],
     },
   },
   // 지역 시설 1곳 단독 심층 소개(academy-lead, 비교 아님). 흡수: academy_profile(T14)·test_center(T11).
@@ -65,6 +74,12 @@ export const ARCHETYPES: Record<string, Archetype> = {
       region_overlay: [
         "도입에서 그 시설의 위치·생활권·출발지별 방문 동선을 짚고, 상담 예약·비용·일정 확인 질문으로 전환을 연결한다",
       ],
+      structure: [
+        "그 시설 1곳을 단독으로 다룬다 — 비교표·BEST·'후보 N곳' 프레이밍을 만들지 않는다(요약표는 가능)",
+        "위치·생활권·출발지별 방문 동선을 먼저 짚는다",
+        "과정·운영 형태·확인 포인트를 확인된 자료만으로 깊게 전개",
+        "상담·비용·일정 확인 질문으로 마무리하되, 세부 전개(안내형/전환형)는 글유형 방향성을 따른다",
+      ],
     },
   },
   // 지역 종합·혼합(academy-support). 흡수: regional_hub(T07)·local_exam_mix(T15).
@@ -78,6 +93,12 @@ export const ARCHETYPES: Record<string, Archetype> = {
       region_overlay: [
         "지역 후보와 시험장·생활권을 축으로 삼고, 필기/기능/도로주행 준비 팁을 지역 정보와 엮는다",
       ],
+      structure: [
+        "지역 생활권/출발지/동선 고민을 먼저 설명",
+        "같은 구·동 생활권의 지역 후보·시험장을 축으로 소개",
+        "셔틀·대중교통·자주 가는 생활권 기준의 선택 팁과 접수·준비 팁을 지역 정보와 엮는다",
+        "상담 전 체크리스트는 '내 출발지 기준' 질문으로 구성",
+      ],
     },
   },
   // 종합 가이드·총정리(keyword). 흡수: general_guide(T03)·license_complete(T12)·persona_target(T13).
@@ -88,6 +109,13 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "검색자가 전체 흐름을 한 번에 이해하도록 준비 순서 → 비용 확인 → 시험 단계(교육·필기·기능·도로주행·면허발급) → 선택 기준을 이어서 총정리한다",
         "표는 '단계/확인할 것/놓치기 쉬운 점' 형태가 적합하다",
         "페르소나가 주어지면 그 대상의 시간표·예산·이동수단을 기준으로 추천 기준을 조정한다",
+      ],
+      structure: [
+        "독자가 왜 지금 이 정보를 찾는지 2~3문장의 상황 공감형 도입",
+        "핵심 기준(비용·동선·과정·단계 등)을 묶어 설명",
+        "본문은 준비 순서 → 비용 확인 → 시험 단계 → 선택 기준으로 이어서 총정리",
+        "요약/비교표로 핵심 차이 또는 핵심 정보를 정리",
+        "관련 글 링크와 자연스러운 상담 CTA로 마무리",
       ],
     },
   },
@@ -100,6 +128,12 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "비용을 다룰 땐 총액·추가비·재시험 가능성·셔틀 동선을 구체 질문으로 풀고, 확정 금액은 자료가 있을 때만 쓰며 없으면 '상담 때 물을 질문'으로 대체한다",
         "과장된 합격 보장은 피한다",
       ],
+      structure: [
+        "첫 H2 또는 두 번째 H2 안에 선택지 비교표를 배치",
+        "선택지별 장단점과 추천 대상을 분리",
+        "선택 기준은 단정이 아니라 상담/확인 질문으로 표현",
+        "마지막에 '이런 상황엔 이 선택' 식의 결론을 제공",
+      ],
     },
   },
   // 시험 단계 공략(keyword). 흡수: exam_best(T06)·written_registration(T08)·written_tips(T09)·written_app(T10).
@@ -110,6 +144,12 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "필기/기능/도로주행 중 하나의 시험 단계를 집중 공략하고, 자주 틀리는 포인트·연습 순서·체크리스트를 앞쪽에 둔다",
         "접수를 다룰 땐 온라인/현장 접수·준비물·사진·신분증·수수료 확인 항목을 절차형으로 쓰고, 공식 정보는 '최신 확인 필요'로 보수적으로 처리한다",
         "공부·팁은 문제 유형·앱/모의고사 활용·시험 당일 체크를 경험형으로 쓰되, 앱·도구는 임의로 꾸며내지 말고 선택 기준과 기능 체크리스트 중심으로 다룬다",
+      ],
+      structure: [
+        "핵심을 앞쪽에 요약표 또는 체크리스트로 배치한다 — 접수·절차형이면 체크리스트, 비교·선택형이면 비교표로, 세부는 글유형 방향성을 따른다",
+        "자주 틀리는 포인트·연습 순서 또는 준비물·확인 항목을 명확한 순서로 정리",
+        "각 항목 뒤에 왜 필요한지 1문장 설명을 붙인다",
+        "FAQ는 검색 의도가 질문형일 때만 실수 방지 질문 중심으로 2~4개",
       ],
     },
   },
@@ -147,6 +187,13 @@ export function writingGuideLines(archetype: Archetype | undefined, isRegionPrim
 // isRegionPrimary: 이 슬롯이 지역형이면(slot.region 존재) region_overlay 도 주입한다.
 export function writingGuideForArchetype(archetype: Archetype | undefined, isRegionPrimary = false): string {
   return writingGuideLines(archetype, isRegionPrimary).map((line) => `- ${line}`).join("\n");
+}
+
+// '템플릿 필수 구조' 텍스트(프롬프트 주입). 예전 designStructureGuide 대체 — 구조는 디자인이 아니라
+// 글유형(아키타입)이 소유한다. 미상 아키타입/구조 미지정은 guide 의 구조로 폴백.
+export function structureGuideForArchetype(archetype: Archetype | undefined): string {
+  const structure = archetype?.writing_guide.structure ?? ARCHETYPES.guide!.writing_guide.structure ?? [];
+  return structure.map((line) => `- ${line}`).join("\n");
 }
 
 // 유형별 작성 지침 텍스트 (worker.originalTemplateGuide 대체). 알 수 없는 유형은 guide 로 폴백.
