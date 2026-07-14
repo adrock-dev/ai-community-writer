@@ -878,7 +878,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     if (!direction.trim()) { setDirError("먼저 검증할 방향성을 입력하세요."); return; }
     setDirBusy(true); setDirError(""); setDirResult(null);
     try {
-      const res = await validateTemplateDirection(domain, { kind, name: name.trim(), direction: direction.trim(), current_direction: initial?.default_direction ?? "" });
+      const res = await validateTemplateDirection(domain, { kind, name: name.trim(), direction: direction.trim(), current_direction: initial?.default_direction ?? "", has_academy: academyTypes.size > 0 });
       setDirResult(res.validation);
     } catch (e) { setDirError(e instanceof Error ? e.message : String(e)); }
     finally { setDirBusy(false); }

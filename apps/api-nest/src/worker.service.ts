@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
-import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
+import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
@@ -129,7 +129,7 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, archetype, templateDirection);
+        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, archetype, templateDirection, academyTypes.length > 0);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
         const result = await runLlm(prompt, llmOpts);
@@ -731,7 +731,7 @@ function isSelectableDesign(id: string): boolean {
   return DESIGN_TEMPLATES.some((template) => template.id === value);
 }
 
-function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string): string {
+function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string, hasAcademy: boolean): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
@@ -762,7 +762,7 @@ ${originalArticlePatternGuide(slot)}
 ${facts || "없음"}
 
 절대 원칙:
-${DRIVING_ABSOLUTE_PRINCIPLES}
+${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` : ""}
 
 원본 레퍼런스 품질 기준:
 - 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장, 관련 내부링크 2~4개 권장, FAQ는 필수 아님.

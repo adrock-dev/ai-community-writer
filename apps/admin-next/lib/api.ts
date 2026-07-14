@@ -76,7 +76,7 @@ export const deleteTemplate = (domain: string, templateId: string) =>
 export const suggestTemplateAxes = (domain: string, body: { kind: string; name?: string; direction?: string; axes: string[]; provider?: string; model?: string }) =>
   api<{ ok: true; suggestions: { persona?: string[]; intent?: string[]; modifier?: string[] }; provider: string; model: string }>(`/domains/${encodeURIComponent(domain)}/templates/suggest-axes`, { method: "POST", body: JSON.stringify(body) });
 export type DirectionValidation = { redundant: Array<{ text: string; overlaps: string }>; conflicting: Array<{ text: string; reason: string }>; suggested_direction: string; summary: string };
-export const validateTemplateDirection = (domain: string, body: { kind: string; name?: string; direction: string; current_direction?: string; provider?: string; model?: string }) =>
+export const validateTemplateDirection = (domain: string, body: { kind: string; name?: string; direction: string; current_direction?: string; has_academy?: boolean; provider?: string; model?: string }) =>
   api<{ ok: true; validation: DirectionValidation; provider: string; model: string }>(`/domains/${encodeURIComponent(domain)}/templates/validate-direction`, { method: "POST", body: JSON.stringify(body) });
 export const exportTemplates = (domain: string) =>
   api<Record<string, unknown>>(`/domains/${encodeURIComponent(domain)}/templates/export`);

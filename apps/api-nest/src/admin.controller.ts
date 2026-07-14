@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -254,9 +254,12 @@ export class AdminController {
     if (!archetype) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
     const direction = String(body.direction || "").trim();
     if (!direction) throw new HttpException("검증할 방향성(direction)을 입력하세요.", 400);
+    // 유형이 학원 후보를 다루면(has_academy) 학원 전용 규칙도 함께 대조. 기본값은 아키타입 academy_centric.
+    const hasAcademy = typeof body.has_academy === "boolean" ? body.has_academy : Boolean(archetype.academy_centric);
+    const absolutePrinciples = DRIVING_ABSOLUTE_PRINCIPLES + (hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` : "");
     const prompt = buildDirectionValidatePrompt({
       name: String(body.name || ""), kind, direction, currentDirection: String(body.current_direction || ""),
-      commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype),
+      commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype), absolutePrinciples,
     });
     const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
     if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
@@ -932,7 +935,7 @@ function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: 
 }
 
 // 방향성 검증 프롬프트: 방향성 ↔ (절대 원칙·공통원칙·writing_guide) 대조 + 고유 방향만 남긴 개선안 요청.
-function buildDirectionValidatePrompt(o: { name: string; kind: string; direction: string; currentDirection?: string; commonPrinciples?: string; writingGuide?: string[] }): string {
+function buildDirectionValidatePrompt(o: { name: string; kind: string; direction: string; currentDirection?: string; commonPrinciples?: string; writingGuide?: string[]; absolutePrinciples: string }): string {
   const guide = (o.writingGuide ?? []).map((g) => `- ${g}`).join("\n");
   const principles = String(o.commonPrinciples || "").trim();
   const current = String(o.currentDirection || "").trim();
@@ -940,7 +943,7 @@ function buildDirectionValidatePrompt(o: { name: string; kind: string; direction
     "너는 한국 운전면허·운전학원 SEO 콘텐츠 시스템에서 '글유형 방향성(direction)'을 검증하는 도우미다.",
     "방향성은 '이 글유형만의 방향(무엇을 어떤 각도로 다루고, 어떤 전환으로 잇는지)'을 적는 자리다. 아래 '이미 강제되는 규칙'을 다시 진술하면 중복(불필요)이다.",
     `대상 글유형: "${o.name || o.kind}" (아키타입 kind=${o.kind}).`,
-    `[모든 글에 이미 강제되는 절대 원칙 — 방향성에 다시 쓰면 중복]\n${DRIVING_ABSOLUTE_PRINCIPLES}`,
+    `[이 유형에 이미 강제되는 절대 원칙 — 방향성에 다시 쓰면 중복]\n${o.absolutePrinciples}`,
     principles ? `[도메인 공통 원칙(톤·정책) — 다시 쓰면 중복]\n${principles}` : "",
     guide ? `[이 아키타입 작성 지침(writing_guide) — 다시 쓰면 중복]\n${guide}` : "",
     current ? `[이 글유형의 현재 방향성(참고)]\n${current}` : "",
