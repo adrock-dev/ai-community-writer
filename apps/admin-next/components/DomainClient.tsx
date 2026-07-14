@@ -481,8 +481,8 @@ function tourTooltipStyle(rect: DOMRect | null): React.CSSProperties {
 
 function Workflow({ domain, counts, active, onTab }: { domain: DomainConfig; counts: SlotCounts; active: string; onTab: (v: string) => void }) {
   const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
+  // 진행 막대는 필수 진행 4단계만 추적한다. 원천 데이터·공통 설정·디자인은 선택 준비라 흐름/추천 액션이 안내한다.
   const steps = [
-    { tab: "plan", title: "글 공통 설정", done: Boolean(domain.common_principles), count: domain.common_principles ? "완료" : "필요" },
     { tab: "templates", title: "유형/디자인", done: domain.templates_enabled.length > 0, count: `${domain.templates_enabled.length}개` },
     { tab: "slots", title: "후보/작성", done: totalSlots > 0, count: `${totalSlots}개` },
     { tab: "jobs", title: "작업", done: counts.in_progress > 0 || counts.published > 0, count: counts.in_progress > 0 ? `${counts.in_progress}개 진행` : "상태 확인" },
