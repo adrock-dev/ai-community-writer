@@ -15,7 +15,6 @@ const IMAGE_SIZES: Array<{ value: string; label: string }> = [
 export default function SettingsClient() {
   const [savedTourEnabled, setSavedTourEnabled] = useTourEnabled();
   const [savedGen, setSavedGen] = useGenerationDefaults();
-  const [tourDraft, setTourDraft] = useState(savedTourEnabled);
   const [genDraft, setGenDraft] = useState(savedGen);
   const [providers, setProviders] = useState<Provider[]>(["codex", "claude"]);
   const [localNotice, setLocalNotice] = useState("");
@@ -52,15 +51,10 @@ export default function SettingsClient() {
   }
 
   useEffect(() => {
-    setTourDraft(savedTourEnabled);
-  }, [savedTourEnabled]);
-
-  useEffect(() => {
     setGenDraft(savedGen);
   }, [savedGen]);
 
   function saveLocalSettings() {
-    setSavedTourEnabled(tourDraft);
     setSavedGen(genDraft);
     setLocalNotice("전역 설정 저장됨");
   }
@@ -69,7 +63,7 @@ export default function SettingsClient() {
     setGenDraft((current) => ({ ...current, ...fields }));
     setLocalNotice("");
   };
-  const localDirty = tourDraft !== savedTourEnabled || JSON.stringify(genDraft) !== JSON.stringify(savedGen);
+  const localDirty = JSON.stringify(genDraft) !== JSON.stringify(savedGen);
   const isDefault = JSON.stringify(genDraft) === JSON.stringify(DEFAULT_GENERATION_DEFAULTS);
 
   return (
@@ -86,7 +80,7 @@ export default function SettingsClient() {
         <div>
           <div className="row" style={{ gap: 8 }}>
             <h2 style={{ margin: 0 }}>운영 튜토리얼</h2>
-            <span className={`badge ${tourDraft ? "success" : ""}`}>{tourDraft ? "켜짐" : "꺼짐"}</span>
+            <span className={`badge ${savedTourEnabled ? "success" : ""}`}>{savedTourEnabled ? "켜짐" : "꺼짐"}</span>
           </div>
           <p className="muted small" style={{ marginTop: 6 }}>
             「기본/고급/검수 흐름 시작」이나 「기본 N 시작」을 누르면 단계별 가이드가 표시됩니다.
@@ -96,13 +90,13 @@ export default function SettingsClient() {
         <label className="row">
           <input
             type="checkbox"
-            checked={tourDraft}
+            checked={savedTourEnabled}
             onChange={(e) => {
-              setTourDraft(e.target.checked);
-              setLocalNotice("");
+              setSavedTourEnabled(e.target.checked);
+              setLocalNotice(e.target.checked ? "튜토리얼 켜짐 — 즉시 저장됨" : "튜토리얼 꺼짐 — 즉시 저장됨");
             }}
           />
-          <span>흐름 시작 시 튜토리얼 표시 (기본값)</span>
+          <span>흐름 시작 시 튜토리얼 표시 (기본값) · 즉시 저장</span>
         </label>
         <p className="muted small">
           튜토리얼 안에서 「더 이상 안 보기」를 눌러도 여기서 다시 켤 수 있습니다.
@@ -201,7 +195,7 @@ export default function SettingsClient() {
         <div>
           <h2 style={{ margin: 0 }}>변경사항 저장</h2>
           <p className="muted small" style={{ marginTop: 6 }}>
-            튜토리얼·생성 옵션 기본값 변경사항을 이 브라우저에 저장합니다.
+            생성 옵션 기본값 변경사항을 이 브라우저에 저장합니다. (운영 튜토리얼 토글은 즉시 저장됩니다.)
           </p>
         </div>
         <div className="row">
