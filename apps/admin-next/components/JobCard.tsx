@@ -21,6 +21,7 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
   const total = jobTotal(job);
   const ok = num(job.result_obj?.ok);
   const fail = num(job.result_obj?.fail);
+  const skipped = num(job.result_obj?.skipped);
   const done = ok + fail;
   const processed = Math.max(done, num(job.processed_count) + num(job.failed_count));
   const percent = job.status === "done" || job.status === "failed"
@@ -54,10 +55,11 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
     </summary>
     <div className="card-pad grid" style={{ borderTop: "1px solid var(--line)" }}>
       <div className="progress"><span style={{ width: `${percent}%` }} /></div>
-      <div className="grid grid-4">
+      <div className="grid grid-5">
         <Stat label="대상" value={total} />
         <Stat label="성공" value={ok} accent />
         <Stat label="실패" value={fail} />
+        <Stat label="스킵" value={skipped} />
         <Stat label="진행률" value={percent} suffix="%" />
       </div>
       <div className="writer-hint">

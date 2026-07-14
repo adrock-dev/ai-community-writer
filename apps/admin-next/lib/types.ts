@@ -239,7 +239,7 @@ export interface Job {
   finished_at: string | null;
   error: string | null;
   result: string | null;
-  result_obj?: Record<string, unknown> & { ok?: number; fail?: number; per_slot?: unknown[] };
+  result_obj?: Record<string, unknown> & { ok?: number; fail?: number; skipped?: number; per_slot?: unknown[] };
 }
 
 export interface TemplateSpec {
