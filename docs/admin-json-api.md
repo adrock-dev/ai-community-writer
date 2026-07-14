@@ -34,7 +34,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `custom_design_templates` | string \| null | 사용자 정의 디자인 JSON 문자열 |
 | `content_brief` | string \| null | 생성 지침 |
 | `excluded_keywords` | string \| null | 제외 키워드 텍스트 |
-| `academy_type_filter` | string[] | 학원 유형 필터 |
 | `daily_limit` | number | 일일 생성 제한 |
 | `created_at` | string | 생성 시각 |
 | `slot_count` | number | 도메인 목록 응답에서 제공되는 전체 슬롯 수 |
@@ -201,7 +200,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
       "domain": "example.com",
       "display_name": "예시 도메인",
       "templates_enabled": ["T01", "T03"],
-      "academy_type_filter": [],
       "slot_count": 100,
       "planned_count": 80,
       "published_count": 20
@@ -292,7 +290,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 - `custom_design_templates`
 - `content_brief`
 - `excluded_keywords`
-- `academy_type_filter`
 
 응답:
 
@@ -312,7 +309,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 
 ### `PUT /api/admin/domains/{domain}/axes/{axis}`
 
-`axis`는 `region`, `keyword`, `intent`, `persona`, `modifier` 중 하나다.
+`axis`는 `region`, `keyword`, `intent`, `persona`, `modifier` 중 하나다. 단 현재 도메인 축 편집은 `region`/`keyword`만 UI에 노출되며(「원천 데이터」 탭), `intent`/`persona`/`modifier`는 도메인 레벨에서 dormant이고 글유형별 `axis_values`로 관리한다(엔드포인트는 기술적으로 값을 받는다).
 
 요청:
 

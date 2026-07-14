@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `apps/admin-next` — Next.js 15(App Router)/React 19 사내 관리자 UI. 브라우저는 API를 직접 호출하지 않고 `app/api/admin/[...path]/route.ts` 프록시가 서버에서 admin 토큰을 주입한다.
 - `integration/nextjs-community-kit` — 공개 사이트가 `/api/v1/*` 콘텐츠를 소비하는 드롭인 키트.
 
-콘텐츠 파이프라인: 도메인 → 축 프리셋(지역/키워드/인텐트/페르소나) → **슬롯**(키워드×템플릿) → **잡 큐**(SQLite `jobs`) → 워커가 **post** 생성 → 품질 게이트 통과 후 발행. 워커는 `WorkerService.loop`의 단일 폴링 루프(기본 3초)로 잡을 하나씩 claim한다.
+콘텐츠 파이프라인: 도메인 → 축 프리셋(지역/키워드) → **슬롯**(키워드×템플릿) → **잡 큐**(SQLite `jobs`) → 워커가 **post** 생성 → 품질 게이트 통과 후 발행. (persona/intent/modifier는 도메인 축이 아니라 글유형별 `axis_values` 데이터다.) 워커는 `WorkerService.loop`의 단일 폴링 루프(기본 3초)로 잡을 하나씩 claim한다.
 
 배경·아키텍처·인수인계 맥락은 기존 문서를 참조한다:
 @HANDOFF.md
@@ -56,7 +56,7 @@ npm workspaces는 선언되어 있지 않고, 루트 스크립트가 `npm --pref
 - **품질 게이트가 두 곳에 독립 구현돼 있다.** 런타임 게이트(`worker.service.ts`의 `articleQualityIssues`/`postSurfaceQualityIssues`)와 렌더 인식 게이트(`scripts/qa-posts.mjs`)는 로직을 공유하지만 DRY하지 않다. **품질 규칙을 바꿀 때 두 쪽을 함께 맞춰라.**
 - 생성 프롬프트(`buildPrompt`)에는 "절대 원칙"이 있다: 확인된 데이터만 사용, 가격·합격률·셔틀·후기 날조 금지, 실제보다 많은 후보 주장 금지, 내부 API URL/인용 마커 노출 금지.
 - `data/article-patterns/summary.json`이 생성 시 프롬프트에 주입된다(없으면 graceful fallback). 원본 `.xlsx`/`.csv`는 gitignore.
-- 도메인은 `driving` 버티컬에 하드 특화돼 있다(`constants.ts`). 새 도메인은 `driving` + 디자인 자동 매칭(`auto` — 글마다 글 유형의 `default_design` 적용, `docs/design-template-mapping.md` 참조)으로 기본 설정된다.
+- 업종(vertical)은 DB 업종 레지스트리(`db.getVerticals()`, `settings/verticals` CRUD)로 관리되며 도메인 생성은 등록된 업종만 허용한다(기본 `driving`). 단 **프리셋·템플릿·품질 게이트는 아직 `driving`만 특화**돼 있다(`constants.ts`의 `PRESETS`/`TEMPLATE_SPECS`; MVP). 새 도메인은 디자인 자동 매칭(`auto` — 글마다 글 유형의 `default_design` 적용, `docs/design-template-mapping.md` 참조)으로 기본 설정된다.
 
 ## 환경 변수
 
