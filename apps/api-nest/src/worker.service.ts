@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
-import { ACADEMY_MAX_CANDIDATES, ACADEMY_NEARBY_MAX_KM, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
@@ -222,7 +222,11 @@ export class WorkerService {
   private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}, academyTypes?: string[]): GenerationFacts {
     if (!slot.region) return { text: "", images: {} };
     const region = String(slot.region);
-    const academies = this.pickAcademiesForRegion(domain, region, ACADEMY_MAX_CANDIDATES, academyTypes);
+    // 풀(최대 ACADEMY_MAX_CANDIDATES, 가까운 순)에서 슬롯별 시드 랜덤으로 ACADEMY_USED_PER_POST 곳을 뽑는다.
+    // 같은 슬롯은 항상 같은 조합(재현 가능), 다른 슬롯은 다른 조합 → 글마다 학원 구성이 달라진다.
+    const pool = this.pickAcademiesForRegion(domain, region, ACADEMY_MAX_CANDIDATES, academyTypes);
+    const seed = String(slot.slot_id ?? slot.id ?? `${region}|${slot.primary_keyword ?? ""}`);
+    const academies = seededSample(pool, ACADEMY_USED_PER_POST, seed);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
     const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
@@ -462,6 +466,19 @@ function humanAcademyType(value: unknown): string {
     test_center: "운전면허시험장",
   };
   return map[raw] || raw.replace(/_/g, " ").trim();
+}
+
+// 슬롯 시드로 결정되는(재현 가능한) 랜덤 표본. count 개를 뽑되 원래 순서(가까운 순)를 유지해 제시한다.
+function seededSample<T>(items: T[], count: number, seed: string): T[] {
+  if (items.length <= count) return items;
+  const idx = items.map((_, i) => i);
+  const rng = mulberry32(fnv1a(seed));
+  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = idx[i]!; idx[i] = idx[j]!; idx[j] = t; }
+  return idx.slice(0, count).sort((a, b) => a - b).map((i) => items[i]!);
+}
+function fnv1a(s: string): number { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
+function mulberry32(a: number): () => number {
+  return function () { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
 
 function academyDistanceKm(row: Row, targetLat: number | null, targetLng: number | null): number | null {

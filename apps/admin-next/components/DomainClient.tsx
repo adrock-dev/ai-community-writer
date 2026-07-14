@@ -883,7 +883,7 @@ function AcademyCoverageModal({ domain, templateId, onClose }: { domain: string;
       {!data && !err && <p className="muted small">불러오는 중...</p>}
       {data && !data.applicable && <p className="muted small">이 글유형은 학원 근거형이 아니거나 학원 타입이 선택되지 않아 커버리지 정보가 없습니다.</p>}
       {data && data.applicable && <>
-        <p className="muted small">학원 타입: {data.academy_types.join(", ")} · 충분 기준 <b>{data.threshold}곳 이상</b> · 충분한 지역 <b>{data.regions_with_min_for_best}/{data.regions_total}</b>(직접만이면 {data.regions_with_min_direct}/{data.regions_total}) · 학원 있는 지역 {data.regions_with_academies}/{data.regions_total}. <b>직접</b>(지역 문자열) + <b>인근</b>(반경 {data.nearby_km}km) 합산 = 실제 생성 기준입니다. 인근은 지역별 <b>최대 {data.max_candidates}곳</b>까지 가까운 순으로만 채웁니다.</p>
+        <p className="muted small">학원 타입: {data.academy_types.join(", ")} · 충분 기준 <b>{data.threshold}곳 이상</b> · 충분한 지역 <b>{data.regions_with_min_for_best}/{data.regions_total}</b>(직접만이면 {data.regions_with_min_direct}/{data.regions_total}) · 학원 있는 지역 {data.regions_with_academies}/{data.regions_total}. <b>직접</b>(지역 문자열) + <b>인근</b>(반경 {data.nearby_km}km) 합산 = 후보 풀(지역별 최대 <b>{data.max_candidates}곳</b>, 가까운 순)입니다. 생성 시 이 풀에서 <b>{data.used_per_post}곳</b>을 슬롯별 랜덤으로 뽑아 씁니다.</p>
         <div className="table-wrap"><table>
           <thead><tr><th>지역</th><th style={{ width: 120 }}>학원 수(직접+인근)</th><th style={{ width: 64 }}>상태</th><th style={{ width: 64 }}></th></tr></thead>
           <tbody>{data.regions.map((r) => <Fragment key={r.region}>

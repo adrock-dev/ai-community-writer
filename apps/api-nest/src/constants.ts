@@ -57,9 +57,11 @@ export const DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS: readonly string[] = ["T01"];
 // 생성(worker.pickAcademiesForRegion)과 정합성 미리보기(slot.analyzeCoherence/academyCoverage)가 공유한다.
 export const ACADEMY_NEARBY_MAX_KM = Number(process.env.SEO_ACADEMY_NEARBY_MAX_KM) || 20;
 
-// 한 글에 쓰는 학원 총 개수 상한(직접+인근 합). 인근은 이 개수를 채우는 만큼만 가까운 순으로 가져온다.
+// 학원 후보 풀 크기(직접+인근 합). 인근은 이 개수를 채우는 만큼만 가까운 순으로 가져온다.
 // 생성·미리보기 공통. 밀집 지역이 반경 안 학원을 과다 표시/사용하지 않도록 캡 역할.
-export const ACADEMY_MAX_CANDIDATES = Number(process.env.SEO_ACADEMY_MAX_CANDIDATES) || 5;
+export const ACADEMY_MAX_CANDIDATES = Number(process.env.SEO_ACADEMY_MAX_CANDIDATES) || 7;
+// 한 글에 실제로 쓰는 학원 수. 풀(ACADEMY_MAX_CANDIDATES)에서 슬롯별 시드 랜덤으로 이만큼 뽑아 글마다 조합을 달리한다.
+export const ACADEMY_USED_PER_POST = Number(process.env.SEO_ACADEMY_USED_PER_POST) || 5;
 
 // default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
 // default_direction: 이 글유형의 기본 방향성(공통원칙 위에 얹히는 오버레이). 도메인 template_overrides 로 재정의 가능.

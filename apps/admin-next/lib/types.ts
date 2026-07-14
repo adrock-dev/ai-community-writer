@@ -82,6 +82,7 @@ export interface AcademyCoverage {
   threshold: number;
   nearby_km?: number;
   max_candidates?: number;
+  used_per_post?: number;
   regions_total?: number;
   regions_with_academies?: number;
   regions_with_min_for_best?: number;
