@@ -257,6 +257,8 @@ export interface AdminOptions {
   providers: Provider[];
   preset_options: string[];
   indexing: { has_key: boolean; url_template: string };
+  // 전역 빌트인 노출 허용 id 목록(검증용 임시). null/undefined = 전체 노출.
+  exposed_builtin_template_ids?: string[] | null;
 }
 
 export interface RuntimeApis {

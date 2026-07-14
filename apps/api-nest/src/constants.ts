@@ -49,6 +49,10 @@ export const DRIVING_ORIGINAL_TEMPLATE_IDS = [
 // 새 도메인은 글유형이 아무것도 켜지지 않은 빈 상태로 시작한다(운영자가 「글유형/디자인」 탭에서 직접 켠다).
 export const DEFAULT_DRIVING_TEMPLATE_IDS: readonly string[] = [];
 
+// 전역 빌트인 노출 기본값(검증용 임시): 노출 설정이 없을 때 카탈로그/시작점/아키타입에 보일 빌트인.
+// 검증된 T01 만 기본 노출하고, 나머지는 「설정」 탭에서 검증 후 하나씩 연다.
+export const DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS: readonly string[] = ["T01"];
+
 // default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
 // default_direction: 이 글유형의 기본 방향성(공통원칙 위에 얹히는 오버레이). 도메인 template_overrides 로 재정의 가능.
 // axis_tags: 이 글유형이 수용하는 축 값 태그(axis-tags.ts). 미지정 축은 전체 허용(["*"]). region/keyword 는 정규식 경로라 제외.

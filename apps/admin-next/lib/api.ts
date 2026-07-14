@@ -27,6 +27,9 @@ function safeJson(text: string): any {
 }
 
 export const getOptions = () => api<AdminOptions>("/options");
+// 전역 빌트인 노출 목록 저장(검증용 임시). null = 전체 노출로 초기화.
+export const setBuiltinVisibility = (exposed: string[] | null) =>
+  api<{ ok: true; exposed_builtin_template_ids: string[] | null }>("/settings/builtin-visibility", { method: "PUT", body: JSON.stringify({ exposed }) });
 export const getRuntimeApis = () => api<RuntimeApis>("/runtime/apis");
 export const listDomains = () => api<{ count: number; items: import("./types").DomainConfig[] }>("/domains");
 export const getDomainDetail = (domain: string, include = "slots,posts,academies,jobs") =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, suggestTemplateAxes, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -640,6 +640,13 @@ function KeywordMaster({ domain, presetKey, keywordAxis, onRefresh }: { domain: 
 // 도메인 디자인 설정의 특수값: 글마다 후보의 글 유형 기본 디자인(default_design)을 자동 적용한다.
 const AUTO_DESIGN_ID = "auto";
 
+// 전역 빌트인 노출 제어(검증용 임시): 노출 허용 목록에 없는 빌트인 id 는 카탈로그/커스텀 시작점/아키타입 목록에서 숨긴다.
+// exposed_builtin_template_ids 가 null/undefined 면 전체 노출. 이미 켠 유형의 생성엔 영향 없음(비파괴).
+const builtinExposed = (options: AdminOptions, id: string): boolean => {
+  const list = options.exposed_builtin_template_ids;
+  return !Array.isArray(list) || list.includes(id);
+};
+
 function Templates({ domain, options, customTemplates, keywordPool, busy, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; customTemplates: CustomTemplate[]; keywordPool: string[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [enabled, setEnabled] = useState(new Set(domain.templates_enabled));
   const [custom, setCustom] = useState(domain.custom_design_templates ?? "");
@@ -664,7 +671,7 @@ function Templates({ domain, options, customTemplates, keywordPool, busy, onSave
   ];
   const activeItems = allItems.filter((it) => enabled.has(it.id));
   const availableItems = allItems.filter((it) => !enabled.has(it.id));
-  const availableBuiltins = availableItems.filter((it) => !it.isCustom);
+  const availableBuiltins = availableItems.filter((it) => !it.isCustom && builtinExposed(options, it.id));
   const availableCustoms = availableItems.filter((it) => it.isCustom);
   const specMeta = (spec: TemplateSpec) => `primary: ${spec.primary.join(", ")} · persona ${spec.use_persona ? "사용" : "미사용"} · intent ${spec.with_intent ? "사용" : "미사용"} · modifier ${spec.modifier_count}`;
   const specBadges = (spec: TemplateSpec) => <div className="row">{spec.primary.map((axis) => <span key={axis} className="badge">{axis}</span>)}{spec.use_persona && <span className="badge">persona</span>}{spec.with_intent && <span className="badge">intent</span>}{spec.modifier_count > 0 && <span className="badge">modifier {spec.modifier_count}</span>}<span className="badge info">디자인 {designNameOf(spec.default_design)}</span></div>;
@@ -747,16 +754,18 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
   const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
   const kindOptions = useMemo(() => {
     const map = new Map<string, { label: string; primary: string }>();
-    for (const spec of Object.values(options.template_specs)) {
+    // 노출 허용된 빌트인만으로 아키타입 목록을 파생(숨긴 유형의 아키타입은 커스텀 참조에서도 제외).
+    for (const [id, spec] of Object.entries(options.template_specs)) {
+      if (!builtinExposed(options, id)) continue;
       const k = spec.kind ?? "";
       if (k && !map.has(k)) map.set(k, { label: `${k} — ${spec.name} 계열`, primary: spec.primary?.[0] ?? "keyword" });
     }
     return [...map.entries()].map(([kind, v]) => ({ kind, label: v.label, primary: v.primary }));
-  }, [options.template_specs]);
+  }, [options]);
   const primaryOfKind = (kind: string) => kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword";
   // 커스텀 만들기 '시작점' 옵션: 빌트인 + 기존 커스텀. 고르면 폼에 값을 채워 시작(복제 통합).
   const createSources: TemplateSource[] = useMemo(() => [
-    ...Object.entries(options.template_specs).map(([id, spec]) => ({
+    ...Object.entries(options.template_specs).filter(([id]) => builtinExposed(options, id)).map(([id, spec]) => ({
       id, label: `${id} ${spec.name} (빌트인)`, name: spec.name, kind: spec.kind ?? "",
       use_persona: spec.use_persona, with_intent: Boolean(spec.with_intent), modifier_count: spec.modifier_count,
       default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types, keyword_filter: spec.keyword_filter, primary_override: spec.primary_override,
@@ -766,7 +775,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
       default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter, primary_override: t.primary_override,
     })),
-  ], [options.template_specs, custom]);
+  ], [options, custom]);
 
   async function reload() {
     setLoading(true); setError("");
@@ -1584,12 +1593,40 @@ function Posts({ domain, posts, onRefresh }: { domain: DomainConfig; posts: Post
     <div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>이미지</th><th>provider</th><th>비용$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.image_count ?? 0}</td><td>{p.provider}</td><td>{postCost(p) ? postCost(p).toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
 }
 
+// 전역 빌트인 노출 편집(검증용 임시). 체크한 빌트인만 카탈로그/시작점/아키타입 목록에 노출. 모든 도메인 공통.
+function BuiltinVisibilityCard({ options, onRefresh }: { options: AdminOptions; onRefresh: () => Promise<void> }) {
+  const allIds = useMemo(() => Object.keys(options.template_specs), [options.template_specs]);
+  const [visible, setVisible] = useState<Set<string>>(() => new Set(options.exposed_builtin_template_ids ?? allIds));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  useEffect(() => { setVisible(new Set(options.exposed_builtin_template_ids ?? allIds)); }, [options.exposed_builtin_template_ids, allIds]);
+  const toggle = (id: string) => setVisible((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  async function save() {
+    setBusy(true); setErr("");
+    try {
+      const ids = allIds.filter((id) => visible.has(id));
+      // 명시 목록을 그대로 저장(전부 체크도 명시 저장). 저장 안 하면 기본값 T01 만 노출.
+      await setBuiltinVisibility(ids);
+      await onRefresh();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  return <div className="card card-pad grid">
+    <div className="spread"><div><h2>빌트인 글유형 노출 <span className="badge info">전역 · 임시</span></h2><p className="muted small">체크한 빌트인만 「글유형/디자인」 탭의 <b>빌트인 추가</b> 카탈로그·커스텀 <b>시작점</b>·<b>참조 아키타입</b> 목록에 노출됩니다. <b>모든 도메인 공통</b>이며, 이미 켜 둔 유형의 생성에는 영향이 없습니다(노출만 제어). 유형 검증이 끝나면 제거할 임시 기능입니다.</p></div><span className="badge info">{visible.size}/{allIds.length}</span></div>
+    <div className="grid grid-2" style={{ gap: 6 }}>
+      {allIds.map((id) => <label key={id} className="row small" style={{ gap: 8, cursor: "pointer" }}><input type="checkbox" checked={visible.has(id)} onChange={() => toggle(id)} /><span className="badge">{id}</span> <span>{options.template_specs[id]?.name}</span></label>)}
+    </div>
+    {err && <p className="toast-warn small">{err}</p>}
+    <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "노출 저장"}</button><button className="btn" disabled={busy} onClick={() => setVisible(new Set(allIds))}>전체 노출</button></div>
+  </div>;
+}
+
 function Settings({ domain, options, onSave, onRefresh }: { domain: DomainConfig; options: AdminOptions; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   const [form, setForm] = useState({ display_name: domain.display_name, vertical: domain.vertical, brand_color: domain.brand_color ?? "#2563eb", daily_limit: domain.daily_limit });
   const [delBusy, setDelBusy] = useState(false);
   const previewTheme = getDesignTheme(domain.design_template_id, form.brand_color);
   async function deleteDomain() { if (delBusy || !confirm("정말 삭제할까요? 모든 데이터가 삭제됩니다.")) return; setDelBusy(true); try { await api(`/domains/${encodeURIComponent(domain.domain)}`, { method: "DELETE" }); location.href = "/"; } catch (err) { setDelBusy(false); alert(err instanceof Error ? err.message : String(err)); } }
-  return <div className="grid"><div className="card card-pad grid"><h2>도메인 정보</h2><Field label="표시 이름"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} placeholder="예: 강남 운전면허센터" /></Field><div className="grid grid-2"><Field label="업종 (생성 후 변경 불가)"><input className="input" value={options.verticals.find((v) => v.key === form.vertical)?.label ?? form.vertical} readOnly disabled /></Field></div><div className="grid grid-2"><Field label="브랜드 컬러"><div className="row"><input className="input-color" type="color" value={form.brand_color} onChange={(e) => setForm({ ...form, brand_color: e.target.value })} /><code className="mono small">{form.brand_color}</code></div></Field><Field label="일일 한도 (0=무제한)"><input className="input" type="number" min={0} value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Math.max(0, Number(e.target.value) || 0) })} /></Field></div><div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}><div className="preview-top"><b>브랜드 컬러 미리보기</b><span className="preview-cta">CTA</span></div><div className="preview-bottom-cta"><b>하단 CTA 영역</b><button type="button" className="btn primary">버튼</button></div></div><p className="muted small">미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요.</p>{!form.display_name.trim() && <p className="toast-warn small">표시 이름을 입력하세요.</p>}<button className="btn primary" disabled={!form.display_name.trim()} onClick={() => onSave(form)}>저장</button></div><div className="card card-pad grid"><h2>도메인 삭제</h2><p className="muted small">이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다.</p><button className="btn danger" disabled={delBusy} onClick={deleteDomain}>{delBusy ? "삭제 중..." : "도메인 삭제"}</button></div></div>;
+  return <div className="grid"><div className="card card-pad grid"><h2>도메인 정보</h2><Field label="표시 이름"><input className="input" value={form.display_name} onChange={(e) => setForm({ ...form, display_name: e.target.value })} placeholder="예: 강남 운전면허센터" /></Field><div className="grid grid-2"><Field label="업종 (생성 후 변경 불가)"><input className="input" value={options.verticals.find((v) => v.key === form.vertical)?.label ?? form.vertical} readOnly disabled /></Field></div><div className="grid grid-2"><Field label="브랜드 컬러"><div className="row"><input className="input-color" type="color" value={form.brand_color} onChange={(e) => setForm({ ...form, brand_color: e.target.value })} /><code className="mono small">{form.brand_color}</code></div></Field><Field label="일일 한도 (0=무제한)"><input className="input" type="number" min={0} value={form.daily_limit} onChange={(e) => setForm({ ...form, daily_limit: Math.max(0, Number(e.target.value) || 0) })} /></Field></div><div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}><div className="preview-top"><b>브랜드 컬러 미리보기</b><span className="preview-cta">CTA</span></div><div className="preview-bottom-cta"><b>하단 CTA 영역</b><button type="button" className="btn primary">버튼</button></div></div><p className="muted small">미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요.</p>{!form.display_name.trim() && <p className="toast-warn small">표시 이름을 입력하세요.</p>}<button className="btn primary" disabled={!form.display_name.trim()} onClick={() => onSave(form)}>저장</button></div><BuiltinVisibilityCard options={options} onRefresh={onRefresh} /><div className="card card-pad grid"><h2>도메인 삭제</h2><p className="muted small">이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다.</p><button className="btn danger" disabled={delBusy} onClick={deleteDomain}>{delBusy ? "삭제 중..." : "도메인 삭제"}</button></div></div>;
 }
 
 function DesignPreview({ blueprint, designId, designOption, brandColor, brand, title, summary }: { blueprint: typeof DESIGN_BLUEPRINTS[string]; designId: string; designOption?: DesignTemplateOption; brandColor?: string | null; brand: string; title: string; summary: string }) {

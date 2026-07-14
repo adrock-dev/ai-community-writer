@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -38,7 +38,9 @@ export class AdminController {
       design_templates: DESIGN_TEMPLATES,
       providers: ["codex", "claude"],
       preset_options: [DEFAULT_DRIVING_VERTICAL],
-      indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() }
+      indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() },
+      // 전역 빌트인 노출 허용 목록(검증용 임시). null = 전체 노출. 카탈로그/커스텀 시작점/아키타입 목록에서 필터.
+      exposed_builtin_template_ids: this.exposedBuiltinIds()
     };
   }
 
@@ -647,6 +649,32 @@ export class AdminController {
     if (sa) this.db.setSetting("google_sa_json", sa);
     if (String(body.url_template || "").trim()) this.db.setSetting("indexing_url_template", String(body.url_template).trim());
     return { ok: true, has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() };
+  }
+
+  // 전역 빌트인 노출 목록(검증용 임시). body.exposed = 노출 허용 id 배열 | null(전체 노출로 초기화).
+  // 노출 제어는 UI 카탈로그/커스텀 시작점/아키타입 목록에만 영향(비파괴) — 이미 켠 유형의 생성엔 영향 없음.
+  @Put("settings/builtin-visibility")
+  saveBuiltinVisibility(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const exposed = body.exposed;
+    if (exposed === null || exposed === undefined) {
+      this.db.setSetting("exposed_builtin_template_ids", null); // 설정 삭제 → 기본값(T01)으로 복귀
+    } else {
+      if (!Array.isArray(exposed)) throw new HttpException("exposed must be an array or null", 400);
+      const valid = new Set(Object.keys(TEMPLATE_SPECS));
+      const ids = [...new Set(exposed.map((x: unknown) => String(x)).filter((x: string) => valid.has(x)))];
+      // 명시 목록을 그대로 저장(전부 노출도 명시 저장). 저장 안 하면 기본값 T01 만 노출된다.
+      this.db.setSetting("exposed_builtin_template_ids", JSON.stringify(ids));
+    }
+    return { ok: true, exposed_builtin_template_ids: this.exposedBuiltinIds() };
+  }
+
+  // 저장된 노출 목록 파싱. 설정이 없거나 파싱 실패면 기본값(T01)만 노출.
+  private exposedBuiltinIds(): string[] {
+    const raw = this.db.getSetting("exposed_builtin_template_ids");
+    if (!raw) return [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS];
+    try { const v = JSON.parse(raw); return Array.isArray(v) ? v.filter((x: unknown): x is string => typeof x === "string") : [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS]; }
+    catch { return [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS]; }
   }
 
   // 업종 레지스트리(라벨 MVP): 작업환경에서 key/label 추가·삭제. key 는 프리셋 선택·프롬프트에 쓰인다.
