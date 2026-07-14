@@ -134,7 +134,6 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           </SidebarLink>
           <p style={{ marginTop: 12 }}>설정</p>
           <SidebarLink href="/settings" active={pathname === "/settings"} tabIndex={sidebarOpen ? 0 : -1}>작업환경</SidebarLink>
-          <SidebarLink href="/integrations" active={pathname === "/integrations"} tabIndex={sidebarOpen ? 0 : -1}>연동 설정</SidebarLink>
         </nav>
 
         <div className="side-note">
