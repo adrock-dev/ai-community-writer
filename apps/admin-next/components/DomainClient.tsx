@@ -987,6 +987,18 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b> · 주키워드 규칙·품질 지침은 참조 아키타입이 결정합니다(직접 변경 불가).{source ? " 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""}</p>
       </Field>
     </div>
+    <div className="grid" style={{ gap: 8 }}>
+      <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 한 줄에 하나씩 적습니다. <b>적으면 그 키워드를 그대로 사용</b>(아키타입 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택. 아래 풀에서 클릭하면 추가되고, 풀에 없는 키워드도 직접 입력할 수 있습니다.</p></div>
+      <textarea className="textarea" rows={3} value={keywordVals} onChange={(e) => setKeywordVals(e.target.value)} placeholder={"운전면허학원\n자동차운전전문학원   (한 줄에 하나 · 비우면 아키타입 패턴)"} />
+      {(keywordPool ?? []).length > 0 && <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
+        <span className="muted small" style={{ alignSelf: "center" }}>풀에서 추가:</span>
+        {(keywordPool ?? []).map((kw) => {
+          const has = parseLines(keywordVals).includes(kw);
+          return <button key={kw} type="button" className={`btn small ${has ? "primary" : ""}`} style={{ padding: "2px 8px" }}
+            onClick={() => setKeywordVals((prev) => { const list = parseLines(prev); return (has ? list.filter((k) => k !== kw) : [...list, kw]).join("\n"); })}>{has ? "✓ " : "+ "}{kw}</button>;
+        })}
+      </div>}
+    </div>
     <Field label="방향성 (선택)">
       <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" />
       <div className="row" style={{ gap: 8, marginTop: 4 }}>
@@ -1043,18 +1055,6 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         {!(academyTypeOptions ?? []).length && <p className="muted small">먼저 학원 동기화를 실행하면 타입 목록이 표시됩니다.</p>}
       </div>
     </div>}
-    <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 한 줄에 하나씩 적습니다. <b>적으면 그 키워드를 그대로 사용</b>(아키타입 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택. 아래 풀에서 클릭하면 추가되고, 풀에 없는 키워드도 직접 입력할 수 있습니다.</p></div>
-      <textarea className="textarea" rows={3} value={keywordVals} onChange={(e) => setKeywordVals(e.target.value)} placeholder={"운전면허학원\n자동차운전전문학원   (한 줄에 하나 · 비우면 아키타입 패턴)"} />
-      {(keywordPool ?? []).length > 0 && <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
-        <span className="muted small" style={{ alignSelf: "center" }}>풀에서 추가:</span>
-        {(keywordPool ?? []).map((kw) => {
-          const has = parseLines(keywordVals).includes(kw);
-          return <button key={kw} type="button" className={`btn small ${has ? "primary" : ""}`} style={{ padding: "2px 8px" }}
-            onClick={() => setKeywordVals((prev) => { const list = parseLines(prev); return (has ? list.filter((k) => k !== kw) : [...list, kw]).join("\n"); })}>{has ? "✓ " : "+ "}{kw}</button>;
-        })}
-      </div>}
-    </div>
     <Field label="디자인"><p className="muted small">글 유형마다 자동 매칭되는 기본 디자인입니다. 아래 목업으로 레이아웃을 확인하세요. 「커스텀」을 고르면 도메인 「디자인」 영역의 커스텀 디자인 메모가 적용됩니다.</p><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
       {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
     </select></Field>
