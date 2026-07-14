@@ -53,6 +53,10 @@ export const DEFAULT_DRIVING_TEMPLATE_IDS: readonly string[] = [];
 // 검증된 T01 만 기본 노출하고, 나머지는 「설정」 탭에서 검증 후 하나씩 연다.
 export const DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS: readonly string[] = ["T01"];
 
+// 학원 인근 보강 최대 반경(km). 직접(지역 문자열) 매칭이 부족할 때 이 반경 내 학원만 '인근 후보'로 채운다.
+// 생성(worker.pickAcademiesForRegion)과 정합성 미리보기(slot.analyzeCoherence/academyCoverage)가 공유한다.
+export const ACADEMY_NEARBY_MAX_KM = Number(process.env.SEO_ACADEMY_NEARBY_MAX_KM) || 20;
+
 // default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
 // default_direction: 이 글유형의 기본 방향성(공통원칙 위에 얹히는 오버레이). 도메인 template_overrides 로 재정의 가능.
 // axis_tags: 이 글유형이 수용하는 축 값 태그(axis-tags.ts). 미지정 축은 전체 허용(["*"]). region/keyword 는 정규식 경로라 제외.

@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
-import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
+import { ACADEMY_NEARBY_MAX_KM, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
@@ -463,10 +463,6 @@ function humanAcademyType(value: unknown): string {
   };
   return map[raw] || raw.replace(/_/g, " ").trim();
 }
-
-// 인근 보강 최대 반경(km). 직접 매칭이 부족할 때 이 반경 안의 학원만 "인근 후보"로 채운다.
-// 반경 밖 학원을 인근처럼 쓰지 않도록 게이트한다(환경변수로 조정 가능).
-const ACADEMY_NEARBY_MAX_KM = Number(process.env.SEO_ACADEMY_NEARBY_MAX_KM) || 20;
 
 function academyDistanceKm(row: Row, targetLat: number | null, targetLng: number | null): number | null {
   const lat = finiteNumber(row.latitude);

@@ -865,7 +865,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
   </section>;
 }
 
-// 지역별 학원 커버리지 팝업(L1 지역 표 + L2 학원별 빠진 데이터). 직접(주소/지역 문자열) 매칭 기준.
+// 지역별 학원 커버리지 팝업(L1 지역 표 + L2 학원별 빠진 데이터). 직접(지역 문자열) + 인근(반경) 기준 = 생성과 동일.
 function AcademyCoverageModal({ domain, templateId, onClose }: { domain: string; templateId: string; onClose: () => void }) {
   const [data, setData] = useState<AcademyCoverage | null>(null);
   const [err, setErr] = useState("");
@@ -882,19 +882,19 @@ function AcademyCoverageModal({ domain, templateId, onClose }: { domain: string;
       {!data && !err && <p className="muted small">불러오는 중...</p>}
       {data && !data.applicable && <p className="muted small">이 글유형은 학원 근거형이 아니거나 학원 타입이 선택되지 않아 커버리지 정보가 없습니다.</p>}
       {data && data.applicable && <>
-        <p className="muted small">학원 타입: {data.academy_types.join(", ")} · 충분 기준 <b>{data.threshold}곳 이상</b> · 충분한 지역 <b>{data.regions_with_min_for_best}/{data.regions_total}</b> · 학원 있는 지역 {data.regions_with_academies}/{data.regions_total}. 아래는 <b>직접(주소·지역 문자열) 매칭</b> 기준이며, 생성 시 위경도 인근 후보는 별도로 보강될 수 있습니다.</p>
+        <p className="muted small">학원 타입: {data.academy_types.join(", ")} · 충분 기준 <b>{data.threshold}곳 이상</b> · 충분한 지역 <b>{data.regions_with_min_for_best}/{data.regions_total}</b>(직접만이면 {data.regions_with_min_direct}/{data.regions_total}) · 학원 있는 지역 {data.regions_with_academies}/{data.regions_total}. <b>직접</b>(지역 문자열) + <b>인근</b>(반경 {data.nearby_km}km) 합산 = 실제 생성 기준입니다.</p>
         <div className="table-wrap"><table>
-          <thead><tr><th>지역</th><th style={{ width: 80 }}>학원 수</th><th style={{ width: 72 }}>상태</th><th style={{ width: 72 }}></th></tr></thead>
+          <thead><tr><th>지역</th><th style={{ width: 120 }}>학원 수(직접+인근)</th><th style={{ width: 64 }}>상태</th><th style={{ width: 64 }}></th></tr></thead>
           <tbody>{data.regions.map((r) => <Fragment key={r.region}>
             <tr>
               <td>{r.region}</td>
-              <td>{r.count}</td>
+              <td><b>{r.count}</b> <span className="muted small">({r.direct}+{r.nearby})</span></td>
               <td>{r.sufficient ? <span className="badge success">충분</span> : <span className="badge warn">부족</span>}</td>
               <td>{r.count > 0 && <button type="button" className="btn" style={{ padding: "1px 8px", fontSize: 12 }} onClick={() => setOpenRegion(openRegion === r.region ? null : r.region)}>{openRegion === r.region ? "접기" : "학원"}</button>}</td>
             </tr>
             {openRegion === r.region && <tr><td colSpan={4}>
               <div className="grid" style={{ gap: 4 }}>
-                {r.academies.map((a, i) => <div key={i} className="small"><b>{a.name}</b> <span className="muted">{a.academy_type}{a.address ? ` · ${a.address}` : ""}</span> {a.missing.length > 0 ? <span className="toast-warn small" style={{ padding: "0 6px" }}>빠진 데이터: {a.missing.join(", ")}</span> : <span className="badge success">데이터 완비</span>}</div>)}
+                {r.academies.map((a, i) => <div key={i} className="small">{a.nearby ? <span className="badge" style={{ marginRight: 4 }}>인근 {a.distance_km}km</span> : <span className="badge info" style={{ marginRight: 4 }}>직접</span>}<b>{a.name}</b> <span className="muted">{a.academy_type}{a.address ? ` · ${a.address}` : ""}</span> {a.missing.length > 0 ? <span className="toast-warn small" style={{ padding: "0 6px" }}>빠진 데이터: {a.missing.join(", ")}</span> : <span className="badge success">데이터 완비</span>}</div>)}
                 {r.truncated && <p className="muted small">…일부만 표시(상위 50곳)</p>}
               </div>
             </td></tr>}
