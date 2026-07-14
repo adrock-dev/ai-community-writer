@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
-import { ACADEMY_NEARBY_MAX_KM, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_NEARBY_MAX_KM, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, buildKeyword, type Archetype } from "./archetypes.js";
@@ -202,12 +202,14 @@ export class SlotService {
   }
 
   // 한 지역 값에 대해 직접(region 문자열 포함) 매칭과 인근(반경 ACADEMY_NEARBY_MAX_KM 내, 직접 제외) 매칭을 나눠 반환.
-  // 생성(worker.pickAcademiesForRegion)과 판정 기준을 맞춘다 — 인근 반경 정책 변경 시 둘을 함께 맞춰라.
+  // 생성(worker.pickAcademiesForRegion)과 판정 기준을 맞춘다: 인근은 총 ACADEMY_MAX_CANDIDATES 를
+  // 채우는 만큼만 가까운 순으로 취한다(밀집 지역이 반경 안 학원을 과다 카운트하지 않도록).
   private matchRegionAcademies(region: string, typedAcademies: Row[], coords: { lat: number; lng: number } | undefined): { direct: Row[]; nearby: Array<Row & { distance_km: number }> } {
     const direct = typedAcademies.filter((a) => String(a.region || "").includes(region));
     const directKeys = new Set(direct.map(academyKey));
+    const nearbyRoom = Math.max(0, ACADEMY_MAX_CANDIDATES - direct.length);
     const nearby: Array<Row & { distance_km: number }> = [];
-    if (coords) {
+    if (coords && nearbyRoom > 0) {
       for (const a of typedAcademies) {
         if (directKeys.has(academyKey(a))) continue;
         const alat = finiteNum(a.latitude), alng = finiteNum(a.longitude);
@@ -216,6 +218,7 @@ export class SlotService {
         if (km <= ACADEMY_NEARBY_MAX_KM) nearby.push({ ...a, distance_km: Math.round(km * 10) / 10 });
       }
       nearby.sort((x, y) => x.distance_km - y.distance_km);
+      nearby.splice(nearbyRoom); // 총 개수 상한을 채우는 만큼만(가까운 순)
     }
     return { direct, nearby };
   }
@@ -252,7 +255,7 @@ export class SlotService {
     const directMin = regions.filter((r) => r.direct >= ACADEMY_MIN_FOR_BEST).length;
     // 부족(count 낮은) 지역을 위로 정렬해 운영자가 먼저 보게 한다.
     regions.sort((a, b) => Number(a.sufficient) - Number(b.sufficient) || a.count - b.count || a.region.localeCompare(b.region, "ko"));
-    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, nearby_km: ACADEMY_NEARBY_MAX_KM, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions };
+    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, nearby_km: ACADEMY_NEARBY_MAX_KM, max_candidates: ACADEMY_MAX_CANDIDATES, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions };
   }
 }
 

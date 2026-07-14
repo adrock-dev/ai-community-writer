@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
-import { ACADEMY_NEARBY_MAX_KM, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_NEARBY_MAX_KM, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
@@ -222,7 +222,7 @@ export class WorkerService {
   private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}, academyTypes?: string[]): GenerationFacts {
     if (!slot.region) return { text: "", images: {} };
     const region = String(slot.region);
-    const academies = this.pickAcademiesForRegion(domain, region, 5, academyTypes);
+    const academies = this.pickAcademiesForRegion(domain, region, ACADEMY_MAX_CANDIDATES, academyTypes);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
     const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
@@ -257,7 +257,7 @@ export class WorkerService {
   private imagesForSlot(domain: string, slot: Row): Record<string, string> {
     if (!slot.region) return {};
     const images: Record<string, string> = {};
-    for (const [i, academy] of this.pickAcademiesForRegion(domain, String(slot.region), 5).entries()) {
+    for (const [i, academy] of this.pickAcademiesForRegion(domain, String(slot.region), ACADEMY_MAX_CANDIDATES).entries()) {
       for (const imageKey of firstImageKeys(academy, i + 1, 2)) images[imageKey.key] = imageKey.url;
     }
     return images;
@@ -344,7 +344,7 @@ export class WorkerService {
       const slot = r.slot_id ? this.db.getSlot(String(r.slot_id)) : null;
       // 후보 수 재평가도 생성과 동일한 글유형별 학원 타입으로 맞춘다(academy_types 없으면 학원정보 미사용 → 후보 0).
       const pruneSpec = slot ? this.db.getTemplateSpec(domain, String(slot.template_id || "")) : undefined;
-      const candidateCount = slot?.region ? this.pickAcademiesForRegion(domain, String(slot.region), 5, this.resolveAcademyTypes(pruneSpec)).length : 0;
+      const candidateCount = slot?.region ? this.pickAcademiesForRegion(domain, String(slot.region), ACADEMY_MAX_CANDIDATES, this.resolveAcademyTypes(pruneSpec)).length : 0;
       const issues = postSurfaceQualityIssues(r, minChars, candidateCount);
       if (issues.length) targets.push({ id: r.id, title: r.title, chars: r.chars, issues });
     }
