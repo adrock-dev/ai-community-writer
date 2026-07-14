@@ -972,9 +972,6 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         </select>
         <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b> · 주키워드 규칙·품질 지침은 참조 아키타입이 결정합니다(직접 변경 불가).{source ? " 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""}</p>
       </Field>
-      <Field label="디자인"><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
-        {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-      </select><p className="muted small">각 디자인의 구성은 아래 「디자인」 영역에서 확인할 수 있고, 「커스텀」을 고르면 그 영역의 커스텀 디자인 메모가 적용됩니다.</p></Field>
     </div>
     <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
     <div className="grid" style={{ gap: 8 }}>
@@ -1032,8 +1029,11 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         })}
       </div>}
     </div>
+    <Field label="디자인"><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
+      {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+    </select><p className="muted small">글 유형마다 자동 매칭되는 기본 디자인입니다. 아래 목업으로 레이아웃을 확인하세요. 「커스텀」을 고르면 도메인 「디자인」 영역의 커스텀 디자인 메모가 적용됩니다.</p></Field>
     <details className="template-subsection">
-      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>미리보기 (디자인 목업)</h3><p className="muted small">선택한 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info">열기</span></div></summary>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>디자인 목업 미리보기</h3><p className="muted small">위에서 고른 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info">열기</span></div></summary>
       {(() => {
         const opt = designChoices.find((d) => d.id === design);
         return <DesignPreview blueprint={designBlueprintFor(design, opt)} designId={design} designOption={opt} brandColor={brandColor} brand={brand ?? "브랜드"} title={opt?.name ?? design} summary={opt?.summary ?? ""} />;
