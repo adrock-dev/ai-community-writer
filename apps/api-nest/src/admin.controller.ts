@@ -237,7 +237,8 @@ export class AdminController {
     if (!archetype) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
     const axes = (Array.isArray(body.axes) ? body.axes : []).map((a: any) => String(a)).filter((a: string) => ["persona", "intent", "modifier"].includes(a));
     if (!axes.length) throw new HttpException("axes required (persona/intent/modifier 중 하나 이상)", 400);
-    const prompt = buildAxisSuggestPrompt({ domainName: String(config.display_name || domain), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), axes, commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype) });
+    const keywords = (Array.isArray(body.keywords) ? body.keywords : []).map((k: any) => String(k).trim()).filter(Boolean).slice(0, 20);
+    const prompt = buildAxisSuggestPrompt({ domainName: String(config.display_name || domain), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), keywords, axes, commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype) });
     const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
     if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
     const suggestions = parseAxisSuggestion(result.summary, axes);
@@ -939,7 +940,7 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_, n) => {
   return c >>> 0;
 });
 // 축 값 AI 제안 프롬프트: 유형 맥락(아키타입 작성지침 + 커스텀 방향성 + 도메인 공통원칙) + 축별 정의/개수 + JSON-only 출력.
-function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: string; name: string; direction: string; axes: string[]; commonPrinciples?: string; writingGuide?: string[] }): string {
+function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: string; name: string; direction: string; keywords?: string[]; axes: string[]; commonPrinciples?: string; writingGuide?: string[] }): string {
   const axisSpec: Record<string, string> = {
     persona: 'persona: 이 글의 독자(누구에게 말하는가). 구체적 상황·니즈를 담은 짧은 명사구. 예: "주말만 가능한 직장인", "집 근처 학원을 찾는 수강생".',
     intent: 'intent: 사용자가 알고 싶어하는 정보 의도. 짧은 명사구. 예: "준비물", "비용확인", "근처학원".',
@@ -949,11 +950,13 @@ function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: 
   const wanted = o.axes.map((a) => `- ${axisSpec[a]} (${counts[a]})`).join("\n");
   const guide = (o.writingGuide ?? []).map((g) => `- ${g}`).join("\n");
   const principles = String(o.commonPrinciples || "").trim();
+  const keywords = (o.keywords ?? []).filter(Boolean);
   return [
     "너는 한국 운전면허·운전학원 SEO 콘텐츠의 축(axis) 값을 제안하는 도우미다.",
     `대상 글유형: "${o.name || o.kind}" (아키타입 kind=${o.kind}, 주축=${o.primary === "region" ? "지역형(지역+키워드)" : "키워드형"}).`,
     guide ? `이 아키타입이 쓰는 글의 작성 지침(이 글이 무엇을 하는지 참고):\n${guide}` : "",
     o.direction ? `이 커스텀 글유형의 방향성: ${o.direction}` : "",
+    keywords.length ? `이 글유형이 노리는 주키워드(이 키워드에 딱 맞는 값으로 제안):\n${keywords.map((k) => `- ${k}`).join("\n")}` : "",
     principles ? `도메인 공통 원칙(톤·전략, 참고):\n${principles}` : "",
     "위 맥락 전체에 맞춰 아래 축 값을 제안하라:",
     wanted,

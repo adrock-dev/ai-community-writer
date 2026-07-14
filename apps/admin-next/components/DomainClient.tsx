@@ -673,13 +673,13 @@ function Templates({ domain, options, customTemplates, keywordPool, busy, onSave
   const availableItems = allItems.filter((it) => !enabled.has(it.id));
   const availableBuiltins = availableItems.filter((it) => !it.isCustom && builtinExposed(options, it.id));
   const availableCustoms = availableItems.filter((it) => it.isCustom);
-  const specMeta = (spec: TemplateSpec) => `primary: ${spec.primary.join(", ")} · persona ${spec.use_persona ? "사용" : "미사용"} · intent ${spec.with_intent ? "사용" : "미사용"} · modifier ${spec.modifier_count}`;
   const specBadges = (spec: TemplateSpec) => <div className="row">{spec.primary.map((axis) => <span key={axis} className="badge">{axis}</span>)}{spec.use_persona && <span className="badge">persona</span>}{spec.with_intent && <span className="badge">intent</span>}{spec.modifier_count > 0 && <span className="badge">modifier {spec.modifier_count}</span>}<span className="badge info">디자인 {designNameOf(spec.default_design)}</span></div>;
   const customBadges = (t: CustomTemplate) => <div className="row"><span className="badge">아키타입 {t.kind}</span>{t.use_persona ? <span className="badge">persona</span> : null}{t.with_intent ? <span className="badge">intent</span> : null}{t.modifier_count > 0 ? <span className="badge">modifier {t.modifier_count}</span> : null}<span className="badge info">디자인 {designNameOf(t.default_design)}</span></div>;
-  const itemBody = (it: TypeItem) => it.isCustom ? customBadges(it.custom!) : <><p className="muted small">{specMeta(it.spec!)}</p>{specBadges(it.spec!)}</>;
+  // 빌트인은 뱃지만 표시(예전 텍스트 메타 줄은 뱃지와 중복이라 제거). 커스텀은 아키타입 뱃지 포함.
+  const itemBody = (it: TypeItem) => it.isCustom ? customBadges(it.custom!) : specBadges(it.spec!);
   const cardOf = (it: TypeItem, mode: "active" | "add") => mode === "active"
-    ? <div key={it.id} className="option-card active"><div className="spread"><b><span className="badge">{it.id}</span> {it.name}</b><button type="button" className="btn ghost" style={{ padding: "2px 8px" }} disabled={busy} onClick={() => toggle(it.id)}>제거</button></div>{itemBody(it)}</div>
-    : <button key={it.id} type="button" className="option-card" disabled={busy} onClick={() => toggle(it.id)}><div className="spread"><b><span className="badge">{it.id}</span> {it.name}</b><span className="badge success">+ 추가</span></div>{itemBody(it)}</button>;
+    ? <div key={it.id} className="option-card active"><div className="spread"><b><span className="badge">{it.id}</span> {it.name}</b><button type="button" className="btn ghost" style={{ padding: "2px 8px" }} disabled={busy} onClick={() => toggle(it.id)}>제거</button></div><div className="card-divider" />{itemBody(it)}</div>
+    : <button key={it.id} type="button" className="option-card" disabled={busy} onClick={() => toggle(it.id)}><div className="spread"><b><span className="badge">{it.id}</span> {it.name}</b><span className="badge success">+ 추가</span></div><div className="card-divider" />{itemBody(it)}</button>;
   // 빌트인/커스텀을 소제목으로 나눠 렌더(비어있는 그룹은 생략).
   const cardGroup = (items: TypeItem[], mode: "active" | "add") => {
     const bi = items.filter((it) => !it.isCustom), cu = items.filter((it) => it.isCustom);
@@ -804,7 +804,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
     </div>
     {/* 아키타입 개념·주축·5종 설명(하드코딩). 원본 정의는 apps/api-nest/src/archetypes.ts 의 ARCHETYPES. 지침 변경 시 여기 문구도 함께 갱신할 것. */}
     <details className="template-subsection">
-      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>아키타입이란? · 주축과 5종 설명</h3><p className="muted small">글유형이 참조하는 &apos;동작 원형&apos;입니다. 자세한 설명을 펼쳐 보세요.</p></div><span className="badge info">열기</span></div></summary>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>아키타입이란? · 주축과 5종 설명</h3><p className="muted small">글유형이 참조하는 &apos;동작 원형&apos;입니다. 자세한 설명을 펼쳐 보세요.</p></div><span className="badge info toggle-badge" /></div></summary>
       <div className="grid" style={{ gap: 10, marginTop: 8 }}>
         <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 키워드·페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
         <ul className="muted small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
@@ -868,12 +868,6 @@ type TemplateSource = { id: string; label: string; name: string; kind: string; u
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
 // 커스텀 글유형 폼 영역 구분자: "소제목 ──────" 형태로 유사 기능 그룹을 시각적으로 나눈다.
-function FormDivider({ label }: { label?: string }) {
-  return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
-    {label && <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "var(--primary)", padding: "3px 10px", borderRadius: 999, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{label}</span>}
-    <hr style={{ flex: 1, border: "none", borderTop: "1px solid #d8d0f5", margin: 0 }} />
-  </div>;
-}
 
 function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
   mode: "create" | "edit"; domain: string; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
@@ -902,6 +896,8 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   const [dirBusy, setDirBusy] = useState(false);
   const [dirError, setDirError] = useState("");
   const [dirResult, setDirResult] = useState<DirectionValidation | null>(null);
+  // 폼 섹션 접기/펼치기. 생성은 핵심(주제·키워드)만 펼치고, 편집은 전체 펼침. 검증 실패 시 해당 섹션 자동 펼침.
+  const [openSec, setOpenSec] = useState({ topic: true, write: mode === "edit", design: mode === "edit" });
 
   // 입력한 방향성이 절대 원칙·공통원칙·아키타입 작성지침과 중복/충돌하는지 LLM 으로 대조하고, 고유 방향만 남긴 개선안을 제안받는다.
   async function validateDirection() {
@@ -914,7 +910,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     finally { setDirBusy(false); }
   }
 
-  // 켜 놓은 축(persona/intent/modifier)의 값을 LLM 이 이 글유형(kind/이름/방향성)에 맞게 제안해 텍스트영역을 채운다.
+  // 켜 놓은 축(persona/intent/modifier)의 값을 LLM 이 이 글유형(kind/이름/방향성/선택 키워드)에 맞게 제안해 텍스트영역을 채운다.
   // 제안일 뿐이라 사용자가 검토/수정 후 저장(품질 관문=사람). 저장은 하지 않는다.
   async function suggestAxes() {
     const wanted: string[] = [];
@@ -924,7 +920,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     if (!wanted.length) { setAiError("먼저 제안받을 축(persona·intent·modifier)을 ‘사용’으로 켜세요."); return; }
     setAiBusy(true); setAiError("");
     try {
-      const res = await suggestTemplateAxes(domain, { kind, name: name.trim(), direction: direction.trim(), axes: wanted });
+      const res = await suggestTemplateAxes(domain, { kind, name: name.trim(), direction: direction.trim(), keywords: parseLines(keywordVals), axes: wanted });
       if (res.suggestions.persona) setPersonaVals(res.suggestions.persona.join("\n"));
       if (res.suggestions.intent) setIntentVals(res.suggestions.intent.join("\n"));
       if (res.suggestions.modifier) setModifierVals(res.suggestions.modifier.join("\n"));
@@ -968,8 +964,11 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   }
 
   function submit() {
-    if (!name.trim()) { alert("이름을 입력하세요."); return; }
+    if (!name.trim()) { setOpenSec((s) => ({ ...s, topic: true })); alert("이름을 입력하세요."); return; }
     // 축을 '사용'으로 켰으면 값 입력 필수(빈 채로 저장하면 그 축은 생성에서 무시됨 = 품질 이슈). 폴백 없음.
+    // 값이 든 섹션(작성 방향·축)이 접혀 있을 수 있으므로, 검증 실패 시 자동으로 펼쳐 사용자가 바로 고치게 한다.
+    const axisMissing = (usePersona && !parseLines(personaVals).length) || (withIntent && !parseLines(intentVals).length) || (modifierCount > 0 && !parseLines(modifierVals).length);
+    if (axisMissing) setOpenSec((s) => ({ ...s, write: true }));
     if (usePersona && !parseLines(personaVals).length) { alert("persona 사용을 켰으면 값을 한 줄 이상 입력하세요. (비우려면 사용을 끄세요)"); return; }
     if (withIntent && !parseLines(intentVals).length) { alert("intent 사용을 켰으면 값을 한 줄 이상 입력하세요. (비우려면 사용을 끄세요)"); return; }
     if (modifierCount > 0 && !parseLines(modifierVals).length) { alert("modifier 사용을 켰으면 값을 한 줄 이상 입력하세요. (비우려면 사용을 끄세요)"); return; }
@@ -1008,7 +1007,9 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </select>
       <p className="muted small">{source ? "선택한 글유형의 값을 채웠습니다. 필요한 부분만 고치면 됩니다. weight·축 태그·기존 설정은 그대로 복제되고, 아키타입은 소스로 고정됩니다." : "빈 폼으로 직접 만들거나, 기존 글유형(빌트인/커스텀)을 골라 값을 채워 시작할 수 있습니다."}</p>
     </Field>}
-    <FormDivider label="주제 · 키워드" />
+    <details className="template-subsection" open={openSec.topic} onToggle={(e) => { const open = e.currentTarget.open; setOpenSec((s) => ({ ...s, topic: open })); }}>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>주제 · 키워드</h3><p className="muted small">이름 · 참조 아키타입 · 키워드 선택</p></div><span className="badge info">{openSec.topic ? "접기" : "열기"}</span></div></summary>
+      <div className="grid" style={{ marginTop: 8 }}>
     <div className="grid grid-2">
       <Field label="이름"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 심야 학원 특집" /></Field>
       <Field label="참조 아키타입 (kind)">
@@ -1035,7 +1036,11 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         })}
       </div>}
     </div>
-    <FormDivider label="작성 방향 · 축" />
+      </div>
+    </details>
+    <details className="template-subsection" open={openSec.write} onToggle={(e) => { const open = e.currentTarget.open; setOpenSec((s) => ({ ...s, write: open })); }}>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>작성 방향 · 축</h3><p className="muted small">방향성 · 축 값(persona·intent·modifier) · 학원 타입</p></div><span className="badge info">{openSec.write ? "접기" : "열기"}</span></div></summary>
+      <div className="grid" style={{ marginTop: 8 }}>
     <Field label="방향성 (선택)">
       <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" />
       <div className="row" style={{ gap: 8, marginTop: 4 }}>
@@ -1084,26 +1089,32 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </div>
     </div>
     {isRegionPrimary && <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">학원 타입 (선택)</b><p className="muted small">이 글유형이 후보로 쓸 학원 타입입니다. <b>비우면 학원정보를 쓰지 않고</b> 지역 가이드/체크리스트 중심으로 작성합니다. 지역형 글유형에만 적용됩니다.</p></div>
+      <div><b className="small">학원 타입 (선택)</b><p className="muted small">이 글유형이 후보로 쓸 학원 타입입니다. 괄호 안 숫자는 이 도메인에 <b>동기화된 학원 수</b>예요. <b>비우면 학원정보를 쓰지 않고</b> 지역 가이드/체크리스트 중심으로 작성합니다. 지역형 글유형에만 적용됩니다.</p></div>
       <div className="info-panel grid grid-3" style={{ gap: 6 }}>
         {(academyTypeOptions ?? []).map((t) => <label key={t.value} className="row" style={{ gap: 6 }}>
           <input type="checkbox" checked={academyTypes.has(t.value)} onChange={(e) => setAcademyTypes((prev) => { const next = new Set(prev); if (e.target.checked) next.add(t.value); else next.delete(t.value); return next; })} /> {t.value} <span className="muted small">({t.count})</span>
         </label>)}
         {!(academyTypeOptions ?? []).length && <p className="muted small">먼저 학원 동기화를 실행하면 타입 목록이 표시됩니다.</p>}
       </div>
+      {(academyTypeOptions ?? []).length > 0 && (academyTypeOptions ?? []).every((t) => !t.count) && <p className="toast-warn small">아직 이 도메인에 동기화된 학원이 없습니다(모든 타입 0건). 학원 타입을 골라도 실제 후보가 없어 지역 가이드/체크리스트로만 작성됩니다 — 먼저 「원천 데이터」 탭에서 <b>학원 동기화</b>를 실행하세요.</p>}
     </div>}
-    <FormDivider label="디자인" />
+      </div>
+    </details>
+    <details className="template-subsection" open={openSec.design} onToggle={(e) => { const open = e.currentTarget.open; setOpenSec((s) => ({ ...s, design: open })); }}>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>디자인</h3><p className="muted small">기본 디자인 · 목업 미리보기</p></div><span className="badge info">{openSec.design ? "접기" : "열기"}</span></div></summary>
+      <div className="grid" style={{ marginTop: 8 }}>
     <Field label="디자인"><p className="muted small">글 유형마다 자동 매칭되는 기본 디자인입니다. 아래 목업으로 레이아웃을 확인하세요. 「커스텀」을 고르면 도메인 「디자인」 영역의 커스텀 디자인 메모가 적용됩니다.</p><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
       {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
     </select></Field>
     <details className="template-subsection">
-      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>디자인 목업 미리보기</h3><p className="muted small">위에서 고른 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info">열기</span></div></summary>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>디자인 목업 미리보기</h3><p className="muted small">위에서 고른 디자인의 레이아웃만 보여주는 예시 목업입니다. 실제 글 내용·방향성·축 값은 반영하지 않습니다.</p></div><span className="badge info toggle-badge" /></div></summary>
       {(() => {
         const opt = designChoices.find((d) => d.id === design);
         return <DesignPreview blueprint={designBlueprintFor(design, opt)} designId={design} designOption={opt} brandColor={brandColor} brand={brand ?? "브랜드"} title={opt?.name ?? design} summary={opt?.summary ?? ""} />;
       })()}
     </details>
-    <FormDivider />
+      </div>
+    </details>
     <div className="row">
       <button type="button" className="btn primary" disabled={busy} onClick={submit}>{busy ? "저장 중..." : mode === "edit" ? "저장" : source ? "복제해서 만들기" : "만들기"}</button>
       {mode === "create" && <button type="button" className="btn" disabled={busy} onClick={resetForm} title="입력한 내용을 모두 지우고 빈 폼으로 되돌립니다">초기화</button>}

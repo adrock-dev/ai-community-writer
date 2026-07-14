@@ -103,7 +103,12 @@ tr:hover td { background: #fbfdff; }
 .step { text-align: left; border: 1px solid var(--line); background: white; border-radius: 14px; padding: 14px; }
 .step.done { border-color: #bbf7d0; background: #f0fdf4; }
 .step.active { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(81,50,215,.1); }
-.option-card { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: white; text-align: left; }
+.option-card { border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: white; text-align: left; display: flex; flex-direction: column; gap: 8px; }
+/* 글 유형 카드: 제목 행과 하단 내용(아키타입·persona 등) 구분 헤어라인. 카드 패딩(14px)만큼 좌우로 빼내 양끝까지 닿게 한다. */
+.card-divider { height: 0; border: none; border-top: 1px solid var(--line); align-self: stretch; margin-left: -14px; margin-right: -14px; }
+/* uncontrolled <details> 요약 뱃지: 열림 상태에 따라 '열기'/'접기' 자동 전환(JS 없이 CSS로). */
+.toggle-badge::after { content: "열기"; }
+details[open] > summary .toggle-badge::after { content: "접기"; }
 .option-card.active { border-color: var(--primary); background: #f7f5ff; }
 .info-panel { border: 1px solid #e2e8f0; border-left: 4px solid #cbd5e1; border-radius: 12px; padding: 14px; background: #f8fafc; text-align: left; box-shadow: none; }
 .info-panel p { margin: 8px 0 0; }
