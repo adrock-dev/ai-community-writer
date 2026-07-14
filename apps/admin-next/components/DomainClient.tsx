@@ -1077,15 +1077,15 @@ function designBlueprintFor(id: string, option?: DesignTemplateOption): typeof D
   if (builtin) return { ...builtin };
   const sections = uniquePreviewItems(option?.structure_guide?.length ? option.structure_guide : ["상단 구성", "본문 섹션", "비교/요약", "CTA"]);
   return {
-    label: option?.summary || "업로드 HTML에서 추출한 디자인",
-    title: `${option?.name || "업로드 디자인"} 예시 글`,
-    lead: option?.summary || "업로드한 HTML의 섹션 흐름과 시각 스타일 힌트를 반영합니다.",
-    chips: ["HTML 기반", "사용자 프리셋", "디자인"],
+    label: option?.summary || "사용자 지정 디자인",
+    title: `${option?.name || "사용자 지정 디자인"} 예시 글`,
+    lead: option?.summary || "지정한 디자인 메모의 섹션 흐름과 스타일을 반영합니다.",
+    chips: ["사용자 지정", "디자인"],
     sections,
-    tone: option?.tone || "업로드 예시 기반 브랜드 톤",
+    tone: option?.tone || "브랜드 톤",
     blocks: sections.slice(0, 4).map((section, index) => ({
       title: section.replace(/^\d+\)\s*/, ""),
-      body: index === 0 ? "예시 HTML에서 추출한 상단 구성과 문단 리듬을 따릅니다." : "색상, 카드감, 여백, CTA 강조 방식은 업로드 예시의 분위기를 참고합니다.",
+      body: index === 0 ? "지정한 디자인 메모의 상단 구성과 문단 리듬을 따릅니다." : "색상, 카드감, 여백, CTA 강조 방식을 디자인 메모에 맞춰 반영합니다.",
       kind: index === 2 ? "table" : index === 3 ? "cta" : undefined,
     })),
   };
@@ -1561,8 +1561,7 @@ function Settings({ domain, options, onSave, onRefresh }: { domain: DomainConfig
 }
 
 function DesignPreview({ blueprint, designId, designOption, brandColor, brand, title, summary }: { blueprint: typeof DESIGN_BLUEPRINTS[string]; designId: string; designOption?: DesignTemplateOption; brandColor?: string | null; brand: string; title: string; summary: string }) {
-  const isUploaded = designOption?.source_type === "uploaded_html";
-  const spec = isUploaded ? { topCta: "HTML 스타일", bottomCta: "문의하기" } : PREVIEW_DESIGN_SPECS[designId] ?? PREVIEW_DESIGN_SPECS.editorial;
+  const spec = PREVIEW_DESIGN_SPECS[designId] ?? PREVIEW_DESIGN_SPECS.editorial;
   const theme = previewThemeFor(designId, brandColor, designOption);
   const previewStyle = {
     ["--accent" as string]: theme.accent,
@@ -1573,24 +1572,18 @@ function DesignPreview({ blueprint, designId, designOption, brandColor, brand, t
   };
   return <aside className="preview-panel">
     <div className="preview-head"><div><b>디자인 미리보기</b><p className="muted small">{blueprint.label}</p></div><span className="badge info">{designId}</span></div>
-    {isUploaded && <UploadedPresetSourcePreview html={designOption?.source_html} />}
-    {isUploaded && <div className="preview-subhead preset-info"><b>생성 구조 미리보기</b><p className="small">업로드 HTML의 구조와 CSS 힌트를 참고하지만, 실제 글은 글 유형/검증 자료를 우선해 재구성됩니다. 원본과 1:1 동일 렌더링을 보장하지 않습니다.</p></div>}
-    <div className={`preview-phone design-${designId} ${isUploaded ? "uploaded-preview" : ""}`} style={previewStyle}>
-      {isUploaded
-        ? <UploadedPresetPreview brand={brand} blueprint={blueprint} />
-        : <>
-          <div className="preview-top"><div><b>{brand}</b><p>{blueprint.tone}</p></div><span className="preview-cta">{spec.topCta}</span></div>
-          <div className="preview-hero"><span>대표 영역</span></div>
-          <div className="preview-body">
-            <div className="preview-meta"><span>26.04.03</span><span>조회 0</span></div>
-            <h4>{blueprint.title}</h4>
-            <div className="preview-divider" />
-            <div className="row">{blueprint.chips.map((chip, index) => <span className="badge" key={`${chip}-${index}`}>{chip}</span>)}</div>
-            <p className="muted small">{blueprint.lead}</p>
-            {blueprint.blocks.map((block, index) => <PreviewBlock key={`${block.title}-${index}`} block={block} />)}
-            <section className="preview-bottom-cta"><b>{brand}에서 {spec.bottomCta}</b><button className="btn primary">{spec.bottomCta}</button></section>
-          </div>
-        </>}
+    <div className={`preview-phone design-${designId}`} style={previewStyle}>
+      <div className="preview-top"><div><b>{brand}</b><p>{blueprint.tone}</p></div><span className="preview-cta">{spec.topCta}</span></div>
+      <div className="preview-hero"><span>대표 영역</span></div>
+      <div className="preview-body">
+        <div className="preview-meta"><span>26.04.03</span><span>조회 0</span></div>
+        <h4>{blueprint.title}</h4>
+        <div className="preview-divider" />
+        <div className="row">{blueprint.chips.map((chip, index) => <span className="badge" key={`${chip}-${index}`}>{chip}</span>)}</div>
+        <p className="muted small">{blueprint.lead}</p>
+        {blueprint.blocks.map((block, index) => <PreviewBlock key={`${block.title}-${index}`} block={block} />)}
+        <section className="preview-bottom-cta"><b>{brand}에서 {spec.bottomCta}</b><button className="btn primary">{spec.bottomCta}</button></section>
+      </div>
     </div>
     <div className="card card-pad preview-spec">
       <h3>{title}</h3>
@@ -1599,44 +1592,6 @@ function DesignPreview({ blueprint, designId, designOption, brandColor, brand, t
       <div className="row">{blueprint.sections.map((s, index) => <span className="badge" key={`${s}-${index}`}>{s}</span>)}</div>
     </div>
   </aside>;
-}
-
-function UploadedPresetSourcePreview({ html }: { html?: string | null }) {
-  if (!html) return <div className="uploaded-source-empty">원본 HTML이 저장되지 않은 프리셋입니다.</div>;
-  return <section className="uploaded-source-preview">
-    <div className="spread"><h3>원본 HTML 미리보기</h3><span className="badge info">sandbox</span></div>
-    <iframe title="업로드 HTML 원본 미리보기" sandbox="" referrerPolicy="no-referrer" srcDoc={html} />
-  </section>;
-}
-
-function UploadedPresetPreview({ brand, blueprint }: { brand: string; blueprint: typeof DESIGN_BLUEPRINTS[string] }) {
-  const sections = blueprint.sections.length ? blueprint.sections : ["체크포인트", "BEST 후보", "비교표", "FAQ"];
-  return <>
-    <header className="uploaded-hero">
-      <span className="uploaded-eyebrow">{brand} 가이드</span>
-      <h4>{blueprint.title}</h4>
-      <p>{blueprint.lead}</p>
-      <div className="uploaded-meta"><span>2026.04.03</span><span>5개 후보 비교</span><span>셔틀·비용·동선</span></div>
-    </header>
-    <div className="uploaded-wrap">
-      <div className="uploaded-notice"><b>확인 포인트</b> 실제 글에서는 후보/검증 자료의 지역과 학원 정보만 사용합니다.</div>
-      <nav className="uploaded-toc">
-        <b>목차</b>
-        <ol>{sections.slice(0, 5).map((section, index) => <li key={`${section}-${index}`}>{section.replace(/^\d+\)\s*/, "")}</li>)}</ol>
-      </nav>
-      <ul className="uploaded-checklist">
-        <li><b>거리/셔틀</b><span>생활권 기준으로 통학 부담 확인</span></li>
-        <li><b>비용/과정</b><span>총액과 추가 비용을 분리해서 비교</span></li>
-      </ul>
-      {[1, 2, 3].map((rank) => <section className="uploaded-school" key={rank}>
-        <div className="uploaded-school-head"><span className={rank === 1 ? "gold" : ""}>{rank}</span><div><b>후보 학원 {rank}</b><p>추천 태그와 핵심 장점을 한 줄로 표시</p></div></div>
-        <div className="uploaded-spec"><span>주소</span><b>검증된 주소</b><span>셔틀</span><b>상담 확인</b><span>추천</span><b>생활권·목적별 판단</b></div>
-        <div className="uploaded-procon"><p><b>좋아요</b> 접근성/과정 장점</p><p><b>확인하세요</b> 비용/일정/셔틀</p></div>
-      </section>)}
-      <div className="uploaded-table"><b>한눈에 보는 비교표</b><div><span>학원</span><span>동선</span><span>강점</span><span>A</span><span>가까움</span><span>셔틀</span><span>B</span><span>보통</span><span>자체 시험</span></div></div>
-      <section className="uploaded-cta"><b>내 조건에 맞는 후보를 다시 확인하세요</b><button type="button" className="btn primary">상담/문의</button></section>
-    </div>
-  </>;
 }
 
 function previewThemeFor(designId: string, brandColor: string | null | undefined, option?: DesignTemplateOption): { accent: string; soft: string; pageBg: string; radius: string } {
