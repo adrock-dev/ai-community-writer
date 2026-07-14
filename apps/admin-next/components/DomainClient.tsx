@@ -988,10 +988,15 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </Field>
     </div>
     <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 한 줄에 하나씩 적습니다. <b>적으면 그 키워드를 그대로 사용</b>(아키타입 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택. 아래 풀에서 클릭하면 추가되고, 풀에 없는 키워드도 직접 입력할 수 있습니다.</p></div>
+      <div><b className="small">키워드 선택 (선택)</b><p className="muted small">이 글유형이 쓸 키워드를 한 줄에 하나씩 적습니다. <b>적으면 그 키워드를 그대로 사용</b>(아키타입 패턴 무시), <b>비우면 아키타입 패턴</b>으로 자동 선택. 아래 <b>키워드 마스터</b>에서 클릭하면 추가되고, 마스터에 없는 키워드도 직접 입력할 수 있습니다.</p></div>
       <textarea className="textarea" rows={3} value={keywordVals} onChange={(e) => setKeywordVals(e.target.value)} placeholder={"운전면허학원\n자동차운전전문학원   (한 줄에 하나 · 비우면 아키타입 패턴)"} />
+      {(() => {
+        const poolSet = new Set(keywordPool ?? []);
+        const unknown = parseLines(keywordVals).filter((k) => !poolSet.has(k));
+        return unknown.length > 0 ? <p className="toast-warn small">⚠️ 키워드 마스터에 없는 키워드: {unknown.join(", ")} — 지역형 글유형은 영향 없지만, 키워드형은 검색량·경쟁도가 없어 우선순위 0으로 취급돼 대량 선별에서 후순위가 됩니다. 우선순위를 반영하려면 「공통 설정」 탭의 키워드 마스터에 등록하세요.</p> : null;
+      })()}
       {(keywordPool ?? []).length > 0 && <div className="row" style={{ flexWrap: "wrap", gap: 4 }}>
-        <span className="muted small" style={{ alignSelf: "center" }}>풀에서 추가:</span>
+        <span className="muted small" style={{ alignSelf: "center" }}>키워드 마스터:</span>
         {(keywordPool ?? []).map((kw) => {
           const has = parseLines(keywordVals).includes(kw);
           return <button key={kw} type="button" className={`btn small ${has ? "primary" : ""}`} style={{ padding: "2px 8px" }}
