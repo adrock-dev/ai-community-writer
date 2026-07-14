@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
-import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, defaultDesignForTemplate } from "./constants.js";
+import { AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
@@ -762,16 +762,7 @@ ${originalArticlePatternGuide(slot)}
 ${facts || "없음"}
 
 절대 원칙:
-- API 자료는 글 재료일 뿐이다. 주 키워드/지역/제목과 직접 맞는 학원만 본문 후보·표·사진·CTA에 사용한다.
-- 소개 가능한 후보가 1곳 이상이면 실제 후보명을 본문과 표에 반드시 최소 1개 이상 포함한다. 후보명이 빠진 글은 일반론이라 실패다.
-- 주소가 주제 지역과 일치하는 후보를 먼저 소개한다. 주소가 다르지만 "지역 중심 기준 거리"가 있는 후보는 해당 지역 안의 학원이 아니라 "인근/주변 후보"로 분리해 설명한다.
-- 다른 시·군·구 후보를 주제 지역 내부 학원처럼 쓰지 말 것. 후보가 부족하면 부족한 그대로 설명한다.
-- 확인된 콘텐츠 재료에 없는 학원명·사진·주소·전화번호·가격·셔틀·합격률·3일 합격·당일 합격·합격 보장·지역화폐·후기는 절대 생성하지 말 것.
-- 제공된 후보 수보다 큰 숫자를 제목/본문에 쓰지 말 것. 예: 후보가 2곳이면 '3곳', 'BEST5' 금지.
-- 출처번호 [1], [2]를 본문에 노출하지 말 것. 근거는 문장 안에 자연스럽게 녹인다.
-- 내부 API URL이나 get-all-academy 주소는 내부 데이터 경로이므로 참고자료/출처 섹션에 절대 쓰지 말 것.
-- 출처/참고자료 섹션은 도로교통공단 등 외부 공신력 자료를 실제로 인용했을 때만 만든다. 그렇지 않으면 출처 섹션 자체를 만들지 않는다.
-- Markdown 굵게 표시는 원본 블로그처럼 핵심 학원명·비용·셔틀·준비물·주의점에만 적당히 사용한다. 문장 전체를 굵게 만들지는 않는다.
+${DRIVING_ABSOLUTE_PRINCIPLES}
 
 원본 레퍼런스 품질 기준:
 - 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장, 관련 내부링크 2~4개 권장, FAQ는 필수 아님.

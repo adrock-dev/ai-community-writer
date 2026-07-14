@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, suggestTemplateAxes, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, suggestTemplateAxes, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -869,6 +869,20 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   const isRegionPrimary = (kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region";
   const [aiBusy, setAiBusy] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [dirBusy, setDirBusy] = useState(false);
+  const [dirError, setDirError] = useState("");
+  const [dirResult, setDirResult] = useState<DirectionValidation | null>(null);
+
+  // 입력한 방향성이 절대 원칙·공통원칙·아키타입 작성지침과 중복/충돌하는지 LLM 으로 대조하고, 고유 방향만 남긴 개선안을 제안받는다.
+  async function validateDirection() {
+    if (!direction.trim()) { setDirError("먼저 검증할 방향성을 입력하세요."); return; }
+    setDirBusy(true); setDirError(""); setDirResult(null);
+    try {
+      const res = await validateTemplateDirection(domain, { kind, name: name.trim(), direction: direction.trim(), current_direction: initial?.default_direction ?? "" });
+      setDirResult(res.validation);
+    } catch (e) { setDirError(e instanceof Error ? e.message : String(e)); }
+    finally { setDirBusy(false); }
+  }
 
   // 켜 놓은 축(persona/intent/modifier)의 값을 LLM 이 이 글유형(kind/이름/방향성)에 맞게 제안해 텍스트영역을 채운다.
   // 제안일 뿐이라 사용자가 검토/수정 후 저장(품질 관문=사람). 저장은 하지 않는다.
@@ -973,7 +987,24 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b> · 주키워드 규칙·품질 지침은 참조 아키타입이 결정합니다(직접 변경 불가).{source ? " 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""}</p>
       </Field>
     </div>
-    <Field label="방향성 (선택)"><textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" /></Field>
+    <Field label="방향성 (선택)">
+      <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" />
+      <div className="row" style={{ gap: 8, marginTop: 4 }}>
+        <button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={dirBusy || busy || !direction.trim()} onClick={() => void validateDirection()} title="입력한 방향성이 이미 강제되는 절대 원칙·공통원칙·작성 지침과 겹치는지 대조하고, 이 글유형만의 방향만 남긴 개선안을 제안합니다.">{dirBusy ? "검증 중..." : "🔎 방향성 검증"}</button>
+      </div>
+      <p className="muted small">🔎 <b>방향성 검증</b>: 방향성은 <b>이 글유형만의 방향</b>(무엇을 어떤 각도로 다루고 어떤 전환으로 잇는지)을 적는 자리입니다. 날조 금지·데이터 검증 같은 <b>안전·데이터 규칙은 이미 모든 글에 강제(절대 원칙)</b>되니 방향성에 다시 쓰면 중복입니다. 버튼을 누르면 <b>절대 원칙·공통원칙·아키타입 작성 지침</b>과 대조해 중복/충돌을 짚고, 고유 방향만 남긴 개선안을 제안합니다. (제안일 뿐 자동 저장 안 함 · codex/claude CLI 인증 필요)</p>
+      {dirError && <p className="toast-warn small">{dirError}</p>}
+      {dirResult && <div className="info-panel grid" style={{ gap: 6, marginTop: 4 }}>
+        {dirResult.summary && <p className="small" style={{ margin: 0 }}><b>진단:</b> {dirResult.summary}</p>}
+        {dirResult.redundant.length > 0 && <div className="small"><b>중복(이미 강제됨):</b><ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{dirResult.redundant.map((r, i) => <li key={i}>{r.text}{r.overlaps ? <span className="muted"> — {r.overlaps}</span> : null}</li>)}</ul></div>}
+        {dirResult.conflicting.length > 0 && <div className="small" style={{ color: "var(--danger)" }}><b>충돌:</b><ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{dirResult.conflicting.map((r, i) => <li key={i}>{r.text}{r.reason ? <span className="muted"> — {r.reason}</span> : null}</li>)}</ul></div>}
+        <div className="small"><b>제안 방향성:</b><p className="preview-block" style={{ margin: "4px 0 0" }}>{dirResult.suggested_direction}</p></div>
+        <div className="row" style={{ gap: 8 }}>
+          <button type="button" className="btn primary" disabled={busy} onClick={() => { setDirection(dirResult.suggested_direction); setDirResult(null); }}>제안으로 변경</button>
+          <button type="button" className="btn" onClick={() => setDirResult(null)}>닫기</button>
+        </div>
+      </div>}
+    </Field>
     <div className="grid" style={{ gap: 8 }}>
       <div className="spread">
         <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">이 글유형이 쓸 persona·intent·modifier 값입니다. <b>쓸 축을 켜면 값을 반드시 입력하세요</b> — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩.</p></div>

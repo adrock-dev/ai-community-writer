@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -241,6 +241,28 @@ export class AdminController {
     const suggestions = parseAxisSuggestion(result.summary, axes);
     if (!Object.keys(suggestions).length) throw new HttpException("LLM 응답에서 축 값을 추출하지 못했습니다. 다시 시도해 주세요.", 502);
     return { ok: true, suggestions, provider: result.provider, model: result.model };
+  }
+
+  // 방향성 검증: 입력한 방향성이 절대 원칙(하드코딩 보편 바닥)·공통원칙·아키타입 writing_guide 와 중복/충돌하는지 LLM 으로 대조하고,
+  // 이 글유형 고유 방향만 남긴 개선안을 제안한다. 저장하지 않음(프론트가 사용자 확인 후 방향성 폼에 반영).
+  @Post("domains/:domain/templates/validate-direction")
+  async validateDirection(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers);
+    const config = domainOut(this.requireDomain(domain));
+    const kind = String(body.kind || "").trim();
+    const archetype = getArchetype(kind);
+    if (!archetype) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    const direction = String(body.direction || "").trim();
+    if (!direction) throw new HttpException("검증할 방향성(direction)을 입력하세요.", 400);
+    const prompt = buildDirectionValidatePrompt({
+      name: String(body.name || ""), kind, direction, currentDirection: String(body.current_direction || ""),
+      commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype),
+    });
+    const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
+    if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
+    const validation = parseDirectionValidation(result.summary);
+    if (!validation) throw new HttpException("LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
+    return { ok: true, validation, provider: result.provider, model: result.model };
   }
 
   // 레시피↔데이터 정합성(coherence) — 읽기/계산 전용. 생성 전에 얇은/근거없는 조합을 사전 경고(전 빌트인+커스텀).
@@ -907,6 +929,40 @@ function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: 
     "규칙: 운전면허·운전학원 도메인에 현실적으로 맞는 한국어 값만. 각 값은 짧고 서로 중복 없이. 가격·합격률 등 확인 불가한 수치를 값에 넣지 말 것.",
     '출력은 오직 JSON 하나. 키는 요청한 축만 포함. 예: {"persona":["...","..."],"modifier":["..."]}. JSON 외 다른 텍스트·코드펜스 금지.',
   ].filter(Boolean).join("\n\n");
+}
+
+// 방향성 검증 프롬프트: 방향성 ↔ (절대 원칙·공통원칙·writing_guide) 대조 + 고유 방향만 남긴 개선안 요청.
+function buildDirectionValidatePrompt(o: { name: string; kind: string; direction: string; currentDirection?: string; commonPrinciples?: string; writingGuide?: string[] }): string {
+  const guide = (o.writingGuide ?? []).map((g) => `- ${g}`).join("\n");
+  const principles = String(o.commonPrinciples || "").trim();
+  const current = String(o.currentDirection || "").trim();
+  return [
+    "너는 한국 운전면허·운전학원 SEO 콘텐츠 시스템에서 '글유형 방향성(direction)'을 검증하는 도우미다.",
+    "방향성은 '이 글유형만의 방향(무엇을 어떤 각도로 다루고, 어떤 전환으로 잇는지)'을 적는 자리다. 아래 '이미 강제되는 규칙'을 다시 진술하면 중복(불필요)이다.",
+    `대상 글유형: "${o.name || o.kind}" (아키타입 kind=${o.kind}).`,
+    `[모든 글에 이미 강제되는 절대 원칙 — 방향성에 다시 쓰면 중복]\n${DRIVING_ABSOLUTE_PRINCIPLES}`,
+    principles ? `[도메인 공통 원칙(톤·정책) — 다시 쓰면 중복]\n${principles}` : "",
+    guide ? `[이 아키타입 작성 지침(writing_guide) — 다시 쓰면 중복]\n${guide}` : "",
+    current ? `[이 글유형의 현재 방향성(참고)]\n${current}` : "",
+    `[검증할 방향성 — 사용자 입력]\n${o.direction}`,
+    "작업: (1) '검증할 방향성'의 각 요소가 위 절대 원칙/공통 원칙/작성 지침과 중복(이미 강제됨)되는지, 충돌하는지 판단하라. (2) 중복·충돌을 제거하고 이 글유형만의 고유 방향만 남긴 개선된 방향성을 1~3문장으로 제안하라. 고유 방향이 없으면 현재 방향성을 유지하는 제안을 하라.",
+    "규칙: 안전·데이터 규칙(날조 금지, 내부흔적 금지 등)은 방향성에 넣지 않는다(이미 강제됨). 제안은 한국어로 간결하게.",
+    '출력은 오직 JSON 하나: {"redundant":[{"text":"중복 부분","overlaps":"절대원칙|공통원칙|작성지침"}],"conflicting":[{"text":"충돌 부분","reason":"이유"}],"suggested_direction":"개선된 방향성 문장","summary":"한 문장 요약"}. JSON 외 텍스트·코드펜스 금지.',
+  ].filter(Boolean).join("\n\n");
+}
+
+// 방향성 검증 응답 파싱. 첫 JSON 블록 추출 후 필드 정규화. suggested_direction 이 없으면 실패(null).
+function parseDirectionValidation(text: string): { redundant: Array<{ text: string; overlaps: string }>; conflicting: Array<{ text: string; reason: string }>; suggested_direction: string; summary: string } | null {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let obj: any;
+  try { obj = JSON.parse(m[0]); } catch { return null; }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  const suggested = String(obj.suggested_direction ?? "").trim();
+  if (!suggested) return null;
+  const redundant = Array.isArray(obj.redundant) ? obj.redundant.map((r: any) => ({ text: String(r?.text ?? "").trim(), overlaps: String(r?.overlaps ?? "").trim() })).filter((r: any) => r.text).slice(0, 12) : [];
+  const conflicting = Array.isArray(obj.conflicting) ? obj.conflicting.map((r: any) => ({ text: String(r?.text ?? "").trim(), reason: String(r?.reason ?? "").trim() })).filter((r: any) => r.text).slice(0, 12) : [];
+  return { redundant, conflicting, suggested_direction: suggested, summary: String(obj.summary ?? "").trim() };
 }
 
 // LLM 응답 텍스트에서 첫 JSON 블록을 추출·검증해 요청한 축의 문자열 배열만 반환(코드펜스/설명 섞여도 방어).
