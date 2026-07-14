@@ -889,9 +889,9 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   }
 
   function selectSource(id: string) {
-    setSource(id);
     const src = sources?.find((s) => s.id === id);
-    if (!src) return; // 직접 입력: 현재 값 유지, 아키타입만 다시 선택 가능.
+    if (!src) { resetForm(); return; } // 직접 입력(빈 값): 프리필됐던 값까지 모두 지우고 빈 폼으로 되돌린다.
+    setSource(id);
     setName(`${src.name} (복사본)`);
     setKind(src.kind);
     setDesign(src.default_design);
