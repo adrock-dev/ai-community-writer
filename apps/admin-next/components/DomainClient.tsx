@@ -793,7 +793,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
       <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다.</p><p className="muted small">「새로고침」은 목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다. 이 화면에서 만들기/편집/삭제한 뒤엔 자동 갱신되며, 다른 창·다른 사람이 바꾼 경우에만 수동으로 누르면 됩니다.</p></div>
       <div className="row" style={{ flexShrink: 0, whiteSpace: "nowrap" }}><span className="badge info">{custom.length}개</span><button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={loading || busy} onClick={() => void reload()} title="목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다">{loading ? "..." : "새로고침"}</button></div>
     </div>
-    <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
+    <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 키워드·페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
     {error && <p className="toast-warn">{error}</p>}
 
     <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
@@ -845,6 +845,14 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
 type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[]; keyword_filter?: string[]; primary_override?: "region" | "keyword" };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
+// 커스텀 글유형 폼 영역 구분자: "소제목 ──────" 형태로 유사 기능 그룹을 시각적으로 나눈다.
+function FormDivider({ label }: { label: string }) {
+  return <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}>
+    <span style={{ fontSize: 11, fontWeight: 800, color: "#fff", background: "var(--primary)", padding: "3px 10px", borderRadius: 999, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>{label}</span>
+    <hr style={{ flex: 1, border: "none", borderTop: "1px solid #d8d0f5", margin: 0 }} />
+  </div>;
+}
+
 function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
   mode: "create" | "edit"; domain: string; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
   sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; keywordPool?: string[]; brandColor?: string | null; brand?: string; busy: boolean;
@@ -978,6 +986,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </select>
       <p className="muted small">{source ? "선택한 글유형의 값을 채웠습니다. 필요한 부분만 고치면 됩니다. weight·축 태그·기존 설정은 그대로 복제되고, 아키타입은 소스로 고정됩니다." : "빈 폼으로 직접 만들거나, 기존 글유형(빌트인/커스텀)을 골라 값을 채워 시작할 수 있습니다."}</p>
     </Field>}
+    <FormDivider label="주제 · 키워드" />
     <div className="grid grid-2">
       <Field label="이름"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 심야 학원 특집" /></Field>
       <Field label="참조 아키타입 (kind)">
@@ -1004,6 +1013,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         })}
       </div>}
     </div>
+    <FormDivider label="작성 방향 · 축" />
     <Field label="방향성 (선택)">
       <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" />
       <div className="row" style={{ gap: 8, marginTop: 4 }}>
@@ -1060,6 +1070,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         {!(academyTypeOptions ?? []).length && <p className="muted small">먼저 학원 동기화를 실행하면 타입 목록이 표시됩니다.</p>}
       </div>
     </div>}
+    <FormDivider label="디자인" />
     <Field label="디자인"><p className="muted small">글 유형마다 자동 매칭되는 기본 디자인입니다. 아래 목업으로 레이아웃을 확인하세요. 「커스텀」을 고르면 도메인 「디자인」 영역의 커스텀 디자인 메모가 적용됩니다.</p><select className="select" value={design} onChange={(e) => setDesign(e.target.value)}>
       {designChoices.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
     </select></Field>
