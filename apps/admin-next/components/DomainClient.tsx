@@ -1060,7 +1060,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         <select className="select" value={kind} onChange={(e) => setKind(e.target.value)} disabled={sourceLocked}>
           {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
         </select>
-        <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b> · 주키워드 규칙·품질 지침은 참조 아키타입이 결정합니다(직접 변경 불가).{source ? " 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""}</p>
+        <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b>{source ? " · 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""}</p>
       </Field>
     </div>
     <div className="grid" style={{ gap: 8 }}>
