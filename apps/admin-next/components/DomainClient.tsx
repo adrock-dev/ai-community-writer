@@ -564,7 +564,7 @@ function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { t
   if (counts.failed > 0) return { title: "실패 작업부터 확인하세요", desc: `${counts.failed.toLocaleString()}개 실패가 있어 같은 조건으로 다시 만들기 전에 에러를 먼저 봐야 합니다.`, cta: "작업 상태 확인", mode: "review", focus: "jobs" };
   if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "작업 상태 확인", mode: "review", focus: "jobs" };
   if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "테스트 작성 시작", mode: "basic", focus: "test-write" };
-  if (domain.templates_enabled.length === 0) return { title: "먼저 글 유형을 켜세요", desc: "새 도메인은 글 유형이 하나도 켜져 있지 않아 후보를 만들 수 없습니다. 「글 생성」 흐름의 글유형 켜기부터 시작하세요.", cta: "글유형 켜기", mode: "basic", focus: "template-type" };
+  if (domain.templates_enabled.length === 0) return { title: "글 생성 준비를 시작하세요", desc: "새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있습니다. 「글 생성」 흐름을 처음부터 따라가세요.", cta: "글 생성 흐름 시작", mode: "basic", focus: "source" };
   if (totalSlots === 0) return { title: "원천 데이터부터 준비하세요", desc: "글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 글 후보를 만드세요.", cta: "원천 데이터 준비", mode: "basic", focus: "source" };
   if (!domain.common_principles) return { title: "공통 원칙을 먼저 저장하세요", desc: "후보는 있지만 공통 작성 원칙이 비어 있습니다. 확인된 데이터 사용·과장 금지 같은 공통 기준을 잡으면 생성 품질이 안정됩니다.", cta: "공통 원칙 열기", mode: "basic", focus: "plan" };
   if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "완성 글 검수", mode: "review", focus: "posts" };
