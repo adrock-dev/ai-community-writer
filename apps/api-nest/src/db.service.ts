@@ -422,6 +422,12 @@ export class DbService implements OnModuleInit {
       .map((r) => String(r.region || "").trim())
       .filter(Boolean);
   }
+  // 정합성(academy_types 반영)용: region + academy_type 쌍. 글유형의 학원 타입으로 걸러 지역별 카운트를 낸다.
+  academyRegionTypeRows(domain: string): Array<{ region: string; academy_type: string }> {
+    return this.all("SELECT region, academy_type FROM academies WHERE domain=? AND region IS NOT NULL AND region!=''", [domain])
+      .map((r) => ({ region: String(r.region || "").trim(), academy_type: String(r.academy_type || "") }))
+      .filter((r) => r.region);
+  }
   getCustomTemplate(domain: string, templateId: string): Row | undefined {
     const row = this.get("SELECT * FROM custom_templates WHERE domain=? AND template_id=?", [domain, templateId]);
     return row ? customTemplateOut(row) : undefined;

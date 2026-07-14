@@ -72,6 +72,19 @@ export interface CoherenceReport {
   thresholds: { academy_min_for_best: number };
   templates: CoherenceTemplate[];
 }
+export interface AcademyCoverageAcademy { name: string; region: string; academy_type: string; address: string; missing: string[]; }
+export interface AcademyCoverageRegion { region: string; count: number; sufficient: boolean; academies: AcademyCoverageAcademy[]; truncated: boolean; }
+export interface AcademyCoverage {
+  template_id: string;
+  name: string;
+  applicable: boolean;
+  academy_types: string[];
+  threshold: number;
+  regions_total?: number;
+  regions_with_academies?: number;
+  regions_with_min_for_best?: number;
+  regions: AcademyCoverageRegion[];
+}
 
 export interface DomainConfig {
   domain: string;

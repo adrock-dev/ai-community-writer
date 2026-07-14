@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -8,10 +8,10 @@ import { rememberDomain } from "@/lib/recent-domain";
 import { getSyncSummary, recordSync, type SyncSummary } from "@/lib/sync-summary";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
-import type { Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec } from "@/lib/types";
+import type { AcademyCoverage, Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 const AXIS_LABEL: Record<Axis, string> = {
@@ -749,6 +749,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [editId, setEditId] = useState<string | null>(null);
+  const [coverageFor, setCoverageFor] = useState<string | null>(null); // 학원 커버리지 팝업 대상 template_id
 
   const designChoices = useMemo(() => [...options.design_templates], [options.design_templates]);
   const designNameOf = (id?: string) => designChoices.find((d) => d.id === id)?.name ?? id ?? "local-guide";
@@ -856,11 +857,52 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
           {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
           {coh && <>
             <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
-            {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}</p>)}</div>}
+            {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}{(w.code === "low_academy_coverage" || w.code === "no_academy_data_for_best") && <button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button>}</p>)}</div>}
           </>}
         </div>;
       })}</div>}
+    {coverageFor && <AcademyCoverageModal domain={domain} templateId={coverageFor} onClose={() => setCoverageFor(null)} />}
   </section>;
+}
+
+// 지역별 학원 커버리지 팝업(L1 지역 표 + L2 학원별 빠진 데이터). 직접(주소/지역 문자열) 매칭 기준.
+function AcademyCoverageModal({ domain, templateId, onClose }: { domain: string; templateId: string; onClose: () => void }) {
+  const [data, setData] = useState<AcademyCoverage | null>(null);
+  const [err, setErr] = useState("");
+  const [openRegion, setOpenRegion] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getAcademyCoverage(domain, templateId).then((d) => { if (!cancelled) setData(d); }).catch((e) => { if (!cancelled) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [domain, templateId]);
+  return <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+    <div onClick={(e) => e.stopPropagation()} className="card card-pad grid" style={{ maxWidth: 680, width: "100%", maxHeight: "85vh", overflowY: "auto" }}>
+      <div className="spread"><b>지역별 학원 커버리지{data ? ` · ${data.name}` : ""}</b><button type="button" className="btn" onClick={onClose}>닫기</button></div>
+      {err && <p className="toast-warn small">{err}</p>}
+      {!data && !err && <p className="muted small">불러오는 중...</p>}
+      {data && !data.applicable && <p className="muted small">이 글유형은 학원 근거형이 아니거나 학원 타입이 선택되지 않아 커버리지 정보가 없습니다.</p>}
+      {data && data.applicable && <>
+        <p className="muted small">학원 타입: {data.academy_types.join(", ")} · 충분 기준 <b>{data.threshold}곳 이상</b> · 충분한 지역 <b>{data.regions_with_min_for_best}/{data.regions_total}</b> · 학원 있는 지역 {data.regions_with_academies}/{data.regions_total}. 아래는 <b>직접(주소·지역 문자열) 매칭</b> 기준이며, 생성 시 위경도 인근 후보는 별도로 보강될 수 있습니다.</p>
+        <div className="table-wrap"><table>
+          <thead><tr><th>지역</th><th style={{ width: 80 }}>학원 수</th><th style={{ width: 72 }}>상태</th><th style={{ width: 72 }}></th></tr></thead>
+          <tbody>{data.regions.map((r) => <Fragment key={r.region}>
+            <tr>
+              <td>{r.region}</td>
+              <td>{r.count}</td>
+              <td>{r.sufficient ? <span className="badge success">충분</span> : <span className="badge warn">부족</span>}</td>
+              <td>{r.count > 0 && <button type="button" className="btn" style={{ padding: "1px 8px", fontSize: 12 }} onClick={() => setOpenRegion(openRegion === r.region ? null : r.region)}>{openRegion === r.region ? "접기" : "학원"}</button>}</td>
+            </tr>
+            {openRegion === r.region && <tr><td colSpan={4}>
+              <div className="grid" style={{ gap: 4 }}>
+                {r.academies.map((a, i) => <div key={i} className="small"><b>{a.name}</b> <span className="muted">{a.academy_type}{a.address ? ` · ${a.address}` : ""}</span> {a.missing.length > 0 ? <span className="toast-warn small" style={{ padding: "0 6px" }}>빠진 데이터: {a.missing.join(", ")}</span> : <span className="badge success">데이터 완비</span>}</div>)}
+                {r.truncated && <p className="muted small">…일부만 표시(상위 50곳)</p>}
+              </div>
+            </td></tr>}
+          </Fragment>)}</tbody>
+        </table></div>
+      </>}
+    </div>
+  </div>;
 }
 
 // 커스텀 만들기 '시작점' 옵션 형태(빌트인/커스텀 공통). 고르면 폼 값을 채운다.

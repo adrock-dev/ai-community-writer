@@ -91,7 +91,7 @@ export class SlotService {
     const axes = this.db.listAxes(domain);
     const overrides = safeTemplateOverrides(domainConfig.template_overrides);
     const enabledSet = new Set((safeJson(domainConfig.templates_enabled, []) as unknown[]).map((v) => String(v)));
-    const academyRegions = this.db.academyRegionValues(domain);
+    const academyRows = this.db.academyRegionTypeRows(domain);
     const ACADEMY_MIN_FOR_BEST = 2;
 
     const customRows = this.db.listCustomTemplates(domain);
@@ -138,23 +138,29 @@ export class SlotService {
         warnings.push({ level: "warn", code: "keyword_rule_no_match", message: "키워드 규칙에 맞는 키워드가 없어 주키워드가 폴백(일반적)으로 생성됩니다." });
       }
 
-      // 학원 데이터(academy_centric && region-primary): BEST/비교 근거 부족 위험.
-      const academyApplicable = Boolean(archetype?.academy_centric) && primary === "region";
+      // 학원 데이터(academy_centric && region-primary && academy_types 선택됨): BEST/비교 근거 부족 위험.
+      // 생성(pickAcademiesForRegion)과 동일하게 글유형의 academy_types 로 학원을 거른다(빈 배열이면 학원정보 미사용).
+      const academyTypes = (spec.academy_types ?? []).map((t: unknown) => String(t || "").trim()).filter(Boolean);
+      const academyApplicable = Boolean(archetype?.academy_centric) && primary === "region" && academyTypes.length > 0;
       let academy: Row;
       if (academyApplicable) {
+        const typeSet = new Set(academyTypes);
+        const typedRegions = academyRows.filter((a) => typeSet.has(a.academy_type)).map((a) => a.region);
         let withAny = 0, withMin = 0;
         for (const pv of regionValues) {
           const value = String(pv.value || "").trim();
           if (!value) continue;
-          const count = academyRegions.filter((ar) => ar.includes(value)).length;
+          const count = typedRegions.filter((ar) => ar.includes(value)).length;
           if (count >= 1) withAny++;
           if (count >= ACADEMY_MIN_FOR_BEST) withMin++;
         }
-        academy = { applicable: true, regions_total: regionValues.length, regions_with_academies: withAny, regions_with_min_for_best: withMin };
+        academy = { applicable: true, academy_types: academyTypes, regions_total: regionValues.length, regions_with_academies: withAny, regions_with_min_for_best: withMin };
         if (withMin === 0) warnings.push({ level: "error", code: "no_academy_data_for_best", message: `학원 근거가 필요한 유형이지만 학원 ${ACADEMY_MIN_FOR_BEST}곳 이상인 지역이 없어 근거 없는 BEST가 될 위험이 큽니다.` });
         else if (withMin < regionValues.length * 0.5) warnings.push({ level: "warn", code: "low_academy_coverage", message: `학원 데이터가 충분한 지역이 ${withMin}/${regionValues.length} 뿐입니다.` });
       } else {
         academy = { applicable: false };
+        // academy_centric·지역형인데 학원 타입 미선택 → 학원정보 미사용(가이드/체크리스트로 작성). 정보용 안내.
+        if (Boolean(archetype?.academy_centric) && primary === "region") warnings.push({ level: "warn", code: "academy_types_empty", message: "학원 근거형이지만 학원 타입이 선택되지 않아 학원정보를 쓰지 않습니다(지역 가이드/체크리스트로 작성)." });
       }
 
       // 예상 슬롯 상한(rough): topic 수(주키워드·min_sv 반영) × 축 팩터. 0 이면 이 유형은 슬롯을 못 만든다.
@@ -176,6 +182,55 @@ export class SlotService {
 
     return { domain, thresholds: { academy_min_for_best: ACADEMY_MIN_FOR_BEST }, templates };
   }
+
+  // 특정 글유형의 지역별 학원 커버리지(팝업 L1/L2용). 정합성과 동일한 매칭:
+  // region substring + academy_types 필터 + 임계값 2. 지역별 학원 목록과 각 학원의 빠진 데이터까지 반환.
+  // 주의: 여기 매칭은 직접(주소/지역 문자열) 기준이며, 생성 시 위경도 인근 후보 보강은 반영하지 않는다.
+  academyCoverage(domain: string, templateId: string): Row {
+    const spec = this.db.getTemplateSpec(domain, templateId);
+    if (!spec) throw new Error(`unknown template: ${templateId}`);
+    const archetype = getArchetype(String(spec.kind || ""));
+    const axes = this.db.listAxes(domain);
+    const kwFilterSet = (spec.keyword_filter ?? []).map((k: unknown) => String(k || "").trim()).filter(Boolean);
+    const primary = (kwFilterSet.length ? (spec.primary_override ?? archetype?.primary) : archetype?.primary) ?? "keyword";
+    const academyTypes = (spec.academy_types ?? []).map((t: unknown) => String(t || "").trim()).filter(Boolean);
+    const ACADEMY_MIN_FOR_BEST = 2;
+    const applicable = Boolean(archetype?.academy_centric) && primary === "region" && academyTypes.length > 0;
+    if (!applicable) return { template_id: templateId, name: spec.name, applicable: false, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, regions: [] };
+    const regionValues = axes.region || [];
+    const academies = this.db.listAcademies(domain, { academy_types: academyTypes, limit: 100000 });
+    const PER_REGION_CAP = 50;
+    const regions = regionValues.map((pv) => {
+      const value = String(pv.value || "").trim();
+      const matched = value ? academies.filter((a) => String(a.region || "").includes(value)) : [];
+      return {
+        region: value,
+        count: matched.length,
+        sufficient: matched.length >= ACADEMY_MIN_FOR_BEST,
+        academies: matched.slice(0, PER_REGION_CAP).map((a) => ({ name: String(a.name || ""), region: String(a.region || ""), academy_type: String(a.academy_type || ""), address: String(a.address || ""), missing: academyMissingFields(a) })),
+        truncated: matched.length > PER_REGION_CAP,
+      };
+    }).filter((r) => r.region);
+    const withMin = regions.filter((r) => r.sufficient).length;
+    const withAny = regions.filter((r) => r.count >= 1).length;
+    // 부족(count 낮은) 지역을 위로 정렬해 운영자가 먼저 보게 한다.
+    regions.sort((a, b) => Number(a.sufficient) - Number(b.sufficient) || a.count - b.count || a.region.localeCompare(b.region, "ko"));
+    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: ACADEMY_MIN_FOR_BEST, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions };
+  }
+}
+
+// 학원 1곳에서 생성에 중요한데 비어 있는 데이터 항목을 한국어 라벨로 반환(팝업 L2용).
+function academyMissingFields(a: Row): string[] {
+  const has = (v: unknown) => { const s = String(v ?? "").trim(); return Boolean(s) && s !== "[]" && s !== "null" && s !== "{}"; };
+  const missing: string[] = [];
+  if (!has(a.address)) missing.push("주소");
+  if (!has(a.phone) && !has(a.vphone)) missing.push("전화");
+  if (!has(a.price)) missing.push("가격");
+  if (!has(a.shuttle)) missing.push("셔틀");
+  if (!has(a.pass_rate)) missing.push("합격률");
+  if (!has(a.review) && !has(a.review_json)) missing.push("리뷰");
+  if (!has(a.thumb_url) && !has(a.photos)) missing.push("사진");
+  return missing;
 }
 
 // 주키워드 생성 로직은 archetypes.ts (buildKeyword) 로 통합 이전됨.

@@ -278,6 +278,13 @@ export class AdminController {
     return this.slots.analyzeCoherence(domain);
   }
 
+  // 특정 글유형의 지역별 학원 커버리지(팝업 L1/L2). 지역별 학원 수·충분 여부 + 학원별 빠진 데이터.
+  @Get("domains/:domain/templates/:templateId/academy-coverage")
+  academyCoverage(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("templateId") templateId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.slots.academyCoverage(domain, templateId);
+  }
+
   // 커스텀 글유형 편집 상태 export — DB 초기화(wipe) 대비. 빌트인은 상수라 export 불필요.
   // 봉투(envelope): 메타(schema/version/domain/exported_at) + custom_templates + template_overrides + templates_enabled.
   @Get("domains/:domain/templates/export")
