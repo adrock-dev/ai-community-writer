@@ -66,7 +66,7 @@ export const ACADEMY_USED_PER_POST = Number(process.env.SEO_ACADEMY_USED_PER_POS
 export const ACADEMY_MIN_FOR_BEST = 2;
 // 최소 보장 확장 상한(km). 직접+인근(ACADEMY_NEARBY_MAX_KM)이 ACADEMY_MIN_FOR_BEST 미만이면
 // 반경 밖이라도 '가장 가까운 순'으로 이 거리 안에서 최소 개수까지 채운다(전국 아무거나 방지). 그 안에도 없으면 부족한 대로 둠.
-export const ACADEMY_MIN_GUARANTEE_MAX_KM = Number(process.env.SEO_ACADEMY_MIN_GUARANTEE_MAX_KM) || 40;
+export const ACADEMY_MIN_GUARANTEE_MAX_KM = Number(process.env.SEO_ACADEMY_MIN_GUARANTEE_MAX_KM) || 50;
 
 // default_design: 도메인 디자인이 auto일 때 이 유형의 글에 적용할 기본 디자인(docs/design-template-mapping.md).
 // default_direction: 이 글유형의 기본 방향성(공통원칙 위에 얹히는 오버레이). 도메인 template_overrides 로 재정의 가능.
