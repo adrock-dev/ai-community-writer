@@ -283,42 +283,38 @@ export class WorkerService {
   }
 
   // 선택된 학원 타입이 없으면 학원정보 미사용(후보 0). 있으면 그 타입 후보만 지역 기준으로 모은다.
+  // 직접(region 컬럼) 매칭이 목표(limit) 이상이면 그대로. 부족하면 문자열(주소/행정구역 접두) 및
+  // 위경도 반경(<= ACADEMY_NEARBY_MAX_KM) 내 인근 후보로 limit 까지 보강한다(인근은 distance_km 표기 → 프롬프트에서 '인근 후보'로 구분).
   private pickAcademiesForRegion(domain: string, region: string, limit: number, academyTypes: string[] = []): Row[] {
     if (!academyTypes.length) return [];
     const typeFilter = { academy_types: academyTypes };
-    const exact = this.db.listAcademies(domain, { region, ...typeFilter, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
-    if (exact.length) return exact.slice(0, limit);
+    const direct = this.db.listAcademies(domain, { region, ...typeFilter, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
+    // 직접 매칭만으로 목표 개수를 채우면 인근 보강 없이 그대로 반환.
+    if (direct.length >= limit) return direct.slice(0, limit);
+    // 부족분을 전체(타입) 풀에서 보강 — 직접 매칭과 중복 제거.
     const all = this.db.listAcademies(domain, { ...typeFilter, limit: 5000 }).filter(isUsableAcademy);
     const targetRegion = this.db.getSeoRegion(domain, region);
     const targetLat = finiteNumber(targetRegion?.latitude);
     const targetLng = finiteNumber(targetRegion?.longitude);
-    const directMatches = all.map((a) => {
-      const addr = String(a.address || "");
-      const rowRegion = String(a.region || "");
-      let score = Number.POSITIVE_INFINITY;
-      if (rowRegion === region) score = 0;
-      else if (addr.includes(region)) score = 1;
-      else if (sameAdministrativePrefix(rowRegion, region) || sameAdministrativePrefix(addr, region)) score = 3;
-      return { academy: a, score, distanceKm: academyDistanceKm(a, targetLat, targetLng) };
-    }).filter((r) => Number.isFinite(r.score));
-    const distanceMatches = targetLat !== null && targetLng !== null
-      ? all
-        .map((academy) => ({ academy, score: 2, distanceKm: academyDistanceKm(academy, targetLat, targetLng) }))
-        .filter((r) => r.distanceKm !== null)
-        .sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0))
-        .slice(0, Math.max(limit * 3, 10))
-      : [];
-    const seen = new Set<string>();
-    return [...directMatches, ...distanceMatches]
-      .sort((a, b) => a.score - b.score || (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY) || String(a.academy.name).localeCompare(String(b.academy.name), "ko"))
-      .filter((r) => {
-        const key = String(r.academy.external_id || r.academy.id || r.academy.name);
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
+    const keyOf = (a: Row) => String(a.external_id || a.id || a.name);
+    const directKeys = new Set(direct.map(keyOf));
+    const supplements = all
+      .filter((a) => !directKeys.has(keyOf(a)))
+      .map((a) => {
+        const addr = String(a.address || "");
+        const rowRegion = String(a.region || "");
+        const distanceKm = academyDistanceKm(a, targetLat, targetLng);
+        let score = Number.POSITIVE_INFINITY;
+        if (rowRegion === region) score = 0;                       // region 완전 일치
+        else if (addr.includes(region)) score = 1;                 // 주소에 지역 포함
+        else if (sameAdministrativePrefix(rowRegion, region) || sameAdministrativePrefix(addr, region)) score = 3; // 같은 행정구역
+        else if (distanceKm !== null && distanceKm <= ACADEMY_NEARBY_MAX_KM) score = 2; // 반경 내 인근(거리 게이트)
+        return { academy: a, score, distanceKm };
       })
-      .slice(0, limit)
+      .filter((r) => Number.isFinite(r.score))
+      .sort((a, b) => a.score - b.score || (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY) || String(a.academy.name).localeCompare(String(b.academy.name), "ko"))
       .map((r) => r.distanceKm === null ? r.academy : { ...r.academy, distance_km: Math.round((r.distanceKm ?? 0) * 10) / 10 });
+    return [...direct, ...supplements].slice(0, limit);
   }
 
   private processDedup(domain: string, payload: Row): Row {
@@ -467,6 +463,10 @@ function humanAcademyType(value: unknown): string {
   };
   return map[raw] || raw.replace(/_/g, " ").trim();
 }
+
+// 인근 보강 최대 반경(km). 직접 매칭이 부족할 때 이 반경 안의 학원만 "인근 후보"로 채운다.
+// 반경 밖 학원을 인근처럼 쓰지 않도록 게이트한다(환경변수로 조정 가능).
+const ACADEMY_NEARBY_MAX_KM = Number(process.env.SEO_ACADEMY_NEARBY_MAX_KM) || 20;
 
 function academyDistanceKm(row: Row, targetLat: number | null, targetLng: number | null): number | null {
   const lat = finiteNumber(row.latitude);
