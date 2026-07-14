@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
 import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, defaultDesignForTemplate } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
-import { getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
+import { academyMin, academyPool, getArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -111,8 +111,8 @@ export class WorkerService {
         // 학원 타입: 글유형 spec.academy_types 가 단일 소스. 선택값 있으면 그 타입 학원만, 비어 있으면 학원정보 미사용.
         const academyTypes = this.resolveAcademyTypes(templateSpec);
         const facts = academyImageType
-          ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 }, academyTypes)
-          : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 }, academyTypes);
+          ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 }, academyTypes, archetype)
+          : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 }, academyTypes, archetype);
         const factsMatches = findMatchedExclusionTerms(facts.text, exclusionTerms);
         if (factsMatches.length) {
           const message = `excluded by domain rule in facts: ${factsMatches.join(", ")}`;
@@ -219,14 +219,17 @@ export class WorkerService {
     return { ok, fail, skipped, generation_gate_version: "adrock-domain-surface-v1", per_slot };
   }
 
-  private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}, academyTypes?: string[]): GenerationFacts {
+  private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}, academyTypes?: string[], archetype?: Archetype): GenerationFacts {
     if (!slot.region) return { text: "", images: {} };
     const region = String(slot.region);
-    // 풀(최대 ACADEMY_MAX_CANDIDATES, 가까운 순)에서 슬롯별 시드 랜덤으로 ACADEMY_USED_PER_POST 곳을 뽑는다.
-    // 같은 슬롯은 항상 같은 조합(재현 가능), 다른 슬롯은 다른 조합 → 글마다 학원 구성이 달라진다.
-    const pool = this.pickAcademiesForRegion(domain, region, ACADEMY_MAX_CANDIDATES, academyTypes);
+    // 후보 풀 크기·최소 개수·글에 쓰는 개수는 아키타입이 정한다(비교형 7/2/5, 단독형 1/1/1).
+    const poolSize = academyPool(archetype);
+    const minReq = academyMin(archetype);
+    const used = Math.min(poolSize, ACADEMY_USED_PER_POST);
+    // 풀(가까운 순)에서 슬롯별 시드 랜덤으로 used 곳을 뽑는다. 같은 슬롯은 항상 같은 조합(재현), 다른 슬롯은 다른 조합.
+    const pool = this.pickAcademiesForRegion(domain, region, poolSize, academyTypes, minReq);
     const seed = String(slot.slot_id ?? slot.id ?? `${region}|${slot.primary_keyword ?? ""}`);
-    const academies = seededSample(pool, ACADEMY_USED_PER_POST, seed);
+    const academies = seededSample(pool, used, seed);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
     const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
@@ -289,7 +292,7 @@ export class WorkerService {
   // 선택된 학원 타입이 없으면 학원정보 미사용(후보 0). 있으면 그 타입 후보만 지역 기준으로 모은다.
   // 직접(region 컬럼) 매칭이 목표(limit) 이상이면 그대로. 부족하면 문자열(주소/행정구역 접두) 및
   // 위경도 반경(<= ACADEMY_NEARBY_MAX_KM) 내 인근 후보로 limit 까지 보강한다(인근은 distance_km 표기 → 프롬프트에서 '인근 후보'로 구분).
-  private pickAcademiesForRegion(domain: string, region: string, limit: number, academyTypes: string[] = []): Row[] {
+  private pickAcademiesForRegion(domain: string, region: string, limit: number, academyTypes: string[] = [], minRequired: number = ACADEMY_MIN_FOR_BEST): Row[] {
     if (!academyTypes.length) return [];
     const typeFilter = { academy_types: academyTypes };
     const direct = this.db.listAcademies(domain, { region, ...typeFilter, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
@@ -321,14 +324,14 @@ export class WorkerService {
       .sort((a, b) => a.score - b.score || (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY) || String(a.academy.name).localeCompare(String(b.academy.name), "ko"))
       .map(withDist);
     const result = [...direct, ...supplements].slice(0, limit);
-    // 최소 보장(B안): 직접+인근이 ACADEMY_MIN_FOR_BEST 미만이면, 반경 밖이라도 좌표 기준 '가장 가까운 순'으로
+    // 최소 보장(B안): 직접+인근이 minRequired(아키타입별) 미만이면, 반경 밖이라도 좌표 기준 '가장 가까운 순'으로
     // ACADEMY_MIN_GUARANTEE_MAX_KM 안에서 최소 개수까지 채운다. 그 안에도 없으면 부족한 대로 둔다(가이드형).
-    if (result.length < ACADEMY_MIN_FOR_BEST) {
+    if (result.length < minRequired) {
       const usedKeys = new Set(result.map(keyOf));
       const far = scored
         .filter((r) => r.distanceKm !== null && r.distanceKm <= ACADEMY_MIN_GUARANTEE_MAX_KM && !usedKeys.has(keyOf(r.academy)))
         .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY))
-        .slice(0, ACADEMY_MIN_FOR_BEST - result.length)
+        .slice(0, minRequired - result.length)
         .map(withDist);
       result.push(...far);
     }

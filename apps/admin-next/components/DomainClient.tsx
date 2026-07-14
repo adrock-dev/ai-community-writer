@@ -803,13 +803,14 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
       <div><h2>커스텀 글유형</h2><p className="muted">검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다.</p><p className="muted small">「새로고침」은 목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다. 이 화면에서 만들기/편집/삭제한 뒤엔 자동 갱신되며, 다른 창·다른 사람이 바꾼 경우에만 수동으로 누르면 됩니다.</p></div>
       <div className="row" style={{ flexShrink: 0, whiteSpace: "nowrap" }}><span className="badge info">{custom.length}개</span><button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={loading || busy} onClick={() => void reload()} title="목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다">{loading ? "..." : "새로고침"}</button></div>
     </div>
-    {/* 아키타입 개념·주축·5종 설명(하드코딩). 원본 정의는 apps/api-nest/src/archetypes.ts 의 ARCHETYPES. 지침 변경 시 여기 문구도 함께 갱신할 것. */}
+    {/* 아키타입 개념·주축·종류 설명(하드코딩). 원본 정의는 apps/api-nest/src/archetypes.ts 의 ARCHETYPES. 지침 변경 시 여기 문구도 함께 갱신할 것. */}
     <details className="template-subsection">
-      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>아키타입이란? · 주축과 5종 설명</h3><p className="muted small">글유형이 참조하는 &apos;동작 원형&apos;입니다. 자세한 설명을 펼쳐 보세요.</p></div><span className="badge info toggle-badge" /></div></summary>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>아키타입이란? · 주축과 종류 설명</h3><p className="muted small">글유형이 참조하는 &apos;동작 원형&apos;입니다. 자세한 설명을 펼쳐 보세요.</p></div><span className="badge info toggle-badge" /></div></summary>
       <div className="grid" style={{ gap: 10, marginTop: 8 }}>
         <p className="toast-info small"><b>아키타입</b>은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 <b>골라 참조</b>하고, 키워드·페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).<br /><b>주축</b>(아키타입이 결정, 변경 불가) — <b>지역형</b>: 지역(강남·수원 등)을 기준으로 &quot;지역 + 운전면허학원&quot;처럼 주키워드를 만들어 지역별 학원을 비교·소개. <b>키워드형</b>: 키워드 자체를 주제로 삼는 정보형(가이드·시험·비용 등).</p>
         <ul className="muted small" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-          <li><b>지역형 · local</b> (지역 학원 비교) — 특정 지역 학원들을 사진·비교표로 깊게 비교·소개(학원 중심).</li>
+          <li><b>지역형 · local</b> (지역 학원 비교) — 특정 지역 학원 여러 곳을 사진·비교표로 비교·소개(학원 2곳 이상 필요).</li>
+          <li><b>지역형 · local_single</b> (지역 시설 단독 소개) — 그 지역 학원·시험장 1곳을 단독으로 심층 소개(비교 아님, 1곳이면 성립).</li>
           <li><b>지역형 · local_hub</b> (지역 허브 총정리) — 지역의 학원·시험장·접수·비용·준비물을 넓게 연결하는 관문형(지역 전반).</li>
           <li><b>키워드형 · guide</b> (가이드 총정리) — 준비 순서 → 비용 → 시험 단계 → 선택 기준을 한 번에 총정리.</li>
           <li><b>키워드형 · compare</b> (선택지·비용 비교) — 면허 종류·옵션·비용안을 표로 비교해 고르도록 도움.</li>
@@ -857,7 +858,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
           {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
           {coh && <>
             <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
-            {coh.academy?.applicable && <p className="small"><b>학원 커버리지</b>(/{coh.academy.regions_total}): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · <span style={{ color: (coh.academy.regions_short ?? 0) > 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.regions_short}</span> <span className="muted">(20km/보장 {coh.academy.min_guarantee_km}km)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
+            {coh.academy?.applicable && <p className="small"><b>학원 커버리지</b> (총 {coh.academy.regions_total}개 지역): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · <span style={{ color: (coh.academy.regions_short ?? 0) > 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.regions_short}</span> <span className="muted">(직접+인근 20km / 보장 {coh.academy.min_guarantee_km}km)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
             {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}</p>)}</div>}
           </>}
         </div>;

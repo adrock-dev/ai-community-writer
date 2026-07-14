@@ -3,7 +3,7 @@
 // 즉 아키타입 = "고르는 대상(registry)", 글유형 = "아키타입 참조 + 레시피 파라미터".
 // Phase 2에서 글유형(파라미터)이 DB화·편집 대상이 되고, 아키타입은 코드 registry로 남아 품질을 보장한다.
 
-import { TEMPLATE_SPECS } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, TEMPLATE_SPECS } from "./constants.js";
 
 type Row = Record<string, any>;
 
@@ -24,13 +24,20 @@ export type Archetype = {
   primary: "region" | "keyword";  // free 모드에서 primary_override 없을 때의 기본 주축. (골든 load-bearing)
   keyword_rule: KeywordRule;      // keyword_filter 없는 커스텀 글유형의 폴백 주키워드 규칙. 빌트인은 전부 free 모드라 미참조.
   academy_centric: boolean;       // worker: 학원 facts+이미지 수집(lead). slot: BEST 근거 경고. (골든과 무관하나 생성 load-bearing)
+  academy_min?: number;           // 충분/보장/차단 기준 = 이 아키타입이 최소로 필요로 하는 학원 수. 미지정 시 ACADEMY_MIN_FOR_BEST(2).
+  academy_pool?: number;          // 한 글이 모으는 학원 후보 풀 크기(=단독형이면 1). 미지정 시 ACADEMY_MAX_CANDIDATES(7).
   writing_guide: WritingGuide;    // 유형별 작성 지침(프롬프트 주입). 글 품질을 좌우.
 };
 
-// 빌트인 아키타입 registry (kind 키). 14종을 작성 방식 기준 5종으로 통합(docs/archetype-consolidation-plan.md).
+// 아키타입이 요구하는 최소 학원 수 / 후보 풀 크기. 미지정 아키타입은 비교형 기본값(2 / 7).
+export function academyMin(a: Archetype | undefined): number { return a?.academy_min ?? ACADEMY_MIN_FOR_BEST; }
+export function academyPool(a: Archetype | undefined): number { return a?.academy_pool ?? ACADEMY_MAX_CANDIDATES; }
+
+// 빌트인 아키타입 registry (kind 키). 14종을 작성 방식 기준으로 통합했고, '지역 비교(local)'와
+// '지역 단독 소개(local_single)'는 요구 학원 수·프레이밍이 달라 분리했다(6종).
 // primary/academy_centric 은 흡수한 글유형 클러스터 내에서 보존 → 골든 0-diff.
 export const ARCHETYPES: Record<string, Archetype> = {
-  // 지역 시설 비교·소개(academy-lead). 흡수: local_best(T01)·academy_profile(T14)·test_center(T11).
+  // 지역 학원 여러 곳 비교(academy-lead). 흡수: local_best(T01). 학원 2곳 이상 필요.
   local: {
     id: "local", primary: "region", keyword_rule: { format: "region_plus_pick", pattern: /운전면허학원|자동차운전전문학원|자동차학원/u }, academy_centric: true,
     writing_guide: {
@@ -42,6 +49,21 @@ export const ARCHETYPES: Record<string, Archetype> = {
       region_overlay: [
         "도입에서 지역 생활권과 출퇴근/통학 동선을 짚고, 후보별로 '### 후보명' 소제목과 위치/생활권을 붙인다",
         "후보별 사진과 지역 기준 거리를 비교표에 반영한다",
+      ],
+    },
+  },
+  // 지역 시설 1곳 단독 심층 소개(academy-lead, 비교 아님). 흡수: academy_profile(T14)·test_center(T11).
+  // 학원 1곳이면 성립(min 1), 후보 풀도 1곳 — 비교표/BEST 프레이밍을 만들지 않는다.
+  local_single: {
+    id: "local_single", primary: "region", keyword_rule: { format: "region_plus_pick", pattern: /운전면허학원|자동차운전전문학원|자동차학원|운전면허시험장/u }, academy_centric: true,
+    academy_min: 1, academy_pool: 1,
+    writing_guide: {
+      core: [
+        "그 지역의 대상 시설 1곳을 단독으로 깊게 소개한다 — 비교표·BEST·'후보 N곳' 같은 비교 프레이밍을 쓰지 않는다",
+        "그 시설의 과정·위치·운영 형태·후기 같은 확인된 자료만 쓰고, 가격·셔틀·합격률은 자료가 있을 때만 단정하고 없으면 상담 때 확인할 질문으로 구체화한다",
+      ],
+      region_overlay: [
+        "도입에서 그 시설의 위치·생활권·출발지별 방문 동선을 짚고, 상담 예약·비용·일정 확인 질문으로 전환을 연결한다",
       ],
     },
   },
@@ -96,7 +118,7 @@ export const ARCHETYPES: Record<string, Archetype> = {
 // 옛 kind(14종) → 새 kind(5종) 별칭. DB custom_templates.kind 가 옛 kind 를 참조하는 기존 행을
 // 무마이그레이션으로 새 아키타입에 매핑한다(getArchetype 이 resolve). 없으면 general 폴백 회귀.
 export const KIND_ALIASES: Record<string, string> = {
-  local_best: "local", academy_profile: "local", test_center: "local",
+  local_best: "local", academy_profile: "local_single", test_center: "local_single",
   regional_hub: "local_hub", local_exam_mix: "local_hub",
   general_guide: "guide", license_complete: "guide", persona_target: "guide",
   license_compare: "compare", cost_strategy: "compare",
