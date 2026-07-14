@@ -98,6 +98,10 @@ export default function DashboardClient() {
         <button className="btn primary" onClick={() => setOpen((v) => !v)}>+ 새 도메인</button>
       </div>
 
+      <div className="card card-pad" style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "12px 16px", marginBottom: 18 }}>
+        <p className="small" style={{ margin: 0, color: "#1e3a8a" }}>ℹ️ <b>현재 범위</b> — 이 관리자는 <b>운전면허·운전학원 글 생성에 특화</b>되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 <code>driving</code> 기준이며, 다른 업종은 추가할 수 있으나 전용 프리셋·품질은 아직 적용되지 않습니다.</p>
+      </div>
+
       {error && <p className="toast-error">{error}</p>}
 
       {open && (
