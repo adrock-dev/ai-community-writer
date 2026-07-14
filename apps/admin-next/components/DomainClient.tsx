@@ -1007,11 +1007,14 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     </Field>
     <div className="grid" style={{ gap: 8 }}>
       <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">이 글유형이 쓸 persona·intent·modifier 값입니다. <b>쓸 축을 켜면 값을 반드시 입력하세요</b> — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩.</p></div>
-      <div style={{ display: "flex", gap: 8, alignItems: "flex-start", flexWrap: "nowrap" }}>
-        <button type="button" className="btn" style={{ flexShrink: 0, whiteSpace: "nowrap" }} disabled={aiBusy || busy} onClick={() => void suggestAxes()} title="켜 놓은 축의 값을 LLM 이 이 글유형(이름·방향성·아키타입)에 맞게 제안해 채웁니다. 제안이므로 검토·수정 후 저장하세요.">{aiBusy ? "AI 제안 중..." : "🤖 AI로 축 값 제안"}</button>
-        <p className="muted small" style={{ margin: 0, flex: 1 }}>먼저 <b>이름·방향성</b>을 채우고 쓸 축(persona·intent·modifier)을 <b>‘사용’으로 켠 뒤</b> 누르면, LLM이 이 글유형에 맞는 값을 제안해 아래 텍스트영역을 채웁니다. <b>제안일 뿐 자동 저장하지 않으니</b> 반드시 검토·수정한 뒤 저장하세요. (codex/claude CLI 인증 필요)</p>
+      <div className="card card-pad grid compact-pad" style={{ background: "#f5f3ff", border: "1px solid #e9d5ff" }}>
+        <div className="spread" style={{ alignItems: "center", gap: 8 }}>
+          <b className="small">🤖 AI 축 값 제안</b>
+          <button type="button" className="btn" style={{ flexShrink: 0, whiteSpace: "nowrap" }} disabled={aiBusy || busy} onClick={() => void suggestAxes()} title="켜 놓은 축의 값을 LLM 이 이 글유형(이름·방향성·아키타입)에 맞게 제안해 채웁니다. 제안이므로 검토·수정 후 저장하세요.">{aiBusy ? "제안 중..." : "AI로 축 값 제안"}</button>
+        </div>
+        <p className="muted small" style={{ margin: 0 }}>먼저 <b>이름·방향성</b>을 채우고 쓸 축(persona·intent·modifier)을 <b>‘사용’으로 켠 뒤</b> 누르면, LLM이 이 글유형에 맞는 값을 제안해 아래 텍스트영역을 채웁니다. <b>제안일 뿐 자동 저장하지 않으니</b> 반드시 검토·수정한 뒤 저장하세요. (codex/claude CLI 인증 필요)</p>
+        {aiError && <p className="toast-warn small" style={{ margin: 0 }}>{aiError}</p>}
       </div>
-      {aiError && <p className="toast-warn small">{aiError}</p>}
       <div className="info-panel grid" style={{ gap: 6 }}>
         <label className="row" style={{ gap: 6 }}><input type="checkbox" checked={usePersona} onChange={(e) => setUsePersona(e.target.checked)} /> <b>persona</b> 사용 — 누구에게 말할지(독자)</label>
         {usePersona && <textarea className="textarea" rows={3} value={personaVals} onChange={(e) => setPersonaVals(e.target.value)} placeholder={"퇴근 후 배우는 직장인\n주말만 가능한 직장인   (한 줄에 하나씩 · 필수)"} />}
