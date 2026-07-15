@@ -8,7 +8,7 @@ import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writ
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
-import { articleQualityIssues, candidateCountFromFacts, postSurfaceQualityIssues } from "./quality-gate.js";
+import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount } from "./quality-gate.js";
 
 type Row = Record<string, any>;
 
@@ -177,7 +177,7 @@ export class WorkerService {
           skipped++; this.db.updateJobProgress(jobId, { step: "생성문 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
-        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, candidateCountFromFacts(factsText));
+        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText));
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
         // 내용 기반 이미지 생성: LLM이 실제 배치한 생성 슬롯만, 그 슬롯이 놓인 섹션 내용에 맞춰 만든다.
         const imageWarnings: string[] = [];
@@ -211,7 +211,7 @@ export class WorkerService {
           meta_description: metaDescription(markdown), images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId,
           provider: result.provider, model, session_id: sessionId, cost_usd: costUsd,
           duration_sec: durationSec, input_tokens: inputTokens, output_tokens: outputTokens,
-          job_id: jobId, image_count: generatedCount, image_cost_usd: imageCostUsd, academy_count: facts.academyCount
+          job_id: jobId, image_count: generatedCount, image_cost_usd: imageCostUsd, academy_count: renderedCandidateCount(markdown, factsText)
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);

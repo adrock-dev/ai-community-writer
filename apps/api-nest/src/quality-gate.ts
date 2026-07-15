@@ -34,8 +34,13 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (hasRiskyDurationClaim(markdown)) issues.push("risky_duration_or_pass_guarantee_claim");
   if (!hasVerifiedPriceFacts(facts) && hasSpecificMoneyClaim(markdown)) issues.push("unverified_specific_price_claim");
   if (!hasReviewFacts(facts) && hasSpecificReviewClaim(markdown)) issues.push("unverified_review_claim");
-  const inflated = inflatedCandidateCountClaim(markdown, candidateCount);
-  if (inflated) issues.push(`inflated_candidate_count_${inflated.claimed}_gt_${inflated.actual}`);
+  // 후보 수 과장 검사는 학원 후보가 있는 글(학원형)에만 적용한다(키워드형은 candidateNames 가 비어 오탐 방지).
+  // 기준은 'facts에 준 개수'가 아니라 '본문에 실제 실린 후보 수'(이름이 본문에 등장한 수) — 제목/헤딩이 그보다 큰 숫자를 주장하면 실패.
+  if (candidateNames.length > 0) {
+    const rendered = candidateNames.filter((name) => markdown.includes(name)).length;
+    const inflated = inflatedCandidateCountClaim(markdown, rendered);
+    if (inflated) issues.push(`inflated_candidate_count_${inflated.claimed}_gt_${inflated.actual}`);
+  }
   if (candidateNames.length && !candidateNames.some((name) => markdown.includes(name))) issues.push("missing_real_candidate_name");
   const requiredCandidateH3 = Math.min(candidateNames.length, 3);
   const candidateH3Count = candidateHeadingMatchCount(markdown, candidateNames);
@@ -70,7 +75,8 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   if (/\[\d+\]/.test(markdown)) issues.push("contains_visible_citations");
   if (/(운전선생|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(`${title}\n${markdown}`)) issues.push("exposes_internal_fact_language");
   if (hasRiskyDurationClaim(`${title}\n${markdown}`)) issues.push("risky_duration_or_pass_guarantee_claim");
-  const inflated = inflatedCandidateCountClaim(`${title}\n${markdown}`, candidateCount);
+  // 학원 후보가 있는 글에서만(candidateCount>0) 후보 수 과장 검사. 키워드형(0)은 오탐 방지 위해 건너뜀.
+  const inflated = candidateCount > 0 ? inflatedCandidateCountClaim(`${title}\n${markdown}`, candidateCount) : null;
   if (inflated) issues.push(`inflated_candidate_count_${inflated.claimed}_gt_${inflated.actual}`);
   if (/[가-힣]+(?:시|군|구|읍|면|동)운전면허학원/.test(title)) issues.push("keyword_spacing_issue");
   if (imageKeys.length && usedImageKeys.length === 0) issues.push("missing_available_image_slot");
@@ -188,6 +194,11 @@ export function candidateNamesFromFacts(facts: string): string[] {
   return Array.from(facts.matchAll(/^\[\d+\]\s+([^\n/]+?)(?:\s*\/|\s*$)/gm))
     .map((m) => String(m[1] || "").trim())
     .filter((name) => name.length >= 2 && !/^(?:test|테스트|sample|dummy)/i.test(name));
+}
+
+// 본문에 실제로 실린 후보 수 = facts가 준 후보 이름 중 본문에 등장한 수. 제목 개수·저장 카운트의 단일 소스.
+export function renderedCandidateCount(markdown: string, facts: string): number {
+  return candidateNamesFromFacts(facts).filter((name) => markdown.includes(name)).length;
 }
 
 function candidateHeadingMatchCount(markdown: string, candidateNames: string[]): number {
