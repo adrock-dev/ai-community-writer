@@ -15,6 +15,12 @@ describe.each(WITH_VARIANTS)("%s 아키타입 structure_variants", (kind) => {
     expect(arch!.writing_guide.structure_variants![0]).toEqual(arch!.writing_guide.structure);
   });
 
+  it("라벨이 변형과 인덱스 정렬(개수 일치 · 비지 않음)", () => {
+    const labels = arch!.writing_guide.structure_variant_labels;
+    expect(labels).toHaveLength(arch!.writing_guide.structure_variants!.length);
+    for (const l of labels!) expect(l.trim().length).toBeGreaterThan(0);
+  });
+
   it("모든 변형이 표(비교표/요약표/표)를 포함한다(표 게이트 방지)", () => {
     for (const v of arch!.writing_guide.structure_variants!) {
       expect(v.join(" ")).toMatch(/비교표|요약표|표로|표/);

@@ -38,6 +38,14 @@ describe("빌트인 title_rule 엔드포인트 계약", () => {
     expect(opts.template_specs.T03.title_rule).toBeNull(); // 규칙 없는 유형은 null
   });
 
+  it("/options 가 archetype_structure_variants(kind→라벨)를 노출한다", () => {
+    const opts = ctl.options(REQ, {}) as any;
+    expect(opts.archetype_structure_variants.local).toEqual(["비교표 우선", "후보 소개 우선", "기준 우선"]);
+    expect(opts.archetype_structure_variants.local_single).toHaveLength(3);
+    expect(opts.archetype_structure_variants.local_hub).toHaveLength(3);
+    expect(opts.archetype_structure_variants.compare).toBeUndefined(); // 변형 없는 아키타입은 키 없음
+  });
+
   it("/templates 의 builtin 이 빌트인 title_rule 을 노출한다", () => {
     const list = ctl.listTemplates(REQ, {}, "d1") as any;
     const t01 = list.builtin.find((b: any) => b.template_id === "T01");

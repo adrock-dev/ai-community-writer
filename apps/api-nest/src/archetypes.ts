@@ -23,7 +23,9 @@ export type KeywordRule =
 // structure_variants: 같은 아키타입의 '섹션 순서' 변형들(각 원소가 하나의 완결된 구조). 있으면 슬롯 시드로
 // 하나를 결정론적으로 고른다(같은 슬롯=항상 같은 변형=재현성, 지역마다 순서 달라짐=대량 템플릿 footprint 완화).
 // 없으면 기존 structure 를 그대로 쓴다(하위호환). structure 는 변형 미지원 호출·비시드 경로의 기본값.
-export type WritingGuide = { core: string[]; region_overlay?: string[]; structure?: string[]; structure_variants?: string[][] };
+// structure_variant_labels: structure_variants 와 인덱스 정렬된 사람용 짧은 라벨(관리자 UI 표시·읽기전용).
+// 길이는 structure_variants 와 같아야 한다(정렬 테스트로 강제).
+export type WritingGuide = { core: string[]; region_overlay?: string[]; structure?: string[]; structure_variants?: string[][]; structure_variant_labels?: string[] };
 
 export type Archetype = {
   id: string;                     // 아키타입 정체성 (= 글유형의 kind). 재사용 가능한 키.
@@ -63,6 +65,7 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "선택 기준은 가격 단정이 아니라 상담 확인 질문으로 표현",
         "마지막에 '이런 사람에게 이 후보' 식의 결론을 제공",
       ],
+      structure_variant_labels: ["비교표 우선", "후보 소개 우선", "기준 우선"],
       // 섹션 순서 변형(슬롯 시드로 결정론 회전 → 지역마다 뼈대가 달라져 대량 템플릿 footprint 완화).
       // 세 변형 모두 비교표를 포함하고(비교표 누락 게이트 방지), 후보명 소제목·상담 확인 질문 원칙을 지킨다.
       structure_variants: [
@@ -110,6 +113,7 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "과정·운영 형태·확인 포인트를 확인된 자료만으로 깊게 전개",
         "상담·비용·일정 확인 질문으로 마무리하되, 세부 전개(안내형/전환형)는 글유형 방향성을 따른다",
       ],
+      structure_variant_labels: ["위치·동선 우선", "과정·운영 우선", "상담 체크 우선"],
       // 섹션 순서 변형(슬롯 시드 회전). 셋 다 '단독 소개(비교 금지)' 원칙과 요약표 가능성을 유지.
       structure_variants: [
         // A) 위치·동선 우선
@@ -154,6 +158,7 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "셔틀·대중교통·자주 가는 생활권 기준의 선택 팁과 접수·준비 팁을 지역 정보와 엮는다",
         "상담 전 체크리스트는 '내 출발지 기준' 질문으로 구성",
       ],
+      structure_variant_labels: ["생활권 우선", "후보·시험장 우선", "접수·준비 우선"],
       // 섹션 순서 변형(슬롯 시드 회전). 허브형 축(생활권/후보·시험장/접수·준비)을 다른 순서로 엮되
       // 모두 지역 후보·시험장을 표로 정리하는 대목을 포함(표 게이트 안정).
       structure_variants: [
@@ -287,6 +292,16 @@ export function structureGuideForArchetype(archetype: Archetype | undefined, see
     ? variants[seededIndex(seed, variants.length)]!
     : (wg.structure ?? ARCHETYPES.guide!.writing_guide.structure ?? []);
   return structure.map((line) => `- ${line}`).join("\n");
+}
+
+// 아키타입 kind → 구조 변형 라벨(변형이 있는 아키타입만). 관리자 UI(커스텀 폼 시작점/아키타입 선택) 노출용.
+export function archetypeStructureVariants(): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const [kind, a] of Object.entries(ARCHETYPES)) {
+    const labels = a.writing_guide.structure_variant_labels;
+    if (labels && labels.length) out[kind] = labels;
+  }
+  return out;
 }
 
 // 유형별 작성 지침 텍스트 (worker.originalTemplateGuide 대체). 알 수 없는 유형은 guide 로 폴백.

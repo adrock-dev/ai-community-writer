@@ -279,6 +279,8 @@ export interface AdminOptions {
   themes: string[];
   templates: string[];
   template_specs: Record<string, TemplateSpec>;
+  // 아키타입 kind → 섹션 순서 변형 라벨(읽기전용 안내). 변형 없는 아키타입은 키 없음.
+  archetype_structure_variants?: Record<string, string[]>;
   academy_types?: string[];
   axis_tag_vocab: { persona: string[]; intent: string[]; modifier: string[] };
   design_templates: DesignTemplateOption[];

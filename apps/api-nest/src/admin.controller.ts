@@ -7,7 +7,7 @@ import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
 import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
-import { getArchetype, writingGuideLines } from "./archetypes.js";
+import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./archetypes.js";
 import { runLlm } from "./llm-runner.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
@@ -40,6 +40,8 @@ export class AdminController {
       template_specs: Object.fromEntries(Object.entries(TEMPLATE_SPECS).map(([id, spec]) => [id, builtinSpecWithTitleRule(id, spec)])),
       // 학원 타입 정식 목록(5종). 커스텀 폼 학원 타입 체크박스가 이걸로 5종 전부 노출한다.
       // (커스텀 폼은 지역형 kind 일 때만 이 필드를 노출한다 — academy_types 는 지역형에서만 효과.)
+      // 아키타입 kind → 섹션 순서 변형 라벨(읽기전용). 커스텀 폼이 시작점/참조 아키타입의 구조 다양성을 안내.
+      archetype_structure_variants: archetypeStructureVariants(),
       academy_types: [...ACADEMY_TYPES],
       axis_tag_vocab: AXIS_TAG_VOCAB,
       design_templates: DESIGN_TEMPLATES,

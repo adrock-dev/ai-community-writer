@@ -821,7 +821,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
     </details>
     {error && <p className="toast-warn">{error}</p>}
 
-    <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+    <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} structureVariants={options.archetype_structure_variants} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
       onSubmit={(body) => run(() => createTemplate(domain, body))}
       onClone={(sourceId, name, overrides) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name, overrides }))} />
 
@@ -829,7 +829,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
       ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
-        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" domain={domain} initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
+        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" domain={domain} initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} structureVariants={options.archetype_structure_variants} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig.display_name)} busy={busy}
           onCancel={() => setEditId(null)}
           onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
         return <div key={t.template_id} className="info-panel grid">
@@ -916,9 +916,9 @@ type TemplateSource = { id: string; label: string; name: string; kind: string; u
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
 // 커스텀 글유형 폼 영역 구분자: "소제목 ──────" 형태로 유사 기능 그룹을 시각적으로 나눈다.
 
-function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
+function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, structureVariants, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
   mode: "create" | "edit"; domain: string; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
-  sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; keywordPool?: string[]; brandColor?: string | null; brand?: string; busy: boolean;
+  sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; keywordPool?: string[]; structureVariants?: Record<string, string[]>; brandColor?: string | null; brand?: string; busy: boolean;
   onSubmit: (body: Partial<CustomTemplate>) => void; onClone?: (sourceId: string, name: string, overrides: Record<string, unknown>) => void; onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -1087,6 +1087,9 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
           {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
         </select>
         <p className="muted small">주축 <b>{(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}</b>{source ? " · 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""}</p>
+        {structureVariants?.[kind]?.length ? (
+          <p className="muted small">📐 섹션 순서 자동 다양화 (글마다 자동 선택 · 편집 불가): {structureVariants[kind]!.map((l, i) => <span key={i} className="badge" style={{ marginRight: 4 }}>{l}</span>)}</p>
+        ) : null}
       </Field>
     </div>
     <div className="grid" style={{ gap: 8 }}>
