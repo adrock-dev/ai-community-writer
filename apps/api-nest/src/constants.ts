@@ -77,7 +77,7 @@ export type TitleRule = { min_generate?: number; tiers: { min_count: number; tem
 // 빌트인 글유형 제목 규칙. 커스텀 글유형은 spec.title_rule(DB)을 쓰고, 빌트인은 이 맵을 폴백으로 쓴다.
 // 규칙 없는 유형(가이드·시험 등)은 기존대로 LLM 이 H1 을 정한다(하위호환).
 export const TITLE_RULES: Record<string, TitleRule> = {
-  T01: { min_generate: 2, tiers: [{ min_count: 3, template: "{지역} 운전학원 BEST {개수}" }, { min_count: 2, template: "{지역} 추천 운전학원" }] },
+  T01: { min_generate: 2, tiers: [{ min_count: 3, template: "{지역} 운전면허학원 BEST {개수}" }, { min_count: 2, template: "{지역} 추천 운전면허학원" }] },
   T14: { min_generate: 1, tiers: [{ min_count: 1, template: "{지역} {학원명}" }] },
   T11: { min_generate: 1, tiers: [{ min_count: 1, template: "{지역} 운전면허시험장" }] },
 };
