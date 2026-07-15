@@ -92,7 +92,35 @@ function readabilityIssues(markdown: string): string[] {
   if (longParagraphs.length) issues.push(`overlong_paragraph_${Math.max(...longParagraphs.map((p) => p.length))}`);
   if (adjacentHeadingCount(markdown) > 0) issues.push('adjacent_headings_without_body');
   if (orphanHeadingCount(markdown) > 1) issues.push('too_many_thin_or_empty_heading_sections');
+  issues.push(...sentenceDifficultyIssues(markdown));
   return issues;
+}
+
+// 문장 난이도(가독성): 한 '문장'이 지나치게 길면(run-on) 읽기 어렵다. 한국어 형태소 분석 없이
+// 결정적으로 잴 수 있는 대리 지표로 문장 길이를 쓴다. 실제 생성 글의 산문 문장은 (링크 URL 제외)
+// p99≈106자·최대 141자라, 150자 이상은 사실상 run-on 으로 본다. scripts/qa-posts.mjs 와 동일 규칙.
+const HARD_SENTENCE_CHARS = 150;      // 이 이상이면 '읽기 어려운 긴 문장'
+const OVERLONG_SENTENCE_CHARS = 220;  // 이 이상이면 한 문장만으로도 실패
+function sentenceDifficultyIssues(markdown: string): string[] {
+  const issues: string[] = [];
+  const lengths = readableParagraphs(markdown).flatMap(splitSentences).map((sentence) => sentence.length);
+  if (!lengths.length) return issues;
+  const longest = Math.max(...lengths);
+  const hard = lengths.filter((n) => n >= HARD_SENTENCE_CHARS).length;
+  if (longest >= OVERLONG_SENTENCE_CHARS) issues.push(`overlong_sentence_${longest}`);
+  else if (hard >= 2) issues.push(`hard_sentences_${hard}`);
+  return issues;
+}
+
+// 문장 단위 분리 + 길이 왜곡 요소 제거: 링크 URL·강조 마커는 독자가 읽는 문장 길이가 아니다.
+function splitSentences(paragraph: string): string[] {
+  return String(paragraph || "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")   // [텍스트](URL) → 텍스트
+    .replace(/https?:\/\/\S+/g, "")               // 남은 맨 URL 제거
+    .replace(/\*\*|__|[*_`]/g, "")                // 강조 마커 제거
+    .split(/(?<=[.!?。…])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean);
 }
 
 function readableParagraphs(markdown: string): string[] {

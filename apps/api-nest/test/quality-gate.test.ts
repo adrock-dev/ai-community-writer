@@ -60,6 +60,28 @@ describe("postSurfaceQualityIssues", () => {
   });
 });
 
+describe("문장 난이도(가독성)", () => {
+  it("150자 이상 run-on 문장이 2개 이상이면 잡아낸다", () => {
+    const long = "가".repeat(160) + ".";
+    const md = `# 제목\n\n${long} ${long}`;
+    const issues = articleQualityIssues(md, "", {});
+    expect(issues.some((c) => c.startsWith("hard_sentences_"))).toBe(true);
+  });
+
+  it("220자 이상 문장은 하나만 있어도 잡아낸다", () => {
+    const md = `# 제목\n\n${"가".repeat(230)}.`;
+    const issues = articleQualityIssues(md, "", {});
+    expect(issues.some((c) => c.startsWith("overlong_sentence_"))).toBe(true);
+  });
+
+  it("링크 URL 때문에 길어진 줄은 오탐하지 않는다", () => {
+    const line = "자세한 비교는 [강남 운전학원 BEST 5](https://structure-lab/community/강남-운전학원-BEST-5-3)에서 확인하세요.";
+    const md = `# 제목\n\n${line}\n\n${line}`;
+    const issues = articleQualityIssues(md, "", {});
+    expect(issues.some((c) => c.startsWith("hard_sentences_") || c.startsWith("overlong_sentence_"))).toBe(false);
+  });
+});
+
 describe("데이터 없는 단정 차단", () => {
   it("검증된 가격 자료가 없는데 구체 금액을 쓰면 잡아낸다", () => {
     const md = "# 제목\n\n수강료는 50만원 수준입니다.";
