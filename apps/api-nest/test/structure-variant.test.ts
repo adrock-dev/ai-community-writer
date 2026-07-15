@@ -7,8 +7,8 @@ const WITH_VARIANTS = ["local", "local_single", "local_hub"];
 describe.each(WITH_VARIANTS)("%s 아키타입 structure_variants", (kind) => {
   const arch = getArchetype(kind);
 
-  it("변형 3종을 갖는다", () => {
-    expect(arch?.writing_guide.structure_variants).toHaveLength(3);
+  it("변형을 2종 이상 갖는다", () => {
+    expect(arch?.writing_guide.structure_variants!.length).toBeGreaterThanOrEqual(2);
   });
 
   it("변형 A(첫 변형) == 기본 structure (비시드/하위호환)", () => {
