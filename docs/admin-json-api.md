@@ -66,8 +66,9 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `modifier_2` | string \| null | 수식어 2 |
 | `entity_id` | string \| null | 연결 엔티티 ID |
 | `priority_score` | number \| null | 우선순위 점수 |
-| `status` | `planned` \| `in_progress` \| `published` \| `failed` \| `skipped` | 슬롯 상태 |
+| `status` | `planned` \| `in_progress` \| `published` \| `failed` \| `skipped` | 슬롯 상태. `skipped`는 생성 시 후보 부족·제외 규칙으로 건너뛴 슬롯 |
 | `last_error` | string \| null | 마지막 오류 |
+| `title` | string \| null | 수동 제목 오버라이드(원문). 설정 시 제목 규칙보다 우선하며 `{지역}`/`{개수}`/`{키워드}`/`{학원명}`을 생성 시점에 치환. null이면 규칙/LLM이 제목 결정 |
 | `created_at` | string | 생성 시각 |
 
 ### PostSummary / PostDetail
@@ -398,6 +399,20 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 ```
 
 ### `POST /api/admin/domains/{domain}/slots/{slot_id}/reset`
+
+응답:
+
+```json
+{ "ok": true, "slot": {} }
+```
+
+### `PATCH /api/admin/domains/{domain}/slots/{slot_id}`
+
+슬롯 수동 제목 오버라이드를 저장한다. 본문 `title`을 넣으면 그 슬롯 생성 시 제목 규칙보다 우선하며, 빈 문자열/`null`이면 규칙·LLM 폴백으로 되돌린다. `{지역}`/`{개수}`/`{키워드}`/`{학원명}`은 생성 시점에 치환된다(저장은 원문).
+
+```json
+{ "title": "{지역} 운전학원 완벽정리 {개수}곳" }
+```
 
 응답:
 
