@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_TEMPLATE_IDS, DRIVING_ORIGINAL_TEMPLATE_IDS, TEMPLATE_SPECS, type AxisName, type JobKind, type TemplateSpecShape } from "./constants.js";
+import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_TEMPLATE_IDS, DRIVING_ORIGINAL_TEMPLATE_IDS, TEMPLATE_SPECS, TITLE_RULES, type AxisName, type JobKind, type TemplateSpecShape, type TitleRule } from "./constants.js";
 import { parseExclusionTerms, slotExclusionSql } from "./exclusions.js";
 import { drivingplusApiBaseUrl } from "./runtime-config.js";
 
@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS custom_templates (
   primary_override TEXT,
   default_direction TEXT,
   default_design TEXT NOT NULL DEFAULT 'local-guide',
+  title_rule TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (domain, template_id),
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
@@ -318,6 +319,7 @@ export class DbService implements OnModuleInit {
     if (!customTemplateCols.has("academy_types")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN academy_types TEXT");
     if (!customTemplateCols.has("keyword_filter")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN keyword_filter TEXT");
     if (!customTemplateCols.has("primary_override")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN primary_override TEXT");
+    if (!customTemplateCols.has("title_rule")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN title_rule TEXT");
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
     this.db.exec(`CREATE TABLE IF NOT EXISTS seo_regions (
       domain TEXT NOT NULL,
@@ -444,6 +446,8 @@ export class DbService implements OnModuleInit {
         primary_override: builtin.primary_override,
         default_direction: builtin.default_direction,
         default_design: builtin.default_design,
+        // 빌트인 제목 규칙은 TITLE_RULES 맵이 소유 — spec 에 실어 하위(clone/worker)가 커스텀과 동일 경로로 소비.
+        title_rule: TITLE_RULES[templateId],
       };
     }
     const row = this.get("SELECT * FROM custom_templates WHERE domain=? AND template_id=?", [domain, templateId]);
@@ -466,8 +470,8 @@ export class DbService implements OnModuleInit {
   // 커스텀 글유형 생성. id 는 여기서 발급(빌트인/기존 커스텀과 유니크). axis_tags 는 JSON 직렬화해 저장(트랩: TEXT 컬럼 write 는 반드시 stringify).
   createCustomTemplate(domain: string, input: Row): Row {
     const templateId = this.nextCustomTemplateId(domain);
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, primary_override, default_direction, default_design)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, primary_override, default_direction, default_design, title_rule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [domain, templateId, String(input.name || "").trim(), String(input.kind || "").trim(),
         input.use_persona ? 1 : 0, input.with_intent ? 1 : 0,
         clampModifierCount(input.modifier_count),
@@ -479,7 +483,8 @@ export class DbService implements OnModuleInit {
         serializeAcademyTypes(input.keyword_filter),
         normPrimaryOverride(input.primary_override),
         input.default_direction != null && String(input.default_direction).trim() ? String(input.default_direction).trim() : null,
-        String(input.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE]);
+        String(input.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE,
+        serializeTitleRule(input.title_rule)]);
     return this.getCustomTemplate(domain, templateId)!;
   }
   deleteCustomTemplate(domain: string, templateId: string): number {
@@ -527,6 +532,7 @@ export class DbService implements OnModuleInit {
     if (fields.primary_override !== undefined) push("primary_override", normPrimaryOverride(fields.primary_override));
     if (fields.default_direction !== undefined) push("default_direction", fields.default_direction != null && String(fields.default_direction).trim() ? String(fields.default_direction).trim() : null);
     if (fields.default_design !== undefined) push("default_design", String(fields.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE);
+    if (fields.title_rule !== undefined) push("title_rule", serializeTitleRule(fields.title_rule));
     if (!sets.length) return 0;
     args.push(domain, templateId);
     return this.run(`UPDATE custom_templates SET ${sets.join(", ")} WHERE domain=? AND template_id=?`, args).changes ?? 0;
@@ -535,12 +541,12 @@ export class DbService implements OnModuleInit {
   // created_at 은 봉투 값 보존(없으면 CURRENT_TIMESTAMP), 충돌 시 기존 created_at 유지. axis_tags 는 stringify.
   // 빌트인 id/kind 검증은 호출측(컨트롤러)에서 수행한다.
   importCustomTemplate(domain: string, row: Row): void {
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, default_direction, default_design, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, primary_override, default_direction, default_design, title_rule, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
       ON CONFLICT(domain, template_id) DO UPDATE SET
         name=excluded.name, kind=excluded.kind, use_persona=excluded.use_persona, with_intent=excluded.with_intent,
         modifier_count=excluded.modifier_count, weight=excluded.weight, min_sv=excluded.min_sv,
-        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, keyword_filter=excluded.keyword_filter, primary_override=excluded.primary_override, default_direction=excluded.default_direction, default_design=excluded.default_design`,
+        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, keyword_filter=excluded.keyword_filter, primary_override=excluded.primary_override, default_direction=excluded.default_direction, default_design=excluded.default_design, title_rule=excluded.title_rule`,
       [domain, String(row.template_id || "").trim(), String(row.name || "").trim(), String(row.kind || "").trim(),
         row.use_persona ? 1 : 0, row.with_intent ? 1 : 0, clampModifierCount(row.modifier_count),
         Number.isFinite(Number(row.weight)) ? Number(row.weight) : 1.0,
@@ -552,6 +558,7 @@ export class DbService implements OnModuleInit {
         normPrimaryOverride(row.primary_override),
         row.default_direction != null && String(row.default_direction).trim() ? String(row.default_direction).trim() : null,
         String(row.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE,
+        serializeTitleRule(row.title_rule),
         row.created_at != null && String(row.created_at).trim() ? String(row.created_at).trim() : null]);
   }
   // C + randomUUID 앞 6 hex. 빌트인(T01~)·기존 커스텀 row 와 충돌하지 않는 id 를 발급한다.
@@ -989,6 +996,36 @@ function serializeAcademyTypes(value: unknown): string | null {
   const list = value.map((v) => String(v || "").trim()).filter(Boolean);
   return list.length ? JSON.stringify(list) : null;
 }
+// 제목 규칙(JSON): { min_generate?, tiers:[{min_count, template}], fallback? }. 무효/tier 없음은 null.
+// TITLE_RULES(빌트인) 와 동일 스키마. 저장 전 정규화해 쓰레기 값이 DB 에 들어가지 않게 한다.
+function normalizeTitleRule(value: unknown): TitleRule | null {
+  const raw = typeof value === "string" ? safeJson(value, null) : value;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const src = raw as Record<string, unknown>;
+  const tiers = (Array.isArray(src.tiers) ? src.tiers : [])
+    .map((t) => {
+      const o = t && typeof t === "object" ? (t as Record<string, unknown>) : {};
+      const min_count = Math.trunc(Number(o.min_count));
+      const template = String(o.template ?? "").trim();
+      return Number.isFinite(min_count) && template ? { min_count, template } : null;
+    })
+    .filter((t): t is { min_count: number; template: string } => t !== null)
+    .sort((a, b) => b.min_count - a.min_count); // min_count 내림차순(첫 매칭 규칙)
+  if (!tiers.length) return null;
+  // 키 순서를 TITLE_RULES 리터럴(min_generate → tiers → fallback)에 맞춘다 — 빌트인/커스텀 직렬화 일치.
+  const mg = Math.trunc(Number(src.min_generate));
+  const rule: TitleRule = Number.isFinite(mg) && mg > 0 ? { min_generate: mg, tiers } : { tiers };
+  const fb = String(src.fallback ?? "").trim();
+  if (fb) rule.fallback = fb;
+  return rule;
+}
+function serializeTitleRule(value: unknown): string | null {
+  const norm = normalizeTitleRule(value);
+  return norm ? JSON.stringify(norm) : null;
+}
+function parseTitleRule(value: unknown): TitleRule | undefined {
+  return normalizeTitleRule(value) ?? undefined;
+}
 // 주축 재정의: "region"|"keyword" 만 허용, 그 외/빈값은 null(=아키타입 기본).
 function normPrimaryOverride(value: unknown): "region" | "keyword" | null {
   const v = String(value || "").trim();
@@ -1016,6 +1053,7 @@ function customTemplateSpec(row: Row): TemplateSpecShape {
     primary_override: normPrimaryOverride(row.primary_override) ?? undefined,
     default_direction: row.default_direction != null ? String(row.default_direction) : undefined,
     default_design: row.default_design != null ? String(row.default_design) : undefined,
+    title_rule: parseTitleRule(row.title_rule),
   };
 }
 // custom_templates row → API 출력형 (INTEGER→boolean, axis_tags 객체화, custom 마커).
@@ -1031,6 +1069,7 @@ export function customTemplateOut(row: Row): Row {
     axis_values: parseAxisTags(row.axis_values) ?? {},
     academy_types: parseAcademyTypes(row.academy_types),
     keyword_filter: parseAcademyTypes(row.keyword_filter),
+    title_rule: parseTitleRule(row.title_rule) ?? null,
     custom: true,
   };
 }

@@ -20,6 +20,11 @@ export interface DesignTemplateOption {
   css_tokens?: Record<string, unknown>;
 }
 
+// 제목 규칙(생성 시점 해석). 빌트인은 TITLE_RULES 맵, 커스텀은 custom_templates.title_rule.
+// tiers: min_count 내림차순 첫 매칭. min_generate: 실제 후보 수가 이 값 미만이면 생성 스킵. {지역}/{개수}/{키워드}/{학원명} 치환.
+export interface TitleRuleTier { min_count: number; template: string; }
+export interface TitleRule { min_generate?: number; tiers: TitleRuleTier[]; fallback?: string; }
+
 export interface TemplateOverride {
   direction?: string;
   axis_tags?: { persona?: string[]; intent?: string[]; modifier?: string[] };
@@ -47,6 +52,7 @@ export interface CustomTemplate {
   primary_override?: "region" | "keyword";
   default_direction?: string | null;
   default_design?: string;
+  title_rule?: TitleRule | null;
   created_at?: string;
   custom?: boolean;
 }
@@ -259,6 +265,7 @@ export interface TemplateSpec {
   academy_types?: string[];
   keyword_filter?: string[];
   primary_override?: "region" | "keyword";
+  title_rule?: TitleRule | null;
 }
 
 export interface Vertical {

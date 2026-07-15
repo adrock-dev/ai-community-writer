@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -14,6 +14,12 @@ import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 
 type Row = Record<string, any>;
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
+
+// 빌트인 글유형 spec 에 제목 규칙(TITLE_RULES 맵 소유)을 병합해 반환한다. /options·/templates 가 동일 계약을
+// 쓰도록 한 곳에서 만든다(한쪽만 병합해 시작점 프리필이 비던 드리프트 방지).
+function builtinSpecWithTitleRule(id: string, spec: Record<string, unknown>): Record<string, unknown> {
+  return { ...spec, title_rule: TITLE_RULES[id] ?? null };
+}
 
 @Controller("api/admin")
 export class AdminController {
@@ -30,7 +36,8 @@ export class AdminController {
       verticals: this.db.getVerticals(),
       themes: ["clean", "modern", "pro"],
       templates: Object.keys(TEMPLATE_SPECS),
-      template_specs: TEMPLATE_SPECS,
+      // 빌트인 제목 규칙(TITLE_RULES)을 spec 에 병합 — 커스텀 폼 '시작점' 프리필이 이 값을 읽는다(listTemplates 와 동일 계약).
+      template_specs: Object.fromEntries(Object.entries(TEMPLATE_SPECS).map(([id, spec]) => [id, builtinSpecWithTitleRule(id, spec)])),
       // 학원 타입 정식 목록(5종). 커스텀 폼 학원 타입 체크박스가 이걸로 5종 전부 노출한다.
       // (커스텀 폼은 지역형 kind 일 때만 이 필드를 노출한다 — academy_types 는 지역형에서만 효과.)
       academy_types: [...ACADEMY_TYPES],
@@ -129,7 +136,7 @@ export class AdminController {
   listTemplates(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
     checkAuth(req, headers); this.requireDomain(domain);
     return {
-      builtin: Object.entries(TEMPLATE_SPECS).map(([id, spec]) => ({ template_id: id, ...spec, custom: false })),
+      builtin: Object.entries(TEMPLATE_SPECS).map(([id, spec]) => ({ template_id: id, ...builtinSpecWithTitleRule(id, spec), custom: false })),
       custom: this.db.listCustomTemplates(domain),
     };
   }
@@ -156,6 +163,7 @@ export class AdminController {
       primary_override: body.primary_override,
       default_direction: body.default_direction,
       default_design: body.default_design,
+      title_rule: body.title_rule,
     });
     return { ok: true, template };
   }
@@ -205,6 +213,9 @@ export class AdminController {
       primary_override: spec.primary_override,
       default_direction: direction || null,
       default_design: spec.default_design,
+      // 소스의 유효 제목 규칙을 굳혀 복사 — 빌트인(T01 등) 클론도 제목 규칙을 그대로 상속한다.
+      // (getTemplateSpec 이 빌트인 title_rule 을 TITLE_RULES 에서 실어주므로 빌트인/커스텀 동일 경로.)
+      title_rule: spec.title_rule ?? null,
       ...inline,
     };
     const kind = String(input.kind || "").trim();
@@ -295,7 +306,7 @@ export class AdminController {
       template_id: t.template_id, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
       weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags, axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter, primary_override: t.primary_override,
-      default_direction: t.default_direction ?? null, default_design: t.default_design,
+      default_direction: t.default_direction ?? null, default_design: t.default_design, title_rule: t.title_rule ?? null,
       created_at: t.created_at,
     }));
     return {

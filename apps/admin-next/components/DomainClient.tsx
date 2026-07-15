@@ -8,7 +8,7 @@ import { rememberDomain } from "@/lib/recent-domain";
 import { getSyncSummary, recordSync, type SyncSummary } from "@/lib/sync-summary";
 import { JobCard } from "./JobCard";
 import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
-import type { AcademyCoverage, Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec } from "@/lib/types";
+import type { AcademyCoverage, Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec, TitleRule } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
@@ -771,12 +771,12 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
     ...Object.entries(options.template_specs).filter(([id]) => builtinExposed(options, id)).map(([id, spec]) => ({
       id, label: `${id} ${spec.name} (빌트인)`, name: spec.name, kind: spec.kind ?? "",
       use_persona: spec.use_persona, with_intent: Boolean(spec.with_intent), modifier_count: spec.modifier_count,
-      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types, keyword_filter: spec.keyword_filter, primary_override: spec.primary_override,
+      default_design: spec.default_design ?? "local-guide", default_direction: spec.default_direction ?? "", axis_values: spec.axis_values, academy_types: spec.academy_types, keyword_filter: spec.keyword_filter, primary_override: spec.primary_override, title_rule: spec.title_rule,
     })),
     ...custom.map((t) => ({
       id: t.template_id, label: `${t.template_id} ${t.name} (커스텀)`, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
-      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter, primary_override: t.primary_override,
+      default_design: t.default_design ?? "local-guide", default_direction: t.default_direction ?? "", axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter, primary_override: t.primary_override, title_rule: t.title_rule,
     })),
   ], [options, custom]);
 
@@ -856,8 +856,10 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
             {t.modifier_count > 0 && <span className="badge">modifier {t.modifier_count}</span>}
             <span className="badge">weight {t.weight}</span>
             <span className="badge info">디자인 {designNameOf(t.default_design)}</span>
+            {t.title_rule?.tiers?.length ? <span className="badge">제목규칙 {t.title_rule.tiers.length}tier</span> : null}
           </div>
           {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
+          {t.title_rule?.tiers?.length ? <p className="muted small">제목: {t.title_rule.tiers.map((tr) => `${tr.min_count}곳↑ "${tr.template}"`).join(" · ")}{t.title_rule.min_generate ? ` · 최소 ${t.title_rule.min_generate}곳` : ""}</p> : null}
           {coh && <>
             <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
             {coh.academy?.applicable && <p className="small"><b>학원 커버리지</b> (총 {coh.academy.regions_total}개 지역): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · <span style={{ color: (coh.academy.regions_short ?? 0) > 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.regions_short}</span> <span className="muted">(직접+인근 20km / 보장 {coh.academy.min_guarantee_km}km)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
@@ -910,7 +912,7 @@ function AcademyCoverageModal({ domain, templateId, onClose }: { domain: string;
 }
 
 // 커스텀 만들기 '시작점' 옵션 형태(빌트인/커스텀 공통). 고르면 폼 값을 채운다.
-type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[]; keyword_filter?: string[]; primary_override?: "region" | "keyword" };
+type TemplateSource = { id: string; label: string; name: string; kind: string; use_persona: boolean; with_intent: boolean; modifier_count: number; default_design: string; default_direction: string; axis_values?: { persona?: string[]; intent?: string[]; modifier?: string[] }; academy_types?: string[]; keyword_filter?: string[]; primary_override?: "region" | "keyword"; title_rule?: TitleRule | null };
 
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
 // 커스텀 글유형 폼 영역 구분자: "소제목 ──────" 형태로 유사 기능 그룹을 시각적으로 나눈다.
@@ -933,6 +935,10 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   const [academyTypes, setAcademyTypes] = useState<Set<string>>(new Set(initial?.academy_types ?? []));
   const [keywordVals, setKeywordVals] = useState((initial?.keyword_filter ?? []).join("\n")); // 선택 키워드(한 줄에 하나). 비면 아키타입 패턴.
   const [primaryOverride, setPrimaryOverride] = useState<string>(initial?.primary_override ?? ""); // ""=아키타입 기본
+  // 제목 규칙(생성 시점 해석). tiers 비면 규칙 없음 → LLM 이 H1 결정(하위호환).
+  const [titleMinGenerate, setTitleMinGenerate] = useState<string>(initial?.title_rule?.min_generate != null ? String(initial.title_rule.min_generate) : "");
+  const [titleTiers, setTitleTiers] = useState<{ min_count: string; template: string }[]>((initial?.title_rule?.tiers ?? []).map((t) => ({ min_count: String(t.min_count), template: t.template })));
+  const [titleFallback, setTitleFallback] = useState(initial?.title_rule?.fallback ?? "");
   const [source, setSource] = useState(""); // 시작점(빈값=직접 입력). create 모드 전용.
   const sourceLocked = mode === "edit" || Boolean(source); // 시작점을 고르면 아키타입은 소스로 고정.
   // 학원 타입은 지역형(primary=region) 글유형에서만 효과가 있으므로(키워드형은 지역이 없어 학원 미수집) 그때만 노출한다.
@@ -943,7 +949,21 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
   const [dirError, setDirError] = useState("");
   const [dirResult, setDirResult] = useState<DirectionValidation | null>(null);
   // 폼 섹션 접기/펼치기. 생성은 핵심(주제·키워드)만 펼치고, 편집은 전체 펼침. 검증 실패 시 해당 섹션 자동 펼침.
-  const [openSec, setOpenSec] = useState({ topic: true, write: mode === "edit", design: mode === "edit" });
+  const [openSec, setOpenSec] = useState({ topic: true, write: mode === "edit", design: mode === "edit", title: mode === "edit" });
+
+  // 폼 입력 → TitleRule(정규화는 백엔드가 재수행). tier 없으면 null(규칙 없음).
+  function buildTitleRule(): TitleRule | null {
+    const tiers = titleTiers
+      .map((t) => ({ min_count: Math.trunc(Number(t.min_count)), template: t.template.trim() }))
+      .filter((t) => Number.isFinite(t.min_count) && Boolean(t.template));
+    if (!tiers.length) return null;
+    const rule: TitleRule = { tiers };
+    const mg = Math.trunc(Number(titleMinGenerate));
+    if (Number.isFinite(mg) && mg > 0) rule.min_generate = mg;
+    const fb = titleFallback.trim();
+    if (fb) rule.fallback = fb;
+    return rule;
+  }
 
   // 입력한 방향성이 절대 원칙·공통원칙·아키타입 작성지침과 중복/충돌하는지 LLM 으로 대조하고, 고유 방향만 남긴 개선안을 제안받는다.
   async function validateDirection() {
@@ -991,6 +1011,9 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setAcademyTypes(new Set(src.academy_types ?? []));
     setKeywordVals((src.keyword_filter ?? []).join("\n"));
     setPrimaryOverride(src.primary_override ?? "");
+    setTitleMinGenerate(src.title_rule?.min_generate != null ? String(src.title_rule.min_generate) : "");
+    setTitleTiers((src.title_rule?.tiers ?? []).map((t) => ({ min_count: String(t.min_count), template: t.template })));
+    setTitleFallback(src.title_rule?.fallback ?? "");
   }
 
   // 축 값 수집: 해당 축이 켜졌고 값이 있을 때만 포함. 비우면 도메인 공통 축으로 폴백.
@@ -1007,6 +1030,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     setUsePersona(false); setWithIntent(false); setModifierCount(0);
     setDirection(""); setSource("");
     setPersonaVals(""); setIntentVals(""); setModifierVals(""); setAcademyTypes(new Set()); setKeywordVals(""); setPrimaryOverride("");
+    setTitleMinGenerate(""); setTitleTiers([]); setTitleFallback("");
   }
 
   function submit() {
@@ -1027,7 +1051,8 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     if (source && onClone) {
       // 시작점에서 실제로 바꾼 값만 오버라이드로 넘긴다. 축 값·학원 타입·키워드 필터는 폼이 source of truth(프리필=소스 값)이라 항상 반영.
       const src = sources?.find((s) => s.id === source);
-      const overrides: Record<string, unknown> = { axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr, primary_override: primaryOverrideVal ?? null };
+      // title_rule: 폼이 source of truth(프리필=소스 규칙). 항상 넘겨 소스 상속 위에 폼 값을 덮는다(비우면 null=규칙 제거).
+      const overrides: Record<string, unknown> = { axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr, primary_override: primaryOverrideVal ?? null, title_rule: buildTitleRule() };
       if (src) {
         if (design !== src.default_design) overrides.default_design = design;
         if (usePersona !== src.use_persona) overrides.use_persona = usePersona;
@@ -1040,7 +1065,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       return;
     }
     if (!kind) { alert("참조 아키타입을 선택하세요."); return; }
-    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr, primary_override: primaryOverrideVal });
+    onSubmit({ name: name.trim(), kind, default_design: design, use_persona: usePersona, with_intent: withIntent, modifier_count: modifierCount, default_direction: direction.trim() || undefined, axis_values: axisValues, academy_types: academyTypesArr, keyword_filter: keywordFilterArr, primary_override: primaryOverrideVal, title_rule: buildTitleRule() });
     if (mode === "create") resetForm();
   }
 
@@ -1159,6 +1184,34 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         return <DesignPreview blueprint={designBlueprintFor(design, opt)} designId={design} designOption={opt} brandColor={brandColor} brand={brand ?? "브랜드"} title={opt?.name ?? design} summary={opt?.summary ?? ""} />;
       })()}
     </details>
+      </div>
+    </details>
+    <details className="template-subsection" open={openSec.title} onToggle={(e) => { const open = e.currentTarget.open; setOpenSec((s) => ({ ...s, title: open })); }}>
+      <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>제목 규칙 <span className="badge info">{titleTiers.length ? `tier ${titleTiers.length}` : "미설정"}</span></h3><p className="muted small">생성 시점 실제 후보 수로 제목 확정 · 미설정이면 LLM이 H1 결정</p></div><span className="badge info">{openSec.title ? "접기" : "열기"}</span></div></summary>
+      <div className="grid" style={{ marginTop: 8, gap: 10 }}>
+        <p className="toast-info small" style={{ margin: 0 }}>제목을 <b>생성 시점의 실제 후보 수</b>로 확정해 LLM 즉흥·후보 수 부풀림을 막습니다. <b>tier</b>는 후보 수 <b>내림차순</b>으로 첫 매칭 제목을 씁니다(예: 3곳↑ &quot;BEST {"{개수}"}&quot;, 2곳 &quot;추천&quot;). 치환 토큰: <code>{"{지역}"}</code> <code>{"{개수}"}</code> <code>{"{키워드}"}</code> <code>{"{학원명}"}</code>(첫 후보). <b>tier를 하나도 두지 않으면 규칙 없음</b> — 기존대로 LLM이 H1을 정합니다.</p>
+        <div className="info-panel small" style={{ margin: 0 }}>
+          <b>&lsquo;실제 후보 수&rsquo;란?</b> 그 지역 글에 <b>소개하려고 선정된 학원 수</b>입니다 — 지역명이 맞는 <b>직접 후보</b> + 20km 이내 <b>인근 후보</b>로 모으고(둘 다 부족하면 50km 이내 최근접으로 <b>보장</b>), 글유형 상한(<b>비교형 최대 5곳 · 단독형 1곳</b>)만큼 추린 값이에요. tier의 <b>후보 수</b>·<b>min_generate</b>·<code>{"{개수}"}</code> 토큰이 모두 이 값을 가리킵니다.
+          <br />주로 <b>학원형</b>(지역형 + 학원 타입 지정) 글유형에서 의미가 있습니다. 키워드형(가이드·시험 등)은 학원 후보가 0이라 tier가 안 맞아 fallback/LLM 제목으로 갑니다.
+        </div>
+        <Field label="최소 생성 후보 수 (min_generate · 선택)">
+          <input className="input" type="number" min={0} style={{ width: 120 }} value={titleMinGenerate} onChange={(e) => setTitleMinGenerate(e.target.value)} placeholder="예: 2" />
+          <p className="muted small">위 <b>&lsquo;실제 후보 수&rsquo;</b>가 이 값보다 적으면 <b>생성하지 않고 건너뜁니다</b>(슬롯 <code>skipped</code> · 후보 부족 지역 차단용). 비우거나 0이면 스킵 없음.</p>
+        </Field>
+        <div className="grid" style={{ gap: 6 }}>
+          <div className="spread" style={{ alignItems: "center" }}><b className="small">tier (후보 수 → 제목)</b><button type="button" className="btn small" onClick={() => setTitleTiers((prev) => [...prev, { min_count: "", template: "" }])}>+ tier 추가</button></div>
+          {titleTiers.length === 0 && <p className="muted small">tier가 없습니다. 「+ tier 추가」로 &quot;후보 N곳 이상일 때 이 제목&quot; 규칙을 만드세요. (없으면 LLM이 제목 결정)</p>}
+          {titleTiers.map((t, i) => <div key={i} className="row" style={{ gap: 6, alignItems: "center" }}>
+            <span className="muted small" style={{ whiteSpace: "nowrap" }}>후보</span>
+            <input className="input" type="number" min={0} style={{ width: 72 }} value={t.min_count} placeholder="수" onChange={(e) => setTitleTiers((prev) => prev.map((x, j) => j === i ? { ...x, min_count: e.target.value } : x))} />
+            <span className="muted small" style={{ whiteSpace: "nowrap" }}>곳 이상 →</span>
+            <input className="input" style={{ flex: 1 }} value={t.template} placeholder="예: {지역} 운전학원 BEST {개수}" onChange={(e) => setTitleTiers((prev) => prev.map((x, j) => j === i ? { ...x, template: e.target.value } : x))} />
+            <button type="button" className="btn small danger" onClick={() => setTitleTiers((prev) => prev.filter((_, j) => j !== i))} title="이 tier 삭제">✕</button>
+          </div>)}
+        </div>
+        <Field label="fallback 제목 (선택)">
+          <input className="input" value={titleFallback} onChange={(e) => setTitleFallback(e.target.value)} placeholder="어떤 tier도 안 맞을 때 쓸 제목 (예: {지역} 운전학원 안내)" />
+        </Field>
       </div>
     </details>
     <div className="row">
