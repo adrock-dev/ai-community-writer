@@ -20,7 +20,10 @@ export type KeywordRule =
 // structure: '템플릿 필수 구조'(섹션 순서/배치). 예전엔 디자인(designStructureGuide)이 갖던 지침을
 // 글유형(아키타입)으로 이관했다 — 구조는 '무엇을 쓰나'(기획)의 일부라 디자인(시각/톤)보다 글유형에 속한다.
 // 하위 글유형이 갈리는 아키타입(exam·local_single)은 허용적으로 써서 글유형 default_direction 이 세부를 정하게 둔다.
-export type WritingGuide = { core: string[]; region_overlay?: string[]; structure?: string[] };
+// structure_variants: 같은 아키타입의 '섹션 순서' 변형들(각 원소가 하나의 완결된 구조). 있으면 슬롯 시드로
+// 하나를 결정론적으로 고른다(같은 슬롯=항상 같은 변형=재현성, 지역마다 순서 달라짐=대량 템플릿 footprint 완화).
+// 없으면 기존 structure 를 그대로 쓴다(하위호환). structure 는 변형 미지원 호출·비시드 경로의 기본값.
+export type WritingGuide = { core: string[]; region_overlay?: string[]; structure?: string[]; structure_variants?: string[][] };
 
 export type Archetype = {
   id: string;                     // 아키타입 정체성 (= 글유형의 kind). 재사용 가능한 키.
@@ -53,11 +56,37 @@ export const ARCHETYPES: Record<string, Archetype> = {
         "도입에서 지역 생활권과 출퇴근/통학 동선을 짚고, 후보별로 '### 후보명' 소제목과 위치/생활권을 붙인다",
         "후보별 사진과 지역 기준 거리를 비교표에 반영한다",
       ],
+      // 기본 구조(비시드 경로·하위호환) = 변형 A. 실제 생성은 슬롯 시드로 아래 structure_variants 중 하나를 회전.
       structure: [
         "첫 H2 또는 두 번째 H2 안에 '한눈에 비교표'를 배치(후보가 1곳이면 비교표 대신 요약표)",
-        "후보별 장단점과 추천 대상을 분리해 소개",
+        "비교표 다음에 후보별 장단점과 추천 대상을 분리해 소개",
         "선택 기준은 가격 단정이 아니라 상담 확인 질문으로 표현",
         "마지막에 '이런 사람에게 이 후보' 식의 결론을 제공",
+      ],
+      // 섹션 순서 변형(슬롯 시드로 결정론 회전 → 지역마다 뼈대가 달라져 대량 템플릿 footprint 완화).
+      // 세 변형 모두 비교표를 포함하고(비교표 누락 게이트 방지), 후보명 소제목·상담 확인 질문 원칙을 지킨다.
+      structure_variants: [
+        // A) 비교표 우선
+        [
+          "첫 H2 또는 두 번째 H2 안에 '한눈에 비교표'를 배치(후보가 1곳이면 비교표 대신 요약표)",
+          "비교표 다음에 후보별 장단점과 추천 대상을 분리해 소개",
+          "선택 기준은 가격 단정이 아니라 상담 확인 질문으로 표현",
+          "마지막에 '이런 사람에게 이 후보' 식의 결론을 제공",
+        ],
+        // B) 후보 소개 우선, 비교표는 뒤
+        [
+          "도입 뒤 곧바로 후보별 '### 후보명' 소제목으로 한 곳씩 위치·특징·추천 대상을 소개",
+          "후보 소개를 모두 마친 뒤 '한눈에 비교표'로 후보들을 나란히 정리(후보가 1곳이면 요약표)",
+          "비교표 다음에 상담 때 확인할 질문(가격·셔틀·합격률 등)을 체크리스트로 정리",
+          "마지막에 '이런 사람에게 이 후보' 식의 결론을 제공",
+        ],
+        // C) 선택 기준(체크포인트) 우선
+        [
+          "도입 다음에 '운전학원 고를 때 확인할 기준'을 먼저 정리(거리·시험 과정·비용 확인 질문 등)",
+          "그 기준에 비추어 후보별 '### 후보명' 소제목으로 소개",
+          "후보 소개 뒤 '한눈에 비교표'로 기준별 비교(후보가 1곳이면 요약표)",
+          "마지막에 '이런 사람에게 이 후보' 식의 결론을 제공",
+        ],
       ],
     },
   },
@@ -189,10 +218,23 @@ export function writingGuideForArchetype(archetype: Archetype | undefined, isReg
   return writingGuideLines(archetype, isRegionPrimary).map((line) => `- ${line}`).join("\n");
 }
 
+// FNV-1a 결정론적 문자열 해시 → [0, mod) 인덱스. 시드가 같으면 항상 같은 값(재현성).
+function seededIndex(seed: string, mod: number): number {
+  if (mod <= 1) return 0;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h % mod;
+}
+
 // '템플릿 필수 구조' 텍스트(프롬프트 주입). 예전 designStructureGuide 대체 — 구조는 디자인이 아니라
 // 글유형(아키타입)이 소유한다. 미상 아키타입/구조 미지정은 guide 의 구조로 폴백.
-export function structureGuideForArchetype(archetype: Archetype | undefined): string {
-  const structure = archetype?.writing_guide.structure ?? ARCHETYPES.guide!.writing_guide.structure ?? [];
+// seed(슬롯 식별자)가 있고 structure_variants 가 있으면 그중 하나를 시드로 결정론 선택(섹션 순서 변주).
+export function structureGuideForArchetype(archetype: Archetype | undefined, seed?: string): string {
+  const wg = archetype?.writing_guide ?? ARCHETYPES.guide!.writing_guide;
+  const variants = wg.structure_variants;
+  const structure = (variants && variants.length && seed)
+    ? variants[seededIndex(seed, variants.length)]!
+    : (wg.structure ?? ARCHETYPES.guide!.writing_guide.structure ?? []);
   return structure.map((line) => `- ${line}`).join("\n");
 }
 

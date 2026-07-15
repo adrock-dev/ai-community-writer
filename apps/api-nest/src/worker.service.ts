@@ -704,7 +704,7 @@ ${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${structureGuideForArchetype(archetype)}
+${structureGuideForArchetype(archetype, structureSeed(slot))}
 원본 엑셀 기반 템플릿 작성법:
 ${writingGuideForArchetype(archetype, Boolean(slot.region))}
 원본 전체 글 패턴 기반 작성법:
@@ -774,6 +774,11 @@ function isSelectableDesign(id: string): boolean {
   return DESIGN_TEMPLATES.some((template) => template.id === value);
 }
 
+// 구조 변형 선택 시드 — 학원 샘플링과 동일하게 슬롯 식별자 기반(같은 슬롯=같은 구조=재현성).
+function structureSeed(slot: Row): string {
+  return String(slot.slot_id ?? slot.id ?? `${slot.region ?? ""}|${slot.primary_keyword ?? ""}`);
+}
+
 function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string, hasAcademy: boolean, forcedTitle?: string | null): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
@@ -787,7 +792,7 @@ ${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${structureGuideForArchetype(archetype)}
+${structureGuideForArchetype(archetype, structureSeed(slot))}
 원본 엑셀 기반 템플릿 작성법:
 ${writingGuideForArchetype(archetype, Boolean(slot.region))}
 템플릿: ${slot.template_id}
