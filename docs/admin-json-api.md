@@ -71,6 +71,38 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `title` | string \| null | 수동 제목 오버라이드(원문). 설정 시 제목 규칙보다 우선하며 `{지역}`/`{개수}`/`{키워드}`/`{학원명}`을 생성 시점에 치환. null이면 규칙/LLM이 제목 결정 |
 | `created_at` | string | 생성 시각 |
 
+### TitleRule
+
+제목 규칙. 생성 시점의 **실제 후보 수**(직접+인근+보장으로 모아 글유형 상한만큼 선정한 학원 수)로 제목을 확정한다. 빌트인 글유형은 코드 상수(`TITLE_RULES`), 커스텀은 `custom_templates.title_rule`에 저장된다.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `min_generate` | number? | 후보 수가 이 값 미만이면 생성하지 않고 건너뛴다(슬롯 `skipped`) |
+| `tiers` | `{ min_count, template }[]` | `min_count` 내림차순 첫 매칭 제목을 쓴다 |
+| `fallback` | string? | 어떤 tier도 안 맞을 때 쓸 제목 |
+
+`template`/`fallback`의 `{지역}`/`{개수}`/`{키워드}`/`{학원명}`은 생성 시점에 치환된다.
+
+### CustomTemplate
+
+커스텀 글유형(`custom_templates` row). 빌트인 `TemplateSpec`과 유사하되 `template_id`/`created_at`을 갖는다.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `template_id` | string | 커스텀 글유형 ID(발급값) |
+| `name` | string | 표시 이름 |
+| `kind` | string | 참조 아키타입(`getArchetype`로 검증되는 기존 kind만 허용) |
+| `use_persona` / `with_intent` | boolean | 축 사용 여부 |
+| `modifier_count` | number | 수식어 조합 개수(0~2) |
+| `weight` / `min_sv` | number | 우선순위 가중치 / 최소 검색량 |
+| `axis_values` | `{persona?,intent?,modifier?: string[]}` | 글유형 축 값 프리셋(단일 소스) |
+| `academy_types` | string[] | 사용할 학원 타입. 비면 학원정보 미사용 |
+| `keyword_filter` | string[] | 값 있으면 아키타입 패턴 무시하고 이 키워드 직접 사용 |
+| `primary_override` | `region`\|`keyword`? | 주축 재정의 |
+| `default_direction` | string \| null | 기본 방향성 |
+| `default_design` | string | 기본 디자인 |
+| `title_rule` | TitleRule \| null | 제목 규칙(위 참조) |
+
 ### PostSummary / PostDetail
 
 `PostSummary`는 목록 응답에서 쓰이고, `PostDetail`은 상세 응답에서 본문과 이미지 자료가 추가된다.
@@ -419,6 +451,67 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 ```json
 { "ok": true, "slot": {} }
 ```
+
+## 글유형(템플릿)
+
+빌트인 글유형(`TEMPLATE_SPECS` 코드 상수)과 도메인 커스텀 글유형(`custom_templates`)을 관리한다. 커스텀 글유형은 검증된 아키타입(`kind`)을 참조하고 축·키워드·디자인·방향성·제목 규칙 등 세부만 조정한다.
+
+### `GET /api/admin/domains/{domain}/templates`
+
+빌트인 + 커스텀 글유형 목록. 빌트인에는 `title_rule`(있으면)이 병합되어 온다.
+
+```json
+{
+  "builtin": [{ "template_id": "T01", "name": "...", "kind": "local", "title_rule": {}, "custom": false }],
+  "custom": [{ "template_id": "C1a2b3", "name": "...", "kind": "local", "title_rule": null, "custom": true }]
+}
+```
+
+### `POST /api/admin/domains/{domain}/templates`
+
+커스텀 글유형 생성. `name`·`kind` 필수(`kind`는 등록된 아키타입만). 본문은 [CustomTemplate](#customtemplate) 필드(`title_rule` 포함)를 받는다. 응답 `{ ok, template }`.
+
+### `PATCH /api/admin/domains/{domain}/templates/{template_id}`
+
+커스텀 글유형 편집(빌트인은 불가 — 복제해서 편집). 전달한 필드만 수정한다(부분 업데이트). `title_rule`을 `{ "tiers": [] }`로 주면 규칙이 제거된다. 응답 `{ ok, template }`.
+
+### `DELETE /api/admin/domains/{domain}/templates/{template_id}`
+
+커스텀 글유형 삭제(빌트인 불가). 응답 `{ ok, deleted }`.
+
+### `POST /api/admin/domains/{domain}/templates/clone`
+
+기존 글유형(빌트인/커스텀)을 새 커스텀 row로 복제한다. 소스의 유효 설정(오버라이드 병합 + **`title_rule` 상속**)을 굳혀 독립 복제본을 만든다.
+
+```json
+{ "source_template_id": "T01", "name": "강남 특집", "overrides": { "title_rule": {} } }
+```
+
+응답 `{ ok, template, source_template_id }`. `overrides`로 복제 직후 일부 필드를 덮을 수 있다(폼이 source of truth).
+
+### `POST /api/admin/domains/{domain}/templates/suggest-axes`
+
+켜 놓은 축(`persona`/`intent`/`modifier`) 값을 LLM이 이 글유형에 맞게 제안한다(저장하지 않음). 본문 `{ kind, name, direction, keywords, axes, provider?, model? }`. 응답 `{ ok, suggestions, provider, model }`. codex/claude CLI 인증 필요(실패 시 502).
+
+### `POST /api/admin/domains/{domain}/templates/validate-direction`
+
+입력한 방향성이 절대 원칙·공통원칙·아키타입 지침과 중복/충돌하는지 LLM으로 대조하고 개선안을 제안한다(저장하지 않음). 본문 `{ kind, name, direction, current_direction?, has_academy?, provider?, model? }`. 응답 `{ ok, validation, provider, model }`.
+
+### `GET /api/admin/domains/{domain}/templates/coherence`
+
+레시피↔데이터 정합성(읽기/계산 전용). 전 빌트인+커스텀 글유형의 주축·키워드 규칙 매칭·축 풀·학원 커버리지·예상 슬롯 상한·경고를 반환한다.
+
+### `GET /api/admin/domains/{domain}/templates/{template_id}/academy-coverage`
+
+특정 글유형의 지역별 학원 커버리지(지역별 학원 수·충분 여부 + 학원별 빠진 데이터).
+
+### `GET /api/admin/domains/{domain}/templates/export`
+
+커스텀 글유형 편집 상태 봉투. `{ schema: "adrock-templates-export", version, domain, exported_at, custom_templates, template_overrides, templates_enabled }`. `custom_templates`에는 `title_rule`이 포함된다.
+
+### `POST /api/admin/domains/{domain}/templates/import`
+
+봉투를 받아 커스텀 글유형·오버라이드·활성 목록을 복원한다. 쿼리 `mode=merge`(기본, id별 upsert) 또는 `replace`(교체). 빌트인 id shadow 차단·`kind` 검증. 응답 `{ ok, mode, imported, skipped, overrides_merged, templates_enabled, warnings }`.
 
 ## 글
 
@@ -871,6 +964,12 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `updateDomain()` | `PATCH /domains/{domain}` |
 | `replaceAxis()` | `PUT /domains/{domain}/axes/{axis}` |
 | `enqueueGenerate()` | `POST /domains/{domain}/jobs/generate` |
+| `updateSlotTitle()` | `PATCH /domains/{domain}/slots/{slot_id}` |
+| `listTemplates()` | `GET /domains/{domain}/templates` |
+| `createTemplate()` | `POST /domains/{domain}/templates` |
+| `updateTemplate()` | `PATCH /domains/{domain}/templates/{template_id}` |
+| `cloneTemplate()` | `POST /domains/{domain}/templates/clone` |
+| `getCoherence()` | `GET /domains/{domain}/templates/coherence` |
 | `downloadPostExport()` | `POST /domains/{domain}/posts/export` |
 | `syncDrivingplusAcademies()` | `POST /domains/{domain}/sync/drivingplus/academies` |
 | `syncDrivingplusRegions()` | `POST /domains/{domain}/sync/drivingplus/regions` |
