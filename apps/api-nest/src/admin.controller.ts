@@ -434,6 +434,15 @@ export class AdminController {
     this.db.updateSlotStatus(slotId, "planned", null); return { ok: true, slot: this.db.getSlot(slotId) };
   }
 
+  // 슬롯 수동 제목 오버라이드. title=null/"" 이면 규칙/LLM 로 폴백. {지역}/{개수}/{키워드}/{학원명} 은 생성 시점 치환.
+  @Patch("domains/:domain/slots/:slotId")
+  updateSlot(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("slotId") slotId: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const slot = this.db.getSlot(slotId); if (!slot || slot.domain !== domain) throw new HttpException("slot not found", 404);
+    if (body.title !== undefined) this.db.updateSlotTitle(slotId, body.title == null ? null : String(body.title));
+    return { ok: true, slot: this.db.getSlot(slotId) };
+  }
+
   @Get("domains/:domain/posts")
   listPosts(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
     checkAuth(req, headers); this.requireDomain(domain);

@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -205,14 +205,13 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
     refresh().catch((e) => setError(e.message));
   }, [domain]);
 
-  function goToTourStep(mode: TourMode, focus?: TourFocus, opts: { overlay?: boolean } = {}) {
-    // 항상 개요(intro) 단계를 포함한다. focus 는 해당 튜토리얼 단계로 그대로 매핑된다(개요=focus "workflow").
+  function goToTourStep(mode: TourMode, focus?: TourFocus, _opts: { overlay?: boolean } = {}) {
+    // focus 는 해당 튜토리얼 단계로 그대로 매핑되고(focus 없는 '흐름 시작'은 첫 단계=원천 데이터),
+    // 튜토리얼 ON/OFF 와 무관하게 같은 탭에 착지한다(오버레이만 ON 일 때 추가로 열림).
     const nextSteps = buildOperatorTourSteps(mode, payload?.slot_counts);
     const startIndex = focus ? Math.max(0, nextSteps.findIndex((step) => step.focus === focus || step.target === focus)) : 0;
-    // 오버레이 없이 조용히 진입(튜토리얼 OFF)할 때, focus 없는 '흐름 시작'은 개요 탭(overview=현재 화면)이 아니라 첫 실작업 탭으로 보낸다.
-    const landingIndex = opts.overlay === false ? (focus ? startIndex : Math.min(1, nextSteps.length - 1)) : startIndex;
     setTourMode(mode);
-    setTab(nextSteps[landingIndex]?.tab ?? nextSteps[0]?.tab ?? "overview");
+    setTab(nextSteps[startIndex]?.tab ?? nextSteps[0]?.tab ?? "overview");
     return startIndex;
   }
 
@@ -1546,6 +1545,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   }
   async function delSelected() { if (busy || queueBusy || !confirm(`${selected.size}개 삭제?`)) return; setBusy(true); try { for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/slots/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
   function toggleAllVisible() { setSelected((prev) => { if (selectedAllVisible) return new Set(); const next = new Set(prev); for (const s of filtered) next.add(s.slot_id); return next; }); }
+  function applySlotTitle(slotId: string, title: string | null) { setRemoteSlots((prev) => prev.map((s) => s.slot_id === slotId ? { ...s, title } : s)); }
 
   return (
     <div className="grid">
@@ -1616,13 +1616,33 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         {slotError && <p className="small" style={{ color: "var(--danger)" }}>후보 검색 오류: {slotError}</p>}
         <div className="table-wrap">
           <table>
-            <thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>상태</th></tr></thead>
-            <tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><Status status={s.status} /></td></tr>)}</tbody>
+            <thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>제목(수동)</th><th>상태</th></tr></thead>
+            <tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><SlotTitleCell domain={domain.domain} slot={s} onSaved={applySlotTitle} /></td><td><Status status={s.status} /></td></tr>)}</tbody>
           </table>
         </div>
       </div>
     </div>
   );
+}
+
+// 슬롯 수동 제목 오버라이드 셀. 비우면 규칙/LLM 자동. 원문 저장({지역}/{개수} 등은 생성 시점 치환).
+function SlotTitleCell({ domain, slot, onSaved }: { domain: string; slot: Slot; onSaved: (slotId: string, title: string | null) => void }) {
+  const [draft, setDraft] = useState(slot.title ?? "");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { setDraft(slot.title ?? ""); }, [slot.title]);
+  const dirty = (slot.title ?? "") !== draft.trim();
+  async function save() {
+    setBusy(true);
+    try { const r = await updateSlotTitle(domain, slot.slot_id, draft.trim() || null); onSaved(slot.slot_id, r.slot.title); }
+    catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  return <div className="row" style={{ gap: 4, minWidth: 200 }}>
+    <input className="input" style={{ minWidth: 160 }} value={draft} placeholder="규칙/LLM 자동" disabled={busy}
+      title="비우면 규칙/LLM 자동 제목. 입력하면 규칙보다 우선합니다. {지역}/{개수}/{키워드}/{학원명} 은 생성 시점에 치환됩니다."
+      onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && dirty && !busy) void save(); }} />
+    {dirty && <button type="button" className="btn small primary" disabled={busy} onClick={() => void save()}>{busy ? "..." : "저장"}</button>}
+  </div>;
 }
 
 function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; onRefresh: () => Promise<void> }) {

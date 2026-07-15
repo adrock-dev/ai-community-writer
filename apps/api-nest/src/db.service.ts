@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS slots (
   priority_score REAL,
   status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','in_progress','published','failed','skipped')),
   last_error TEXT,
+  title TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
@@ -293,6 +294,9 @@ export class DbService implements OnModuleInit {
     if (!jobCols.has("processed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN processed_count INTEGER NOT NULL DEFAULT 0");
     if (!jobCols.has("failed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0");
     this.migrateSlotsSkippedStatus();
+    // 슬롯 수동 제목 오버라이드(규칙보다 우선, 생성 시점 플레이스홀더 치환). skipped 재생성 이후에 추가한다.
+    const slotCols = new Set(this.all("PRAGMA table_info(slots)").map((r) => r.name));
+    if (!slotCols.has("title")) this.db.exec("ALTER TABLE slots ADD COLUMN title TEXT");
     if (!postCols.has("design_template_id")) {
       this.db.exec("ALTER TABLE posts ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
       this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM domains t WHERE t.domain = posts.domain), 'local-guide')");
@@ -675,6 +679,11 @@ export class DbService implements OnModuleInit {
   updateSlotStatus(slotId: string, status: string, error?: string | null): void {
     if (error !== undefined) this.run("UPDATE slots SET status=?, last_error=? WHERE slot_id=?", [status, error, slotId]);
     else this.run("UPDATE slots SET status=? WHERE slot_id=?", [status, slotId]);
+  }
+  // 슬롯 수동 제목(원문 저장 — 플레이스홀더는 생성 시점 치환). 빈/공백은 null(=규칙/LLM 로 폴백).
+  updateSlotTitle(slotId: string, title: string | null): number {
+    const val = title != null && String(title).trim() ? String(title).trim() : null;
+    return this.run("UPDATE slots SET title=? WHERE slot_id=?", [val, slotId]).changes ?? 0;
   }
   deleteSlot(domain: string, slotId: string): number { return this.run("DELETE FROM slots WHERE slot_id=? AND domain=?", [slotId, domain]).changes ?? 0; }
 

@@ -115,7 +115,10 @@ export class WorkerService {
           : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 }, academyTypes, archetype);
         // 제목 규칙(생성 시점 해석): 실제 후보 수로 제목 확정 → 프롬프트 주입. 후보 수 부족(min_generate 미만)이면 생성하지 않는다.
         const titleRule = (templateSpec?.title_rule as TitleRule | undefined) ?? TITLE_RULES[String(slot.template_id || "")];
-        const titleResolved = resolveTitleFromRule(titleRule, { region: String(slot.region || ""), count: facts.academyCount, keyword: String(slot.primary_keyword || ""), academyName: facts.firstAcademyName });
+        const titleCtx = { region: String(slot.region || ""), count: facts.academyCount, keyword: String(slot.primary_keyword || ""), academyName: facts.firstAcademyName };
+        const titleResolved = resolveTitleFromRule(titleRule, titleCtx);
+        // 슬롯 수동 제목이 있으면 규칙 제목보다 우선(생성 시점 치환). 스킵 판정은 규칙(min_generate)이 유지한다.
+        const forcedTitle = effectiveGenerationTitle(slot.title, titleResolved.title, titleCtx);
         if (titleResolved.skip) {
           const message = `학원 부족: 후보 ${facts.academyCount}곳 < 최소 ${titleRule?.min_generate}곳(제목 규칙)`;
           this.db.updateSlotStatus(sid, "skipped", message);
@@ -138,7 +141,7 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, archetype, templateDirection, academyTypes.length > 0, titleResolved.title);
+        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, archetype, templateDirection, academyTypes.length > 0, forcedTitle);
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
         const result = await runLlm(prompt, llmOpts);
@@ -154,7 +157,7 @@ export class WorkerService {
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
           this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 품질 보정 ${repairAttempt + 1}회차`, slotId: sid, processed: ok, failed: fail });
-          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, markdown, qualityIssues, archetype, templateDirection, titleResolved.title), llmOpts);
+          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, markdown, qualityIssues, archetype, templateDirection, forcedTitle), llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
           inputTokens += repair.input_tokens || 0;
@@ -168,7 +171,7 @@ export class WorkerService {
         }
         if (qualityIssues.length) throw new Error(`generated article quality gate failed: ${qualityIssues.join(", ")}`);
         // 규칙으로 확정한 제목이 있으면 강제(LLM 즉흥 방지). 없으면 기존대로 본문 H1 추출.
-        const title = titleResolved.title || extractTitle(markdown, slot.primary_keyword);
+        const title = forcedTitle || extractTitle(markdown, slot.primary_keyword);
         markdown = rewriteH1Title(markdown, title);
         const generatedMatches = findMatchedExclusionTerms(`${title}\n${markdown}`, exclusionTerms);
         if (generatedMatches.length) {
@@ -950,19 +953,30 @@ function extractTitle(md: string, fallback: string) {
 
 // 제목 규칙 해석: 실제 후보 수로 티어 매칭 + 플레이스홀더 치환. 규칙 없으면 title=null(=LLM 이 H1 결정).
 // skip=true 는 후보 수가 min_generate 미만이라 생성하지 않음을 뜻한다(부족 지역 차단).
-function resolveTitleFromRule(rule: TitleRule | undefined, ctx: { region: string; count: number; keyword: string; academyName: string }): { title: string | null; skip: boolean } {
+function resolveTitleFromRule(rule: TitleRule | undefined, ctx: TitleContext): { title: string | null; skip: boolean } {
   if (!rule) return { title: null, skip: false };
   if (ctx.count < (rule.min_generate ?? 0)) return { title: null, skip: true };
   const tier = [...rule.tiers].sort((a, b) => b.min_count - a.min_count).find((t) => ctx.count >= t.min_count);
   const template = tier?.template ?? rule.fallback;
   if (!template) return { title: null, skip: false };
-  const title = template
+  const title = substituteTitlePlaceholders(template, ctx);
+  return { title: title || null, skip: false };
+}
+type TitleContext = { region: string; count: number; keyword: string; academyName: string };
+// 제목 플레이스홀더 치환(규칙·수동 오버라이드 공용). {개수} = 실제 후보 수(직접+인근+보장 선정분).
+export function substituteTitlePlaceholders(template: string, ctx: TitleContext): string {
+  return template
     .replace(/\{지역\}/g, ctx.region)
     .replace(/\{개수\}/g, String(ctx.count))
     .replace(/\{키워드\}/g, ctx.keyword)
     .replace(/\{학원명\}/g, ctx.academyName)
     .replace(/\s+/g, " ").trim();
-  return { title: title || null, skip: false };
+}
+// 확정 제목 우선순위: 슬롯 수동 제목 > 규칙 제목 > null(=LLM H1). 수동 제목도 생성 시점 플레이스홀더 치환.
+// 스킵(min_generate)은 규칙이 결정하며 수동 제목이 무력화하지 않는다(후보 부족 방어 유지).
+export function effectiveGenerationTitle(manualRaw: string | null | undefined, ruleTitle: string | null, ctx: TitleContext): string | null {
+  const manual = manualRaw != null && String(manualRaw).trim() ? substituteTitlePlaceholders(String(manualRaw), ctx) : null;
+  return manual || ruleTitle;
 }
 function rewriteH1Title(md: string, title: string): string {
   const h1 = `# ${cleanGeneratedTitle(title)}`;

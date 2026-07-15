@@ -54,6 +54,9 @@ export const listSlots = (domain: string, params: { status?: string; template?: 
   if (params.offset) search.set("offset", String(params.offset));
   return api<SlotListPayload>(`/domains/${encodeURIComponent(domain)}/slots?${search.toString()}`);
 };
+// 슬롯 수동 제목 오버라이드 저장. title=null 이면 규칙/LLM 로 폴백.
+export const updateSlotTitle = (domain: string, slotId: string, title: string | null) =>
+  api<{ ok: true; slot: import("./types").Slot }>(`/domains/${encodeURIComponent(domain)}/slots/${encodeURIComponent(slotId)}`, { method: "PATCH", body: JSON.stringify({ title }) });
 export const listAcademies = (domain: string, params: { region?: string; academy_type?: string; q?: string; has_photos?: boolean; limit?: number } = {}) => {
   const search = new URLSearchParams();
   if (params.region) search.set("region", params.region);

@@ -147,6 +147,7 @@ export interface Slot {
   priority_score: number | null;
   status: SlotStatus;
   last_error: string | null;
+  title: string | null; // 수동 제목 오버라이드(원문 · 규칙보다 우선). null=규칙/LLM 폴백.
   created_at: string;
 }
 
