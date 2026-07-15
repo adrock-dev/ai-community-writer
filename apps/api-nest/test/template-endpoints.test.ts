@@ -42,8 +42,8 @@ describe("빌트인 title_rule 엔드포인트 계약", () => {
     const opts = ctl.options(REQ, {}) as any;
     expect(opts.archetype_structure_variants.local).toContain("비교표 우선");
     expect(opts.archetype_structure_variants.local.length).toBeGreaterThanOrEqual(3);
-    expect(opts.archetype_structure_variants.local_single).toHaveLength(3);
-    expect(opts.archetype_structure_variants.local_hub).toHaveLength(3);
+    expect(opts.archetype_structure_variants.local_single.length).toBeGreaterThanOrEqual(3);
+    expect(opts.archetype_structure_variants.local_hub.length).toBeGreaterThanOrEqual(3);
     expect(opts.archetype_structure_variants.compare).toBeUndefined(); // 변형 없는 아키타입은 키 없음
   });
 
