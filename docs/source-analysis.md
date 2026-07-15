@@ -72,7 +72,7 @@ flowchart LR
 | --- | --- |
 | `domains` | 도메인별 운영 설정, 디자인/콘텐츠 지침, 제외 키워드, 일일 제한 |
 | `axes` | 지역, 키워드, 의도, 페르소나, 수식어 등 생성 축 |
-| `slots` | 생성 후보 글 단위. 상태는 `planned`, `in_progress`, `published`, `failed`, `pruned` 중심 |
+| `slots` | 생성 후보 글 단위. 상태는 `planned`, `in_progress`, `published`, `failed`, `skipped` 중심 |
 | `posts` | 발행 글 본문, 메타, 렌더링 자료, 색인 상태 |
 | `jobs` | `generate`, `dedup`, `indexing`, `prune` 작업 큐 |
 | `app_settings` | 앱 전역 설정 |

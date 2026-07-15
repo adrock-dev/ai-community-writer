@@ -90,7 +90,7 @@ export class WorkerService {
       const slotMatches = findSlotExclusionTerms(slot, exclusionTerms);
       if (slotMatches.length) {
         const message = `excluded by domain rule: ${slotMatches.join(", ")}`;
-        this.db.updateSlotStatus(sid, "pruned", message);
+        this.db.updateSlotStatus(sid, "skipped", message);
         skipped++; this.db.updateJobProgress(jobId, { step: "제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
         continue;
       }
@@ -118,14 +118,14 @@ export class WorkerService {
         const titleResolved = resolveTitleFromRule(titleRule, { region: String(slot.region || ""), count: facts.academyCount, keyword: String(slot.primary_keyword || ""), academyName: facts.firstAcademyName });
         if (titleResolved.skip) {
           const message = `학원 부족: 후보 ${facts.academyCount}곳 < 최소 ${titleRule?.min_generate}곳(제목 규칙)`;
-          this.db.updateSlotStatus(sid, "pruned", message);
+          this.db.updateSlotStatus(sid, "skipped", message);
           skipped++; this.db.updateJobProgress(jobId, { step: "학원 부족으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
         const factsMatches = findMatchedExclusionTerms(facts.text, exclusionTerms);
         if (factsMatches.length) {
           const message = `excluded by domain rule in facts: ${factsMatches.join(", ")}`;
-          this.db.updateSlotStatus(sid, "pruned", message);
+          this.db.updateSlotStatus(sid, "skipped", message);
           skipped++; this.db.updateJobProgress(jobId, { step: "자료 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
@@ -173,7 +173,7 @@ export class WorkerService {
         const generatedMatches = findMatchedExclusionTerms(`${title}\n${markdown}`, exclusionTerms);
         if (generatedMatches.length) {
           const message = `excluded by domain rule in generated article: ${generatedMatches.join(", ")}`;
-          this.db.updateSlotStatus(sid, "pruned", message);
+          this.db.updateSlotStatus(sid, "skipped", message);
           skipped++; this.db.updateJobProgress(jobId, { step: "생성문 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }

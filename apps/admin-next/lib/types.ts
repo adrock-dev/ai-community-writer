@@ -1,5 +1,5 @@
 export type Axis = "region" | "keyword" | "intent" | "persona" | "modifier";
-export type SlotStatus = "planned" | "in_progress" | "published" | "failed" | "pruned";
+export type SlotStatus = "planned" | "in_progress" | "published" | "failed" | "skipped";
 export type PostStatus = "published" | "noindex" | "deleted";
 export type JobStatus = "queued" | "running" | "done" | "failed";
 export type JobKind = "generate" | "dedup" | "indexing" | "prune";

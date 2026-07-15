@@ -66,7 +66,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `modifier_2` | string \| null | 수식어 2 |
 | `entity_id` | string \| null | 연결 엔티티 ID |
 | `priority_score` | number \| null | 우선순위 점수 |
-| `status` | `planned` \| `in_progress` \| `published` \| `failed` \| `pruned` | 슬롯 상태 |
+| `status` | `planned` \| `in_progress` \| `published` \| `failed` \| `skipped` | 슬롯 상태 |
 | `last_error` | string \| null | 마지막 오류 |
 | `created_at` | string | 생성 시각 |
 
@@ -260,7 +260,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
     "in_progress": 0,
     "published": 0,
     "failed": 0,
-    "pruned": 0
+    "skipped": 0
   },
   "settings": {
     "indexing_has_key": false,
@@ -369,7 +369,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
     "in_progress": 0,
     "published": 20,
     "failed": 0,
-    "pruned": 0
+    "skipped": 0
   },
   "items": []
 }

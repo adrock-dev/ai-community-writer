@@ -509,7 +509,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
     </section>
     <StepLaunchPanel onStartFlow={onStartFlow} />
     <div className="grid grid-4">
-      <Stat label="대기 후보" value={counts.planned} /><Stat label="진행" value={counts.in_progress} /><Stat label="발행" value={counts.published} accent /><Stat label="실패" value={counts.failed} />
+      <Stat label="대기 후보" value={counts.planned} /><Stat label="진행" value={counts.in_progress} /><Stat label="발행" value={counts.published} accent /><Stat label="실패" value={counts.failed} /><Stat label="스킵" value={counts.skipped} />
     </div>
     <div className="grid grid-2">
       <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>글 공통 설정 열기</button></div>
@@ -1552,7 +1552,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <p className="muted small">아래 필터는 목록 표시와 「현재 검색 N개 작성」 선별에 쓰입니다.</p>
         </div>
         <div className="row" data-tour="slots-filter">
-          <select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","pruned"].map((s) => <option key={s}>{s}</option>)}</select>
+          <select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","skipped"].map((s) => <option key={s}>{s}</option>)}</select>
           <select className="select" style={{ width: 200 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{typeFilterOptions.map((o) => <option key={o.id} value={o.id}>{o.id} {o.name}</option>)}</select>
           <input className="input" style={{ width: 320 }} placeholder="지역/키워드/후보 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />
           {["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}

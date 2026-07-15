@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS slots (
   modifier_2 TEXT,
   entity_id TEXT,
   priority_score REAL,
-  status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','in_progress','published','failed','pruned')),
+  status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','in_progress','published','failed','skipped')),
   last_error TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
@@ -291,6 +291,7 @@ export class DbService implements OnModuleInit {
     if (!jobCols.has("current_step")) this.db.exec("ALTER TABLE jobs ADD COLUMN current_step TEXT");
     if (!jobCols.has("processed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN processed_count INTEGER NOT NULL DEFAULT 0");
     if (!jobCols.has("failed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0");
+    this.migrateSlotsSkippedStatus();
     if (!postCols.has("design_template_id")) {
       this.db.exec("ALTER TABLE posts ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
       this.db.exec("UPDATE posts SET design_template_id = COALESCE((SELECT t.design_template_id FROM domains t WHERE t.domain = posts.domain), 'local-guide')");
@@ -356,6 +357,40 @@ export class DbService implements OnModuleInit {
       this.migratePr3DesignOverrides();
       this.setSetting("pr3_design_migrated", "1");
     }
+  }
+
+  // slots.status: 레거시 'pruned'(생성 시점 스킵을 뭉뚱그린 값)를 전용 'skipped' 상태로 분리한다.
+  // CHECK 제약은 ALTER로 바꿀 수 없어 테이블을 재생성한다(멱등: 이미 'skipped' 제약이면 skip).
+  private migrateSlotsSkippedStatus(): void {
+    const slotsSql = String(this.get("SELECT sql FROM sqlite_master WHERE type='table' AND name='slots'")?.sql ?? "");
+    if (!slotsSql || slotsSql.includes("'skipped'")) return;
+    this.db.exec("PRAGMA foreign_keys = OFF");
+    this.transaction(() => {
+      this.db.exec(`CREATE TABLE slots_new (
+        slot_id TEXT PRIMARY KEY,
+        domain TEXT NOT NULL,
+        template_id TEXT NOT NULL,
+        primary_keyword TEXT NOT NULL,
+        region TEXT,
+        persona TEXT,
+        intent TEXT,
+        modifier_1 TEXT,
+        modifier_2 TEXT,
+        entity_id TEXT,
+        priority_score REAL,
+        status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','in_progress','published','failed','skipped')),
+        last_error TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
+      )`);
+      this.db.exec(`INSERT INTO slots_new (slot_id, domain, template_id, primary_keyword, region, persona, intent, modifier_1, modifier_2, entity_id, priority_score, status, last_error, created_at)
+        SELECT slot_id, domain, template_id, primary_keyword, region, persona, intent, modifier_1, modifier_2, entity_id, priority_score,
+          CASE WHEN status = 'pruned' THEN 'skipped' ELSE status END, last_error, created_at FROM slots`);
+      this.db.exec("DROP TABLE slots");
+      this.db.exec("ALTER TABLE slots_new RENAME TO slots");
+      this.db.exec("CREATE INDEX IF NOT EXISTS idx_slots_domain_status ON slots(domain, status, priority_score DESC)");
+    });
+    this.db.exec("PRAGMA foreign_keys = ON");
   }
 
   all(sql: string, params: any[] = []): Row[] { return this.db.prepare(sql).all(...params) as Row[]; }
@@ -614,7 +649,7 @@ export class DbService implements OnModuleInit {
     return picked;
   }
   countSlots(domain: string): Record<string, number> {
-    const out: Record<string, number> = { planned: 0, in_progress: 0, published: 0, failed: 0, pruned: 0 };
+    const out: Record<string, number> = { planned: 0, in_progress: 0, published: 0, failed: 0, skipped: 0 };
     for (const r of this.all("SELECT status, COUNT(*) AS n FROM slots WHERE domain=? GROUP BY status", [domain])) out[r.status] = r.n;
     return out;
   }
