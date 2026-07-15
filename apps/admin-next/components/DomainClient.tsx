@@ -167,8 +167,10 @@ const DESIGN_BLUEPRINTS: Record<string, {
 
 type DomainPageView = "overview" | "generate" | "posts";
 
-export default function DomainClient({ domain, view = "overview" }: { domain: string; view?: DomainPageView }) {
-  const initialTab = view === "generate" ? "slots" : view === "posts" ? "posts" : "overview";
+export default function DomainClient({ domain, view = "overview", initialTab: initialTabProp }: { domain: string; view?: DomainPageView; initialTab?: string }) {
+  // ?tab= 로 넘어온 유효한 탭이면 우선(다른 라우트의 탭으로 딥링크). 없으면 view 기반 기본 탭.
+  const requestedTab = initialTabProp && TABS.some(([id]) => id === initialTabProp) ? initialTabProp : undefined;
+  const initialTab = requestedTab ?? (view === "generate" ? "slots" : view === "posts" ? "posts" : "overview");
   const [payload, setPayload] = useState<DomainDetailPayload | null>(null);
   const [options, setOptions] = useState<AdminOptions | null>(null);
   const [tab, setTab] = useState(initialTab);
@@ -1512,7 +1514,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           </Field>
           <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy || !genType} onClick={gen}>{busy ? "만드는 중..." : "글 후보 만들기"}</button>
         </div>
-        {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <button className="btn" onClick={() => onTab("templates")}>글유형/디자인 탭</button>에서 유형을 켜세요.</p>}
+        {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <Link className="btn" href={`/t/${encodeURIComponent(domain.domain)}?tab=templates`}>글유형/디자인 탭</Link>에서 유형을 켜세요.</p>}
         <p className="muted small">조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
       </div>
