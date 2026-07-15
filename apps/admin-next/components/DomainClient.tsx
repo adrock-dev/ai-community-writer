@@ -1081,7 +1081,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>주제 · 키워드</h3><p className="muted small">이름 · 참조 아키타입 · 키워드 선택</p></div><span className="badge info">{openSec.topic ? "접기" : "열기"}</span></div></summary>
       <div className="grid" style={{ marginTop: 8 }}>
     <div className="grid grid-2">
-      <Field label="이름"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 심야 학원 특집" /></Field>
+      <Field label="글 유형 이름"><input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 심야 학원 특집" /></Field>
       <Field label="참조 아키타입 (kind)">
         <select className="select" value={kind} onChange={(e) => setKind(e.target.value)} disabled={sourceLocked}>
           {kindOptions.map((o) => <option key={o.kind} value={o.kind}>{o.label}</option>)}
