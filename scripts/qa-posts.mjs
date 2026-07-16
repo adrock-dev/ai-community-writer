@@ -52,6 +52,8 @@ function issuesFor(row) {
   const readability = readabilityIssues(body);
   issues.push(...readability);
   issues.push(...aiClicheIssues(`${row.title}\n${body}`));
+  issues.push(...repeatedSentenceIssues(body));
+  issues.push(...boilerplatePhraseIssues(`${row.title}\n${body}`));
   if (!row.design_template_id) issues.push('missing_design_template_id');
   if (!['editorial', 'comparison', 'local-guide', 'checklist', 'conversion', 'custom'].includes(String(row.design_template_id || ''))) issues.push(`unknown_design_template:${row.design_template_id}`);
   if (h2 >= 4 && !hasFinalUtilitySection(body)) issues.push('template_structure_missing_final_utility_section');
@@ -103,6 +105,30 @@ const AI_CLICHE_PHRASES = [
 function aiClicheIssues(text) {
   const found = AI_CLICHE_PHRASES.filter((phrase) => text.includes(phrase));
   return found.length ? [`ai_cliche_expressions:${found.join('·')}`] : [];
+}
+
+// quality-gate.ts 의 BOILERPLATE_PHRASES/boilerplatePhraseIssues/repeatedSentenceIssues 와 동일 규칙(미러).
+const BOILERPLATE_PHRASES = [
+  "확인된 후보 정보와 상담 전 체크포인트를 기준으로",
+  "실제로 비교할 때 도움이 되는 내용만",
+  "후기 요약에서는 친절한 상담·응대와 강사의 꼼꼼한 설명이 확인됩니다",
+  "정리하면 선택 기준은 단순",
+];
+function boilerplatePhraseIssues(text, extra = []) {
+  const found = [...BOILERPLATE_PHRASES, ...extra].filter((phrase) => phrase && text.includes(phrase));
+  return found.length ? [`boilerplate_phrase:${found.join('·')}`] : [];
+}
+function repeatedSentenceIssues(markdown) {
+  const counts = new Map();
+  for (const para of getParagraphs(String(markdown || ''))) {
+    for (const sentence of splitSentences(para)) {
+      const norm = sentence.replace(/\s+/g, ' ').trim();
+      if (norm.length < 16) continue;
+      counts.set(norm, (counts.get(norm) || 0) + 1);
+    }
+  }
+  const repeated = [...counts.values()].filter((n) => n >= 2).length;
+  return repeated ? [`repeated_sentence:${repeated}`] : [];
 }
 
 // 문장 난이도(가독성): run-on 문장 검사. quality-gate.ts 의 sentenceDifficultyIssues 와 동일 규칙.

@@ -26,6 +26,35 @@ export function aiClicheIssues(text: string): string[] {
   return found.length ? [`ai_cliche_expressions_${found.join("·")}`] : [];
 }
 
+// 글간 반복되는 판박이 필러 문장 — 사실이 아니라 템플릿 상투구다(도입/요약/후기 프레임). verbatim 재사용을
+// 막아 글마다 다르게 쓰게 한다(중복 콘텐츠 방지). 학원명·주소·과정 같은 사실 문장은 포함하지 않는다.
+// extra 로 도메인별 감시 문구(monitored_phrases)를 더할 수 있다.
+const BOILERPLATE_PHRASES = [
+  "확인된 후보 정보와 상담 전 체크포인트를 기준으로",
+  "실제로 비교할 때 도움이 되는 내용만",
+  "후기 요약에서는 친절한 상담·응대와 강사의 꼼꼼한 설명이 확인됩니다",
+  "정리하면 선택 기준은 단순",
+];
+export function boilerplatePhraseIssues(text: string, extra: string[] = []): string[] {
+  const found = [...BOILERPLATE_PHRASES, ...extra].filter((phrase) => phrase && text.includes(phrase));
+  return found.length ? [`boilerplate_phrase_${found.join("·")}`] : [];
+}
+
+// 글내 동일 문장(≥16자) verbatim 반복: 사실 카드는 학원당 1회라 정상이므로, 2회 이상이면 템플릿 티/패딩으로 본다.
+// readableParagraphs/splitSentences 로 표·헤딩·리스트·링크를 제외해 사실 나열이 아닌 산문 문장만 센다.
+export function repeatedSentenceIssues(markdown: string): string[] {
+  const counts = new Map<string, number>();
+  for (const para of readableParagraphs(markdown)) {
+    for (const sentence of splitSentences(para)) {
+      const norm = sentence.replace(/\s+/g, " ").trim();
+      if (norm.length < 16) continue;
+      counts.set(norm, (counts.get(norm) || 0) + 1);
+    }
+  }
+  const repeated = Array.from(counts.values()).filter((n) => n >= 2).length;
+  return repeated ? [`repeated_sentence_${repeated}`] : [];
+}
+
 export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>): string[] {
   const issues: string[] = [];
   const chars = markdown.trim().length;
@@ -41,6 +70,8 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (h2Count > 10) issues.push(`too_many_h2_${h2Count}`);
   issues.push(...readabilityIssues(markdown));
   issues.push(...aiClicheIssues(markdown));
+  issues.push(...repeatedSentenceIssues(markdown));
+  issues.push(...boilerplatePhraseIssues(markdown));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅)/m.test(markdown)) issues.push("missing_checklist_or_list");
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
@@ -85,6 +116,8 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   if (h2Count > 10) issues.push(`too_many_h2_${h2Count}`);
   issues.push(...readabilityIssues(markdown));
   issues.push(...aiClicheIssues(`${title}\n${markdown}`));
+  issues.push(...repeatedSentenceIssues(markdown));
+  issues.push(...boilerplatePhraseIssues(`${title}\n${markdown}`));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅|✓)/m.test(markdown)) issues.push("missing_checklist_or_list");

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   aiClicheIssues,
   articleQualityIssues,
+  boilerplatePhraseIssues,
   candidateCountFromFacts,
   candidateNamesFromFacts,
   postSurfaceQualityIssues,
+  repeatedSentenceIssues,
 } from "../src/quality-gate.js";
 
 // 런타임 품질 게이트의 규칙별 동작을 고정한다. scripts/qa-posts.mjs 의 게이트와
@@ -110,6 +112,32 @@ describe("AI 상투표현(자연스러움)", () => {
   it("surface 게이트에서도 제목의 상투표현을 검사한다", () => {
     const post = { title: "이번 글에서는 정리", body_markdown: "# 제목\n본문", images: null };
     expect(postSurfaceQualityIssues(post).some((c) => c.startsWith("ai_cliche_expressions"))).toBe(true);
+  });
+});
+
+describe("중복/반복 문구(중복 방지)", () => {
+  it("판박이 필러 문장을 잡아낸다", () => {
+    const found = boilerplatePhraseIssues("정리하면 선택 기준은 단순합니다. 아래를 보자.");
+    expect(found.some((c) => c.startsWith("boilerplate_phrase"))).toBe(true);
+  });
+
+  it("도메인 감시 문구(extra)도 함께 검사한다", () => {
+    expect(boilerplatePhraseIssues("친절한 상담이 인상적입니다.", ["친절한 상담이 인상적입니다"]).length).toBe(1);
+  });
+
+  it("상투 문장이 없으면 통과한다", () => {
+    expect(boilerplatePhraseIssues("평택역 인근에서 통학 동선을 먼저 따져보세요.")).toEqual([]);
+  });
+
+  it("같은 문장이 글 안에서 2회 이상 반복되면 잡아낸다", () => {
+    const s = "확인된 과정은 1종 보통, 2종 보통입니다.";
+    const md = `# 제목\n\n${s}\n\n다른 설명이 이어진다.\n\n${s}`;
+    expect(repeatedSentenceIssues(md).some((c) => c.startsWith("repeated_sentence"))).toBe(true);
+  });
+
+  it("서로 다른 사실 문장(학원별)은 반복으로 보지 않는다", () => {
+    const md = "# 제목\n\nA학원은 평택시에 있습니다.\n\nB학원은 안성시에 있습니다.";
+    expect(repeatedSentenceIssues(md)).toEqual([]);
   });
 });
 
