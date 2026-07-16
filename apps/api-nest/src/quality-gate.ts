@@ -14,7 +14,8 @@ function safeJson(value: any, fallback: any): any {
 // AI 상투표현: 형식적 메타서술("~알아보겠습니다")·블로그 프레임("이번 글에서는")·판박이 마무리("도움이 되셨…").
 // 사람이 쓴 자연스러운 글엔 거의 없고, 있으면 repair 로 쉽게 다시 쓸 수 있다. 필러/흔한 부사(다양한·꼭·반드시 등)는
 // 정상 글에도 흔해 오탐이 크므로 제외한다(정밀 우선). 하나라도 있으면 자연스러움 저하로 본다.
-const AI_CLICHE_PHRASES = [
+// scripts/qa-posts.mjs 가 이 목록을 미러링한다(렌더 인식 게이트). 두 곳이 어긋나면 test/gate-parity.test.ts 가 실패한다.
+export const AI_CLICHE_PHRASES = [
   "알아보겠습니다", "알아보도록", "알아보는 시간", "살펴보겠습니다", "살펴보도록", "짚어보겠습니다",
   "정리해보겠습니다", "정리해 보겠습니다", "정리해드리겠습니다", "살펴보았습니다", "알아봤습니다",
   "이 글에서는", "이번 글에서는", "이번 포스팅", "본 포스팅", "포스팅에서는",
@@ -29,7 +30,8 @@ export function aiClicheIssues(text: string): string[] {
 // 글간 반복되는 판박이 필러 문장 — 사실이 아니라 템플릿 상투구다(도입/요약/후기 프레임). verbatim 재사용을
 // 막아 글마다 다르게 쓰게 한다(중복 콘텐츠 방지). 학원명·주소·과정 같은 사실 문장은 포함하지 않는다.
 // extra 로 도메인별 감시 문구(monitored_phrases)를 더할 수 있다.
-const BOILERPLATE_PHRASES = [
+// scripts/qa-posts.mjs 가 이 목록을 미러링한다. 어긋나면 test/gate-parity.test.ts 가 실패한다.
+export const BOILERPLATE_PHRASES = [
   "확인된 후보 정보와 상담 전 체크포인트를 기준으로",
   "실제로 비교할 때 도움이 되는 내용만",
   "후기 요약에서는 친절한 상담·응대와 강사의 꼼꼼한 설명이 확인됩니다",
@@ -169,8 +171,8 @@ function readabilityIssues(markdown: string): string[] {
 // 문장 난이도(가독성): 한 '문장'이 지나치게 길면(run-on) 읽기 어렵다. 한국어 형태소 분석 없이
 // 결정적으로 잴 수 있는 대리 지표로 문장 길이를 쓴다. 실제 생성 글의 산문 문장은 (링크 URL 제외)
 // p99≈106자·최대 141자라, 150자 이상은 사실상 run-on 으로 본다. scripts/qa-posts.mjs 와 동일 규칙.
-const HARD_SENTENCE_CHARS = 150;      // 이 이상이면 '읽기 어려운 긴 문장'
-const OVERLONG_SENTENCE_CHARS = 220;  // 이 이상이면 한 문장만으로도 실패
+export const HARD_SENTENCE_CHARS = 150;      // 이 이상이면 '읽기 어려운 긴 문장'(qa-posts.mjs 미러)
+export const OVERLONG_SENTENCE_CHARS = 220;  // 이 이상이면 한 문장만으로도 실패(qa-posts.mjs 미러)
 function sentenceDifficultyIssues(markdown: string): string[] {
   const issues: string[] = [];
   const lengths = readableParagraphs(markdown).flatMap(splitSentences).map((sentence) => sentence.length);

@@ -1,46 +1,60 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
-const args = process.argv.slice(2);
-const includeAll = args.includes('--all');
-const postId = optionValue('--post-id');
-const slotId = optionValue('--slot-id');
-const domain = optionValue('--domain');
-const dbPath = args.find((arg, index) => {
-  if (arg === '--all') return false;
-  if (arg.startsWith('--')) return false;
-  const prev = args[index - 1];
-  return !['--post-id', '--slot-id', '--domain'].includes(prev);
-}) || 'data/admin.db';
-const db = new DatabaseSync(dbPath);
-const filters = [includeAll ? "p.status != 'deleted'" : "p.status = 'published'"];
-const filterArgs = [];
-if (postId) { filters.push('p.id = ?'); filterArgs.push(postId); }
-if (slotId) { filters.push('p.slot_id = ?'); filterArgs.push(slotId); }
-if (domain) { filters.push('p.domain = ?'); filterArgs.push(domain); }
-const where = filters.join(' and ');
-const monitoredByDomain = new Map(db.prepare("select domain, monitored_phrases from domains").all().map((d) => [d.domain, parseMonitoredPhrases(d.monitored_phrases)]));
-const rows = db.prepare(`select p.id, p.domain, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id, p.academy_count,
-  (select count(*) from academies a join slots s2 on s2.slot_id=p.slot_id where a.domain=p.domain and s2.region is not null and a.region=s2.region) as exact_academy_count
-  from posts p where ${where} order by p.generated_at desc`).all(...filterArgs);
-const hasTargetFilter = Boolean(postId || slotId || domain);
+// CLI 진입점(`node scripts/qa-posts.mjs`)에서만 DB 를 열고 실행한다. import(예: test/gate-parity.test.ts)
+// 시에는 부수효과 없이 순수 함수/상수만 노출한다. 이 파일의 품질 규칙은 quality-gate.ts 를 미러링하며,
+// 두 곳이 어긋나면 gate-parity 테스트가 실패한다(드리프트 가드).
+function main() {
+  const args = process.argv.slice(2);
+  const includeAll = args.includes('--all');
+  const postId = optionValue('--post-id', args);
+  const slotId = optionValue('--slot-id', args);
+  const domain = optionValue('--domain', args);
+  const dbPath = args.find((arg, index) => {
+    if (arg === '--all') return false;
+    if (arg.startsWith('--')) return false;
+    const prev = args[index - 1];
+    return !['--post-id', '--slot-id', '--domain'].includes(prev);
+  }) || 'data/admin.db';
+  const db = new DatabaseSync(dbPath);
+  const filters = [includeAll ? "p.status != 'deleted'" : "p.status = 'published'"];
+  const filterArgs = [];
+  if (postId) { filters.push('p.id = ?'); filterArgs.push(postId); }
+  if (slotId) { filters.push('p.slot_id = ?'); filterArgs.push(slotId); }
+  if (domain) { filters.push('p.domain = ?'); filterArgs.push(domain); }
+  const where = filters.join(' and ');
+  const monitoredByDomain = new Map(db.prepare("select domain, monitored_phrases from domains").all().map((d) => [d.domain, parseMonitoredPhrases(d.monitored_phrases)]));
+  const rows = db.prepare(`select p.id, p.domain, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id, p.academy_count,
+    (select count(*) from academies a join slots s2 on s2.slot_id=p.slot_id where a.domain=p.domain and s2.region is not null and a.region=s2.region) as exact_academy_count
+    from posts p where ${where} order by p.generated_at desc`).all(...filterArgs);
+  const hasTargetFilter = Boolean(postId || slotId || domain);
 
-function optionValue(name) {
+  const reports = rows.map((row) => ({ row, ...issuesFor(row, monitoredByDomain) }));
+  const bad = reports.filter((r) => r.issues.length);
+  const outputHtmlArtifacts = findOutputHtmlArtifacts(process.cwd());
+  const detailTemplateIssues = detailTemplateQualityIssues();
+  const selectionIssues = hasTargetFilter && rows.length === 0 ? ['no_posts_matched_filter'] : [];
+  console.log(JSON.stringify({ checked: rows.length, failed: bad.length + selectionIssues.length, selectionIssues, outputHtmlArtifacts, detailTemplateIssues, failures: bad.map((r) => ({ id: r.row.id, slot_id: r.row.slot_id, status: r.row.status, chars: r.chars, h2: r.h2, h3: r.h3, tableRows: r.tableRows, listItems: r.listItems, paragraphs: r.paragraphs, faqQuestions: r.faqQuestions, images: r.imageCount, imageTokens: r.imageTokens, design_template_id: r.row.design_template_id, title: r.row.title, issues: r.issues })) }, null, 2));
+  if (selectionIssues.length || bad.length || outputHtmlArtifacts.length || detailTemplateIssues.length) process.exit(1);
+}
+
+function optionValue(name, args) {
   const prefixed = args.find((arg) => arg.startsWith(`${name}=`));
   if (prefixed) return prefixed.slice(name.length + 1).trim();
   const index = args.indexOf(name);
   return index >= 0 ? String(args[index + 1] || '').trim() : '';
 }
 
-function issuesFor(row) {
+function issuesFor(row, monitoredByDomain) {
   const body = String(row.body_markdown || '');
   const images = parseImages(row.images);
   const issues = [];
   const h1 = getH1(body);
   if (!h1) issues.push('missing_h1');
   else if (normalizeTitle(h1) !== normalizeTitle(row.title)) issues.push('h1_title_mismatch');
-  if (body.length < 3200) issues.push(`too_short:${body.length}`);
+  if (body.length < 3500) issues.push(`too_short:${body.length}`);
   if (body.length > 5600) issues.push(`too_long:${body.length}`);
   const h2 = (body.match(/^##\s+/gm) || []).length;
   const h3 = (body.match(/^###\s+/gm) || []).length;
@@ -49,7 +63,7 @@ function issuesFor(row) {
   const paragraphs = getParagraphs(body);
   const faqQuestions = countFaqQuestions(body);
   if (h2 < 4) issues.push(`few_h2:${h2}`);
-  if (h2 > 12) issues.push(`too_many_h2:${h2}`);
+  if (h2 > 10) issues.push(`too_many_h2:${h2}`);
   const readability = readabilityIssues(body);
   issues.push(...readability);
   issues.push(...aiClicheIssues(`${row.title}\n${body}`));
@@ -89,8 +103,8 @@ function readabilityIssues(body) {
   const paragraphs = getParagraphs(body);
   const long = paragraphs.filter((paragraph) => paragraph.length > 420);
   if (long.length) issues.push(`overlong_paragraph:${Math.max(...long.map((p) => p.length))}`);
-  if (adjacentHeadingCount(body) > 2) issues.push('adjacent_headings_without_body');
-  if (orphanHeadingCount(body) > 3) issues.push('too_many_thin_or_empty_heading_sections');
+  if (adjacentHeadingCount(body) > 0) issues.push('adjacent_headings_without_body');
+  if (orphanHeadingCount(body) > 1) issues.push('too_many_thin_or_empty_heading_sections');
   issues.push(...sentenceDifficultyIssues(paragraphs));
   return issues;
 }
@@ -437,14 +451,6 @@ function stripTags(html) {
   return String(html || '').replace(/<[^>]+>/g, ' ');
 }
 
-const reports = rows.map((row) => ({ row, ...issuesFor(row) }));
-const bad = reports.filter((r) => r.issues.length);
-const outputHtmlArtifacts = findOutputHtmlArtifacts(process.cwd());
-const detailTemplateIssues = detailTemplateQualityIssues();
-const selectionIssues = hasTargetFilter && rows.length === 0 ? ['no_posts_matched_filter'] : [];
-console.log(JSON.stringify({ checked: rows.length, failed: bad.length + selectionIssues.length, selectionIssues, outputHtmlArtifacts, detailTemplateIssues, failures: bad.map((r) => ({ id: r.row.id, slot_id: r.row.slot_id, status: r.row.status, chars: r.chars, h2: r.h2, h3: r.h3, tableRows: r.tableRows, listItems: r.listItems, paragraphs: r.paragraphs, faqQuestions: r.faqQuestions, images: r.imageCount, imageTokens: r.imageTokens, design_template_id: r.row.design_template_id, title: r.row.title, issues: r.issues })) }, null, 2));
-if (selectionIssues.length || bad.length || outputHtmlArtifacts.length || detailTemplateIssues.length) process.exit(1);
-
 function detailTemplateQualityIssues() {
   const issues = [];
   let source = '';
@@ -482,3 +488,9 @@ function walk(dir, found) {
     }
   }
 }
+
+// quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
+export { AI_CLICHE_PHRASES, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues };
+
+// CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
