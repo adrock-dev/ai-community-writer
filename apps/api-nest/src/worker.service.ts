@@ -2,7 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
-import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, TITLE_RULES, defaultDesignForTemplate, type TitleRule } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, DRIVING_AUTHORITATIVE_SOURCES_GUIDE, TITLE_RULES, defaultDesignForTemplate, type TitleRule } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
@@ -755,7 +755,9 @@ ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" �
 - 학원명·가격·셔틀·면허종류·준비물처럼 독자가 스캔해야 하는 핵심어는 Markdown bold를 적당히 사용한다.
 - 관련 글 후보가 있으면 실제 링크만 2~4개 연결한다. 후보가 없으면 링크를 꾸며내지 않는다.
 - [1], [2] 같은 출처번호와 입력 묶음 표현(확인된 콘텐츠 재료, 작성 범위, 소개 가능한 후보 수, API 자료, 후보 수, 참고자료, 내부 API URL 등)은 노출하지 않는다.
-- 출처/참고자료는 도로교통공단처럼 실제 외부 공신력 자료를 별도로 인용했을 때만 작성한다. 이번 입력의 학원 API는 출처가 아니라 내부 데이터다.
+- 공신력 출처는 본문 문장 안에 인라인 링크로만 인용한다(별도 출처 섹션 금지, 렌더 시 제거됨). 인용 시 아래 정확한 URL만 쓰고 지어내지 않는다:
+${DRIVING_AUTHORITATIVE_SOURCES_GUIDE}
+- 이번 입력의 학원 API는 출처가 아니라 내부 데이터다.
 - 원문보다 더 자연스럽고 풍성한 ${brand} 블로그 톤으로 작성하되, 원본 레퍼런스처럼 구체적인 지역 생활권·비용 확인점·사진·내부링크·CTA가 보이게 만든다.
 - ai_cliche_expressions 가 사유에 있으면, 표시된 판박이 표현("이번 글에서는", "~알아보겠습니다/살펴보겠습니다", "여러분", "도움이 되셨기를 바랍니다" 등)을 전부 없애고 실제 사람이 쓴 블로그처럼 구체 상황으로 자연스럽게 다시 시작·마무리한다. 같은 뜻의 다른 상투구로 바꾸지 말 것.
 - boilerplate_phrase / repeated_sentence 가 사유에 있으면, 표시된 상투 프레임 문장을 그대로 쓰지 말고 이 지역·후보에 맞는 새 문장으로 다시 쓰고, 같은 글 안에서 반복된 동일 문장은 표현을 바꿔 중복을 없앤다(사실 내용은 유지).
@@ -830,6 +832,9 @@ ${facts || "없음"}
 절대 원칙:
 ${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` : ""}
 
+공신력 출처(EEAT, 선택):
+${DRIVING_AUTHORITATIVE_SOURCES_GUIDE}
+
 원본 레퍼런스 품질 기준:
 - 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장, 관련 내부링크 2~4개 권장, FAQ는 필수 아님.
 - 딱딱한 데이터 나열이 아니라 ${brand} 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 후보로 연결한다.
@@ -867,7 +872,7 @@ ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" �
 - AI가 쓴 티가 나는 판박이 표현을 쓰지 말 것. 금지 예: "이번 글에서는/이 글에서는", "~에 대해 알아보겠습니다/살펴보겠습니다/정리해보겠습니다", "~살펴보았습니다", "여러분", "도움이 되셨기를 바랍니다/참고하시기 바랍니다", "이번 포스팅/본 포스팅". 대신 실제 사람이 쓴 블로그처럼 지역 상황·고민·구체 정보로 바로 들어가고 자연스럽게 마무리한다.
 - 도입·요약·후기 언급은 매번 다른 문장으로 쓰고, 다른 글에서 쓸 법한 상투적인 프레임 문장("확인된 후보 정보와 상담 전 체크포인트를 기준으로…", "후기 요약에서는 친절한 상담과 꼼꼼한 설명이 확인됩니다", "정리하면 선택 기준은 단순합니다" 등)을 그대로 재사용하지 말 것. 같은 글 안에서 동일한 문장을 반복하지 말 것(사실도 매번 다른 표현으로 쓴다).
 - 출력은 Markdown 본문만 제공하고 설명/주석은 쓰지 말 것.
-- 마지막에 참고자료/출처 목록을 붙이지 말 것. 단, 도로교통공단 등 외부 공신력 자료를 실제로 인용한 경우에만 간단히 남긴다.`;
+- 마지막에 참고자료/출처 목록을 붙이지 말 것. 공신력 출처는 위 '공신력 출처' 지침대로 본문 문장 안에 인라인 링크로만 인용한다.`;
 }
 // 디자인의 프롬프트 역할은 '톤/보이스/CTA 강조'만 담당한다. 섹션 배치·구조는 글유형(structureGuideForArchetype)이
 // 소유하고, 시각 레이아웃(CSS/컬러)은 공개 렌더 키트가 담당한다. 여기서 구조 문구를 다시 쓰면 글유형 구조와 이중 지시가 된다.

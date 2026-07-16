@@ -40,6 +40,7 @@ export interface SiteConfig {
   display_name: string;
   brand_color: string | null;
   design_template_id: string;
+  logo_url: string | null;
 }
 
 function assertConfigured(): void {

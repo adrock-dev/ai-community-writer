@@ -85,6 +85,7 @@ function publicSiteSummary(row: Row): Row {
     display_name: row.display_name,
     brand_color: row.brand_color,
     design_template_id: row.design_template_id,
+    logo_url: row.logo_url ?? null,
   };
 }
 
