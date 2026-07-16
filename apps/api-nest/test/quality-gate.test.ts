@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  aiClicheIssues,
   articleQualityIssues,
   candidateCountFromFacts,
   candidateNamesFromFacts,
@@ -79,6 +80,36 @@ describe("문장 난이도(가독성)", () => {
     const md = `# 제목\n\n${line}\n\n${line}`;
     const issues = articleQualityIssues(md, "", {});
     expect(issues.some((c) => c.startsWith("hard_sentences_") || c.startsWith("overlong_sentence_"))).toBe(false);
+  });
+});
+
+describe("AI 상투표현(자연스러움)", () => {
+  it("'이번 글에서는' 블로그 프레임을 잡아낸다", () => {
+    const found = aiClicheIssues("이번 글에서는 안성시 운전면허학원을 비교한다.");
+    expect(found.some((c) => c.startsWith("ai_cliche_expressions"))).toBe(true);
+    expect(found[0]).toContain("이번 글에서는");
+  });
+
+  it("'~알아보겠습니다' 메타서술을 잡아낸다(articleQualityIssues 경유)", () => {
+    const md = "# 제목\n\n오늘은 운전면허학원에 대해 알아보겠습니다.";
+    expect(articleQualityIssues(md, "", {}).some((c) => c.startsWith("ai_cliche_expressions"))).toBe(true);
+  });
+
+  it("여러 상투표현이 있으면 매칭 문구를 함께 보고한다", () => {
+    const found = aiClicheIssues("이번 글에서는 살펴보겠습니다. 도움이 되셨기를 바랍니다.");
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("살펴보겠습니다");
+    expect(found[0]).toContain("이번 글에서는");
+  });
+
+  it("상투표현이 없는 자연스러운 글(흔한 부사 포함)은 오탐하지 않는다", () => {
+    const md = "안성에는 다양한 학원이 있고, 상담 때 꼭 반드시 확인할 점이 있다.";
+    expect(aiClicheIssues(md)).toEqual([]);
+  });
+
+  it("surface 게이트에서도 제목의 상투표현을 검사한다", () => {
+    const post = { title: "이번 글에서는 정리", body_markdown: "# 제목\n본문", images: null };
+    expect(postSurfaceQualityIssues(post).some((c) => c.startsWith("ai_cliche_expressions"))).toBe(true);
   });
 });
 
