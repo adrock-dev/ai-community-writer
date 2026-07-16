@@ -8,7 +8,7 @@ import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writ
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
-import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts } from "./quality-gate.js";
+import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues } from "./quality-gate.js";
 
 type Row = Record<string, any>;
 
@@ -183,6 +183,8 @@ export class WorkerService {
         }
         const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText), monitoredPhrases);
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
+        // 내부링크(P3)는 비차단 신호다: 관련 후보가 주어졌는데 링크가 없으면 실패시키지 않고 경고로만 남긴다(대량 실패 방지).
+        const qualityWarnings = internalLinkIssues(markdown, factsText);
         // 내용 기반 이미지 생성: LLM이 실제 배치한 생성 슬롯만, 그 슬롯이 놓인 섹션 내용에 맞춰 만든다.
         const imageWarnings: string[] = [];
         if (genEnabled) {
@@ -223,7 +225,7 @@ export class WorkerService {
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);
-        ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings });
+        ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings, quality_warnings: qualityWarnings });
       } catch (error: any) {
         const message = error?.message || String(error);
         this.db.updateSlotStatus(sid, "failed", message);
@@ -266,7 +268,7 @@ export class WorkerService {
     }).join("\n");
     const related = this.relatedPostsForSlot(domain, slot);
     const relatedText = related.length
-      ? ["관련 글 후보(실제 내부 링크, 필요 시 2~4개만 자연스럽게 연결):", ...related.map((post) => `- ${post.title}: https://${domain}/community/${post.slug}`)].join("\n")
+      ? ["관련 글 후보(아래 실제 URL 중 최소 1개는 반드시 본문에 Markdown 링크로 자연스럽게 연결한다. 2~4개까지 가능):", ...related.map((post) => `- ${post.title}: https://${domain}/community/${post.slug}`)].join("\n")
       : "";
     const header = [
       `작성 주제 지역: ${region}`,
@@ -836,7 +838,7 @@ ${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` :
 - 후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 “직접 확인 가능한 후보와 인근 선택지”처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다.
 - 가격·셔틀·합격률·후기는 검증된 자료에 있을 때만 단정한다. 없으면 "상담 때 확인"으로 처리하되, 무엇을 물어봐야 하는지 구체적인 질문으로 써서 빈말처럼 보이지 않게 한다.
 - 수강료 자료가 없으면 60만원대, 70만원대, 709,600원 같은 구체 금액을 추정하지 않는다. 비용 문단은 “상담 시 확인할 항목” 중심으로 쓴다.
-- 관련 글 후보가 있으면 실제 URL만 Markdown 링크로 자연스럽게 넣는다. 관련 글 후보가 없으면 내부링크를 만들지 않는다.
+- "확인된 콘텐츠 재료"에 '관련 글 후보'가 있으면, 그 중 최소 1개(가능하면 2~4개)를 반드시 본문에 [앵커 텍스트](URL) 형태 Markdown 링크로 자연스럽게 연결한다. 앵커는 문맥에 맞게 쓰고, URL은 재료에 있는 것만 그대로 쓴다. 관련 글 후보가 없으면 내부링크를 만들지 않는다(URL을 지어내지 않는다).
 - 긍정 수강생 리뷰 보충자료가 있으면 후보 설명 안에서 친절·설명·동선 같은 확인된 후기 포인트를 요약 1문장으로만 사용한다. 단, “운전선생 출처”라는 표현은 쓰지 않는다. 리뷰가 없으면 실제 후기처럼 꾸며 쓰지 말고 상담 확인 팁으로 대체한다.
 - 긍정 블로그 리뷰글 보충자료가 있으면 공식 근거처럼 단정하지 말고 “블로그 후기 흐름에서는 이런 점을 확인할 수 있다” 정도로 자연스럽게 녹인다. 링크를 넣을 때는 제공된 실제 URL만 사용한다.
 

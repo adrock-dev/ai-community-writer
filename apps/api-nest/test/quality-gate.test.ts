@@ -5,6 +5,7 @@ import {
   boilerplatePhraseIssues,
   candidateCountFromFacts,
   candidateNamesFromFacts,
+  internalLinkIssues,
   postSurfaceQualityIssues,
   repeatedSentenceIssues,
 } from "../src/quality-gate.js";
@@ -138,6 +139,35 @@ describe("중복/반복 문구(중복 방지)", () => {
   it("서로 다른 사실 문장(학원별)은 반복으로 보지 않는다", () => {
     const md = "# 제목\n\nA학원은 평택시에 있습니다.\n\nB학원은 안성시에 있습니다.";
     expect(repeatedSentenceIssues(md)).toEqual([]);
+  });
+});
+
+describe("내부링크 게이트(P3)", () => {
+  const relatedFacts = "관련 글 후보(실제 내부 링크, 필요 시 2~4개만 자연스럽게 연결):\n- 평택 운전면허학원 총정리: https://example.com/community/pyeongtaek-guide\n- 안성 운전면허학원 비교: https://example.com/community/anseong-best";
+
+  it("관련 후보가 있는데 내부 링크가 하나도 없으면 잡아낸다", () => {
+    const md = "# 제목\n\n본문에 링크가 없다.";
+    expect(internalLinkIssues(md, relatedFacts)).toContain("missing_internal_link");
+  });
+
+  it("제시된 실제 URL 을 Markdown 링크로 연결하면 통과한다", () => {
+    const md = "# 제목\n\n자세한 내용은 [평택 총정리](https://example.com/community/pyeongtaek-guide)를 참고하세요.";
+    expect(internalLinkIssues(md, relatedFacts)).toEqual([]);
+  });
+
+  it("관련 후보가 없으면(신규 도메인) 내부 링크를 요구하지 않는다", () => {
+    const md = "# 제목\n\n본문에 링크가 없다.";
+    expect(internalLinkIssues(md, "소개 가능한 후보 수: 3곳")).toEqual([]);
+  });
+
+  it("재료에 없는 슬러그를 지어낸 가짜 링크는 통과시키지 않는다", () => {
+    const md = "# 제목\n\n[가짜 글](https://example.com/community/made-up-slug)";
+    expect(internalLinkIssues(md, relatedFacts)).toContain("missing_internal_link");
+  });
+
+  it("비차단 신호이므로 하드 게이트(articleQualityIssues)에는 포함되지 않는다", () => {
+    const md = "# 제목\n\n## 섹션\n본문만 있고 링크가 없다.";
+    expect(articleQualityIssues(md, relatedFacts, {})).not.toContain("missing_internal_link");
   });
 });
 

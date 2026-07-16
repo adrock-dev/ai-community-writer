@@ -55,6 +55,26 @@ export function repeatedSentenceIssues(markdown: string): string[] {
   return repeated ? [`repeated_sentence_${repeated}`] : [];
 }
 
+// 내부링크 신호(P3, 비차단): facts 의 '관련 글 후보'로 실제 내부 URL 이 주어졌는데 본문이 그 중 하나도
+// Markdown 링크로 연결하지 않았으면 신호를 낸다. 관련 후보가 없으면(신규 도메인 등) 신호 없음.
+// 이 검사는 articleQualityIssues(하드 게이트)에 넣지 않는다 — 실측상 LLM 이 강한 지시·repair 에도 링크를
+// 자주 거부하고(관련 후보가 대개 타 지역이라 억지 링크가 부자연스러움), 하드 게이트로 두면 그 외 품질을 모두
+// 통과한 글이 링크 하나로 전량 실패하기 때문이다. 대신 생성 프롬프트가 링크를 유도(예방)하고, 그래도 링크가
+// 없으면 worker 가 per_slot.quality_warnings 로만 기록한다(대량 실패 방지). URL 은 facts 에 실제로 주어진
+// 것만 인정한다 → 없는 슬러그를 지어낸 가짜 링크는 신호를 지우지 못한다. 링크는 생성 시점에만 존재
+// (relatedPostsForSlot→facts→프롬프트)하며 읽기 시점 주입은 하지 않는다.
+export function internalLinkIssues(markdown: string, facts: string): string[] {
+  const offered = offeredInternalUrls(facts);
+  if (!offered.length) return [];
+  const linkedHrefs = Array.from(String(markdown || "").matchAll(/\]\(\s*([^)\s]+)/g)).map((m) => String(m[1] || ""));
+  const hasInternalLink = linkedHrefs.some((href) => offered.some((url) => href === url || href.startsWith(url)));
+  return hasInternalLink ? [] : ["missing_internal_link"];
+}
+
+function offeredInternalUrls(facts: string): string[] {
+  return Array.from(new Set(Array.from(String(facts || "").matchAll(/https?:\/\/\S+?\/community\/[^\s)]+/g)).map((m) => m[0]!)));
+}
+
 export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>, boilerplatePhrases: string[] = []): string[] {
   const issues: string[] = [];
   const chars = markdown.trim().length;
