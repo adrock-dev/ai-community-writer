@@ -8,7 +8,7 @@ import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writ
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
-import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount } from "./quality-gate.js";
+import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts } from "./quality-gate.js";
 
 type Row = Record<string, any>;
 
@@ -209,12 +209,16 @@ export class WorkerService {
         const generatedCount = Object.keys(images).filter((key) => key.startsWith("generated_")).length;
         const imageCostUsd = generatedCount * Number(process.env.SEO_IMAGE_PRICE_USD || 0);
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 글 저장 중`, slotId: sid, processed: ok, failed: fail });
+        // 본문에 실제 등장한 후보 학원명만 저장 → academy_count 와 동일 집합(정합성). 렌더 시점 JSON-LD/ALT 파생의 원천.
+        const renderedAcademyNames = candidateNamesFromFacts(factsText).filter((name) => markdown.includes(name));
         this.db.insertPost({
           domain, slot_id: sid, slug, title, body_markdown: markdown,
           meta_description: metaDescription(markdown), images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId,
           provider: result.provider, model, session_id: sessionId, cost_usd: costUsd,
           duration_sec: durationSec, input_tokens: inputTokens, output_tokens: outputTokens,
-          job_id: jobId, image_count: generatedCount, image_cost_usd: imageCostUsd, academy_count: renderedCandidateCount(markdown, factsText)
+          job_id: jobId, image_count: generatedCount, image_cost_usd: imageCostUsd, academy_count: renderedAcademyNames.length,
+          region: String(slot.region || "") || null, primary_keyword: String(slot.primary_keyword || "") || null,
+          academy_names: renderedAcademyNames.length ? JSON.stringify(renderedAcademyNames) : null
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);

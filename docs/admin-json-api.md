@@ -900,14 +900,22 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 {
   "post": {
     "id": "...",
+    "domain": "example.com",
     "slug": "sample-post",
     "title": "제목",
+    "meta_description": "요약",
     "body_markdown": "# 제목",
-    "images": {}
+    "images": {},
+    "design_template_id": "local-guide",
+    "generated_at": "2026-01-01 00:00:00",
+    "region": "경기도 안성시",
+    "academy_names": ["○○자동차운전전문학원"]
   },
   "body_html": "<article>...</article>"
 }
 ```
+
+> 공개 상세 응답은 명시 화이트리스트만 포함한다. `provider`/`model`/`cost_usd`/`session_id`/`job_id`/토큰·시간 등 내부·비용 필드는 노출하지 않는다. `region`/`academy_names`는 소비 사이트의 JSON-LD 등 SEO 파생용이며, 값이 없으면 각각 `null`/`[]`이다.
 
 ### `GET /api/v1/{domain}/generated-images/{file}`
 

@@ -91,8 +91,23 @@ function publicSiteSummary(row: Row): Row {
 function publicPostSummary(row: Row): Row {
   return { ...row, images: safeJson(row.images, {}) };
 }
+// 공개 상세 응답은 명시 화이트리스트만 내보낸다(목록 SELECT와 동일 원칙).
+// provider/model/cost_usd/session_id/job_id/토큰/duration 등 내부·비용 필드는 절대 노출하지 않는다.
+// region/academy_names 는 소비 사이트의 JSON-LD 등 SEO 파생용으로만 유지한다.
 function publicPostDetail(row: Row): Row {
-  return { ...row, images: safeJson(row.images, {}) };
+  return {
+    id: row.id,
+    domain: row.domain,
+    slug: row.slug,
+    title: row.title,
+    meta_description: row.meta_description,
+    body_markdown: row.body_markdown,
+    images: safeJson(row.images, {}),
+    design_template_id: row.design_template_id,
+    generated_at: row.generated_at,
+    region: row.region ?? null,
+    academy_names: safeJson(row.academy_names, []),
+  };
 }
 function normalizePostForPublicRender(db: DbService, domain: string, post: Row): { post: Row; bodyMarkdown: string; images: Record<string, string> } {
   const dbImages = safeJson(post.images, {});
