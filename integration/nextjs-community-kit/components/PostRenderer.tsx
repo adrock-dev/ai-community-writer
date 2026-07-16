@@ -81,6 +81,22 @@ function renderTable(rows: string[], key: string): ReactNode {
   );
 }
 
+// 마크다운 헤딩에서 강조/링크 마커를 벗겨 alt 로 쓸 순수 텍스트만 남긴다.
+function plainText(md: string): string {
+  return String(md || "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// 이미지 alt: 그 이미지가 속한 섹션 제목(학원 카드면 학원명) 우선, 없으면 일반 설명 폴백. image key 를 그대로 노출하지 않는다.
+function imageAltFor(kind: string, heading = ""): string {
+  const h = plainText(heading);
+  if (h) return h;
+  return /^generated_/.test(kind) ? "운전면허학원 안내 이미지" : "운전면허학원 사진";
+}
+
 export function PostRenderer({ markdown, images = {}, internalLinks = {} }: PostRendererProps): ReactNode {
   const lines = markdown.split(/\r?\n/);
   const blocks: ReactNode[] = [];
@@ -88,6 +104,8 @@ export function PostRenderer({ markdown, images = {}, internalLinks = {} }: Post
   let list: { type: "ul" | "ol"; items: string[] } | null = null;
   let table: string[] = [];
   let k = 0;
+  // 이미지 alt 는 그 이미지가 속한 섹션 제목(학원 카드면 학원명)을 쓴다 — 직전 헤딩이 문맥. (post-rendering.ts 와 동일 규칙)
+  let currentHeading = "";
 
   const flushPara = () => {
     if (!para.length) return;
@@ -123,7 +141,7 @@ export function PostRenderer({ markdown, images = {}, internalLinks = {} }: Post
       const url = images[kind];
       blocks.push(
         url
-          ? <figure className="post-image" key={`img-${k++}`}><img src={url} alt={kind} loading="lazy" /></figure>
+          ? <figure className="post-image" key={`img-${k++}`}><img src={url} alt={imageAltFor(kind, currentHeading)} loading="lazy" /></figure>
           : <div className="image-slot" data-kind={kind} key={`img-${k++}`}><span>이미지 영역: {kind}</span></div>,
       );
       continue;
@@ -140,15 +158,16 @@ export function PostRenderer({ markdown, images = {}, internalLinks = {} }: Post
       blocks.push(<p className="internal-link" key={`il-${k++}`}><a href={href}>{label}</a></p>);
       continue;
     }
-    if (line.startsWith("# ")) { flushAll(); continue; } // H1은 제목으로 별도 표시(상세 페이지에서)
+    if (line.startsWith("# ")) { flushAll(); currentHeading = plainText(line.slice(2)); continue; } // H1은 제목으로 별도 표시(상세 페이지에서)
     if (line.startsWith("## ")) {
       flushAll();
       const title = line.slice(3);
+      currentHeading = plainText(title);
       const isRef = /^참고\s*자료/.test(title);
       blocks.push(<h2 className={isRef ? "references-title" : undefined} key={`h2-${k++}`}>{title}</h2>);
       continue;
     }
-    if (line.startsWith("### ")) { flushAll(); blocks.push(<h3 key={`h3-${k++}`}>{line.slice(4)}</h3>); continue; }
+    if (line.startsWith("### ")) { flushAll(); currentHeading = plainText(line.slice(4)); blocks.push(<h3 key={`h3-${k++}`}>{line.slice(4)}</h3>); continue; }
     if (line.startsWith(">")) {
       flushAll();
       blocks.push(<blockquote key={`bq-${k++}`}>{renderInline(line.replace(/^>\s*/, ""), `bq-${k}`)}</blockquote>);

@@ -261,6 +261,9 @@ function renderedSurfaceIssues(html, expected) {
   const renderedImageCount = (html.match(/<figure class="post-image">/g) || []).length;
   if (!html.trim()) issues.push('rendered_empty');
   if (/\[IMAGE:[A-Za-z0-9_-]+\]/.test(html)) issues.push('rendered_raw_image_token');
+  // 이미지 alt 가 비었거나 image key(academy_1, generated_hero 등) 그대로면 접근성·이미지 SEO 저하.
+  const badAlts = [...html.matchAll(/<img\b[^>]*\balt="([^"]*)"/g)].map((m) => m[1]).filter((alt) => !alt.trim() || /^(?:academy_\d+|generated_[A-Za-z0-9_]+)$/i.test(alt));
+  if (badAlts.length) issues.push(`rendered_low_quality_alt:${badAlts.length}`);
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE)_SLOT:/i.test(html)) issues.push('rendered_pseudo_slot');
   if (/[가-힣]+(?:시|군|구|읍|면|동)운전면허학원/.test(text)) issues.push('rendered_keyword_spacing_issue');
   if (h1Count !== 1) issues.push(`rendered_h1_count:${h1Count}`);
@@ -272,7 +275,26 @@ function renderedSurfaceIssues(html, expected) {
 }
 
 function renderMarkdown(markdown, images = {}) {
-  return markdownBlocks(markdown).map((raw) => renderMarkdownBlock(raw, images)).filter(Boolean).join('\n');
+  // 이미지 alt 는 직전 섹션 헤딩을 문맥으로 쓴다(post-rendering.ts 와 동일 규칙).
+  let currentHeading = '';
+  return markdownBlocks(markdown).map((raw) => {
+    if (/^#{1,3}\s+/.test(raw)) currentHeading = plainText(raw.replace(/^#{1,3}\s+/, ''));
+    return renderMarkdownBlock(raw, images, currentHeading);
+  }).filter(Boolean).join('\n');
+}
+
+// post-rendering.ts 의 plainText/imageAltFor 와 동일 규칙(미러).
+function plainText(md) {
+  return String(md || '')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[*_`#]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+function imageAltFor(key, heading = '') {
+  const h = plainText(heading);
+  if (h) return h;
+  return /^generated_/.test(key) ? '운전면허학원 안내 이미지' : '운전면허학원 사진';
 }
 
 function markdownBlocks(markdown) {
@@ -312,12 +334,12 @@ function splitMixedImageTokenLine(line) {
   return text ? [text, ...tokens] : tokens;
 }
 
-function renderMarkdownBlock(raw, images) {
+function renderMarkdownBlock(raw, images, heading = '') {
   if (/^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(raw)) return '';
   const imageMatch = raw.match(/^\[IMAGE:([A-Za-z0-9_-]+)\]$/);
   if (imageMatch) {
     const src = images[imageMatch[1]];
-    return src ? `<figure class="post-image"><img src="${escapeAttr(src)}" alt="${escapeAttr(imageMatch[1])}" loading="lazy" /></figure>` : '';
+    return src ? `<figure class="post-image"><img src="${escapeAttr(src)}" alt="${escapeAttr(imageAltFor(imageMatch[1], heading))}" loading="lazy" /></figure>` : '';
   }
   if (isMarkdownTable(raw)) return renderMarkdownTable(raw);
   if (isMarkdownListBlock(raw)) return renderMarkdownList(raw);

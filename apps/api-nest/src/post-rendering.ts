@@ -6,9 +6,12 @@ export function renderMarkdown(markdown: string, images: Record<string, string> 
   // ### 학원명부터 다음 학원/섹션 전까지(이름·설명·이미지·관련후기)를 하나의 카드로 묶어 학원 경계를 명확히 한다.
   const out: string[] = [];
   let card: string[] | null = null;
+  // 이미지 alt 는 그 이미지가 속한 섹션 제목(학원 카드면 '### 학원명')을 쓴다 — 렌더 순서상 직전 헤딩이 문맥.
+  let currentHeading = "";
   const closeCard = () => { if (card && card.length) { out.push(`<section class="academy-card">${card.join("\n")}</section>`); card = null; } };
   for (const raw of markdownBlocks(markdown)) {
-    const html = renderMarkdownBlock(raw, images);
+    if (/^#{1,3}\s+/.test(raw)) currentHeading = plainText(raw.replace(/^#{1,3}\s+/, ""));
+    const html = renderMarkdownBlock(raw, images, currentHeading);
     if (!html) continue;
     if (raw.startsWith("### ")) { closeCard(); card = [html]; continue; }
     if (raw.startsWith("## ") || raw.startsWith("# ")) { closeCard(); out.push(html); continue; }
@@ -99,13 +102,13 @@ function splitMixedImageTokenLine(line: string): string[] | null {
   return text ? [text, ...tokens] : tokens;
 }
 
-function renderMarkdownBlock(raw: string, images: Record<string, string>): string {
+function renderMarkdownBlock(raw: string, images: Record<string, string>, heading = ""): string {
   if (/^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(raw)) return "";
   const imageMatch = raw.match(/^\[IMAGE:([A-Za-z0-9_-]+)\]$/);
   if (imageMatch) {
     const key = imageMatch[1]!;
     const src = images[key];
-    if (src) return `<figure class="post-image"><img src="${escapeAttr(src)}" alt="${escapeAttr(key)}" loading="lazy" /></figure>`;
+    if (src) return `<figure class="post-image"><img src="${escapeAttr(src)}" alt="${escapeAttr(imageAltFor(key, heading))}" loading="lazy" /></figure>`;
     return "";
   }
   if (isMarkdownTable(raw)) return renderMarkdownTable(raw);
@@ -170,3 +173,20 @@ function renderInlineMarkdown(raw: string): string {
 
 function escapeHtml(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c)); }
 function escapeAttr(s: string): string { return escapeHtml(s).replace(/'/g, "&#39;"); }
+
+// 마크다운 헤딩에서 강조/링크 마커를 벗겨 alt 로 쓸 순수 텍스트만 남긴다.
+function plainText(md: string): string {
+  return String(md || "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// 이미지 alt: 그 이미지가 속한 섹션 제목(학원 카드면 학원명)을 우선 쓰고, 없으면 의미 있는 일반 설명으로 폴백한다.
+// 절대 image key(academy_1, generated_hero 등)를 그대로 alt 로 노출하지 않는다(접근성·이미지 SEO).
+export function imageAltFor(key: string, heading = ""): string {
+  const h = plainText(heading);
+  if (h) return h;
+  return /^generated_/.test(key) ? "운전면허학원 안내 이미지" : "운전면허학원 사진";
+}
