@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS domains (
   content_brief TEXT,
   common_principles TEXT,
   excluded_keywords TEXT,
+  monitored_phrases TEXT,
   daily_limit INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -226,6 +227,7 @@ export class DbService implements OnModuleInit {
       custom_design_templates TEXT,
       content_brief TEXT,
       excluded_keywords TEXT,
+      monitored_phrases TEXT,
       daily_limit INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
@@ -280,6 +282,7 @@ export class DbService implements OnModuleInit {
       this.db.exec("UPDATE domains SET common_principles = content_brief WHERE common_principles IS NULL AND content_brief IS NOT NULL");
     }
     if (!domainCols.has("excluded_keywords")) this.db.exec("ALTER TABLE domains ADD COLUMN excluded_keywords TEXT");
+    if (!domainCols.has("monitored_phrases")) this.db.exec("ALTER TABLE domains ADD COLUMN monitored_phrases TEXT");
     this.run(`UPDATE domains SET templates_enabled=?
        WHERE vertical='driving' AND templates_enabled IN ('["T01","T03","T05","T07"]', '["T01","T03","T04","T05","T06","T07"]')`, [JSON.stringify(DRIVING_ORIGINAL_TEMPLATE_IDS)]);
     const postCols = new Set(this.all("PRAGMA table_info(posts)").map((r) => r.name));
@@ -429,7 +432,7 @@ export class DbService implements OnModuleInit {
       [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0, input.templates_enabled || JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS)]);
   }
   updateDomain(domain: string, fields: Row): void {
-    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords"]);
+    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords", "monitored_phrases"]);
     const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
     if (!entries.length) return;
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);

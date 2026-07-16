@@ -55,7 +55,7 @@ export function repeatedSentenceIssues(markdown: string): string[] {
   return repeated ? [`repeated_sentence_${repeated}`] : [];
 }
 
-export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>): string[] {
+export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>, boilerplatePhrases: string[] = []): string[] {
   const issues: string[] = [];
   const chars = markdown.trim().length;
   const candidateCount = candidateCountFromFacts(facts);
@@ -71,7 +71,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   issues.push(...readabilityIssues(markdown));
   issues.push(...aiClicheIssues(markdown));
   issues.push(...repeatedSentenceIssues(markdown));
-  issues.push(...boilerplatePhraseIssues(markdown));
+  issues.push(...boilerplatePhraseIssues(markdown, boilerplatePhrases));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅)/m.test(markdown)) issues.push("missing_checklist_or_list");
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
@@ -100,7 +100,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   return issues;
 }
 
-export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCount = 0): string[] {
+export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCount = 0, boilerplatePhrases: string[] = []): string[] {
   const markdown = String(post.body_markdown || "");
   const title = String(post.title || "");
   const issues: string[] = [];
@@ -117,7 +117,7 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   issues.push(...readabilityIssues(markdown));
   issues.push(...aiClicheIssues(`${title}\n${markdown}`));
   issues.push(...repeatedSentenceIssues(markdown));
-  issues.push(...boilerplatePhraseIssues(`${title}\n${markdown}`));
+  issues.push(...boilerplatePhraseIssues(`${title}\n${markdown}`, boilerplatePhrases));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅|✓)/m.test(markdown)) issues.push("missing_checklist_or_list");

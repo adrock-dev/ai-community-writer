@@ -7,7 +7,7 @@ import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js"
 import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
-import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
+import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
 import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts } from "./quality-gate.js";
 
 type Row = Record<string, any>;
@@ -62,6 +62,7 @@ export class WorkerService {
     const domainMeta = this.db.getDomain(domain) || {};
     const slotIds = Array.isArray(payload.slot_ids) ? payload.slot_ids : [];
     const exclusionTerms = parseExclusionTerms(domainMeta.excluded_keywords);
+    const monitoredPhrases = parseMonitoredPhrases(domainMeta.monitored_phrases);
     // 일일 한도: 0(또는 미설정)이면 무제한. N>0이면 오늘 발행분 + 이번 실행 생성분이 N에 도달하면 나머지 슬롯은 손대지 않고 다음으로 미룬다.
     const dailyLimit = Math.max(0, Number(domainMeta.daily_limit ?? 0) || 0);
     const alreadyToday = dailyLimit > 0 ? this.db.countPostsToday(domain) : 0;
@@ -147,7 +148,7 @@ export class WorkerService {
         const result = await runLlm(prompt, llmOpts);
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
         let markdown = normalizeGeneratedMarkdown(result.summary, images);
-        let qualityIssues = articleQualityIssues(markdown, factsText, images);
+        let qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases);
         let durationSec = result.duration_sec;
         let costUsd = result.cost_usd || 0;
         let inputTokens = result.input_tokens || 0;
@@ -166,7 +167,7 @@ export class WorkerService {
           model = repair.model || model;
           if (repair.ok && repair.summary.trim()) {
             markdown = normalizeGeneratedMarkdown(repair.summary, images);
-            qualityIssues = articleQualityIssues(markdown, factsText, images);
+            qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases);
           }
         }
         if (qualityIssues.length) throw new Error(`generated article quality gate failed: ${qualityIssues.join(", ")}`);
@@ -180,7 +181,7 @@ export class WorkerService {
           skipped++; this.db.updateJobProgress(jobId, { step: "생성문 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
-        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText));
+        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText), monitoredPhrases);
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
         // 내용 기반 이미지 생성: LLM이 실제 배치한 생성 슬롯만, 그 슬롯이 놓인 섹션 내용에 맞춰 만든다.
         const imageWarnings: string[] = [];
@@ -376,6 +377,7 @@ export class WorkerService {
   private processPrune(domain: string, payload: Row): Row {
     const minChars = Number(payload.min_body_chars ?? 2600);
     const dryRun = Boolean(payload.dry_run);
+    const monitoredPhrases = parseMonitoredPhrases(this.db.getDomain(domain)?.monitored_phrases);
     const rows = this.db.all("SELECT id, slot_id, title, body_markdown, images, length(body_markdown) AS chars FROM posts WHERE domain=? AND status='published'", [domain]);
     const targets: Row[] = [];
     for (const r of rows) {
@@ -383,7 +385,7 @@ export class WorkerService {
       // 후보 수 재평가도 생성과 동일한 글유형별 학원 타입으로 맞춘다(academy_types 없으면 학원정보 미사용 → 후보 0).
       const pruneSpec = slot ? this.db.getTemplateSpec(domain, String(slot.template_id || "")) : undefined;
       const candidateCount = slot?.region ? this.pickAcademiesForRegion(domain, String(slot.region), ACADEMY_MAX_CANDIDATES, this.resolveAcademyTypes(pruneSpec)).length : 0;
-      const issues = postSurfaceQualityIssues(r, minChars, candidateCount);
+      const issues = postSurfaceQualityIssues(r, minChars, candidateCount, monitoredPhrases);
       if (issues.length) targets.push({ id: r.id, title: r.title, chars: r.chars, issues });
     }
     if (!dryRun) for (const r of targets) this.db.updatePostStatus(r.id, "noindex");

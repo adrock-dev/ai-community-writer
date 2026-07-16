@@ -114,6 +114,7 @@ export interface DomainConfig {
   content_brief?: string | null;
   common_principles?: string | null;
   excluded_keywords?: string | null;
+  monitored_phrases?: string | null;
   daily_limit: number;
   created_at: string;
   slot_count?: number;

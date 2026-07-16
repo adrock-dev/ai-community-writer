@@ -20,7 +20,8 @@ if (postId) { filters.push('p.id = ?'); filterArgs.push(postId); }
 if (slotId) { filters.push('p.slot_id = ?'); filterArgs.push(slotId); }
 if (domain) { filters.push('p.domain = ?'); filterArgs.push(domain); }
 const where = filters.join(' and ');
-const rows = db.prepare(`select p.id, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id, p.academy_count,
+const monitoredByDomain = new Map(db.prepare("select domain, monitored_phrases from domains").all().map((d) => [d.domain, parseMonitoredPhrases(d.monitored_phrases)]));
+const rows = db.prepare(`select p.id, p.domain, p.slot_id, p.slug, p.title, p.status, p.body_markdown, p.images, p.design_template_id, p.academy_count,
   (select count(*) from academies a join slots s2 on s2.slot_id=p.slot_id where a.domain=p.domain and s2.region is not null and a.region=s2.region) as exact_academy_count
   from posts p where ${where} order by p.generated_at desc`).all(...filterArgs);
 const hasTargetFilter = Boolean(postId || slotId || domain);
@@ -53,7 +54,7 @@ function issuesFor(row) {
   issues.push(...readability);
   issues.push(...aiClicheIssues(`${row.title}\n${body}`));
   issues.push(...repeatedSentenceIssues(body));
-  issues.push(...boilerplatePhraseIssues(`${row.title}\n${body}`));
+  issues.push(...boilerplatePhraseIssues(`${row.title}\n${body}`, monitoredByDomain.get(row.domain) || []));
   if (!row.design_template_id) issues.push('missing_design_template_id');
   if (!['editorial', 'comparison', 'local-guide', 'checklist', 'conversion', 'custom'].includes(String(row.design_template_id || ''))) issues.push(`unknown_design_template:${row.design_template_id}`);
   if (h2 >= 4 && !hasFinalUtilitySection(body)) issues.push('template_structure_missing_final_utility_section');
@@ -117,6 +118,11 @@ const BOILERPLATE_PHRASES = [
 function boilerplatePhraseIssues(text, extra = []) {
   const found = [...BOILERPLATE_PHRASES, ...extra].filter((phrase) => phrase && text.includes(phrase));
   return found.length ? [`boilerplate_phrase:${found.join('·')}`] : [];
+}
+// exclusions.ts 의 parseMonitoredPhrases 와 동일(대소문자 보존).
+function parseMonitoredPhrases(raw) {
+  const source = Array.isArray(raw) ? raw.join('\n') : String(raw || '');
+  return [...new Set(source.split(/\r?\n|,/).map((v) => v.trim()).filter(Boolean))];
 }
 function repeatedSentenceIssues(markdown) {
   const counts = new Map();

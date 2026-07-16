@@ -21,6 +21,15 @@ export function parseExclusionTerms(raw: any): string[] {
   return [...seen];
 }
 
+// 감시 문구(monitored_phrases): 품질 게이트의 boilerplate 검사에 더할 도메인별 판박이 문구.
+// 본문과 대소문자 구분 없이 includes 로 매칭하므로 소문자화하지 않는다(한글 위주, 원문 보존).
+export function parseMonitoredPhrases(raw: any): string[] {
+  const source = Array.isArray(raw) ? raw.join("\n") : String(raw || "");
+  const seen = new Set<string>();
+  for (const term of source.split(/\r?\n|,/).map((v) => v.trim()).filter(Boolean)) seen.add(term);
+  return [...seen];
+}
+
 export function slotExclusionText(slot: Row): string {
   return SLOT_EXCLUSION_FIELDS.map((field) => String(slot[field] || "")).join(" ").toLowerCase();
 }
