@@ -933,7 +933,7 @@ function originalArticlePatternGuide(slot: Row): string {
 function loadArticlePatternSummary(): ArticlePatternSummary {
   const cached = (loadArticlePatternSummary as any).cache as ArticlePatternSummary | undefined;
   if (cached) return cached;
-  const file = resolve(PROJECT_DIR, "data/article-patterns/summary.json");
+  const file = resolve(PROJECT_DIR, "data/content_research/summaries/summary_all_article_patterns.json");
   try {
     const parsed = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {};
     const summary = parsed && typeof parsed === "object" ? parsed as ArticlePatternSummary : {};
@@ -956,11 +956,19 @@ function articleTypeForSlot(slot: Row): string {
   return "general_best";
 }
 
+// 원본 21,275개 글에서 뽑은 제목/헤딩 패턴에는 '100% 합격 / 단기·빠른·초단기 합격 / N일 최단기 취득 /
+// 합격 보장' 같은 위험 문구가 26%가량 섞여 있다. 런타임 위험 게이트(hasRiskyDurationClaim)는 '3일 만에',
+// '합격 보장' 정도만 잡고 '100%·초단기·빠른/단기 합격·N일 최단기 취득'은 놓친다. 그래서 프롬프트에 패턴을
+// 주입하기 '전에' 여기서 먼저 걸러 LLM 이 위험 제목을 흉내내지 않게 한다(예방). 런타임 게이트보다 넓게 잡는다.
+const RISKY_ARTICLE_PATTERN_RE = /\d+\s*%|백\s*[%퍼]|무조건|보장|당일\s*합격|하루\s*만|\d+\s*일\s*(?:만|컷|완성|최단|단기|취득|합격)|최단기|초단기|속성|단기\s*합격|빠(?:른|르게)\s*합격|한\s*번에\s*합격/u;
+export function isRiskyArticlePattern(pattern: ArticlePattern): boolean {
+  return RISKY_ARTICLE_PATTERN_RE.test(`${pattern?.pattern || ""} ${pattern?.example_title || ""}`);
+}
+
 function selectPatterns(patterns: ArticlePattern[] | undefined, articleType: string, limit: number): ArticlePattern[] {
-  const rows = Array.isArray(patterns) ? patterns : [];
-  const exact = rows.filter((row) => row.article_type === articleType && row.pattern);
-  const fallback = rows.filter((row) => row.pattern);
-  return (exact.length ? exact : fallback).slice(0, limit);
+  const rows = (Array.isArray(patterns) ? patterns : []).filter((row) => row.pattern && !isRiskyArticlePattern(row));
+  const exact = rows.filter((row) => row.article_type === articleType);
+  return (exact.length ? exact : rows).slice(0, limit);
 }
 
 function formatMetric(value: any, fallback: string): string {

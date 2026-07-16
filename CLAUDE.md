@@ -55,7 +55,7 @@ npm workspaces는 선언되어 있지 않고, 루트 스크립트가 `npm --pref
 - **`verify:company-clean` 금지 용어 게이트**가 있다. 저장소는 범용 SEO 도구에서 포크·정제돼 운전 도메인으로 특화됐다. 멀티테넌시·서비스형 SW를 가리키는 일반 용어, 경쟁 브랜드명, 레거시 내부 용어를 도입하면 검증이 실패한다. 금지 목록은 `scripts/verify-company-clean.mjs`에 있다.
 - **품질 게이트가 두 곳에 독립 구현돼 있다.** 런타임 게이트(`worker.service.ts`의 `articleQualityIssues`/`postSurfaceQualityIssues`)와 렌더 인식 게이트(`scripts/qa-posts.mjs`)는 로직을 공유하지만 DRY하지 않다. **품질 규칙을 바꿀 때 두 쪽을 함께 맞춰라.**
 - 생성 프롬프트(`buildPrompt`)에는 "절대 원칙"이 있다: 확인된 데이터만 사용, 가격·합격률·셔틀·후기 날조 금지, 실제보다 많은 후보 주장 금지, 내부 API URL/인용 마커 노출 금지.
-- `data/article-patterns/summary.json`이 생성 시 프롬프트에 주입된다(없으면 graceful fallback). 원본 `.xlsx`/`.csv`는 gitignore.
+- `data/content_research/summaries/summary_all_article_patterns.json`(원본 21,275개 글 패턴)이 생성 시 프롬프트에 주입된다(없으면 graceful fallback). 단 위험 제목/헤딩(100%·초단기·단기·빠른 합격·N일 최단기 취득·합격 보장)은 주입 전 `isRiskyArticlePattern`으로 걸러진다(런타임 위험 게이트가 못 잡는 표현까지 예방). 원본 `.xlsx`/`.csv`는 gitignore.
 - 업종(vertical)은 DB 업종 레지스트리(`db.getVerticals()`, `settings/verticals` CRUD)로 관리되며 도메인 생성은 등록된 업종만 허용한다(기본 `driving`). 단 **프리셋·템플릿·품질 게이트는 아직 `driving`만 특화**돼 있다(`constants.ts`의 `PRESETS`/`TEMPLATE_SPECS`; MVP). 새 도메인은 디자인 자동 매칭(`auto` — 글마다 글 유형의 `default_design` 적용, `docs/design-template-mapping.md` 참조)으로 기본 설정된다.
 
 ## 환경 변수

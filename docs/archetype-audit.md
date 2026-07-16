@@ -27,7 +27,7 @@
 | 5 | `worker.service.ts:106-107` | template_id (T01/14/11) | **학원 facts + 이미지 수집 여부** | flag `academy_centric` |
 | 6 | `worker.service.ts:1027-1080` (`originalTemplateGuide`) | template_id (T01~15) | **⭐ 유형별 작성 지침(프롬프트 주입)** | 가능: `string[]` |
 | 7 | `worker.service.ts:960-968` (`articleTypeForSlot`) | template_id + text regex | `article_type` 분류 | 가능(명시 필드로) |
-| 8 | `worker.service.ts:915` (`originalArticlePatternGuide`) | `article_type` | 외부 패턴(`data/article-patterns/summary.json`) 주입 | 데이터 의존 |
+| 8 | `worker.service.ts` (`originalArticlePatternGuide`) | `article_type` | 외부 패턴(`data/content_research/summaries/summary_all_article_patterns.json`) 주입, 위험 제목/헤딩은 `isRiskyArticlePattern`으로 필터 | 데이터 의존 |
 | 9 | `worker.service.ts:846-864` (`designWritingGuide`) | design_id | 디자인별 작성 톤 | 가능(맵/프리셋) |
 | 10 | `worker.service.ts:982-1024` (`designStructureGuide`) | design_id | 디자인별 구조 지침 | 가능(맵/프리셋) |
 | 11 | `worker.service.ts:98` (`resolveGenerationDesign`) | template_id → design | 디자인 결정 | 반쯤 데이터 |
