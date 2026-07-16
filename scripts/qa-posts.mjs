@@ -51,6 +51,7 @@ function issuesFor(row) {
   if (h2 > 12) issues.push(`too_many_h2:${h2}`);
   const readability = readabilityIssues(body);
   issues.push(...readability);
+  issues.push(...aiClicheIssues(`${row.title}\n${body}`));
   if (!row.design_template_id) issues.push('missing_design_template_id');
   if (!['editorial', 'comparison', 'local-guide', 'checklist', 'conversion', 'custom'].includes(String(row.design_template_id || ''))) issues.push(`unknown_design_template:${row.design_template_id}`);
   if (h2 >= 4 && !hasFinalUtilitySection(body)) issues.push('template_structure_missing_final_utility_section');
@@ -89,6 +90,19 @@ function readabilityIssues(body) {
   if (orphanHeadingCount(body) > 3) issues.push('too_many_thin_or_empty_heading_sections');
   issues.push(...sentenceDifficultyIssues(paragraphs));
   return issues;
+}
+
+// AI 상투표현 검사: quality-gate.ts 의 aiClicheIssues 와 동일 목록/규칙(형식적 메타서술·블로그 프레임·판박이 마무리).
+const AI_CLICHE_PHRASES = [
+  "알아보겠습니다", "알아보도록", "알아보는 시간", "살펴보겠습니다", "살펴보도록", "짚어보겠습니다",
+  "정리해보겠습니다", "정리해 보겠습니다", "정리해드리겠습니다", "살펴보았습니다", "알아봤습니다",
+  "이 글에서는", "이번 글에서는", "이번 포스팅", "본 포스팅", "포스팅에서는",
+  "도움이 되셨", "도움이 되길 바", "도움이 되기를 바", "참고하시기 바랍니다", "마무리하겠습니다", "마치겠습니다",
+  "여러분",
+];
+function aiClicheIssues(text) {
+  const found = AI_CLICHE_PHRASES.filter((phrase) => text.includes(phrase));
+  return found.length ? [`ai_cliche_expressions:${found.join('·')}`] : [];
 }
 
 // 문장 난이도(가독성): run-on 문장 검사. quality-gate.ts 의 sentenceDifficultyIssues 와 동일 규칙.

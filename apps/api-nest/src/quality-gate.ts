@@ -11,6 +11,21 @@ function safeJson(value: any, fallback: any): any {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
+// AI 상투표현: 형식적 메타서술("~알아보겠습니다")·블로그 프레임("이번 글에서는")·판박이 마무리("도움이 되셨…").
+// 사람이 쓴 자연스러운 글엔 거의 없고, 있으면 repair 로 쉽게 다시 쓸 수 있다. 필러/흔한 부사(다양한·꼭·반드시 등)는
+// 정상 글에도 흔해 오탐이 크므로 제외한다(정밀 우선). 하나라도 있으면 자연스러움 저하로 본다.
+const AI_CLICHE_PHRASES = [
+  "알아보겠습니다", "알아보도록", "알아보는 시간", "살펴보겠습니다", "살펴보도록", "짚어보겠습니다",
+  "정리해보겠습니다", "정리해 보겠습니다", "정리해드리겠습니다", "살펴보았습니다", "알아봤습니다",
+  "이 글에서는", "이번 글에서는", "이번 포스팅", "본 포스팅", "포스팅에서는",
+  "도움이 되셨", "도움이 되길 바", "도움이 되기를 바", "참고하시기 바랍니다", "마무리하겠습니다", "마치겠습니다",
+  "여러분",
+];
+export function aiClicheIssues(text: string): string[] {
+  const found = AI_CLICHE_PHRASES.filter((phrase) => text.includes(phrase));
+  return found.length ? [`ai_cliche_expressions_${found.join("·")}`] : [];
+}
+
 export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>): string[] {
   const issues: string[] = [];
   const chars = markdown.trim().length;
@@ -25,6 +40,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (h2Count < 4) issues.push(`not_enough_h2_${h2Count}`);
   if (h2Count > 10) issues.push(`too_many_h2_${h2Count}`);
   issues.push(...readabilityIssues(markdown));
+  issues.push(...aiClicheIssues(markdown));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅)/m.test(markdown)) issues.push("missing_checklist_or_list");
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
@@ -68,6 +84,7 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   if (h2Count < 4) issues.push(`not_enough_h2_${h2Count}`);
   if (h2Count > 10) issues.push(`too_many_h2_${h2Count}`);
   issues.push(...readabilityIssues(markdown));
+  issues.push(...aiClicheIssues(`${title}\n${markdown}`));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅|✓)/m.test(markdown)) issues.push("missing_checklist_or_list");
