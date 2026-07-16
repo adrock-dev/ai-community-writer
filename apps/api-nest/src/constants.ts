@@ -57,6 +57,11 @@ export const DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS: readonly string[] = ["T01"];
 // 생성(worker.pickAcademiesForRegion)과 정합성 미리보기(slot.analyzeCoherence/academyCoverage)가 공유한다.
 export const ACADEMY_NEARBY_MAX_KM = Number(process.env.SEO_ACADEMY_NEARBY_MAX_KM) || 20;
 
+// 글유형(템플릿) 1개당 후보 슬롯 생성 상한. 축 조합(지역×키워드×페르소나×의도×수식어)이
+// 수백만까지 폭발할 수 있어, 이 값으로 상한을 걸어 메모리 폭주/삽입 지연으로 인한 500 을 막는다.
+// (조합이 이보다 적으면 있는 만큼만 생성 — 중복으로 채우지 않는다.)
+export const MAX_SLOTS_PER_TEMPLATE = Number(process.env.SEO_MAX_SLOTS_PER_TEMPLATE) || 10000;
+
 // 학원 후보 풀 크기(직접+인근 합). 인근은 이 개수를 채우는 만큼만 가까운 순으로 가져온다.
 // 생성·미리보기 공통. 밀집 지역이 반경 안 학원을 과다 표시/사용하지 않도록 캡 역할.
 export const ACADEMY_MAX_CANDIDATES = Number(process.env.SEO_ACADEMY_MAX_CANDIDATES) || 7;

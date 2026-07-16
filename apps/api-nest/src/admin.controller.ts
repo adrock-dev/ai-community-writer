@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
@@ -418,10 +418,12 @@ export class AdminController {
     // template(단일)/templates(배열)가 오면 그 유형만 후보 생성한다. 없으면 기존대로 enabled 전 유형.
     const rawTemplates = Array.isArray(body.templates) ? body.templates : (body.template ? [body.template] : []);
     const templates = rawTemplates.map((t: any) => String(t).trim()).filter(Boolean);
-    const opts: { templates?: string[]; maxPerTemplate: number } = { maxPerTemplate: Math.max(1, Number(body.max_per_template || 200)) };
+    // 글유형당 상한은 MAX_SLOTS_PER_TEMPLATE 로 클램프한다(축 조합 폭발 → 메모리/삽입 폭주로 인한 500 방지).
+    const maxPerTemplate = clampInt(body.max_per_template, 200, 1, MAX_SLOTS_PER_TEMPLATE);
+    const opts: { templates?: string[]; maxPerTemplate: number } = { maxPerTemplate };
     if (templates.length) opts.templates = templates;
     const summary = this.slots.generateSlotsForDomain(domain, opts);
-    return { ok: true, summary, slot_counts: this.db.countSlots(domain) };
+    return { ok: true, max_per_template: maxPerTemplate, summary, slot_counts: this.db.countSlots(domain) };
   }
 
   @Delete("domains/:domain/slots/:slotId")

@@ -665,14 +665,19 @@ export class DbService implements OnModuleInit {
     return out;
   }
   bulkUpsertSlots(rows: Row[]): number {
+    if (!rows.length) return 0;
+    // prepared statement 1회 재사용 + 단일 트랜잭션. 한 행씩 개별 커밋하면 행마다 fsync 가 일어나
+    // 수천~수만 건에서 동기 삽입이 극단적으로 느려져(이벤트 루프 블로킹) 요청이 타임아웃/500 이 된다.
+    const stmt = this.db.prepare(`INSERT INTO slots (slot_id, domain, template_id, primary_keyword, region, persona, intent, modifier_1, modifier_2, entity_id, priority_score)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(slot_id) DO UPDATE SET primary_keyword=excluded.primary_keyword, priority_score=excluded.priority_score`);
     let inserted = 0;
-    for (const s of rows) {
-      const res = this.run(`INSERT INTO slots (slot_id, domain, template_id, primary_keyword, region, persona, intent, modifier_1, modifier_2, entity_id, priority_score)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(slot_id) DO UPDATE SET primary_keyword=excluded.primary_keyword, priority_score=excluded.priority_score`,
-        [s.slot_id, s.domain, s.template_id, s.primary_keyword, s.region ?? null, s.persona ?? null, s.intent ?? null, s.modifier_1 ?? null, s.modifier_2 ?? null, s.entity_id ?? null, s.priority_score ?? null]);
-      if (res.changes) inserted += 1;
-    }
+    this.transaction(() => {
+      for (const s of rows) {
+        const res = stmt.run(s.slot_id, s.domain, s.template_id, s.primary_keyword, s.region ?? null, s.persona ?? null, s.intent ?? null, s.modifier_1 ?? null, s.modifier_2 ?? null, s.entity_id ?? null, s.priority_score ?? null);
+        if (res.changes) inserted += 1;
+      }
+    });
     return inserted;
   }
   getSlot(slotId: string): Row | undefined { return this.get("SELECT * FROM slots WHERE slot_id=?", [slotId]); }

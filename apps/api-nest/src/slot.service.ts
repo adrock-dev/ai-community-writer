@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
-import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, MAX_SLOTS_PER_TEMPLATE, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
 import { academyMin, academyPool, getArchetype, buildKeyword, type Archetype } from "./archetypes.js";
@@ -33,7 +33,9 @@ export class SlotService {
     const enabled = opts.templates?.length ? opts.templates : safeJson(domainConfig.templates_enabled, []);
     // 켜진 글유형이 없으면 슬롯을 만들지 않는다(전체 템플릿으로 폴백하지 않음 — 빈 상태는 0개 생성).
     const templateIds = enabled;
-    const maxPerTemplate = opts.maxPerTemplate ?? 200;
+    // 글유형당 상한. 축 조합이 수백만까지 폭발할 수 있으므로 MAX_SLOTS_PER_TEMPLATE 로 클램프해
+    // 메모리 폭주/동기 삽입 지연으로 인한 500 을 방지한다(호출자가 큰 값을 넘겨도 여기서 방어).
+    const maxPerTemplate = Math.min(MAX_SLOTS_PER_TEMPLATE, Math.max(1, opts.maxPerTemplate ?? 200));
     const overrides = safeTemplateOverrides(domainConfig.template_overrides);
     const summary: Record<string, number> = {};
     const rows: Row[] = [];
@@ -59,15 +61,20 @@ export class SlotService {
       const intentValues = recipe.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
       const modifierCombos = modifierPairs(modifierPool, recipe.modifier_count);
       const candidatesByPrimary: Row[][] = [];
+      // interleaveByPrimary 는 그룹(토픽)당 최대 ceil(maxPerTemplate/그룹수) 개만 읽는다(그룹 길이 동일).
+      // 전체 데카르트곱(수백만)을 다 만들지 않도록 토픽별 생성량을 그만큼(+여유 1)으로 제한한다.
+      // 그룹 길이가 균일하고 interleave 가 build 순서대로 앞에서부터 읽으므로 선택 결과·순서는 불변(골든 0-diff).
+      const perTopicCap = Math.max(1, Math.ceil(maxPerTemplate / topicUnits.length) + 1);
       for (const topic of topicUnits) {
         const primaryRows: Row[] = [];
-        for (const persona of personaValues) for (const intent of intentValues) for (const [m1, m2] of modifierCombos) {
+        build: for (const persona of personaValues) for (const intent of intentValues) for (const [m1, m2] of modifierCombos) {
           const parts = [topic.hashKey, persona.value || "", intent.value || "", m1 || "", m2 || ""];
           primaryRows.push({
             slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: topic.primaryKeyword,
             region: topic.region, persona: persona.value ?? null, intent: intent.value ?? null,
             modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(topic.sv, topic.kd, spec.weight)
           });
+          if (primaryRows.length >= perTopicCap) break build;
         }
         if (primaryRows.length) candidatesByPrimary.push(primaryRows);
       }
@@ -179,14 +186,17 @@ export class SlotService {
       const intentFactor = recipe.with_intent && (poolSizes.intent ?? 0) > 0 ? (poolSizes.intent ?? 0) : 1;
       const mPool = poolSizes.modifier ?? 0;
       const modifierFactor = recipe.modifier_count === 0 ? 1 : recipe.modifier_count === 1 ? (mPool > 0 ? mPool : 1) : (mPool >= 2 ? (mPool * (mPool - 1)) / 2 : 1);
-      const estimated_slot_upperbound = usablePrimary * personaFactor * intentFactor * modifierFactor;
-      if (estimated_slot_upperbound === 0) warnings.push({ level: "error", code: "no_slots", message: "현재 축/키워드 데이터로 이 유형은 슬롯을 만들지 못합니다." });
+      // 데이터 조합 상한(raw)과, 실제 생성 시 적용되는 유형당 하드 상한(MAX_SLOTS_PER_TEMPLATE)을 함께 노출한다.
+      // 생성은 raw 가 아무리 커도 slot_cap 까지만 만들므로, 표시 상한은 둘 중 작은 값이 진실이다.
+      const raw_slot_upperbound = usablePrimary * personaFactor * intentFactor * modifierFactor;
+      const estimated_slot_upperbound = Math.min(raw_slot_upperbound, MAX_SLOTS_PER_TEMPLATE);
+      if (raw_slot_upperbound === 0) warnings.push({ level: "error", code: "no_slots", message: "현재 축/키워드 데이터로 이 유형은 슬롯을 만들지 못합니다." });
 
       templates.push({
         template_id: tid, name: spec.name, kind: spec.kind, custom: customIdSet.has(tid), enabled: enabledSet.has(tid),
         primary_axis: primary, primary_value_count: topicUnits.length,
         keyword_rule: { format: kwFilterSet.length ? "filter" : (kr?.format ?? null), matched_keyword_count, keyword_total: keywordAxis.length },
-        axes: axesReport, academy, estimated_slot_upperbound, warnings,
+        axes: axesReport, academy, estimated_slot_upperbound, raw_slot_upperbound, slot_cap: MAX_SLOTS_PER_TEMPLATE, warnings,
       });
     }
 

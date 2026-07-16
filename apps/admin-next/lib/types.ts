@@ -71,6 +71,8 @@ export interface CoherenceTemplate {
   axes: Record<"persona" | "intent" | "modifier", { used: boolean; accepted_tags: string[]; pool_size: number; total: number }>;
   academy: { applicable: boolean; academy_types?: string[]; nearby_km?: number; min_guarantee_km?: number; regions_total?: number; regions_with_academies?: number; regions_with_min_for_best?: number; regions_with_min_direct?: number; regions_guaranteed?: number; regions_short?: number };
   estimated_slot_upperbound: number;
+  raw_slot_upperbound: number;
+  slot_cap: number;
   warnings: CoherenceWarning[];
 }
 export interface CoherenceReport {
