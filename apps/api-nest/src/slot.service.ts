@@ -186,17 +186,16 @@ export class SlotService {
       const intentFactor = recipe.with_intent && (poolSizes.intent ?? 0) > 0 ? (poolSizes.intent ?? 0) : 1;
       const mPool = poolSizes.modifier ?? 0;
       const modifierFactor = recipe.modifier_count === 0 ? 1 : recipe.modifier_count === 1 ? (mPool > 0 ? mPool : 1) : (mPool >= 2 ? (mPool * (mPool - 1)) / 2 : 1);
-      // 데이터 조합 상한(raw)과, 실제 생성 시 적용되는 유형당 하드 상한(MAX_SLOTS_PER_TEMPLATE)을 함께 노출한다.
-      // 생성은 raw 가 아무리 커도 slot_cap 까지만 만들므로, 표시 상한은 둘 중 작은 값이 진실이다.
-      const raw_slot_upperbound = usablePrimary * personaFactor * intentFactor * modifierFactor;
-      const estimated_slot_upperbound = Math.min(raw_slot_upperbound, MAX_SLOTS_PER_TEMPLATE);
-      if (raw_slot_upperbound === 0) warnings.push({ level: "error", code: "no_slots", message: "현재 축/키워드 데이터로 이 유형은 슬롯을 만들지 못합니다." });
+      // 이 글유형이 데이터로 만들 수 있는 실제 후보 상한(raw). 생성 시점 하드 상한(MAX_SLOTS_PER_TEMPLATE)은
+      // 여기서 덮어쓰지 않는다 — 표시는 유형의 실제 상한, 상한 적용은 '후보 만들기' 시점 검증에서만 한다.
+      const estimated_slot_upperbound = usablePrimary * personaFactor * intentFactor * modifierFactor;
+      if (estimated_slot_upperbound === 0) warnings.push({ level: "error", code: "no_slots", message: "현재 축/키워드 데이터로 이 유형은 슬롯을 만들지 못합니다." });
 
       templates.push({
         template_id: tid, name: spec.name, kind: spec.kind, custom: customIdSet.has(tid), enabled: enabledSet.has(tid),
         primary_axis: primary, primary_value_count: topicUnits.length,
         keyword_rule: { format: kwFilterSet.length ? "filter" : (kr?.format ?? null), matched_keyword_count, keyword_total: keywordAxis.length },
-        axes: axesReport, academy, estimated_slot_upperbound, raw_slot_upperbound, slot_cap: MAX_SLOTS_PER_TEMPLATE, warnings,
+        axes: axesReport, academy, estimated_slot_upperbound, warnings,
       });
     }
 

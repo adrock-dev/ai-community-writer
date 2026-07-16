@@ -860,7 +860,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
           {t.default_direction && <p className="muted small">방향성: {t.default_direction}</p>}
           {t.title_rule?.tiers?.length ? <p className="muted small">제목: {t.title_rule.tiers.map((tr) => `${tr.min_count}곳↑ "${tr.template}"`).join(" · ")}{t.title_rule.min_generate ? ` · 최소 ${t.title_rule.min_generate}곳` : ""}</p> : null}
           {coh && <>
-            <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}{coh.raw_slot_upperbound > coh.slot_cap && <span className="muted"> (데이터 조합 {coh.raw_slot_upperbound.toLocaleString()} · 유형당 상한 {coh.slot_cap.toLocaleString()} 적용)</span>}</p>
+            <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
             {coh.academy?.applicable && <p className="small"><b>학원 커버리지</b> (총 {coh.academy.regions_total}개 지역): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · <span style={{ color: (coh.academy.regions_short ?? 0) > 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.regions_short}</span> <span className="muted">(직접+인근 20km / 보장 {coh.academy.min_guarantee_km}km)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
             {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}</p>)}</div>}
           </>}
@@ -1481,8 +1481,6 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     const spec = options.template_specs[id];
     return { id, name: meta?.name ?? spec?.name ?? id, upper: meta?.estimated_slot_upperbound };
   });
-  // 선택 글유형의 후보 상한(= min(데이터 조합, 유형당 하드 상한)). 개수 입력을 이 값으로 클램프한다.
-  const selectedUpper = enabledTypes.find((t) => t.id === genType)?.upper;
   // 후보 목록 '유형' 필터: 빌트인+커스텀 전 유형(getCoherence). 로드 전이면 빌트인 id 로 폴백.
   const typeFilterOptions = Object.keys(typeMeta).length
     ? Object.values(typeMeta).map((t) => ({ id: t.template_id, name: t.name }))
@@ -1583,11 +1581,10 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
             </select>
           </Field>
           <Field label="개수">
-            <input className="input" type="number" min={1} max={selectedUpper} value={max} onChange={(e) => setMax(Math.max(1, Math.min(selectedUpper ?? Infinity, Number(e.target.value) || 1)))} style={{ width: 100 }} />
+            <input className="input" type="number" min={1} value={max} onChange={(e) => setMax(Math.max(1, Number(e.target.value) || 1))} style={{ width: 100 }} />
           </Field>
           <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy || !genType} onClick={gen}>{busy ? "만드는 중..." : "글 후보 만들기"}</button>
         </div>
-        {typeof selectedUpper === "number" && <p className="muted small">이 글유형의 후보 상한은 <b>{selectedUpper.toLocaleString()}개</b>입니다. 더 큰 값을 넣어도 이 개수까지만 생성됩니다.</p>}
         {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <Link className="btn" href={`/t/${encodeURIComponent(domain.domain)}?tab=templates`}>글유형/디자인 탭</Link>에서 유형을 켜세요.</p>}
         <p className="muted small">조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
