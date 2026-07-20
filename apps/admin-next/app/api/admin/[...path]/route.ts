@@ -27,12 +27,26 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<Respo
 
   const method = request.method.toUpperCase();
   const body = method === "GET" || method === "HEAD" ? undefined : await request.arrayBuffer();
-  const upstream = await fetch(target, {
-    method,
-    headers,
-    body,
-    cache: "no-store",
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch(target, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+    });
+  } catch (err) {
+    // 백엔드 Nest API(SEO_API_BASE_URL)에 연결 실패(미기동/다운 등)를 원인이 드러나는 502로 감싼다.
+    const detail = err instanceof Error ? err.message : String(err);
+    return new Response(
+      JSON.stringify({
+        error: "backend_unreachable",
+        message: `콘텐츠 API(${API_BASE})에 연결할 수 없습니다. Nest API가 실행 중인지 확인하세요.`,
+        detail,
+      }),
+      { status: 502, headers: { "content-type": "application/json; charset=utf-8" } },
+    );
+  }
 
   const outHeaders = new Headers();
   const upstreamType = upstream.headers.get("content-type");
