@@ -64,6 +64,33 @@ describe("postSurfaceQualityIssues", () => {
   });
 });
 
+describe("자기 도메인 내부링크 예외(siteHost)", () => {
+  const communityLink = "# 제목\n\n자세한 내용은 [의왕시 총정리](https://app.drivingplus.me/community/의왕시-운전면허학원)를 참고하세요.";
+
+  it("siteHost 없으면 자기 도메인 URL도 누출로 잡는다(기존 동작 유지)", () => {
+    expect(articleQualityIssues(communityLink, "", {})).toContain("exposes_internal_fact_language");
+  });
+
+  it("siteHost 를 주면 자기 공개 도메인 내부링크는 누출로 보지 않는다", () => {
+    expect(articleQualityIssues(communityLink, "", {}, [], "app.drivingplus.me")).not.toContain("exposes_internal_fact_language");
+  });
+
+  it("siteHost 를 줘도 내부 API host(api-dev.drivingplus.me)는 계속 잡는다", () => {
+    const md = "# 제목\n\n내부 경로 https://api-dev.drivingplus.me/get-all-academy 를 쓴다.";
+    expect(articleQualityIssues(md, "", {}, [], "app.drivingplus.me")).toContain("exposes_internal_fact_language");
+  });
+
+  it("siteHost 를 줘도 산문 속 DrivingPlus 브랜드명은 계속 잡는다", () => {
+    const md = "# 제목\n\nDrivingPlus 자료를 근거로 정리했습니다.";
+    expect(articleQualityIssues(md, "", {}, [], "app.drivingplus.me")).toContain("exposes_internal_fact_language");
+  });
+
+  it("postSurfaceQualityIssues 도 siteHost 로 자기 도메인 링크를 예외 처리한다", () => {
+    const post = { title: "제목", body_markdown: communityLink, images: null };
+    expect(postSurfaceQualityIssues(post, 2600, 0, [], "app.drivingplus.me")).not.toContain("exposes_internal_fact_language");
+  });
+});
+
 describe("문장 난이도(가독성)", () => {
   it("150자 이상 run-on 문장이 2개 이상이면 잡아낸다", () => {
     const long = "가".repeat(160) + ".";

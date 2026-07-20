@@ -77,7 +77,14 @@ function offeredInternalUrls(facts: string): string[] {
   return Array.from(new Set(Array.from(String(facts || "").matchAll(/https?:\/\/\S+?\/community\/[^\s)]+/g)).map((m) => m[0]!)));
 }
 
-export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>, boilerplatePhrases: string[] = []): string[] {
+// 사이트 자기 공개 도메인(예: app.drivingplus.me) URL 은 내부 누출이 아니다 — 정상 내부링크의 host 다.
+// 내부 누출 검사 전에 자기 host 만 제거해 오탐을 없앤다. 내부 API host(api-dev.drivingplus.me)나 산문 속
+// 브랜드명(DrivingPlus)은 자기 host 를 지워도 그대로 남아 계속 잡힌다(host 문자열이 서로 부분집합이 아님).
+function stripOwnSiteRefs(text: string, siteHost?: string): string {
+  return siteHost ? text.split(siteHost).join("") : text;
+}
+
+export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>, boilerplatePhrases: string[] = [], siteHost?: string): string[] {
   const issues: string[] = [];
   const chars = markdown.trim().length;
   const candidateCount = candidateCountFromFacts(facts);
@@ -99,7 +106,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
   if (/\[\d+\]/.test(markdown)) issues.push("contains_visible_citations");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
-  if (/(검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(markdown)) issues.push("exposes_internal_fact_language");
+  if (/(검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(stripOwnSiteRefs(markdown, siteHost))) issues.push("exposes_internal_fact_language");
   if (hasRiskyDurationClaim(markdown)) issues.push("risky_duration_or_pass_guarantee_claim");
   if (!hasVerifiedPriceFacts(facts) && hasSpecificMoneyClaim(markdown)) issues.push("unverified_specific_price_claim");
   if (!hasReviewFacts(facts) && hasSpecificReviewClaim(markdown)) issues.push("unverified_review_claim");
@@ -122,7 +129,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   return issues;
 }
 
-export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCount = 0, boilerplatePhrases: string[] = []): string[] {
+export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCount = 0, boilerplatePhrases: string[] = [], siteHost?: string): string[] {
   const markdown = String(post.body_markdown || "");
   const title = String(post.title || "");
   const issues: string[] = [];
@@ -145,7 +152,7 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅|✓)/m.test(markdown)) issues.push("missing_checklist_or_list");
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
   if (/\[\d+\]/.test(markdown)) issues.push("contains_visible_citations");
-  if (/(운전선생|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(`${title}\n${markdown}`)) issues.push("exposes_internal_fact_language");
+  if (/(운전선생|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(stripOwnSiteRefs(`${title}\n${markdown}`, siteHost))) issues.push("exposes_internal_fact_language");
   if (hasRiskyDurationClaim(`${title}\n${markdown}`)) issues.push("risky_duration_or_pass_guarantee_claim");
   // 학원 후보가 있는 글에서만(candidateCount>0) 후보 수 과장 검사. 키워드형(0)은 오탐 방지 위해 건너뜀.
   const inflated = candidateCount > 0 ? inflatedCandidateCountClaim(`${title}\n${markdown}`, candidateCount) : null;

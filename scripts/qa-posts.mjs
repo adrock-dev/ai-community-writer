@@ -73,7 +73,9 @@ function issuesFor(row, monitoredByDomain) {
   if (!['editorial', 'comparison', 'local-guide', 'checklist', 'conversion', 'custom'].includes(String(row.design_template_id || ''))) issues.push(`unknown_design_template:${row.design_template_id}`);
   if (h2 >= 4 && !hasFinalUtilitySection(body)) issues.push('template_structure_missing_final_utility_section');
   if (hasFlatParagraphRun(paragraphs)) issues.push('too_flat_paragraphs');
-  if (/운전선생|Driving\s*Plus|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|localhost:\d+|127\.0\.0\.1|샘플|데모|sample|demo|dummy|placeholder|TODO|FIXME|내부\s*(?:API|데이터|자료)|검증된\s*(?:API|자료|데이터)|API\s*(?:URL|자료|데이터)|참고\s*API|긍정\s*(?:수강생|블로그)\s*리뷰(?:글)?\s*보충자료|짧은\s*실제\s*문구/i.test(body + row.title)) issues.push('internal_or_wrong_brand_leak');
+  // 사이트 자기 공개 도메인(정상 내부링크 host)은 누출이 아니므로 검사 전에 제거한다(런타임 게이트와 동일 원칙).
+  const leakScan = row.domain ? (body + row.title).split(row.domain).join('') : (body + row.title);
+  if (/운전선생|Driving\s*Plus|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|localhost:\d+|127\.0\.0\.1|샘플|데모|sample|demo|dummy|placeholder|TODO|FIXME|내부\s*(?:API|데이터|자료)|검증된\s*(?:API|자료|데이터)|API\s*(?:URL|자료|데이터)|참고\s*API|긍정\s*(?:수강생|블로그)\s*리뷰(?:글)?\s*보충자료|짧은\s*실제\s*문구/i.test(leakScan)) issues.push('internal_or_wrong_brand_leak');
   if (/\d+\s*일\s*(?:만|컷|완성)|삼\s*일\s*(?:만|컷|완성)|하루\s*만|당일\s*합\s*격|무조건\s*합\s*격|합\s*격\s*보장|보장\s*합\s*격/u.test(body + row.title)) issues.push('risky_duration_or_pass_guarantee_claim');
   const candidateActual = Math.min(Number(row.academy_count ?? row.exact_academy_count ?? 0), 5);
   const inflated = candidateActual > 0 ? inflatedCandidateCountClaim(`${row.title}

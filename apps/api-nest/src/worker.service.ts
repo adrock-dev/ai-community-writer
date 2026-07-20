@@ -147,8 +147,8 @@ export class WorkerService {
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
         const result = await runLlm(prompt, llmOpts);
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
-        let markdown = normalizeGeneratedMarkdown(result.summary, images);
-        let qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases);
+        let markdown = normalizeGeneratedMarkdown(result.summary, images, domain);
+        let qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain);
         let durationSec = result.duration_sec;
         let costUsd = result.cost_usd || 0;
         let inputTokens = result.input_tokens || 0;
@@ -166,8 +166,8 @@ export class WorkerService {
           sessionId = repair.session_id || sessionId;
           model = repair.model || model;
           if (repair.ok && repair.summary.trim()) {
-            markdown = normalizeGeneratedMarkdown(repair.summary, images);
-            qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases);
+            markdown = normalizeGeneratedMarkdown(repair.summary, images, domain);
+            qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain);
           }
         }
         if (qualityIssues.length) throw new Error(`generated article quality gate failed: ${qualityIssues.join(", ")}`);
@@ -181,7 +181,7 @@ export class WorkerService {
           skipped++; this.db.updateJobProgress(jobId, { step: "생성문 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
-        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText), monitoredPhrases);
+        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText), monitoredPhrases, domain);
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
         // 내부링크(P3)는 비차단 신호다: 관련 후보가 주어졌는데 링크가 없으면 실패시키지 않고 경고로만 남긴다(대량 실패 방지).
         const qualityWarnings = internalLinkIssues(markdown, factsText);
@@ -387,7 +387,7 @@ export class WorkerService {
       // 후보 수 재평가도 생성과 동일한 글유형별 학원 타입으로 맞춘다(academy_types 없으면 학원정보 미사용 → 후보 0).
       const pruneSpec = slot ? this.db.getTemplateSpec(domain, String(slot.template_id || "")) : undefined;
       const candidateCount = slot?.region ? this.pickAcademiesForRegion(domain, String(slot.region), ACADEMY_MAX_CANDIDATES, this.resolveAcademyTypes(pruneSpec)).length : 0;
-      const issues = postSurfaceQualityIssues(r, minChars, candidateCount, monitoredPhrases);
+      const issues = postSurfaceQualityIssues(r, minChars, candidateCount, monitoredPhrases, domain);
       if (issues.length) targets.push({ id: r.id, title: r.title, chars: r.chars, issues });
     }
     if (!dryRun) for (const r of targets) this.db.updatePostStatus(r.id, "noindex");
@@ -629,7 +629,7 @@ function stripImageTag(md: string, key: string): string {
     .trim();
 }
 
-function normalizeGeneratedMarkdown(summary: string, images: Record<string, string>): string {
+function normalizeGeneratedMarkdown(summary: string, images: Record<string, string>, siteHost?: string): string {
   return ensureImageSlots(
     ensureHeadingBodies(
       removeInternalLeakage(
@@ -642,7 +642,8 @@ function normalizeGeneratedMarkdown(summary: string, images: Record<string, stri
               .replace(/\n{3,}/g, "\n\n")
               .trim()
           )
-        )
+        ),
+        siteHost
       )
     ),
     images
@@ -673,7 +674,7 @@ function ensureHeadingBodies(md: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function removeInternalLeakage(md: string): string {
+export function removeInternalLeakage(md: string, siteHost?: string): string {
   const lines = md.split(/\r?\n/);
   const out: string[] = [];
   let droppingReferenceSection = false;
@@ -684,7 +685,9 @@ function removeInternalLeakage(md: string): string {
     }
     if (droppingReferenceSection && /^#{1,4}\s+/.test(line)) droppingReferenceSection = false;
     if (droppingReferenceSection) continue;
-    if (/(api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|내부\s*(?:API|데이터|자료)|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|내부자료ID|DrivingPlus|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(line)) continue;
+    // 사이트 자기 공개 도메인(정상 내부링크 host)은 누출이 아니므로 검사 전에 제거한다. 내부 API host·브랜드명은 남아 계속 걸린다.
+    const scanned = siteHost ? line.split(siteHost).join("") : line;
+    if (/(api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|내부\s*(?:API|데이터|자료)|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|내부자료ID|DrivingPlus|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(scanned)) continue;
     out.push(line);
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
