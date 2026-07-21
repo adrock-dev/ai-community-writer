@@ -13,7 +13,7 @@ import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./a
 import { runLlm } from "./llm-runner.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
-import { T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
+import { isT01TemplateFamily, T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
 
 type Row = Record<string, any>;
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
@@ -218,6 +218,9 @@ export class AdminController {
       primary_override: spec.primary_override,
       default_direction: direction || null,
       default_design: spec.default_design,
+      // 복제본이 다시 복제돼도 최초 빌트인 원본을 유지한다. T01 계보의 기본
+      // 생성 정책을 제목·이름 추정 없이 안전하게 적용하기 위한 내부 메타데이터다.
+      origin_template_id: spec.origin_template_id || sourceId,
       // 소스의 유효 제목 규칙을 굳혀 복사 — 빌트인(T01 등) 클론도 제목 규칙을 그대로 상속한다.
       // (getTemplateSpec 이 빌트인 title_rule 을 TITLE_RULES 에서 실어주므로 빌트인/커스텀 동일 경로.)
       title_rule: spec.title_rule ?? null,
@@ -692,19 +695,24 @@ export class AdminController {
     }
     const enableImageGeneration = Boolean(body.enable_image_generation);
     const defaultTimeoutSec = enableImageGeneration ? 1200 : 600;
-    // 기본값은 legacy다. 과거 v2/hybrid 실험 모드는 퇴역했고, Legacy Plus만
-    // 명시적 opt-in으로 허용한다. 알 수 없는 값은 legacy로 조용히 바꾸지 않는다.
+    // 모드가 생략되면 worker 가 슬롯별로 T01 계보는 Legacy Plus, 그 외는 Legacy를
+    // 선택한다. 하나의 배치에 두 계보가 섞여도 생성 경로가 섞이지 않게 auto를 보존한다.
+    // 명시 legacy는 기존 동작을 강제하는 호환 탈출구다.
     const generationMode = body.generation_mode === undefined || body.generation_mode === null || body.generation_mode === ""
-      ? "legacy"
+      ? "auto"
       : String(body.generation_mode);
     if (["t01_data_gated_v2", "t01_hybrid_v1"].includes(generationMode)) {
       throw new HttpException(`retired generation_mode: ${generationMode}; use legacy or ${T01_LEGACY_PLUS_MODE}`, 400);
     }
-    if (!["legacy", T01_LEGACY_PLUS_MODE].includes(generationMode)) {
+    if (!["auto", "legacy", T01_LEGACY_PLUS_MODE].includes(generationMode)) {
       throw new HttpException(`unknown generation_mode: ${generationMode}`, 400);
     }
     if (generationMode === T01_LEGACY_PLUS_MODE) {
-      const nonT01 = slotIds.map((slotId) => this.db.getSlot(slotId)).find((slot) => !slot || String(slot.template_id || "") !== "T01");
+      const nonT01 = slotIds.map((slotId) => this.db.getSlot(slotId)).find((slot) => {
+        if (!slot) return true;
+        const spec = this.db.getTemplateSpec(domain, String(slot.template_id || ""));
+        return !isT01TemplateFamily(slot.template_id, spec?.origin_template_id);
+      });
       if (nonT01) throw new HttpException(`${generationMode} is only supported for T01 slots`, 400);
     }
     const job_id = this.db.enqueueJob(domain, "generate", {

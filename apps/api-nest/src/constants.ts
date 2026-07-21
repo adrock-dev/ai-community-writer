@@ -149,6 +149,9 @@ export type TemplateSpecShape = {
   primary_override?: "region" | "keyword";
   default_direction?: string;
   default_design?: string;
+  // 커스텀 유형이 어떤 빌트인/커스텀에서 복제됐는지의 최상위 원본. 생성 정책을
+  // 계보 단위로 적용할 때만 사용하며, 본문 프롬프트에는 노출하지 않는다.
+  origin_template_id?: string;
   // 제목 규칙(생성 시점 해석). 빌트인은 TITLE_RULES 맵 폴백, 커스텀은 이 값(DB). 없으면 LLM 이 H1 결정.
   title_rule?: TitleRule;
 };

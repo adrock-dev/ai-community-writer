@@ -190,6 +190,7 @@ CREATE TABLE IF NOT EXISTS custom_templates (
   primary_override TEXT,
   default_direction TEXT,
   default_design TEXT NOT NULL DEFAULT 'local-guide',
+  origin_template_id TEXT,
   title_rule TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (domain, template_id),
@@ -369,6 +370,7 @@ export class DbService implements OnModuleInit {
     if (!customTemplateCols.has("keyword_filter")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN keyword_filter TEXT");
     if (!customTemplateCols.has("primary_override")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN primary_override TEXT");
     if (!customTemplateCols.has("title_rule")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN title_rule TEXT");
+    if (!customTemplateCols.has("origin_template_id")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN origin_template_id TEXT");
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
     this.db.exec(`CREATE TABLE IF NOT EXISTS seo_regions (
       domain TEXT NOT NULL,
@@ -399,6 +401,7 @@ export class DbService implements OnModuleInit {
       primary_override TEXT,
       default_direction TEXT,
       default_design TEXT NOT NULL DEFAULT 'local-guide',
+      origin_template_id TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (domain, template_id),
       FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
@@ -519,8 +522,8 @@ export class DbService implements OnModuleInit {
   // 커스텀 글유형 생성. id 는 여기서 발급(빌트인/기존 커스텀과 유니크). axis_tags 는 JSON 직렬화해 저장(트랩: TEXT 컬럼 write 는 반드시 stringify).
   createCustomTemplate(domain: string, input: Row): Row {
     const templateId = this.nextCustomTemplateId(domain);
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, primary_override, default_direction, default_design, title_rule)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, primary_override, default_direction, default_design, origin_template_id, title_rule)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [domain, templateId, String(input.name || "").trim(), String(input.kind || "").trim(),
         input.use_persona ? 1 : 0, input.with_intent ? 1 : 0,
         clampModifierCount(input.modifier_count),
@@ -533,6 +536,7 @@ export class DbService implements OnModuleInit {
         normPrimaryOverride(input.primary_override),
         input.default_direction != null && String(input.default_direction).trim() ? String(input.default_direction).trim() : null,
         String(input.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE,
+        input.origin_template_id != null && String(input.origin_template_id).trim() ? String(input.origin_template_id).trim() : null,
         serializeTitleRule(input.title_rule)]);
     return this.getCustomTemplate(domain, templateId)!;
   }
@@ -590,12 +594,12 @@ export class DbService implements OnModuleInit {
   // created_at 은 봉투 값 보존(없으면 CURRENT_TIMESTAMP), 충돌 시 기존 created_at 유지. axis_tags 는 stringify.
   // 빌트인 id/kind 검증은 호출측(컨트롤러)에서 수행한다.
   importCustomTemplate(domain: string, row: Row): void {
-    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, primary_override, default_direction, default_design, title_rule, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    this.run(`INSERT INTO custom_templates (domain, template_id, name, kind, use_persona, with_intent, modifier_count, weight, min_sv, axis_tags, axis_values, academy_types, keyword_filter, primary_override, default_direction, default_design, origin_template_id, title_rule, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
       ON CONFLICT(domain, template_id) DO UPDATE SET
         name=excluded.name, kind=excluded.kind, use_persona=excluded.use_persona, with_intent=excluded.with_intent,
         modifier_count=excluded.modifier_count, weight=excluded.weight, min_sv=excluded.min_sv,
-        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, keyword_filter=excluded.keyword_filter, primary_override=excluded.primary_override, default_direction=excluded.default_direction, default_design=excluded.default_design, title_rule=excluded.title_rule`,
+        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, keyword_filter=excluded.keyword_filter, primary_override=excluded.primary_override, default_direction=excluded.default_direction, default_design=excluded.default_design, origin_template_id=excluded.origin_template_id, title_rule=excluded.title_rule`,
       [domain, String(row.template_id || "").trim(), String(row.name || "").trim(), String(row.kind || "").trim(),
         row.use_persona ? 1 : 0, row.with_intent ? 1 : 0, clampModifierCount(row.modifier_count),
         Number.isFinite(Number(row.weight)) ? Number(row.weight) : 1.0,
@@ -607,6 +611,7 @@ export class DbService implements OnModuleInit {
         normPrimaryOverride(row.primary_override),
         row.default_direction != null && String(row.default_direction).trim() ? String(row.default_direction).trim() : null,
         String(row.default_design || "").trim() || DEFAULT_DRIVING_DESIGN_TEMPLATE,
+        row.origin_template_id != null && String(row.origin_template_id).trim() ? String(row.origin_template_id).trim() : null,
         serializeTitleRule(row.title_rule),
         row.created_at != null && String(row.created_at).trim() ? String(row.created_at).trim() : null]);
   }
@@ -1159,6 +1164,7 @@ function customTemplateSpec(row: Row): TemplateSpecShape {
     primary_override: normPrimaryOverride(row.primary_override) ?? undefined,
     default_direction: row.default_direction != null ? String(row.default_direction) : undefined,
     default_design: row.default_design != null ? String(row.default_design) : undefined,
+    origin_template_id: row.origin_template_id != null ? String(row.origin_template_id) : undefined,
     title_rule: parseTitleRule(row.title_rule),
   };
 }

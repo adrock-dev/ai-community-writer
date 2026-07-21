@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AcademySelectionTrace, AcademySelectionTraceCandidate } from "../src/academy-candidate-selection.js";
 import { buildT01DataGatedContext } from "../src/t01-data-gated.js";
-import { buildT01LegacyPlusContext, dedupeLegacyPlusDecisionSupport, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusComparisonPlan, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, truncateLegacyPlusReview } from "../src/t01-legacy-plus.js";
+import { buildT01LegacyPlusContext, dedupeLegacyPlusDecisionSupport, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusComparisonPlan, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, truncateLegacyPlusReview } from "../src/t01-legacy-plus.js";
 import { buildPrompt } from "../src/worker.service.js";
 import { getArchetype } from "../src/archetypes.js";
 
@@ -23,10 +23,16 @@ function context(seed = "legacy-plus-seed") {
 }
 
 describe("T01 Legacy Plus", () => {
-  it("T01에서만 명시적으로 선택되고 기존 mode와 구분된다", () => {
+  it("T01 계보에서만 선택되고 auto는 T01 계보를 Legacy Plus로 해석한다", () => {
     expect(shouldUseT01LegacyPlusMode("T01", T01_LEGACY_PLUS_MODE)).toBe(true);
     expect(shouldUseT01LegacyPlusMode("T01", "legacy")).toBe(false);
     expect(shouldUseT01LegacyPlusMode("T14", T01_LEGACY_PLUS_MODE)).toBe(false);
+    expect(isT01TemplateFamily("C123", "T01")).toBe(true);
+    expect(shouldUseT01LegacyPlusMode("C123", T01_LEGACY_PLUS_MODE, "T01")).toBe(true);
+    expect(resolveT01GenerationMode("auto", "T01")).toBe(T01_LEGACY_PLUS_MODE);
+    expect(resolveT01GenerationMode("auto", "C123", "T01")).toBe(T01_LEGACY_PLUS_MODE);
+    expect(resolveT01GenerationMode("auto", "T14")).toBe("legacy");
+    expect(resolveT01GenerationMode("legacy", "T01")).toBe("legacy");
   });
 
   it("후보 학원별로 eligible review를 하나씩 결정적으로 선택하고 prompt에는 privacy metadata를 넣지 않는다", () => {

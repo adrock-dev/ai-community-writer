@@ -11,7 +11,7 @@ import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms,
 import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues } from "./quality-gate.js";
 import { seededCandidateSample, selectAcademiesForRegion } from "./academy-candidate-selection.js";
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
-import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
+import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
 import { studentReviewFactLines } from "./academy-review-evidence.js";
 import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 
@@ -70,6 +70,9 @@ export type GenerationPromptOptions = {
    * rather than turning retrieval-only location evidence into the article's
    * main composition. */
   readerFlow?: boolean;
+  /** T01 built-in or T01-origin custom template. Keeps comparison-only safety
+   * guidance available even when an explicit legacy override is used. */
+  t01Comparison?: boolean;
 };
 
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
@@ -119,7 +122,7 @@ export class WorkerService {
     if (["t01_data_gated_v2", "t01_hybrid_v1"].includes(requestedGenerationMode)) {
       throw new Error(`retired generation mode: ${requestedGenerationMode}; use legacy or ${T01_LEGACY_PLUS_MODE}`);
     }
-    if (!["legacy", T01_LEGACY_PLUS_MODE].includes(requestedGenerationMode)) {
+    if (!["auto", "legacy", T01_LEGACY_PLUS_MODE].includes(requestedGenerationMode)) {
       throw new Error(`unknown generation mode: ${requestedGenerationMode}`);
     }
     const domainMeta = this.db.getDomain(domain) || {};
@@ -151,9 +154,6 @@ export class WorkerService {
       const slot = this.db.getSlot(sid);
       this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 슬롯 확인`, slotId: sid, processed: ok, failed: fail });
       if (!slot || slot.domain !== domain) { fail++; this.db.updateJobProgress(jobId, { step: "슬롯 없음", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
-      if (isT01LegacyPlusMode(requestedGenerationMode) && String(slot.template_id || "") !== "T01") {
-        throw new Error(`${requestedGenerationMode} is only supported for T01 slots`);
-      }
       const slotMatches = findSlotExclusionTerms(slot, exclusionTerms);
       if (slotMatches.length) {
         const message = `excluded by domain rule: ${slotMatches.join(", ")}`;
@@ -163,6 +163,11 @@ export class WorkerService {
       }
       // 글유형 spec(빌트인/커스텀): 디자인 폴백·아키타입·방향성 해석의 공통 소스로 먼저 해석.
       const templateSpec = this.db.getTemplateSpec(domain, String(slot.template_id || ""));
+      const isT01Family = isT01TemplateFamily(slot.template_id, templateSpec?.origin_template_id);
+      if (isT01LegacyPlusMode(requestedGenerationMode) && !isT01Family) {
+        throw new Error(`${requestedGenerationMode} is only supported for T01 slots`);
+      }
+      const effectiveGenerationMode = resolveT01GenerationMode(requestedGenerationMode, slot.template_id, templateSpec?.origin_template_id);
       // 디자인은 슬롯 단위로 결정: 요청 지정 → 도메인 설정 → template_overrides.design → 레거시 → 글유형(spec) 기본.
       const designTemplateId = resolveGenerationDesign(payload.design_template_id, domainMeta, slot.template_id, templateSpec?.default_design);
       this.db.updateSlotStatus(sid, "in_progress");
@@ -181,10 +186,10 @@ export class WorkerService {
           ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 }, academyTypes, archetype)
           : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 }, academyTypes, archetype);
         // Legacy Plus만 동일 최종 후보의 typed facts를 내부 검수·리뷰 선택에 사용한다.
-        const t01Context = shouldUseT01LegacyPlusMode(slot.template_id, requestedGenerationMode)
+        const t01Context = shouldUseT01LegacyPlusMode(slot.template_id, effectiveGenerationMode, templateSpec?.origin_template_id)
           ? this.buildT01DataGatedContext(domain, slot, academyTypes, archetype)
           : null;
-        const t01LegacyPlusContext = t01Context && shouldUseT01LegacyPlusMode(slot.template_id, requestedGenerationMode)
+        const t01LegacyPlusContext = t01Context && shouldUseT01LegacyPlusMode(slot.template_id, effectiveGenerationMode, templateSpec?.origin_template_id)
           ? buildT01LegacyPlusContext(t01Context, structureSeed(slot))
           : null;
         // 제목 규칙(생성 시점 해석): 실제 후보 수로 제목 확정 → 프롬프트 주입. 후보 수 부족(min_generate 미만)이면 생성하지 않는다.
@@ -230,7 +235,8 @@ export class WorkerService {
           reviewInstruction: legacyPlusReviewPromptInstruction(t01LegacyPlusContext),
           faqInstruction: legacyPlusFaqPromptInstruction(),
           readerFlow: true,
-        } : undefined;
+          t01Comparison: true,
+        } : (isT01Family ? { t01Comparison: true } : undefined);
         const effectiveDirection = t01LegacyPlusContext ? legacyPlusTemplateDirection(t01LegacyPlusContext) : templateDirection;
         const legacyPrompt = buildPrompt(domainMeta, slot, promptFactsText, designTemplateId, archetype, effectiveDirection, academyTypes.length > 0, forcedTitle, t01PromptOptions);
         const t01Contract = t01LegacyPlusContext ? t01LegacyPlusPromptContract(t01LegacyPlusContext) : "";
@@ -242,7 +248,7 @@ export class WorkerService {
         let markdown = normalizeGeneratedMarkdown(result.summary, images, domain);
         if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
         let t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
-        let qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
+        let qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
         let durationSec = result.duration_sec;
         let costUsd = result.cost_usd || 0;
         let inputTokens = result.input_tokens || 0;
@@ -273,7 +279,7 @@ export class WorkerService {
             markdown = normalizeGeneratedMarkdown(repair.summary, images, domain);
             if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
             t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
-            qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
+            qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
           }
         }
         if (qualityIssues.length) throw new QualityGateError("article", qualityIssues, draftFromGeneration(domain, slot, {
@@ -337,7 +343,7 @@ export class WorkerService {
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);
-        ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings, quality_warnings: qualityWarnings, ...(t01LegacyPlusContext ? { t01_generation_mode: t01LegacyPlusContext.mode, t01_quality_issues: t01Issues, t01_repair_failure_history: t01RepairFailureHistory, t01_repair_stop_reason: t01RepairStopReason } : {}) });
+        ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings, quality_warnings: qualityWarnings, effective_generation_mode: effectiveGenerationMode, ...(t01LegacyPlusContext ? { t01_generation_mode: t01LegacyPlusContext.mode, t01_quality_issues: t01Issues, t01_repair_failure_history: t01RepairFailureHistory, t01_repair_stop_reason: t01RepairStopReason } : {}) });
       } catch (error: any) {
         const message = error?.message || String(error);
         // 게이트 실패로 버려지던 본문을 격리 보관한다(관리자 검수용). 공개 경로와 분리된 draft_posts 로만 들어간다.
@@ -743,6 +749,11 @@ function normalizeKoreanSpacing(text: string): string {
 
 function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
+  const isT01AcademyComparison = isT01AcademyComparisonPrompt(slot, true, options);
+  const authoritativeSourceGuide = authoritativeSourceGuideForPrompt(slot, true, options);
+  const comparisonScopeGuide = isT01AcademyComparison
+    ? "이 글은 학원 비교글이다. 시험 접수·응시·면허 발급·준비 서류 같은 일반 제도 안내나 외부 공식 절차 링크는 본문·FAQ·체크리스트·CTA에 넣지 않는다. 학원별로 확인된 사실과 선택에 필요한 질문만 남긴다."
+    : "";
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
   const personaMobilityGuide = personaHasMobilityConstraint
@@ -793,6 +804,7 @@ ${facts || "없음"}
 - 좋은 리뷰라도 합격 보장·과장된 효능은 만들지 말고, 리뷰 원문에 없는 장점은 추가하지 않는다.
 - 후보 수보다 큰 숫자, 다른 지역 후보, 없는 가격·합격률·셔틀·후기·3일 합격·당일 합격·합격 보장 주장을 만들지 않는다.
 - 구체 금액은 수강료 자료가 있을 때만 쓴다. 자료가 없으면 “비용은 상담 때 확인”과 확인 질문으로 처리한다.
+${comparisonScopeGuide ? `- ${comparisonScopeGuide}` : ""}
 - ${nonPrimaryRepairGuide}
 ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" 로 쓴다(글자 하나도 바꾸지 말 것). 본문을 이 제목에 맞춘다.` : "- 첫 줄은 '# ' 제목,"} H2 4~6개 중심, 많아도 10개를 넘기지 말고 3,500~5,600자 이내로 쓴다.
 - 후보 수와 관계없이 Markdown 표 1개를 반드시 포함한다. 후보가 1곳이면 비교표 대신 주소/연락처/과정/상담 확인점을 담은 요약표로 작성한다.
@@ -801,8 +813,7 @@ ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" �
 - 학원명·가격·셔틀·면허종류·준비물처럼 독자가 스캔해야 하는 핵심어는 Markdown bold를 적당히 사용한다.
 - 관련 글 후보가 있으면 실제 링크만 2~4개 연결한다. 후보가 없으면 링크를 꾸며내지 않는다.
 - [1], [2] 같은 출처번호와 입력 묶음 표현(확인된 콘텐츠 재료, 작성 범위, 소개 가능한 후보 수, API 자료, 후보 수, 참고자료, 내부 API URL 등)은 노출하지 않는다.
-- 공신력 출처는 본문 문장 안에 인라인 링크로만 인용한다(별도 출처 섹션 금지, 렌더 시 제거됨). 인용 시 아래 정확한 URL만 쓰고 지어내지 않는다:
-${DRIVING_AUTHORITATIVE_SOURCES_GUIDE}
+- ${authoritativeSourceGuide}
 - 이번 입력의 학원 API는 출처가 아니라 내부 데이터다.
 - ${repairNaturalToneGuide}
 - ai_cliche_expressions 가 사유에 있으면, 표시된 판박이 표현("이번 글에서는", "~알아보겠습니다/살펴보겠습니다", "여러분", "도움이 되셨기를 바랍니다" 등)을 전부 없애고 실제 사람이 쓴 블로그처럼 구체 상황으로 자연스럽게 다시 시작·마무리한다. 같은 뜻의 다른 상투구로 바꾸지 말 것.
@@ -847,6 +858,14 @@ function structureSeed(slot: Row): string {
 
 export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string, hasAcademy: boolean, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
+  const isT01AcademyComparison = isT01AcademyComparisonPrompt(slot, hasAcademy, options);
+  const authoritativeSourceGuide = authoritativeSourceGuideForPrompt(slot, hasAcademy, options);
+  const comparisonScopeGuide = isT01AcademyComparison
+    ? "이 글은 지역 운전면허학원 비교글이다. 도로교통공단의 시험 접수·응시·면허 발급, 준비 서류 등 일반 제도 안내와 외부 공식 절차 링크는 다루지 않는다. 제공된 학원별 사실과 그 차이를 비교하는 데 필요한 내용만 쓴다."
+    : "";
+  const missingFactGuide = isT01AcademyComparison
+    ? "가격·셔틀·합격률·후기는 검증된 자료가 있을 때만 단정한다. 자료가 없는 항목은 본문을 일반 상담 가이드로 채우지 말고, 후보별 비교에 꼭 필요한 경우에만 짧은 공통 확인 행동으로 남긴다. 준비 서류·시험 접수·면허 발급 같은 일반 절차는 넣지 않는다."
+    : "가격·셔틀·합격률·후기는 검증된 자료에 있을 때만 단정한다. 없으면 \"상담 때 확인\"으로 처리하되, 무엇을 물어봐야 하는지 구체적인 질문으로 써서 빈말처럼 보이지 않게 한다.";
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동\s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
   const personaMobilityGuide = personaHasMobilityConstraint
@@ -898,14 +917,15 @@ ${facts || "없음"}
 절대 원칙:
 ${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${academyPrinciples}` : ""}
 
-공신력 출처(EEAT, 선택):
-${DRIVING_AUTHORITATIVE_SOURCES_GUIDE}
+${isT01AcademyComparison ? "비교글 범위:" : "공신력 출처(EEAT, 선택):"}
+${authoritativeSourceGuide}
 
 원본 레퍼런스 품질 기준:
 - 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장, 관련 내부링크 2~4개 권장, FAQ는 필수 아님.
 ${academyNarrativeGuide}
+${comparisonScopeGuide ? `- ${comparisonScopeGuide}` : ""}
 - ${options?.readerFlow ? "후보가 적거나 비교 정보가 희소하면 주소·인근 여부를 글의 주제로 키우지 말고, 실제 후보명과 짧은 객관 정보·공통 확인 순서를 중심으로 쓴다." : "후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 ‘직접 확인 가능한 후보와 인근 선택지’처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다."}
-- 가격·셔틀·합격률·후기는 검증된 자료에 있을 때만 단정한다. 없으면 "상담 때 확인"으로 처리하되, 무엇을 물어봐야 하는지 구체적인 질문으로 써서 빈말처럼 보이지 않게 한다.
+- ${missingFactGuide}
 - 수강료 자료가 없으면 60만원대, 70만원대, 709,600원 같은 구체 금액을 추정하지 않는다. 비용 문단은 “상담 시 확인할 항목” 중심으로 쓴다.
 - "확인된 콘텐츠 재료"에 '관련 글 후보'가 있으면, 그 중 최소 1개(가능하면 2~4개)를 반드시 본문에 [앵커 텍스트](URL) 형태 Markdown 링크로 자연스럽게 연결한다. 앵커는 문맥에 맞게 쓰고, URL은 재료에 있는 것만 그대로 쓴다. 관련 글 후보가 없으면 내부링크를 만들지 않는다(URL을 지어내지 않는다).
 - ${options?.reviewInstruction || "제공된 수강생 리뷰는 슬롯별로 선택된 실제 수강생 원문 1건이다. 리뷰가 있는 학원은 이 1건만 후보 설명 안에 Markdown 인용(> “원문” — 출처: DrivingPlus 수강생 리뷰)으로 그대로 노출한다. 테마 요약·재서술·출처 삭제는 금지하며, 작성자·작성일·평점과 제공되지 않은 후기 문구는 쓰거나 만들지 않는다. 리뷰가 없으면 실제 후기처럼 꾸며 쓰지 말고 상담 확인 팁으로 대체한다."}
@@ -936,7 +956,30 @@ ${academyDetailGuide}
 - AI가 쓴 티가 나는 판박이 표현을 쓰지 말 것. 금지 예: "이번 글에서는/이 글에서는", "~에 대해 알아보겠습니다/살펴보겠습니다/정리해보겠습니다", "~살펴보았습니다", "여러분", "도움이 되셨기를 바랍니다/참고하시기 바랍니다", "이번 포스팅/본 포스팅". 대신 실제 사람이 쓴 블로그처럼 지역 상황·고민·구체 정보로 바로 들어가고 자연스럽게 마무리한다.
 - 도입·요약·후기 언급은 매번 다른 문장으로 쓰고, 다른 글에서 쓸 법한 상투적인 프레임 문장("확인된 후보 정보와 상담 전 체크포인트를 기준으로…", "후기 요약에서는 친절한 상담과 꼼꼼한 설명이 확인됩니다", "정리하면 선택 기준은 단순합니다" 등)을 그대로 재사용하지 말 것. 같은 글 안에서 동일한 문장을 반복하지 말 것(사실도 매번 다른 표현으로 쓴다).
 - 출력은 Markdown 본문만 제공하고 설명/주석은 쓰지 말 것.
-- 마지막에 참고자료/출처 목록을 붙이지 말 것. 공신력 출처는 위 '공신력 출처' 지침대로 본문 문장 안에 인라인 링크로만 인용한다.`;
+- 마지막에 참고자료/출처 목록을 붙이지 말 것.${isT01AcademyComparison ? " 학원 비교글에는 외부 공식 절차 링크를 넣지 않는다." : " 공신력 출처는 위 '공신력 출처' 지침대로 본문 문장 안에 인라인 링크로만 인용한다."}`;
+}
+
+function isT01AcademyComparisonPrompt(slot: Row, hasAcademy: boolean, options?: GenerationPromptOptions): boolean {
+  return hasAcademy && (Boolean(options?.t01Comparison) || String(slot.template_id || "").trim() === "T01");
+}
+
+function authoritativeSourceGuideForPrompt(slot: Row, hasAcademy: boolean, options?: GenerationPromptOptions): string {
+  return isT01AcademyComparisonPrompt(slot, hasAcademy, options)
+    ? "- 학원별 비교와 직접 관련 없는 외부 공식 제도·절차 링크는 사용하지 않는다."
+    : DRIVING_AUTHORITATIVE_SOURCES_GUIDE;
+}
+
+function t01ComparisonScopeIssues(markdown: string, isT01Comparison: boolean): string[] {
+  if (!isT01Comparison) return [];
+  const text = String(markdown || "");
+  const issues: string[] = [];
+  if (/(?:safedriving\.or\.kr|도로교통공단\s*안전운전\s*통합민원)/iu.test(text)) {
+    issues.push("t01_comparison_out_of_scope_official_procedure_link");
+  }
+  if (/(?:시험\s*(?:접수|응시)|면허\s*발급|준비\s*서류)/u.test(text)) {
+    issues.push("t01_comparison_out_of_scope_general_procedure");
+  }
+  return issues;
 }
 // 디자인의 프롬프트 역할은 '톤/보이스/CTA 강조'만 담당한다. 섹션 배치·구조는 글유형(structureGuideForArchetype)이
 // 소유하고, 시각 레이아웃(CSS/컬러)은 공개 렌더 키트가 담당한다. 여기서 구조 문구를 다시 쓰면 글유형 구조와 이중 지시가 된다.

@@ -22,8 +22,17 @@ export function isT01LegacyPlusMode(value: unknown): value is typeof T01_LEGACY_
   return value === T01_LEGACY_PLUS_MODE;
 }
 
-export function shouldUseT01LegacyPlusMode(templateId: unknown, generationMode: unknown): boolean {
-  return String(templateId || "") === "T01" && isT01LegacyPlusMode(generationMode);
+export function isT01TemplateFamily(templateId: unknown, originTemplateId?: unknown): boolean {
+  return String(templateId || "") === "T01" || String(originTemplateId || "") === "T01";
+}
+
+export function resolveT01GenerationMode(requestedMode: unknown, templateId: unknown, originTemplateId?: unknown): "legacy" | typeof T01_LEGACY_PLUS_MODE {
+  if (requestedMode === "auto") return isT01TemplateFamily(templateId, originTemplateId) ? T01_LEGACY_PLUS_MODE : "legacy";
+  return isT01LegacyPlusMode(requestedMode) ? T01_LEGACY_PLUS_MODE : "legacy";
+}
+
+export function shouldUseT01LegacyPlusMode(templateId: unknown, generationMode: unknown, originTemplateId?: unknown): boolean {
+  return isT01TemplateFamily(templateId, originTemplateId) && isT01LegacyPlusMode(generationMode);
 }
 
 export function buildT01LegacyPlusContext(data: T01DataGatedContext, seed: string): T01LegacyPlusContext {

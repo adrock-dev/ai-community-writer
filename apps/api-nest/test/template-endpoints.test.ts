@@ -92,13 +92,24 @@ describe("export ↔ import 왕복", () => {
   });
 });
 
+describe("T01 복제 계보", () => {
+  it("빌트인 T01을 복제한 커스텀 유형은 최상위 원본을 보존하고 재복제해도 유지한다", () => {
+    const first = ctl.cloneTemplate(REQ, {}, "d1", { source_template_id: "T01", name: "T01 복제" }) as any;
+    expect(first.template.origin_template_id).toBe("T01");
+
+    const second = ctl.cloneTemplate(REQ, {}, "d1", { source_template_id: first.template.template_id, name: "T01 재복제" }) as any;
+    expect(second.template.origin_template_id).toBe("T01");
+    expect(db.getTemplateSpec("d1", second.template.template_id)?.origin_template_id).toBe("T01");
+  });
+});
+
 describe("T01 generation mode job contract", () => {
-  it("legacy 기본값을 유지하고 Legacy Plus만 명시적으로 payload에 보존하며 퇴역 mode는 거부한다", () => {
+  it("생략된 mode는 슬롯별 auto로 보존하고 Legacy Plus만 명시적으로 허용하며 퇴역 mode는 거부한다", () => {
     db.run("INSERT INTO slots (slot_id, domain, template_id, primary_keyword, region, status) VALUES ('t01-v2','d1','T01','테스트시 운전학원','테스트시','planned')");
     const legacyPlus = ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "t01_legacy_plus_v1", cooldown_sec: 0 }) as any;
     const legacy = ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], cooldown_sec: 0 }) as any;
     expect(db.get("SELECT payload FROM jobs WHERE id=?", [legacyPlus.job_id])?.payload).toContain('"generation_mode":"t01_legacy_plus_v1"');
-    expect(db.get("SELECT payload FROM jobs WHERE id=?", [legacy.job_id])?.payload).toContain('"generation_mode":"legacy"');
+    expect(db.get("SELECT payload FROM jobs WHERE id=?", [legacy.job_id])?.payload).toContain('"generation_mode":"auto"');
     expect(() => ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "t01_data_gated_v2", cooldown_sec: 0 })).toThrow("retired generation_mode");
     expect(() => ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "t01_hybrid_v1", cooldown_sec: 0 })).toThrow("retired generation_mode");
     expect(() => ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "unexpected", cooldown_sec: 0 })).toThrow("unknown generation_mode");
