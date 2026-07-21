@@ -11,6 +11,7 @@ import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./a
 import { runLlm } from "./llm-runner.js";
 import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
+import { T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
 
 type Row = Record<string, any>;
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
@@ -612,6 +613,21 @@ export class AdminController {
     }
     const enableImageGeneration = Boolean(body.enable_image_generation);
     const defaultTimeoutSec = enableImageGeneration ? 1200 : 600;
+    // 기본값은 legacy다. 과거 v2/hybrid 실험 모드는 퇴역했고, Legacy Plus만
+    // 명시적 opt-in으로 허용한다. 알 수 없는 값은 legacy로 조용히 바꾸지 않는다.
+    const generationMode = body.generation_mode === undefined || body.generation_mode === null || body.generation_mode === ""
+      ? "legacy"
+      : String(body.generation_mode);
+    if (["t01_data_gated_v2", "t01_hybrid_v1"].includes(generationMode)) {
+      throw new HttpException(`retired generation_mode: ${generationMode}; use legacy or ${T01_LEGACY_PLUS_MODE}`, 400);
+    }
+    if (!["legacy", T01_LEGACY_PLUS_MODE].includes(generationMode)) {
+      throw new HttpException(`unknown generation_mode: ${generationMode}`, 400);
+    }
+    if (generationMode === T01_LEGACY_PLUS_MODE) {
+      const nonT01 = slotIds.map((slotId) => this.db.getSlot(slotId)).find((slot) => !slot || String(slot.template_id || "") !== "T01");
+      if (nonT01) throw new HttpException(`${generationMode} is only supported for T01 slots`, 400);
+    }
     const job_id = this.db.enqueueJob(domain, "generate", {
       slot_ids: slotIds,
       provider: body.provider || "codex",
@@ -626,6 +642,7 @@ export class AdminController {
       image_size: String(body.image_size || "1024x1024"),
       image_model: String(body.image_model || "").trim(),
       image_provider: String(body.image_provider || "private-codex").trim(),
+      generation_mode: generationMode,
     });
     return { ok: true, job_id, slot_count: slotIds.length };
   }

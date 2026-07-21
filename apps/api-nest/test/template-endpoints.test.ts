@@ -91,3 +91,21 @@ describe("export ↔ import 왕복", () => {
     expect(back?.primary_override).toBe("region");
   });
 });
+
+describe("T01 generation mode job contract", () => {
+  it("legacy 기본값을 유지하고 Legacy Plus만 명시적으로 payload에 보존하며 퇴역 mode는 거부한다", () => {
+    db.run("INSERT INTO slots (slot_id, domain, template_id, primary_keyword, region, status) VALUES ('t01-v2','d1','T01','테스트시 운전학원','테스트시','planned')");
+    const legacyPlus = ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "t01_legacy_plus_v1", cooldown_sec: 0 }) as any;
+    const legacy = ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], cooldown_sec: 0 }) as any;
+    expect(db.get("SELECT payload FROM jobs WHERE id=?", [legacyPlus.job_id])?.payload).toContain('"generation_mode":"t01_legacy_plus_v1"');
+    expect(db.get("SELECT payload FROM jobs WHERE id=?", [legacy.job_id])?.payload).toContain('"generation_mode":"legacy"');
+    expect(() => ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "t01_data_gated_v2", cooldown_sec: 0 })).toThrow("retired generation_mode");
+    expect(() => ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "t01_hybrid_v1", cooldown_sec: 0 })).toThrow("retired generation_mode");
+    expect(() => ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t01-v2"], generation_mode: "unexpected", cooldown_sec: 0 })).toThrow("unknown generation_mode");
+  });
+
+  it("Legacy Plus 요청은 비T01 slot을 명시적으로 거부한다", () => {
+    db.run("INSERT INTO slots (slot_id, domain, template_id, primary_keyword, region, status) VALUES ('t14-legacy-plus','d1','T14','테스트시 학원','테스트시','planned')");
+    expect(() => ctl.enqueueGenerate(REQ, {}, "d1", { slot_ids: ["t14-legacy-plus"], generation_mode: "t01_legacy_plus_v1", cooldown_sec: 0 })).toThrow("only supported for T01");
+  });
+});

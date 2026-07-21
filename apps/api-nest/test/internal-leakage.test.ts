@@ -33,4 +33,10 @@ describe("removeInternalLeakage 자기 도메인 예외", () => {
     expect(out).not.toContain("DrivingPlus");
     expect(out).toContain("정상 문단");
   });
+
+  it("수강생 리뷰의 공개 출처 표기는 보존한다", () => {
+    const md = "정상 문단\n\n> 좋은 설명이었습니다. — 출처: DrivingPlus 수강생 리뷰 · 평점: 5/5\n\n다음 문단";
+    const out = removeInternalLeakage(md, "app.drivingplus.me");
+    expect(out).toContain("출처: DrivingPlus 수강생 리뷰 · 평점: 5/5");
+  });
 });

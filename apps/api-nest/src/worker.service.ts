@@ -9,12 +9,30 @@ import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
 import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues } from "./quality-gate.js";
+import { seededCandidateSample, selectAcademiesForRegion } from "./academy-candidate-selection.js";
+import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
+import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
+import { studentReviewFactLines } from "./academy-review-evidence.js";
 
 type Row = Record<string, any>;
 
 type GenerationFacts = { text: string; images: Record<string, string>; academyCount: number; firstAcademyName: string };
 type ArticlePattern = { pattern_type?: string; pattern?: string; count?: number; example_title?: string; article_type?: string };
 type ArticlePatternSummary = { average_structure_metrics?: Row; top_title_patterns?: ArticlePattern[]; top_heading_patterns?: ArticlePattern[] };
+export type GenerationPromptOptions = {
+  structureGuide?: string;
+  writingGuide?: string;
+  articlePatternGuide?: string;
+  designGuide?: string;
+  modifierLabels?: string[];
+  reviewInstruction?: string;
+  faqInstruction?: string;
+  academyPrinciples?: string;
+  /** Opt-in only: keeps T01 Legacy Plus focused on licence/course differences,
+   * rather than turning retrieval-only location evidence into the article's
+   * main composition. */
+  readerFlow?: boolean;
+};
 
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 
@@ -59,6 +77,13 @@ export class WorkerService {
   }
 
   private async processGenerate(domain: string, payload: Row, jobId?: string): Promise<Row> {
+    const requestedGenerationMode = String(payload.generation_mode ?? "legacy");
+    if (["t01_data_gated_v2", "t01_hybrid_v1"].includes(requestedGenerationMode)) {
+      throw new Error(`retired generation mode: ${requestedGenerationMode}; use legacy or ${T01_LEGACY_PLUS_MODE}`);
+    }
+    if (!["legacy", T01_LEGACY_PLUS_MODE].includes(requestedGenerationMode)) {
+      throw new Error(`unknown generation mode: ${requestedGenerationMode}`);
+    }
     const domainMeta = this.db.getDomain(domain) || {};
     const slotIds = Array.isArray(payload.slot_ids) ? payload.slot_ids : [];
     const exclusionTerms = parseExclusionTerms(domainMeta.excluded_keywords);
@@ -88,6 +113,9 @@ export class WorkerService {
       const slot = this.db.getSlot(sid);
       this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 슬롯 확인`, slotId: sid, processed: ok, failed: fail });
       if (!slot || slot.domain !== domain) { fail++; this.db.updateJobProgress(jobId, { step: "슬롯 없음", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, error: "not found" }); continue; }
+      if (isT01LegacyPlusMode(requestedGenerationMode) && String(slot.template_id || "") !== "T01") {
+        throw new Error(`${requestedGenerationMode} is only supported for T01 slots`);
+      }
       const slotMatches = findSlotExclusionTerms(slot, exclusionTerms);
       if (slotMatches.length) {
         const message = `excluded by domain rule: ${slotMatches.join(", ")}`;
@@ -114,6 +142,13 @@ export class WorkerService {
         const facts = academyImageType
           ? this.buildFacts(domain, slot, { maxAcademyImages: 5, perAcademyImages: 1 }, academyTypes, archetype)
           : this.buildFacts(domain, slot, { maxAcademyImages: genEnabled ? 1 : 3, perAcademyImages: 1 }, academyTypes, archetype);
+        // Legacy Plus만 동일 최종 후보의 typed facts를 내부 검수·리뷰 선택에 사용한다.
+        const t01Context = shouldUseT01LegacyPlusMode(slot.template_id, requestedGenerationMode)
+          ? this.buildT01DataGatedContext(domain, slot, academyTypes, archetype)
+          : null;
+        const t01LegacyPlusContext = t01Context && shouldUseT01LegacyPlusMode(slot.template_id, requestedGenerationMode)
+          ? buildT01LegacyPlusContext(t01Context, structureSeed(slot))
+          : null;
         // 제목 규칙(생성 시점 해석): 실제 후보 수로 제목 확정 → 프롬프트 주입. 후보 수 부족(min_generate 미만)이면 생성하지 않는다.
         const titleRule = (templateSpec?.title_rule as TitleRule | undefined) ?? TITLE_RULES[String(slot.template_id || "")];
         const titleCtx = { region: String(slot.region || ""), count: facts.academyCount, keyword: String(slot.primary_keyword || ""), academyName: facts.firstAcademyName };
@@ -142,13 +177,34 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const prompt = buildPrompt(domainMeta, slot, factsText, designTemplateId, archetype, templateDirection, academyTypes.length > 0, forcedTitle);
+        const promptFactsText = t01LegacyPlusContext ? legacyPlusFactsForPrompt(factsText) : factsText;
+        const t01PromptOptions: GenerationPromptOptions | undefined = t01LegacyPlusContext ? {
+          structureGuide: legacyPlusStructureGuide(t01LegacyPlusContext),
+          writingGuide: legacyPlusWritingGuide(t01LegacyPlusContext),
+          articlePatternGuide: legacyPlusArticlePatternGuide(t01LegacyPlusContext),
+          designGuide: legacyPlusDesignGuide(),
+          academyPrinciples: legacyPlusAcademyPrinciples(),
+          // "가까운" is a retrieval/selection hint for this mode, not a
+          // reader-facing comparison axis.  Legacy and every other mode keep
+          // their stored modifier labels unchanged.
+          modifierLabels: [slot.modifier_1, slot.modifier_2]
+            .filter((label): label is string => Boolean(label && !/^(?:가까운|근처)$/u.test(String(label).trim()))),
+          reviewInstruction: legacyPlusReviewPromptInstruction(t01LegacyPlusContext),
+          faqInstruction: legacyPlusFaqPromptInstruction(),
+          readerFlow: true,
+        } : undefined;
+        const effectiveDirection = t01LegacyPlusContext ? legacyPlusTemplateDirection(t01LegacyPlusContext) : templateDirection;
+        const legacyPrompt = buildPrompt(domainMeta, slot, promptFactsText, designTemplateId, archetype, effectiveDirection, academyTypes.length > 0, forcedTitle, t01PromptOptions);
+        const t01Contract = t01LegacyPlusContext ? t01LegacyPlusPromptContract(t01LegacyPlusContext) : "";
+        const prompt = t01Contract ? `${legacyPrompt}\n\n${t01Contract}` : legacyPrompt;
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
         const result = await runLlm(prompt, llmOpts);
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
         let markdown = normalizeGeneratedMarkdown(result.summary, images, domain);
-        let qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain);
+        if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
+        let t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
+        let qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
         let durationSec = result.duration_sec;
         let costUsd = result.cost_usd || 0;
         let inputTokens = result.input_tokens || 0;
@@ -156,9 +212,19 @@ export class WorkerService {
         let sessionId = result.session_id;
         let model = result.model;
         const maxRepairAttempts = clampInt(payload.max_repair_attempts, 2, 0, 3);
+        const t01RepairFailureHistory: string[][] = [];
+        let t01RepairStopReason: string | null = null;
+        const seenT01FailureSignatures = new Set<string>();
         for (let repairAttempt = 0; qualityIssues.length && repairAttempt < maxRepairAttempts; repairAttempt++) {
+          if (t01Context) {
+            const signature = qualityIssues.slice().sort().join("|");
+            if (seenT01FailureSignatures.has(signature)) { t01RepairStopReason = "repeated_failure_signature"; break; }
+            seenT01FailureSignatures.add(signature);
+            t01RepairFailureHistory.push([...qualityIssues]);
+          }
           this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 품질 보정 ${repairAttempt + 1}회차`, slotId: sid, processed: ok, failed: fail });
-          const repair = await runLlm(buildRepairPrompt(domainMeta, slot, factsText, designTemplateId, markdown, qualityIssues, archetype, templateDirection, forcedTitle), llmOpts);
+          const legacyRepairPrompt = buildRepairPrompt(domainMeta, slot, promptFactsText, designTemplateId, markdown, qualityIssues, archetype, effectiveDirection, forcedTitle, t01PromptOptions);
+          const repair = await runLlm(t01Contract ? `${legacyRepairPrompt}\n\n${t01Contract}` : legacyRepairPrompt, llmOpts);
           durationSec += repair.duration_sec;
           costUsd += repair.cost_usd || 0;
           inputTokens += repair.input_tokens || 0;
@@ -167,7 +233,9 @@ export class WorkerService {
           model = repair.model || model;
           if (repair.ok && repair.summary.trim()) {
             markdown = normalizeGeneratedMarkdown(repair.summary, images, domain);
-            qualityIssues = articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain);
+            if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
+            t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
+            qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
           }
         }
         if (qualityIssues.length) throw new Error(`generated article quality gate failed: ${qualityIssues.join(", ")}`);
@@ -181,10 +249,11 @@ export class WorkerService {
           skipped++; this.db.updateJobProgress(jobId, { step: "생성문 제외 규칙으로 건너뜀", slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, skipped: true, error: message });
           continue;
         }
-        const finalIssues = postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText), monitoredPhrases, domain);
+        t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
+        const finalIssues = [...postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText), monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
         if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
         // 내부링크(P3)는 비차단 신호다: 관련 후보가 주어졌는데 링크가 없으면 실패시키지 않고 경고로만 남긴다(대량 실패 방지).
-        const qualityWarnings = internalLinkIssues(markdown, factsText);
+        const qualityWarnings = [...internalLinkIssues(markdown, factsText), ...t01Issues.filter((issue) => issue.severity !== "hard_failure").map((issue) => `t01_${issue.severity}_${issue.code}`)];
         // 내용 기반 이미지 생성: LLM이 실제 배치한 생성 슬롯만, 그 슬롯이 놓인 섹션 내용에 맞춰 만든다.
         const imageWarnings: string[] = [];
         if (genEnabled) {
@@ -225,7 +294,7 @@ export class WorkerService {
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);
-        ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings, quality_warnings: qualityWarnings });
+        ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings, quality_warnings: qualityWarnings, ...(t01LegacyPlusContext ? { t01_generation_mode: t01LegacyPlusContext.mode, t01_quality_issues: t01Issues, t01_repair_failure_history: t01RepairFailureHistory, t01_repair_stop_reason: t01RepairStopReason } : {}) });
       } catch (error: any) {
         const message = error?.message || String(error);
         this.db.updateSlotStatus(sid, "failed", message);
@@ -249,7 +318,7 @@ export class WorkerService {
     // 풀(가까운 순)에서 슬롯별 시드 랜덤으로 used 곳을 뽑는다. 같은 슬롯은 항상 같은 조합(재현), 다른 슬롯은 다른 조합.
     const pool = this.pickAcademiesForRegion(domain, region, poolSize, academyTypes, minReq);
     const seed = String(slot.slot_id ?? slot.id ?? `${region}|${slot.primary_keyword ?? ""}`);
-    const academies = seededSample(pool, used, seed);
+    const academies = seededCandidateSample(pool, used, seed);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
     const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
@@ -258,8 +327,8 @@ export class WorkerService {
       const imageKeys = remaining > 0 ? firstImageKeys(a, i + 1, Math.min(perAcademyImages, remaining)) : [];
       for (const imageKey of imageKeys) images[imageKey.key] = imageKey.url;
       const parts = [`[${i + 1}] ${a.name}`];
-      for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["전화", "phone"], ["대표전화", "vphone"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"], ["지역 중심 기준 거리", "distance_km"]] as const) if (a[key]) parts.push(`${label}: ${key === "distance_km" ? `약 ${a[key]}km` : a[key]}`);
-      parts.push(...reviewFactsForAcademy(a));
+      for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["전화", "phone"], ["대표전화", "vphone"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"]] as const) if (a[key]) parts.push(`${label}: ${a[key]}`);
+      parts.push(...reviewFactsForAcademy(a, seed));
       const academyType = humanAcademyType(a.academy_type);
       if (academyType) parts.push(`운영 형태: ${academyType}`);
       if (a.latitude && a.longitude) parts.push(`좌표: ${a.latitude}, ${a.longitude}`);
@@ -313,49 +382,21 @@ export class WorkerService {
   // 직접(region 컬럼) 매칭이 목표(limit) 이상이면 그대로. 부족하면 문자열(주소/행정구역 접두) 및
   // 위경도 반경(<= ACADEMY_NEARBY_MAX_KM) 내 인근 후보로 limit 까지 보강한다(인근은 distance_km 표기 → 프롬프트에서 '인근 후보'로 구분).
   private pickAcademiesForRegion(domain: string, region: string, limit: number, academyTypes: string[] = [], minRequired: number = ACADEMY_MIN_FOR_BEST): Row[] {
-    if (!academyTypes.length) return [];
-    const typeFilter = { academy_types: academyTypes };
-    const direct = this.db.listAcademies(domain, { region, ...typeFilter, limit: Math.max(limit * 3, 20) }).filter(isUsableAcademy);
-    // 직접 매칭만으로 목표 개수를 채우면 인근 보강 없이 그대로 반환.
-    if (direct.length >= limit) return direct.slice(0, limit);
-    // 부족분을 전체(타입) 풀에서 보강 — 직접 매칭과 중복 제거.
-    const all = this.db.listAcademies(domain, { ...typeFilter, limit: 5000 }).filter(isUsableAcademy);
-    const targetRegion = this.db.getSeoRegion(domain, region);
-    const targetLat = finiteNumber(targetRegion?.latitude);
-    const targetLng = finiteNumber(targetRegion?.longitude);
-    const keyOf = (a: Row) => String(a.external_id || a.id || a.name);
-    const directKeys = new Set(direct.map(keyOf));
-    const withDist = (r: { academy: Row; distanceKm: number | null }) => r.distanceKm === null ? r.academy : { ...r.academy, distance_km: Math.round((r.distanceKm ?? 0) * 10) / 10 };
-    const scored = all
-      .filter((a) => !directKeys.has(keyOf(a)))
-      .map((a) => {
-        const addr = String(a.address || "");
-        const rowRegion = String(a.region || "");
-        const distanceKm = academyDistanceKm(a, targetLat, targetLng);
-        let score = Number.POSITIVE_INFINITY;
-        if (rowRegion === region) score = 0;                       // region 완전 일치
-        else if (addr.includes(region)) score = 1;                 // 주소에 지역 포함
-        else if (sameAdministrativePrefix(rowRegion, region) || sameAdministrativePrefix(addr, region)) score = 3; // 같은 행정구역
-        else if (distanceKm !== null && distanceKm <= ACADEMY_NEARBY_MAX_KM) score = 2; // 반경 내 인근(거리 게이트)
-        return { academy: a, score, distanceKm };
-      });
-    const supplements = scored
-      .filter((r) => Number.isFinite(r.score))
-      .sort((a, b) => a.score - b.score || (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY) || String(a.academy.name).localeCompare(String(b.academy.name), "ko"))
-      .map(withDist);
-    const result = [...direct, ...supplements].slice(0, limit);
-    // 최소 보장(B안): 직접+인근이 minRequired(아키타입별) 미만이면, 반경 밖이라도 좌표 기준 '가장 가까운 순'으로
-    // ACADEMY_MIN_GUARANTEE_MAX_KM 안에서 최소 개수까지 채운다. 그 안에도 없으면 부족한 대로 둔다(가이드형).
-    if (result.length < minRequired) {
-      const usedKeys = new Set(result.map(keyOf));
-      const far = scored
-        .filter((r) => r.distanceKm !== null && r.distanceKm <= ACADEMY_MIN_GUARANTEE_MAX_KM && !usedKeys.has(keyOf(r.academy)))
-        .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY))
-        .slice(0, minRequired - result.length)
-        .map(withDist);
-      result.push(...far);
-    }
-    return result;
+    return this.selectAcademiesForRegion(domain, region, limit, academyTypes, minRequired).candidates;
+  }
+
+  private selectAcademiesForRegion(domain: string, region: string, limit: number, academyTypes: string[] = [], minRequired: number = ACADEMY_MIN_FOR_BEST) {
+    return selectAcademiesForRegion(this.db, domain, region, limit, academyTypes, minRequired);
+  }
+
+  private buildT01DataGatedContext(domain: string, slot: Row, academyTypes: string[], archetype: Archetype | undefined): T01DataGatedContext | null {
+    if (!slot.region || !academyTypes.length) return null;
+    const poolSize = academyPool(archetype);
+    const minRequired = academyMin(archetype);
+    const selection = this.selectAcademiesForRegion(domain, String(slot.region), poolSize, academyTypes, minRequired);
+    const seed = String(slot.slot_id ?? slot.id ?? `${slot.region}|${slot.primary_keyword ?? ""}`);
+    const candidates = seededCandidateSample(selection.candidates, Math.min(poolSize, ACADEMY_USED_PER_POST), seed);
+    return buildT01DataGatedContext(String(slot.region), candidates, selection.trace, seed, [slot.modifier_1, slot.modifier_2]);
   }
 
   private processDedup(domain: string, payload: Row): Row {
@@ -424,25 +465,10 @@ function firstImageKeys(row: Row, index: number, max = 2): Array<{ key: string; 
   return Array.from(new Set(urls)).slice(0, max).map((url, photoIndex) => ({ key: photoIndex === 0 ? `academy_${index}` : `academy_${index}_${photoIndex + 1}`, url }));
 }
 
-function isUsableAcademy(row: Row): boolean {
-  const name = String(row.name || "").trim();
-  if (!name || /^(?:test|테스트|sample|dummy|asdf|qwer|123|없음|null|undefined)/i.test(name)) return false;
-  if (/(?:테스트|샘플|더미|dummy|sample|placeholder)/i.test(name)) return false;
-  const usableFields = ["address", "price", "shuttle", "hours", "pass_rate", "phone", "vphone", "review", "seo_description", "seo_keywords", "thumb_url", "photos"];
-  return usableFields.some((key) => String(row[key] || "").trim().length >= 8);
-}
 
-function reviewFactsForAcademy(row: Row): string[] {
+function reviewFactsForAcademy(row: Row, seed: string): string[] {
   const facts: string[] = [];
-  const reviews = safeJson(row.review_json, []);
-  const reviewText = String(row.review || "").trim();
-  if (Array.isArray(reviews) && reviews.length) {
-    const summary = reviewEvidenceSummary(reviews.map((review) => review?.content), reviews.map((review) => review?.point));
-    if (summary) facts.push(`긍정 수강생 리뷰 보충자료: ${summary}`);
-  } else if (reviewText) {
-    const summary = reviewEvidenceSummary(reviewText.split(/\n+/), []);
-    if (summary) facts.push(`긍정 수강생 리뷰 보충자료: ${summary}`);
-  }
+  facts.push(...studentReviewFactLines(row, seed));
   const blogReviews = safeJson(row.blog_reviews, []);
   if (Array.isArray(blogReviews) && blogReviews.length) {
     const themes = reviewThemesFromTexts(blogReviews.flatMap((review) => [review?.title, review?.content]));
@@ -458,16 +484,6 @@ function reviewFactsForAcademy(row: Row): string[] {
     if (themes.length || links.length) facts.push(`긍정 블로그 리뷰글 보충자료: ${themes.length ? `후기 흐름 ${themes.join(", ")}` : "후기 흐름 확인"}${links.length ? ` / 참고 글 ${links.join(" | ")}` : ""}`);
   }
   return facts;
-}
-
-function reviewEvidenceSummary(values: unknown[], points: unknown[]): string {
-  const texts = values.map(cleanFactText).filter(Boolean);
-  const themes = reviewThemesFromTexts(texts);
-  const pointCount = points.filter((value) => Number(value) >= 4).length;
-  const parts: string[] = [];
-  if (themes.length) parts.push(`후기 요약 ${themes.join(", ")}`);
-  if (pointCount) parts.push(`4점 이상 리뷰 ${pointCount}개`);
-  return parts.join(" / ");
 }
 
 function reviewThemesFromTexts(values: unknown[]): string[] {
@@ -506,54 +522,7 @@ function humanAcademyType(value: unknown): string {
   return map[raw] || raw.replace(/_/g, " ").trim();
 }
 
-// 슬롯 시드로 결정되는(재현 가능한) 랜덤 표본. count 개를 뽑되 원래 순서(가까운 순)를 유지해 제시한다.
-function seededSample<T>(items: T[], count: number, seed: string): T[] {
-  if (items.length <= count) return items;
-  const idx = items.map((_, i) => i);
-  const rng = mulberry32(fnv1a(seed));
-  for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); const t = idx[i]!; idx[i] = idx[j]!; idx[j] = t; }
-  return idx.slice(0, count).sort((a, b) => a - b).map((i) => items[i]!);
-}
-function fnv1a(s: string): number { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; } return h >>> 0; }
-function mulberry32(a: number): () => number {
-  return function () { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-}
 
-function academyDistanceKm(row: Row, targetLat: number | null, targetLng: number | null): number | null {
-  const lat = finiteNumber(row.latitude);
-  const lng = finiteNumber(row.longitude);
-  if (targetLat === null || targetLng === null || lat === null || lng === null) return null;
-  return haversineKm(targetLat, targetLng, lat, lng);
-}
-
-function finiteNumber(value: unknown): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const radiusKm = 6371;
-  const dLat = degreesToRadians(lat2 - lat1);
-  const dLng = degreesToRadians(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(degreesToRadians(lat1)) * Math.cos(degreesToRadians(lat2)) * Math.sin(dLng / 2) ** 2;
-  return radiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function degreesToRadians(value: number): number {
-  return value * Math.PI / 180;
-}
-
-function sameAdministrativePrefix(left: string, right: string): boolean {
-  const l = administrativeTokens(left);
-  const r = administrativeTokens(right);
-  if (!l.length || !r.length || l[0] !== r[0]) return false;
-  return Boolean((l[1] && r[1] && l[1] === r[1]) || (l[2] && r[2] && l[2] === r[2]));
-}
-
-function administrativeTokens(value: string): string[] {
-  return String(value || "").split(/\s+/).filter((token) => /(?:특별시|광역시|특별자치시|특별자치도|도|시|군|구)$/u.test(token));
-}
 
 function clampInt(value: unknown, fallback: number, min: number, max: number): number {
   const n = Number(value);
@@ -629,7 +598,7 @@ function stripImageTag(md: string, key: string): string {
     .trim();
 }
 
-function normalizeGeneratedMarkdown(summary: string, images: Record<string, string>, siteHost?: string): string {
+export function normalizeGeneratedMarkdown(summary: string, images: Record<string, string>, siteHost?: string): string {
   return ensureImageSlots(
     ensureHeadingBodies(
       removeInternalLeakage(
@@ -686,7 +655,11 @@ export function removeInternalLeakage(md: string, siteHost?: string): string {
     if (droppingReferenceSection && /^#{1,4}\s+/.test(line)) droppingReferenceSection = false;
     if (droppingReferenceSection) continue;
     // 사이트 자기 공개 도메인(정상 내부링크 host)은 누출이 아니므로 검사 전에 제거한다. 내부 API host·브랜드명은 남아 계속 걸린다.
-    const scanned = siteHost ? line.split(siteHost).join("") : line;
+    const scanned = (siteHost ? line.split(siteHost).join("") : line)
+      // A rendered student-review attribution is public article content, not an
+      // internal implementation reference. Keep all other DrivingPlus mentions
+      // subject to the existing leakage guard.
+      .replace(/출처:\s*DrivingPlus\s+수강생\s+리뷰/gi, "");
     if (/(api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|내부\s*(?:API|데이터|자료)|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|내부자료ID|DrivingPlus|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(scanned)) continue;
     out.push(line);
   }
@@ -711,28 +684,41 @@ function normalizeKoreanSpacing(text: string): string {
     .replace(/비교추천/g, "비교 추천");
 }
 
-function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string, forcedTitle?: string | null): string {
+function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
+  const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
+  const personaMobilityGuide = personaHasMobilityConstraint
+    ? "페르소나의 이동 조건은 독자가 확인할 질문으로 제한해 자연스럽게 반영할 수 있다. 다만 주소만으로 특정 학원이 가깝다·통학하기 편하다·접근성이 좋다고 결론 내리지 않는다."
+    : "페르소나에 이동 조건이 없으므로 생활권·동선·통학을 새 비교축으로 만들지 않는다.";
+  const candidateRepairGuide = options?.readerFlow
+    ? `후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험·수강생 리뷰 중 실제 차이가 있을 때만 선택 상황과 연결한다. 모든 후보를 같은 과정·확인 문장으로 시작하지 않는다. 실제 지역은 짧은 사실로만 적고 주소를 소개 중심으로 쓰지 않는다. ${personaMobilityGuide}`
+    : "후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다: '### 후보명' → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.";
+  const nonPrimaryRepairGuide = options?.readerFlow
+    ? "실제 소재지가 대상 지역과 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, 비교표 또는 해당 학원 소개에서 실제 지역만 정확히 적는다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다."
+    : "주소가 주제 지역과 다른 후보는 해당 지역 안의 학원이 아니라 \"인근 후보\"로만 구분해 설명한다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.";
+  const repairNaturalToneGuide = options?.readerFlow
+    ? `원문보다 더 자연스럽고 풍성한 ${brand} 블로그 톤으로 작성하되, 면허 과정·운영 형태·실제 수강생 경험은 실제 차이가 있을 때만 보이게 한다. 주소를 비교의 중심이나 장점으로 만들지 않고, 표·기본 정보·체크리스트가 같은 사실을 반복하지 않게 한다. ${personaMobilityGuide}`
+    : `원문보다 더 자연스럽고 풍성한 ${brand} 블로그 톤으로 작성하되, 원본 레퍼런스처럼 구체적인 지역 생활권·비용 확인점·사진·내부링크·CTA가 보이게 만든다.`;
   return `아래 Markdown 글은 품질 게이트를 통과하지 못했다. 확인된 콘텐츠 재료만 사용해서 같은 주제의 완성형 글로 다시 작성하라.
 
 브랜드: ${brand}
 디자인 템플릿: ${designTemplateId}
-디자인 작성 지침: ${designWritingGuide(designTemplateId)}
+디자인 작성 지침: ${options?.designGuide ?? designWritingGuide(designTemplateId)}
 ${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${structureGuideForArchetype(archetype, structureSeed(slot))}
+${options?.structureGuide || structureGuideForArchetype(archetype, structureSeed(slot))}
 원본 엑셀 기반 템플릿 작성법:
-${writingGuideForArchetype(archetype, Boolean(slot.region))}
+${options?.writingGuide ?? writingGuideForArchetype(archetype, Boolean(slot.region))}
 원본 전체 글 패턴 기반 작성법:
-${originalArticlePatternGuide(slot)}
+${options?.articlePatternGuide ?? originalArticlePatternGuide(slot)}
 주 키워드: ${slot.primary_keyword}
 지역: ${slot.region || ""}
 페르소나: ${slot.persona || ""}
 의도: ${slot.intent || ""}
-수식어: ${[slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
+수식어: ${options?.modifierLabels?.join(", ") ?? [slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
 공통원칙: ${domain.common_principles || "없음"}
 글유형 방향성: ${direction || "없음"}
 
@@ -745,15 +731,15 @@ ${facts || "없음"}
 재작성 규칙:
 - 제목/지역/후보 학원/이미지는 확인된 콘텐츠 재료와 반드시 일치시킨다.
 - 소개 가능한 후보가 1곳 이상이면 본문과 표에 실제 후보명 최소 1개를 반드시 넣는다. 후보명이 빠진 일반 가이드 글은 실패다.
-- 후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다: '### 후보명' → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.
-- 긍정 수강생 리뷰/블로그 리뷰글 보충자료가 있으면 리뷰 원문을 길게 인용하지 말고 후보 설명을 보강하는 용도로만 1~2문장 짧게 요약한다.
-- 좋은 리뷰라도 합격 보장·과장된 효능은 만들지 말고, “실제 수강후기에서는 친절/동선/설명 방식이 언급된다”처럼 보충 근거로만 쓴다.
+- ${candidateRepairGuide}
+- ${options?.reviewInstruction || "제공된 수강생 리뷰는 테마로 바꾸거나 지어내지 말고, 제공된 원문 1건만 후보 소개 안에 > “리뷰 원문” — 출처: DrivingPlus 수강생 리뷰 형식으로 그대로 포함한다. 작성자·작성일·평점은 쓰거나 만들지 않는다."}
+- 좋은 리뷰라도 합격 보장·과장된 효능은 만들지 말고, 리뷰 원문에 없는 장점은 추가하지 않는다.
 - 후보 수보다 큰 숫자, 다른 지역 후보, 없는 가격·합격률·셔틀·후기·3일 합격·당일 합격·합격 보장 주장을 만들지 않는다.
 - 구체 금액은 수강료 자료가 있을 때만 쓴다. 자료가 없으면 “비용은 상담 때 확인”과 확인 질문으로 처리한다.
-- 주소가 주제 지역과 다르지만 "지역 중심 기준 거리"가 있는 후보는 해당 지역 안의 학원이 아니라 "인근 후보"로만 구분해 설명한다.
+- ${nonPrimaryRepairGuide}
 ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" 로 쓴다(글자 하나도 바꾸지 말 것). 본문을 이 제목에 맞춘다.` : "- 첫 줄은 '# ' 제목,"} H2 4~6개 중심, 많아도 10개를 넘기지 말고 3,500~5,600자 이내로 쓴다.
 - 후보 수와 관계없이 Markdown 표 1개를 반드시 포함한다. 후보가 1곳이면 비교표 대신 주소/연락처/과정/상담 확인점을 담은 요약표로 작성한다.
-- 체크리스트는 포함하되 FAQ는 주제가 실제 질문형일 때만 2~4개로 짧게 둔다. 원본처럼 FAQ가 억지로 붙은 느낌이면 만들지 않는다.
+- 체크리스트는 포함한다. ${options?.faqInstruction || "FAQ는 질문형 의도이거나 템플릿 필수 구조에 FAQ가 명시된 경우에만 2~4개로 짧게 둔다."}
 - 사용 가능한 이미지 슬롯이 있으면 실제 키만 [IMAGE:academy_1] 형식으로 본문 흐름에 3~4개까지 배치한다.
 - 학원명·가격·셔틀·면허종류·준비물처럼 독자가 스캔해야 하는 핵심어는 Markdown bold를 적당히 사용한다.
 - 관련 글 후보가 있으면 실제 링크만 2~4개 연결한다. 후보가 없으면 링크를 꾸며내지 않는다.
@@ -761,7 +747,7 @@ ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" �
 - 공신력 출처는 본문 문장 안에 인라인 링크로만 인용한다(별도 출처 섹션 금지, 렌더 시 제거됨). 인용 시 아래 정확한 URL만 쓰고 지어내지 않는다:
 ${DRIVING_AUTHORITATIVE_SOURCES_GUIDE}
 - 이번 입력의 학원 API는 출처가 아니라 내부 데이터다.
-- 원문보다 더 자연스럽고 풍성한 ${brand} 블로그 톤으로 작성하되, 원본 레퍼런스처럼 구체적인 지역 생활권·비용 확인점·사진·내부링크·CTA가 보이게 만든다.
+- ${repairNaturalToneGuide}
 - ai_cliche_expressions 가 사유에 있으면, 표시된 판박이 표현("이번 글에서는", "~알아보겠습니다/살펴보겠습니다", "여러분", "도움이 되셨기를 바랍니다" 등)을 전부 없애고 실제 사람이 쓴 블로그처럼 구체 상황으로 자연스럽게 다시 시작·마무리한다. 같은 뜻의 다른 상투구로 바꾸지 말 것.
 - boilerplate_phrase / repeated_sentence 가 사유에 있으면, 표시된 상투 프레임 문장을 그대로 쓰지 말고 이 지역·후보에 맞는 새 문장으로 다시 쓰고, 같은 글 안에서 반복된 동일 문장은 표현을 바꿔 중복을 없앤다(사실 내용은 유지).
 - 문단은 눈으로 훑기 좋게 짧고 리듬 있게 쓴다. 한 문단은 2~3문장, 가능하면 300자 안팎으로 끊고 420자를 넘기지 않는다.
@@ -802,30 +788,50 @@ function structureSeed(slot: Row): string {
   return String(slot.slot_id ?? slot.id ?? `${slot.region ?? ""}|${slot.primary_keyword ?? ""}`);
 }
 
-function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string, hasAcademy: boolean, forcedTitle?: string | null): string {
+export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string, hasAcademy: boolean, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
+  const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동\s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
+  const personaMobilityGuide = personaHasMobilityConstraint
+    ? "페르소나에 명시된 이동 조건은 독자가 등록 전 확인할 조건으로 제한해 자연스럽게 쓸 수 있다. 다만 주소만으로 특정 학원의 통학 편의·접근성·가까움을 단정하지 않는다."
+    : "페르소나에 이동 조건이 없으므로 생활권·동선·통학을 새 비교축이나 후보의 장점으로 만들지 않는다.";
+  const academyNarrativeGuide = options?.readerFlow
+    ? [
+      "- 이 글의 흐름은 ‘독자 질문 → 학원별 차이 → 객관 정보 → 선택 도움’이다. 도입은 지역에서 면허를 준비할 때 생기는 현실적인 고민을 한두 짧은 문단으로 열고 후보 소개로 자연스럽게 이어 간다. 면허 종류·교육 과정·전문학원 여부는 실제 차이가 있거나 독자의 고민과 맞을 때만 활용하며, 모든 도입의 고정 주제로 삼지 않는다.",
+      "- 주소·전화·실제 소재지는 오표현을 막는 보조 사실이다. 주소를 후보 소개의 첫 문장·추천 이유·비교표의 중심 열로 삼지 않는다. 실제 지역이 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, 해당 학원 소개 또는 비교표에 실제 지역명만 짧게 적는다.",
+      `- ${personaMobilityGuide} 거리 수치, 이동시간, 셔틀 가능성을 추측하지 않는다.`,
+      "- 후보 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·자체시험·수강생 리뷰를 필요한 경우에만 활용한다. 각 후보는 반드시 `### 학원명` H3로 시작하고, 한두 문장의 자연스러운 소개 뒤에 제공된 주소·전화·운영 과정·운영 형태 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리한다. 후보별 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 주소는 기본 정보이지 추천 이유가 아니다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다.",
+    ].join("\n")
+    : [
+      `- 딱딱한 데이터 나열이 아니라 ${brand} 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 후보로 연결한다.`,
+      "- 원본처럼 \"왜 이 후보가 이 지역/상황에 맞는지\"를 구체화한다. 주소만 쓰지 말고 생활권, 셔틀 확인 포인트, 면허 종류, 상담 질문, 사진을 같이 엮는다.",
+      "- 후보 소개는 원본 블로그의 카드형 리듬을 따른다. 후보마다 반드시 '### 후보명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.",
+    ].join("\n");
+  const academyDetailGuide = options?.readerFlow
+    ? "- 각 후보는 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 비교표의 중심 열로 쓰지 않는다."
+    : "- 후보별 설명에는 가능한 경우 학원명, 주소, 대표전화(vphone 우선), 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다.";
+  const academyPrinciples = options?.academyPrinciples ?? DRIVING_ACADEMY_PRINCIPLES;
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 
 브랜드: ${brand}
 업종: ${domain.vertical || "driving"}
 디자인 템플릿: ${designTemplateId}
-디자인 작성 지침: ${designWritingGuide(designTemplateId)}
+디자인 작성 지침: ${options?.designGuide ?? designWritingGuide(designTemplateId)}
 ${customDesignGuide ? `사용자 지정 디자인 메모:\n${customDesignGuide}\n` : ""}지침 우선순위:
 - 글 유형/검색 의도/검증된 콘텐츠 재료가 상위 계약이다.
 - 디자인 지침은 섹션 배치, 강조 방식, CTA 톤을 정하는 보조 지침이며 글 유형의 필수 정보와 충돌하면 글 유형을 우선한다.
 템플릿 필수 구조:
-${structureGuideForArchetype(archetype, structureSeed(slot))}
+${options?.structureGuide || structureGuideForArchetype(archetype, structureSeed(slot))}
 원본 엑셀 기반 템플릿 작성법:
-${writingGuideForArchetype(archetype, Boolean(slot.region))}
+${options?.writingGuide ?? writingGuideForArchetype(archetype, Boolean(slot.region))}
 템플릿: ${slot.template_id}
 원본 전체 글 패턴 기반 작성법:
-${originalArticlePatternGuide(slot)}
+${options?.articlePatternGuide ?? originalArticlePatternGuide(slot)}
 주 키워드: ${slot.primary_keyword}
 지역: ${slot.region || ""}
 페르소나: ${slot.persona || ""}
 의도: ${slot.intent || ""}
-수식어: ${[slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
+수식어: ${options?.modifierLabels?.join(", ") ?? [slot.modifier_1, slot.modifier_2].filter(Boolean).join(", ")}
 공통원칙: ${domain.common_principles || "없음"}
 글유형 방향성: ${direction || "없음"}
 
@@ -833,21 +839,19 @@ ${originalArticlePatternGuide(slot)}
 ${facts || "없음"}
 
 절대 원칙:
-${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` : ""}
+${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${academyPrinciples}` : ""}
 
 공신력 출처(EEAT, 선택):
 ${DRIVING_AUTHORITATIVE_SOURCES_GUIDE}
 
 원본 레퍼런스 품질 기준:
 - 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장, 관련 내부링크 2~4개 권장, FAQ는 필수 아님.
-- 딱딱한 데이터 나열이 아니라 ${brand} 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 후보로 연결한다.
-- 원본처럼 "왜 이 후보가 이 지역/상황에 맞는지"를 구체화한다. 주소만 쓰지 말고 생활권, 셔틀 확인 포인트, 면허 종류, 상담 질문, 사진을 같이 엮는다.
-- 후보 소개는 원본 블로그의 카드형 리듬을 따른다. 후보마다 반드시 '### 후보명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.
-- 후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 “직접 확인 가능한 후보와 인근 선택지”처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다.
+${academyNarrativeGuide}
+- ${options?.readerFlow ? "후보가 적거나 비교 정보가 희소하면 주소·인근 여부를 글의 주제로 키우지 말고, 실제 후보명과 짧은 객관 정보·공통 확인 순서를 중심으로 쓴다." : "후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 ‘직접 확인 가능한 후보와 인근 선택지’처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다."}
 - 가격·셔틀·합격률·후기는 검증된 자료에 있을 때만 단정한다. 없으면 "상담 때 확인"으로 처리하되, 무엇을 물어봐야 하는지 구체적인 질문으로 써서 빈말처럼 보이지 않게 한다.
 - 수강료 자료가 없으면 60만원대, 70만원대, 709,600원 같은 구체 금액을 추정하지 않는다. 비용 문단은 “상담 시 확인할 항목” 중심으로 쓴다.
 - "확인된 콘텐츠 재료"에 '관련 글 후보'가 있으면, 그 중 최소 1개(가능하면 2~4개)를 반드시 본문에 [앵커 텍스트](URL) 형태 Markdown 링크로 자연스럽게 연결한다. 앵커는 문맥에 맞게 쓰고, URL은 재료에 있는 것만 그대로 쓴다. 관련 글 후보가 없으면 내부링크를 만들지 않는다(URL을 지어내지 않는다).
-- 긍정 수강생 리뷰 보충자료가 있으면 후보 설명 안에서 친절·설명·동선 같은 확인된 후기 포인트를 요약 1문장으로만 사용한다. 단, “운전선생 출처”라는 표현은 쓰지 않는다. 리뷰가 없으면 실제 후기처럼 꾸며 쓰지 말고 상담 확인 팁으로 대체한다.
+- ${options?.reviewInstruction || "제공된 수강생 리뷰는 슬롯별로 선택된 실제 수강생 원문 1건이다. 리뷰가 있는 학원은 이 1건만 후보 설명 안에 Markdown 인용(> “원문” — 출처: DrivingPlus 수강생 리뷰)으로 그대로 노출한다. 테마 요약·재서술·출처 삭제는 금지하며, 작성자·작성일·평점과 제공되지 않은 후기 문구는 쓰거나 만들지 않는다. 리뷰가 없으면 실제 후기처럼 꾸며 쓰지 말고 상담 확인 팁으로 대체한다."}
 - 긍정 블로그 리뷰글 보충자료가 있으면 공식 근거처럼 단정하지 말고 “블로그 후기 흐름에서는 이런 점을 확인할 수 있다” 정도로 자연스럽게 녹인다. 링크를 넣을 때는 제공된 실제 URL만 사용한다.
 
 필수 출력 구조:
@@ -856,13 +860,13 @@ ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" �
 - 권장 흐름은 템플릿 필수 구조를 우선 따른다. 공통적으로 도입 → 기준 → 후보/절차 → 비교/요약 → 체크리스트 → 상담/예약 CTA가 자연스럽게 이어져야 한다.
 - 제공된 학원 수와 관계없이 Markdown 표 1개를 반드시 포함한다. 후보가 1곳이면 주소/연락처/과정/추천 대상/상담 확인점을 담은 요약표로 작성한다.
 - 표는 정상 Markdown 표로 작성한다. 예: | 비교 항목 | 후보 A | 후보 B | 형태. 실제 후보가 있으면 표 안에도 실제 후보명을 넣는다.
-- 후보별 설명에는 가능한 경우 학원명, 주소, 대표전화(vphone 우선), 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다.
+${academyDetailGuide}
 - 본문에는 제공된 이미지 슬롯만 사용한다. 학원/시험장 사진 슬롯([IMAGE:academy_*])은 각각 그 학원(또는 시험장)을 소개하는 카드 안에 배치한다(카드별 1장). 특정 대상을 소개하지 않는 일반 설명 문단이나 필기·앱처럼 학원과 무관한 글에는 넣지 않는다.
 - 생성 이미지 슬롯([IMAGE:generated_*])이 제공되면 서로 다른 섹션에 하나씩 배치한다. 학원 사진만 제공되면 생성 슬롯 없이 학원 사진만 배치한다.
 - 허용된 이미지 슬롯은 자료에 제시된 키만 사용한다. 없는 키나 임의 플레이스홀더는 만들지 않는다.
 - [IMAGE_SLOT: ...], [TABLE_SLOT: ...], [CTA_SLOT: ...], [QUOTE_SLOT: ...] 같은 임의 플레이스홀더는 절대 쓰지 말 것.
 - 체크리스트 섹션은 ✅ 불릿 목록으로 작성한다.
-- FAQ는 필수 아님. 필기시험/접수/준비물처럼 질문형 검색 의도일 때만 2~4개로 짧게 작성한다.
+- ${options?.faqInstruction || "FAQ는 기본적으로 선택 사항이다. 다만 템플릿 필수 구조에 FAQ가 명시되면 비교 글에서도 비용·셔틀·수강 일정처럼 제공된 facts 또는 상담 확인 범위 안의 질문 2~4개를 포함한다."}
 - 마지막 H2 섹션은 ${brand}에서 비교·상담·예약으로 이어지는 자연스러운 CTA로 마무리하고, 브랜드명을 3~7회 정도 자연스럽게 언급한다.
 
 문체/분량:
@@ -994,7 +998,7 @@ function extractTitle(md: string, fallback: string) {
 
 // 제목 규칙 해석: 실제 후보 수로 티어 매칭 + 플레이스홀더 치환. 규칙 없으면 title=null(=LLM 이 H1 결정).
 // skip=true 는 후보 수가 min_generate 미만이라 생성하지 않음을 뜻한다(부족 지역 차단).
-function resolveTitleFromRule(rule: TitleRule | undefined, ctx: TitleContext): { title: string | null; skip: boolean } {
+export function resolveTitleFromRule(rule: TitleRule | undefined, ctx: TitleContext): { title: string | null; skip: boolean } {
   if (!rule) return { title: null, skip: false };
   if (ctx.count < (rule.min_generate ?? 0)) return { title: null, skip: true };
   const tier = [...rule.tiers].sort((a, b) => b.min_count - a.min_count).find((t) => ctx.count >= t.min_count);
@@ -1019,7 +1023,7 @@ export function effectiveGenerationTitle(manualRaw: string | null | undefined, r
   const manual = manualRaw != null && String(manualRaw).trim() ? substituteTitlePlaceholders(String(manualRaw), ctx) : null;
   return manual || ruleTitle;
 }
-function rewriteH1Title(md: string, title: string): string {
+export function rewriteH1Title(md: string, title: string): string {
   const h1 = `# ${cleanGeneratedTitle(title)}`;
   return /^#\s+.+$/m.test(md) ? md.replace(/^#\s+.+$/m, h1) : `${h1}\n\n${md.trim()}`;
 }

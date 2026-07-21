@@ -81,7 +81,10 @@ function offeredInternalUrls(facts: string): string[] {
 // 내부 누출 검사 전에 자기 host 만 제거해 오탐을 없앤다. 내부 API host(api-dev.drivingplus.me)나 산문 속
 // 브랜드명(DrivingPlus)은 자기 host 를 지워도 그대로 남아 계속 잡힌다(host 문자열이 서로 부분집합이 아님).
 function stripOwnSiteRefs(text: string, siteHost?: string): string {
-  return siteHost ? text.split(siteHost).join("") : text;
+  return (siteHost ? text.split(siteHost).join("") : text)
+    // Public review citations are allowed; an implementation/API reference to
+    // DrivingPlus remains an internal-leakage violation.
+    .replace(/출처:\s*DrivingPlus\s+수강생\s+리뷰/gi, "");
 }
 
 export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>, boilerplatePhrases: string[] = [], siteHost?: string): string[] {
@@ -122,7 +125,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   const candidateH3Count = candidateHeadingMatchCount(markdown, candidateNames);
   if (requiredCandidateH3 >= 2 && candidateH3Count < requiredCandidateH3) issues.push(`missing_candidate_h3_headings_${candidateH3Count}_lt_${requiredCandidateH3}`);
   if (candidateNames.length >= 2 && !candidateNames.slice(0, 4).some((name) => markdownTableText(markdown).includes(name))) issues.push("table_missing_real_candidate_name");
-  if (/긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료/.test(facts) && !/(후기|리뷰|수강생|블로그)/.test(markdown)) issues.push("review_facts_unused");
+  if (/수강생 리뷰 \d+|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료/.test(facts) && !/(후기|리뷰|수강생|블로그)/.test(markdown)) issues.push("review_facts_unused");
   if (imageKeys.length && usedImageKeys.length === 0) issues.push("missing_available_image_slot");
   const unknown = usedImageKeys.filter((key) => !imageKeys.includes(key));
   if (unknown.length) issues.push(`unknown_image_slots_${Array.from(new Set(unknown)).join("_")}`);
@@ -254,7 +257,7 @@ function hasVerifiedPriceFacts(facts: string): boolean {
 }
 
 function hasReviewFacts(facts: string): boolean {
-  return /긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료/u.test(facts);
+  return /수강생 리뷰 \d+|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료/u.test(facts);
 }
 
 function hasSpecificReviewClaim(value: string): boolean {
