@@ -46,6 +46,42 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
     });
   }
 
+  // 내부 누출 검사 공유 조각. 이 두 개가 어긋나 있어서 발행 글 13/13 이 qa:posts 에서만 떨어졌다
+  // (런타임은 리뷰 출처 표기를 예외 처리했으나 qa 미러는 하지 않음). 재발을 여기서 막는다.
+  it("리뷰 출처 표기 예외 패턴이 두 게이트에서 동일하다", () => {
+    expect(qa.PUBLIC_REVIEW_ATTRIBUTION_PATTERN).toBe(qg.PUBLIC_REVIEW_ATTRIBUTION_PATTERN);
+  });
+
+  it("리뷰 보충자료 누출 패턴이 두 게이트에서 동일하다", () => {
+    expect(qa.REVIEW_SUPPLEMENT_LEAK_PATTERN).toBe(qg.REVIEW_SUPPLEMENT_LEAK_PATTERN);
+  });
+
+  const attributionSamples = [
+    "> 강사님이 친절했어요 — 출처: DrivingPlus 수강생 리뷰",
+    "> 연습장이 넓어요 — 출처:DrivingPlus  수강생   리뷰",
+    "내부 자료는 DrivingPlus API 에서 가져왔다",
+    "",
+  ];
+  for (const sample of attributionSamples) {
+    it(`stripPublicReviewAttribution 결과가 일치한다: "${sample.slice(0, 16)}"`, () => {
+      expect(qa.stripPublicReviewAttribution(sample)).toBe(qg.stripPublicReviewAttribution(sample));
+    });
+  }
+
+  // "긍정" 접두어를 필수로 두면 모델이 그 단어만 빼도 양쪽을 통과한다(실제로 평가 산출물에서 관측됨).
+  const supplementSamples = [
+    "긍정 수강생 리뷰 보충자료에는 친절한 상담이 언급됐습니다",
+    "수강생 리뷰 보충자료에는 친절한 상담이 언급됐습니다",
+    "블로그 리뷰글 보충자료를 참고했다",
+    "수강생 리뷰를 한 건 인용했습니다",
+  ];
+  for (const sample of supplementSamples) {
+    it(`리뷰 보충자료 패턴 탐지가 일치한다: "${sample.slice(0, 16)}"`, () => {
+      const detect = (pattern: string) => new RegExp(pattern, "i").test(sample);
+      expect(detect(qa.REVIEW_SUPPLEMENT_LEAK_PATTERN)).toBe(detect(qg.REVIEW_SUPPLEMENT_LEAK_PATTERN));
+    });
+  }
+
   const repeatedSamples = [
     "# 제목\n\n확인된 과정은 1종 보통, 2종 보통입니다.\n\n다른 설명이 이어진다.\n\n확인된 과정은 1종 보통, 2종 보통입니다.",
     "# 제목\n\nA학원은 평택시에 있습니다.\n\nB학원은 안성시에 있습니다.",

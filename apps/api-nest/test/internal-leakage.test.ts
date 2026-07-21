@@ -39,4 +39,22 @@ describe("removeInternalLeakage 자기 도메인 예외", () => {
     const out = removeInternalLeakage(md, "app.drivingplus.me");
     expect(out).toContain("출처: DrivingPlus 수강생 리뷰 · 평점: 5/5");
   });
+
+  // 입력 묶음 표현("보충자료")은 내부 자료 언어다. "긍정"을 필수 접두어로 두면 모델이 그 단어만
+  // 빼고 써도 그대로 통과했다(평가 산출물에서 실제 관측). 접두어 없이도 제거되어야 한다.
+  it.each([
+    ["긍정 접두어 있음", "긍정 수강생 리뷰 보충자료에는 친절한 상담이 언급됐습니다"],
+    ["긍정 접두어 없음", "수강생 리뷰 보충자료에는 친절한 상담이 언급됐습니다"],
+    ["블로그 리뷰글", "블로그 리뷰글 보충자료를 참고했습니다"],
+  ])("리뷰 보충자료 줄은 제거한다(%s)", (_label, leaked) => {
+    const out = removeInternalLeakage(`정상 문단\n\n${leaked}\n\n다음 문단`, "app.drivingplus.me");
+    expect(out).not.toContain("보충자료");
+    expect(out).toContain("정상 문단");
+    expect(out).toContain("다음 문단");
+  });
+
+  it("보충자료가 아닌 정상 리뷰 서술은 보존한다", () => {
+    const md = "정상 문단\n\n수강생 리뷰를 한 건 인용했습니다\n\n다음 문단";
+    expect(removeInternalLeakage(md, "app.drivingplus.me")).toContain("수강생 리뷰를 한 건 인용했습니다");
+  });
 });

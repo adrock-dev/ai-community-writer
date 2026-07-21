@@ -8,7 +8,7 @@ import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writ
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
-import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues } from "./quality-gate.js";
+import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
 import { seededCandidateSample, selectAcademiesForRegion } from "./academy-candidate-selection.js";
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
@@ -706,6 +706,13 @@ function ensureHeadingBodies(md: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+// 내부 자료 언어·내부 host·브랜드명이 공개 본문에 남지 않게 하는 줄 단위 필터.
+// 리뷰 보충자료 조각만 quality-gate 의 공유 패턴을 쓴다(qa-posts.mjs 와 동일해야 하는 부분).
+const INTERNAL_LEAK_RE = new RegExp(
+  `(api-dev\\.drivingplus\\.me|get-all-academy|zipcode/search-seo|내부\\s*(?:API|데이터|자료)|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|API 자료|제공된 자료|후기 필드|${REVIEW_SUPPLEMENT_LEAK_PATTERN}|직접 매칭 후보 수|사용 가능한 이미지 슬롯|내부자료ID|DrivingPlus|firebasestorage\\.googleapis\\.com|storage\\.googleapis\\.com)`,
+  "i",
+);
+
 export function removeInternalLeakage(md: string, siteHost?: string): string {
   const lines = md.split(/\r?\n/);
   const out: string[] = [];
@@ -718,12 +725,11 @@ export function removeInternalLeakage(md: string, siteHost?: string): string {
     if (droppingReferenceSection && /^#{1,4}\s+/.test(line)) droppingReferenceSection = false;
     if (droppingReferenceSection) continue;
     // 사이트 자기 공개 도메인(정상 내부링크 host)은 누출이 아니므로 검사 전에 제거한다. 내부 API host·브랜드명은 남아 계속 걸린다.
-    const scanned = (siteHost ? line.split(siteHost).join("") : line)
-      // A rendered student-review attribution is public article content, not an
-      // internal implementation reference. Keep all other DrivingPlus mentions
-      // subject to the existing leakage guard.
-      .replace(/출처:\s*DrivingPlus\s+수강생\s+리뷰/gi, "");
-    if (/(api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|내부\s*(?:API|데이터|자료)|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|내부자료ID|DrivingPlus|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(scanned)) continue;
+    // A rendered student-review attribution is public article content, not an
+    // internal implementation reference. Keep all other DrivingPlus mentions
+    // subject to the existing leakage guard.
+    const scanned = stripPublicReviewAttribution(siteHost ? line.split(siteHost).join("") : line);
+    if (INTERNAL_LEAK_RE.test(scanned)) continue;
     out.push(line);
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();

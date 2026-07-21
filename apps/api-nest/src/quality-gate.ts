@@ -42,6 +42,24 @@ export function boilerplatePhraseIssues(text: string, extra: string[] = []): str
   return found.length ? [`boilerplate_phrase_${found.join("·")}`] : [];
 }
 
+// ── 내부 누출 검사의 공유 조각 ────────────────────────────────────────────────
+// 런타임 게이트(worker.removeInternalLeakage)와 렌더 인식 게이트(scripts/qa-posts.mjs)는
+// 누출 판정 규칙이 서로 다르지만(전자는 줄 제거, 후자는 글 감사) 아래 두 조각은 반드시 같아야 한다.
+// 어긋나면 test/gate-parity.test.ts 가 실패한다. 정규식 리터럴 대신 패턴 문자열로 두어
+// 양쪽이 동일한 소스를 복제했는지 문자열 단위로 대조할 수 있게 한다.
+
+// 수강생 리뷰 출처 표기는 내부 구현 참조가 아니라 공개 글의 정상 콘텐츠다.
+// Legacy Plus 계약은 이 표기가 '없으면' hard_failure(legacy_plus_review_source_missing)이므로,
+// 누출 검사가 이를 제외하지 않으면 한쪽에서 필수인 문장 때문에 다른 쪽에서 떨어진다.
+export const PUBLIC_REVIEW_ATTRIBUTION_PATTERN = "출처:\\s*DrivingPlus\\s+수강생\\s+리뷰";
+export function stripPublicReviewAttribution(text: string): string {
+  return String(text || "").replace(new RegExp(PUBLIC_REVIEW_ATTRIBUTION_PATTERN, "gi"), "");
+}
+
+// 프롬프트 입력 묶음 표현(내부 자료 언어). "긍정"을 필수 접두어로 두면 모델이 그 단어만 빼고
+// "수강생 리뷰 보충자료"라고 써도 양쪽 게이트를 그대로 통과하므로, 접두어는 선택으로 둔다.
+export const REVIEW_SUPPLEMENT_LEAK_PATTERN = "(?:긍정\\s*)?(?:수강생|블로그)\\s*리뷰(?:글)?\\s*보충자료";
+
 // 글내 동일 문장(≥16자) verbatim 반복: 사실 카드는 학원당 1회라 정상이므로, 2회 이상이면 템플릿 티/패딩으로 본다.
 // readableParagraphs/splitSentences 로 표·헤딩·리스트·링크를 제외해 사실 나열이 아닌 산문 문장만 센다.
 export function repeatedSentenceIssues(markdown: string): string[] {

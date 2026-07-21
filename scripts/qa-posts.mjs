@@ -73,9 +73,11 @@ function issuesFor(row, monitoredByDomain) {
   if (!['editorial', 'comparison', 'local-guide', 'checklist', 'conversion', 'custom'].includes(String(row.design_template_id || ''))) issues.push(`unknown_design_template:${row.design_template_id}`);
   if (h2 >= 4 && !hasFinalUtilitySection(body)) issues.push('template_structure_missing_final_utility_section');
   if (hasFlatParagraphRun(paragraphs)) issues.push('too_flat_paragraphs');
-  // 사이트 자기 공개 도메인(정상 내부링크 host)은 누출이 아니므로 검사 전에 제거한다(런타임 게이트와 동일 원칙).
-  const leakScan = row.domain ? (body + row.title).split(row.domain).join('') : (body + row.title);
-  if (/운전선생|Driving\s*Plus|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|localhost:\d+|127\.0\.0\.1|샘플|데모|sample|demo|dummy|placeholder|TODO|FIXME|내부\s*(?:API|데이터|자료)|검증된\s*(?:API|자료|데이터)|API\s*(?:URL|자료|데이터)|참고\s*API|긍정\s*(?:수강생|블로그)\s*리뷰(?:글)?\s*보충자료|짧은\s*실제\s*문구/i.test(leakScan)) issues.push('internal_or_wrong_brand_leak');
+  // 사이트 자기 공개 도메인(정상 내부링크 host)과 수강생 리뷰 출처 표기는 누출이 아니므로
+  // 검사 전에 제거한다(런타임 게이트와 동일 원칙). 출처 표기는 Legacy Plus 가 필수로 요구하는
+  // 공개 콘텐츠라, 여기서 걸면 한쪽에서 필수인 문장 때문에 다른 쪽에서 떨어진다.
+  const leakScan = stripPublicReviewAttribution(row.domain ? (body + row.title).split(row.domain).join('') : (body + row.title));
+  if (new RegExp(`운전선생|Driving\\s*Plus|DrivingPlus|api-dev\\.drivingplus\\.me|get-all-academy|zipcode/search-seo|localhost:\\d+|127\\.0\\.0\\.1|샘플|데모|sample|demo|dummy|placeholder|TODO|FIXME|내부\\s*(?:API|데이터|자료)|검증된\\s*(?:API|자료|데이터)|API\\s*(?:URL|자료|데이터)|참고\\s*API|${REVIEW_SUPPLEMENT_LEAK_PATTERN}|짧은\\s*실제\\s*문구`, 'i').test(leakScan)) issues.push('internal_or_wrong_brand_leak');
   if (/\d+\s*일\s*(?:만|컷|완성)|삼\s*일\s*(?:만|컷|완성)|하루\s*만|당일\s*합\s*격|무조건\s*합\s*격|합\s*격\s*보장|보장\s*합\s*격/u.test(body + row.title)) issues.push('risky_duration_or_pass_guarantee_claim');
   const candidateActual = Math.min(Number(row.academy_count ?? row.exact_academy_count ?? 0), 5);
   const inflated = candidateActual > 0 ? inflatedCandidateCountClaim(`${row.title}
@@ -110,6 +112,14 @@ function readabilityIssues(body) {
   issues.push(...sentenceDifficultyIssues(paragraphs));
   return issues;
 }
+
+// 내부 누출 검사의 공유 조각: quality-gate.ts 의 동명 상수/함수와 동일해야 한다.
+// 어긋나면 test/gate-parity.test.ts 가 실패한다.
+const PUBLIC_REVIEW_ATTRIBUTION_PATTERN = "출처:\\s*DrivingPlus\\s+수강생\\s+리뷰";
+function stripPublicReviewAttribution(text) {
+  return String(text || '').replace(new RegExp(PUBLIC_REVIEW_ATTRIBUTION_PATTERN, 'gi'), '');
+}
+const REVIEW_SUPPLEMENT_LEAK_PATTERN = "(?:긍정\\s*)?(?:수강생|블로그)\\s*리뷰(?:글)?\\s*보충자료";
 
 // AI 상투표현 검사: quality-gate.ts 의 aiClicheIssues 와 동일 목록/규칙(형식적 메타서술·블로그 프레임·판박이 마무리).
 const AI_CLICHE_PHRASES = [
@@ -492,7 +502,7 @@ function walk(dir, found) {
 }
 
 // quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
-export { AI_CLICHE_PHRASES, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues };
+export { AI_CLICHE_PHRASES, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution };
 
 // CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
