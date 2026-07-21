@@ -52,6 +52,8 @@ export interface CustomTemplate {
   primary_override?: "region" | "keyword";
   default_direction?: string | null;
   default_design?: string;
+  // 서버가 복제 계보로만 사용하는 내부 메타데이터. 편집 폼에서 변경하지 않는다.
+  origin_template_id?: string | null;
   title_rule?: TitleRule | null;
   created_at?: string;
   custom?: boolean;

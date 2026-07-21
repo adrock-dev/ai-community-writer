@@ -66,7 +66,7 @@ describe("빌트인 title_rule 엔드포인트 계약", () => {
 });
 
 describe("export ↔ import 왕복", () => {
-  it("title_rule·primary_override 가 왕복에서 보존된다", () => {
+  it("title_rule·primary_override·T01 origin 이 왕복에서 보존된다", () => {
     // 커스텀 생성(제목 규칙 + 주축 재정의 포함)
     const created = db.createCustomTemplate("d1", {
       name: "왕복대상", kind: "local", primary_override: "region",
@@ -89,6 +89,26 @@ describe("export ↔ import 왕복", () => {
     const back = db.getTemplateSpec("d1", id);
     expect(back?.title_rule).toEqual(created.title_rule); // 정규화 형태 그대로 왕복
     expect(back?.primary_override).toBe("region");
+
+    const cloned = ctl.cloneTemplate(REQ, {}, "d1", { source_template_id: "T01", name: "T01 export 복제" }) as any;
+    const cloneId = String(cloned.template.template_id);
+    const cloneEnv = ctl.exportTemplates(REQ, {}, "d1") as any;
+    expect(cloneEnv.custom_templates.find((t: any) => t.template_id === cloneId)?.origin_template_id).toBe("T01");
+
+    db.deleteCustomTemplate("d1", cloneId);
+    ctl.importTemplates(REQ, {}, "d1", { mode: "merge" }, cloneEnv);
+    expect(db.getTemplateSpec("d1", cloneId)?.origin_template_id).toBe("T01");
+
+    // 구 버전 export에는 origin 필드가 없었다. merge import가 이미 저장된 계보를 지우면 안 된다.
+    const oldEnvelope = {
+      ...cloneEnv,
+      custom_templates: cloneEnv.custom_templates.map((t: any) => {
+        const { origin_template_id: _omitted, ...legacyShape } = t;
+        return legacyShape;
+      }),
+    };
+    ctl.importTemplates(REQ, {}, "d1", { mode: "merge" }, oldEnvelope);
+    expect(db.getTemplateSpec("d1", cloneId)?.origin_template_id).toBe("T01");
   });
 });
 
@@ -100,6 +120,18 @@ describe("T01 복제 계보", () => {
     const second = ctl.cloneTemplate(REQ, {}, "d1", { source_template_id: first.template.template_id, name: "T01 재복제" }) as any;
     expect(second.template.origin_template_id).toBe("T01");
     expect(db.getTemplateSpec("d1", second.template.template_id)?.origin_template_id).toBe("T01");
+  });
+
+  it("origin 도입 전의 식별 가능한 T01 복제본만 보수적으로 backfill 한다", () => {
+    const clone = ctl.cloneTemplate(REQ, {}, "d1", { source_template_id: "T01" }) as any;
+    const cloneId = String(clone.template.template_id);
+    db.run("UPDATE custom_templates SET origin_template_id=NULL WHERE domain='d1' AND template_id=?", [cloneId]);
+    expect(db.backfillRecognizableT01CloneOrigins()).toBe(1);
+    expect(db.getTemplateSpec("d1", cloneId)?.origin_template_id).toBe("T01");
+
+    const direct = db.createCustomTemplate("d1", { name: "지역 운전학원 BEST 비교", kind: "local" });
+    expect(db.backfillRecognizableT01CloneOrigins()).toBe(0);
+    expect(db.getTemplateSpec("d1", String(direct.template_id))?.origin_template_id).toBeUndefined();
   });
 });
 

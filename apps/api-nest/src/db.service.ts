@@ -371,6 +371,7 @@ export class DbService implements OnModuleInit {
     if (!customTemplateCols.has("primary_override")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN primary_override TEXT");
     if (!customTemplateCols.has("title_rule")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN title_rule TEXT");
     if (!customTemplateCols.has("origin_template_id")) this.db.exec("ALTER TABLE custom_templates ADD COLUMN origin_template_id TEXT");
+    this.backfillRecognizableT01CloneOrigins();
     this.db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_academies_domain_external_id ON academies(domain, external_id) WHERE external_id IS NOT NULL");
     this.db.exec(`CREATE TABLE IF NOT EXISTS seo_regions (
       domain TEXT NOT NULL,
@@ -590,6 +591,33 @@ export class DbService implements OnModuleInit {
     args.push(domain, templateId);
     return this.run(`UPDATE custom_templates SET ${sets.join(", ")} WHERE domain=? AND template_id=?`, args).changes ?? 0;
   }
+
+  // origin_template_id 도입 전의 T01 복제본은 원본 메타데이터가 없었다. 이름만으로 넓게
+  // 추정하지 않고, 기존 복제 UI가 만든 기본 이름·아키타입·디자인·방향성·학원 타입·제목 규칙이
+  // 모두 T01과 일치하는 경우에만 한 번 보완한다. 수정된/직접 만든 커스텀 유형은 그대로 둔다.
+  backfillRecognizableT01CloneOrigins(): number {
+    const t01 = (TEMPLATE_SPECS as Record<string, any>).T01;
+    if (!t01) return 0;
+    const t01Name = `${String(t01.name || "").trim()} (복사본)`;
+    const t01AcademyTypes = JSON.stringify(Array.isArray(t01.academy_types) ? t01.academy_types : []);
+    const t01TitleRule = JSON.stringify(normalizeTitleRule(TITLE_RULES.T01));
+    const rows = this.all(`SELECT domain, template_id, name, kind, academy_types, default_direction, default_design, title_rule
+      FROM custom_templates
+      WHERE origin_template_id IS NULL OR TRIM(origin_template_id)=''`);
+    let updated = 0;
+    for (const row of rows) {
+      const matches = String(row.name || "").trim() === t01Name
+        && String(row.kind || "").trim() === String(t01.kind || "")
+        && String(row.default_design || "").trim() === String(t01.default_design || "")
+        && String(row.default_direction || "").trim() === String(t01.default_direction || "")
+        && JSON.stringify(parseAcademyTypes(row.academy_types)) === t01AcademyTypes
+        && JSON.stringify(normalizeTitleRule(row.title_rule)) === t01TitleRule;
+      if (!matches) continue;
+      updated += this.run(`UPDATE custom_templates SET origin_template_id='T01'
+        WHERE domain=? AND template_id=? AND (origin_template_id IS NULL OR TRIM(origin_template_id)='')`, [row.domain, row.template_id]).changes ?? 0;
+    }
+    return updated;
+  }
   // import 전용: id 를 지정해 upsert 한다(createCustomTemplate 은 id 를 새로 발급하므로 복구에 부적합).
   // created_at 은 봉투 값 보존(없으면 CURRENT_TIMESTAMP), 충돌 시 기존 created_at 유지. axis_tags 는 stringify.
   // 빌트인 id/kind 검증은 호출측(컨트롤러)에서 수행한다.
@@ -599,7 +627,7 @@ export class DbService implements OnModuleInit {
       ON CONFLICT(domain, template_id) DO UPDATE SET
         name=excluded.name, kind=excluded.kind, use_persona=excluded.use_persona, with_intent=excluded.with_intent,
         modifier_count=excluded.modifier_count, weight=excluded.weight, min_sv=excluded.min_sv,
-        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, keyword_filter=excluded.keyword_filter, primary_override=excluded.primary_override, default_direction=excluded.default_direction, default_design=excluded.default_design, origin_template_id=excluded.origin_template_id, title_rule=excluded.title_rule`,
+        axis_tags=excluded.axis_tags, axis_values=excluded.axis_values, academy_types=excluded.academy_types, keyword_filter=excluded.keyword_filter, primary_override=excluded.primary_override, default_direction=excluded.default_direction, default_design=excluded.default_design, origin_template_id=COALESCE(excluded.origin_template_id, custom_templates.origin_template_id), title_rule=excluded.title_rule`,
       [domain, String(row.template_id || "").trim(), String(row.name || "").trim(), String(row.kind || "").trim(),
         row.use_persona ? 1 : 0, row.with_intent ? 1 : 0, clampModifierCount(row.modifier_count),
         Number.isFinite(Number(row.weight)) ? Number(row.weight) : 1.0,

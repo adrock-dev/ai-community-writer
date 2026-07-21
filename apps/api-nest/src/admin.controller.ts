@@ -314,7 +314,8 @@ export class AdminController {
       template_id: t.template_id, name: t.name, kind: t.kind,
       use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
       weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags, axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter, primary_override: t.primary_override,
-      default_direction: t.default_direction ?? null, default_design: t.default_design, title_rule: t.title_rule ?? null,
+      default_direction: t.default_direction ?? null, default_design: t.default_design,
+      origin_template_id: t.origin_template_id ?? null, title_rule: t.title_rule ?? null,
       created_at: t.created_at,
     }));
     return {
