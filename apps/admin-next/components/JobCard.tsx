@@ -66,7 +66,7 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         <b>실행 상태</b>
         <span>{activity.label}</span>
         {job.current_step && <span>단계 {job.current_step}</span>}
-        {job.current_slot_id && <span>현재 후보 <span className="mono">{job.current_slot_id}</span></span>}
+        {job.current_slot_id && <span>현재 후보 <b className="mono">{job.current_slot_id}</b></span>}
         <span>마지막 활동 {activity.lastSeen}</span>
         <span>처리 {processed}/{total}</span>
       </div>
