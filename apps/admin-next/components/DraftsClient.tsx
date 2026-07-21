@@ -56,6 +56,42 @@ function IssueBadge({ issue }: { issue: DraftIssue }) {
   return <span className="badge" style={style} title={issue.code}>{isB ? "B" : "A"} · {issueLabel(issue.code)}</span>;
 }
 
+// 목록이 비었을 때: 왜 비어 있는지와 다음 행동을 알려준다.
+// 특히 "검수 대기"가 비는 흔한 이유(적용 전 실패 글은 소급 보관되지 않음)를 명시한다.
+function EmptyState({ domain, status }: { domain: string; status: DraftReviewStatus }) {
+  const base = `/t/${encodeURIComponent(domain)}`;
+  if (status === "dismissed") {
+    return <div style={{ textAlign: "center", padding: "32px 16px" }}>
+      <p style={{ fontSize: 32, margin: 0 }}>🗂️</p>
+      <h3 style={{ margin: "8px 0" }}>반려한 글이 없습니다</h3>
+      <p className="muted">검수 대기 목록에서 <b>반려</b>한 글이 여기에 모입니다. 반려해도 본문은 지워지지 않아 나중에 다시 열어볼 수 있습니다.</p>
+    </div>;
+  }
+  if (status === "promoted") {
+    return <div style={{ textAlign: "center", padding: "32px 16px" }}>
+      <p style={{ fontSize: 32, margin: 0 }}>📤</p>
+      <h3 style={{ margin: "8px 0" }}>이 화면에서 발행한 글이 없습니다</h3>
+      <p className="muted">검수 후 발행한 글이 여기에 기록됩니다. 발행된 글 자체는 검수·내보내기 화면에서 확인합니다.</p>
+      <Link className="btn" href={`${base}/posts`}>검수·내보내기로 가기</Link>
+    </div>;
+  }
+  return <div style={{ textAlign: "center", padding: "32px 16px" }}>
+    <p style={{ fontSize: 32, margin: 0 }}>✅</p>
+    <h3 style={{ margin: "8px 0" }}>검수 대기 중인 글이 없습니다</h3>
+    <p className="muted" style={{ maxWidth: 560, margin: "0 auto 12px" }}>
+      품질 게이트를 통과하지 못한 글이 생기면 버려지지 않고 여기에 자동으로 보관됩니다. 지금 비어 있는 이유는 보통 둘 중 하나입니다.
+    </p>
+    <ul className="muted" style={{ maxWidth: 560, margin: "0 auto 16px", textAlign: "left", lineHeight: 1.7 }}>
+      <li>최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다.</li>
+      <li>이 기능이 적용되기 <b>전에</b> 실패한 글은 소급 보관되지 않습니다. 당시에는 본문이 그대로 폐기됐기 때문입니다.</li>
+    </ul>
+    <div className="row" style={{ justifyContent: "center", gap: 8 }}>
+      <Link className="btn primary" href={`${base}/generate`}>글 생성하러 가기</Link>
+      <Link className="btn" href={`${base}/posts`}>검수·내보내기</Link>
+    </div>
+  </div>;
+}
+
 export default function DraftsClient({ domain }: { domain: string }) {
   const [items, setItems] = useState<DraftSummary[]>([]);
   const [pending, setPending] = useState(0);
@@ -153,7 +189,7 @@ export default function DraftsClient({ domain }: { domain: string }) {
 
     <div className="grid" style={{ gridTemplateColumns: selected ? "minmax(0, 380px) minmax(0, 1fr)" : "1fr", gap: 16, alignItems: "start" }}>
       <div className="card card-pad">
-        {loading ? <p className="muted">로딩 중…</p> : items.length === 0 ? <p className="muted">해당 상태의 초안이 없습니다.</p> :
+        {loading ? <p className="muted">로딩 중…</p> : items.length === 0 ? <EmptyState domain={domain} status={statusFilter} /> :
           <div className="grid" style={{ gap: 8 }}>
             {items.map((d) => {
               const isB = d.blocking_class === "B";
