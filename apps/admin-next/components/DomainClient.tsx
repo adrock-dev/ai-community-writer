@@ -300,9 +300,14 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
       </div>}
       {view === "posts" && <div className="grid">
         <div className="card card-pad">
-          <p className="eyebrow">검수 전용 페이지</p>
-          <h2>완성 글 확인, 내보내기, 색인 요청을 한곳에서 처리하세요</h2>
-          <p className="muted">제목을 눌러 상세 미리보기를 확인하고 필요한 글만 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다.</p>
+          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <p className="eyebrow">검수 전용 페이지</p>
+              <h2>완성 글 확인, 내보내기, 색인 요청을 한곳에서 처리하세요</h2>
+              <p className="muted">제목을 눌러 상세 미리보기를 확인하고 필요한 글만 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다.</p>
+            </div>
+            <Link className="btn" href={`/t/${encodeURIComponent(domainConfig.domain)}/drafts`}>검수 대기(게이트 미통과) →</Link>
+          </div>
         </div>
         <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />
       </div>}

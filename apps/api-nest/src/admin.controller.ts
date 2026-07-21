@@ -5,7 +5,9 @@ import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.se
 import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
-import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
+import { findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
+import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount } from "./quality-gate.js";
+import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
 import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./archetypes.js";
 import { runLlm } from "./llm-runner.js";
@@ -498,6 +500,83 @@ export class AdminController {
     checkAuth(req, headers); this.requireDomain(domain);
     const post = this.db.getPost(postId); if (!post || post.domain !== domain) throw new HttpException("post not found", 404);
     this.db.deletePost(postId); return { ok: true };
+  }
+
+  // --- 격리(draft_posts) 검수: 품질 게이트 미통과 글을 관리자가 확인/발행/반려 ---
+  @Get("domains/:domain/drafts")
+  listDrafts(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const items = this.db.listDraftPosts(domain, { reviewStatus: query.status || undefined, limit: clampInt(query.limit, 100, 1, 500) })
+      .map((draft) => ({ ...draft, quality_issues: safeJson(draft.quality_issues, []) }));
+    return { count: items.length, pending: this.db.countDraftPosts(domain, "pending"), items };
+  }
+
+  @Get("domains/:domain/drafts/:draftId")
+  getDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string, @Query("include_rendered") rendered = "") {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    const dbImages = safeJson(draft.images, {});
+    const mergedImages = { ...fallbackImagesForPost(this.db, domain, draft), ...(dbImages && typeof dbImages === "object" ? dbImages : {}) };
+    const bodyMarkdown = ensureImageSlotsForRender(stripPseudoSlotsForRender(draft.body_markdown || ""), mergedImages);
+    const responseDraft = {
+      ...draft,
+      quality_issues: safeJson(draft.quality_issues, []),
+      body_markdown: bodyMarkdown,
+      images: Object.keys(mergedImages).length ? JSON.stringify(mergedImages) : draft.images,
+    };
+    const payload: Row = { draft: responseDraft };
+    if (rendered === "true" || rendered === "1") payload.body_html = renderMarkdown(bodyMarkdown, mergedImages);
+    return payload;
+  }
+
+  @Post("domains/:domain/drafts/:draftId/promote")
+  promoteDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    if (draft.review_status === "promoted") throw new HttpException("이미 발행된 초안입니다", 409);
+    // UI 우회 방지: 저장된 이슈로 서버에서 다시 차단 등급을 계산한다. B(안전/사실)가 남아 있으면 발행 불가.
+    const codes = (safeJson(draft.quality_issues, []) as Row[]).map((issue) => String(issue.code ?? issue));
+    if (blockingClass(codes) === "B") throw new HttpException("안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다. 본문을 수정해 재검증하세요.", 409);
+    const postId = this.db.promoteDraftToPost(draftId);
+    return { ok: true, post_id: postId };
+  }
+
+  @Post("domains/:domain/drafts/:draftId/revalidate")
+  revalidateDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    const newBody = typeof body?.body_markdown === "string" && body.body_markdown.trim() ? body.body_markdown : String(draft.body_markdown || "");
+    const images = safeJson(draft.images, {}) as Record<string, string>;
+    const factsText = String(draft.facts_text || "");
+    const monitoredPhrases = parseMonitoredPhrases(this.db.getDomain(domain)?.monitored_phrases);
+    // 워커의 두 게이트(본문·최종 표면)를 저장된 facts 로 그대로 재현한다.
+    const articleIssues = articleQualityIssues(newBody, factsText, images, monitoredPhrases, domain);
+    const surfaceIssues = postSurfaceQualityIssues(
+      { title: draft.title, body_markdown: newBody, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: draft.design_template_id },
+      3500, renderedCandidateCount(newBody, factsText), monitoredPhrases, domain,
+    );
+    // t01 데이터 게이트는 별도 모듈이라 여기서 재실행하지 않는다(워커 캡처 훅과 함께 연결 예정).
+    // 그전까지는 기존에 걸린 t01_ 코드를 보수적으로 유지해 안전 이슈가 재검증으로 사라지지 않게 한다.
+    const carriedT01 = (safeJson(draft.quality_issues, []) as Row[]).map((issue) => String(issue.code ?? issue)).filter((code) => code.startsWith("t01_"));
+    const codes = Array.from(new Set([...articleIssues, ...surfaceIssues, ...carriedT01]));
+    const classified = classifyIssues(codes);
+    const bc = blockingClass(codes);
+    this.db.updateDraftAfterRevalidate(draftId, newBody, JSON.stringify(classified), bc);
+    return { ok: true, quality_issues: classified, blocking_class: bc, promotable: bc !== "B" };
+  }
+
+  @Post("domains/:domain/drafts/:draftId/dismiss")
+  dismissDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    this.db.setDraftReviewStatus(draftId, "dismissed"); return { ok: true };
+  }
+
+  @Delete("domains/:domain/drafts/:draftId")
+  deleteDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    this.db.deleteDraftPost(draftId); return { ok: true };
   }
 
   @Get("domains/:domain/academies")

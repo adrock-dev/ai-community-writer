@@ -45,6 +45,26 @@ export const listPosts = (domain: string, params: { status?: string; jobId?: str
   search.set("limit", String(params.limit ?? 500));
   return api<{ count: number; items: import("./types").PostSummary[] }>(`/domains/${encodeURIComponent(domain)}/posts?${search}`);
 };
+// 격리(draft) 검수 API
+export const listDrafts = (domain: string, params: { status?: string; limit?: number } = {}) => {
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  search.set("limit", String(params.limit ?? 500));
+  return api<import("./types").DraftListPayload>(`/domains/${encodeURIComponent(domain)}/drafts?${search}`);
+};
+export const getDraft = (domain: string, draftId: string) =>
+  api<{ draft: import("./types").DraftDetail; body_html?: string }>(`/domains/${encodeURIComponent(domain)}/drafts/${encodeURIComponent(draftId)}?include_rendered=true`);
+export const promoteDraft = (domain: string, draftId: string) =>
+  api<{ ok: true; post_id: string }>(`/domains/${encodeURIComponent(domain)}/drafts/${encodeURIComponent(draftId)}/promote`, { method: "POST" });
+export const revalidateDraft = (domain: string, draftId: string, bodyMarkdown?: string) =>
+  api<{ ok: true; quality_issues: import("./types").DraftIssue[]; blocking_class: import("./types").IssueSeverityClass; promotable: boolean }>(
+    `/domains/${encodeURIComponent(domain)}/drafts/${encodeURIComponent(draftId)}/revalidate`,
+    { method: "POST", body: JSON.stringify(bodyMarkdown !== undefined ? { body_markdown: bodyMarkdown } : {}) });
+export const dismissDraft = (domain: string, draftId: string) =>
+  api<{ ok: true }>(`/domains/${encodeURIComponent(domain)}/drafts/${encodeURIComponent(draftId)}/dismiss`, { method: "POST" });
+export const deleteDraft = (domain: string, draftId: string) =>
+  api<{ ok: true }>(`/domains/${encodeURIComponent(domain)}/drafts/${encodeURIComponent(draftId)}`, { method: "DELETE" });
+
 export const listSlots = (domain: string, params: { status?: string; template?: string; q?: string; limit?: number; offset?: number } = {}) => {
   const search = new URLSearchParams();
   if (params.status) search.set("status", params.status);

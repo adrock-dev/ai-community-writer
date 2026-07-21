@@ -12,6 +12,11 @@ type DatabaseSync = any;
 
 type Row = Record<string, any>;
 
+// worker.service.ts 의 slugify 와 동일 규칙(그쪽은 미노출 private). draft 승격 시 slug 생성에 사용.
+function slugify(text: string): string {
+  return (text || "post").trim().replace(/[^\w가-힣\s-]/g, "").replace(/[\s_]+/g, "-").replace(/-{2,}/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "post";
+}
+
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 const DEFAULT_DB = resolve(PROJECT_DIR, "data/admin.db");
 
@@ -189,6 +194,36 @@ CREATE TABLE IF NOT EXISTS custom_templates (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (domain, template_id),
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
+);
+
+-- 품질 게이트에 걸려 발행되지 못한 글의 격리 보관소. posts 와 물리적으로 분리돼
+-- 공개 경로(/api/v1, sitemap, dedup/prune)는 절대 참조하지 않는다. 관리자 검수 후
+-- promote 시에만 posts 로 승격된다. blocking_class 는 걸린 이슈 중 최상위 등급
+-- (B=안전/사실 → 발행 차단, A=구조/문체 → 사유 확인 후 발행 허용).
+CREATE TABLE IF NOT EXISTS draft_posts (
+  id TEXT PRIMARY KEY,
+  domain TEXT NOT NULL,
+  slot_id TEXT,
+  title TEXT,
+  body_markdown TEXT NOT NULL,
+  meta_description TEXT,
+  images TEXT,
+  design_template_id TEXT NOT NULL DEFAULT 'local-guide',
+  region TEXT,
+  primary_keyword TEXT,
+  academy_names TEXT,
+  facts_text TEXT,
+  quality_issues TEXT NOT NULL DEFAULT '[]',
+  gate_stage TEXT,
+  blocking_class TEXT NOT NULL DEFAULT 'B' CHECK (blocking_class IN ('A','B')),
+  provider TEXT,
+  model TEXT,
+  job_id TEXT,
+  review_status TEXT NOT NULL DEFAULT 'pending' CHECK (review_status IN ('pending','dismissed','promoted')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at TEXT,
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE,
+  FOREIGN KEY (slot_id) REFERENCES slots(slot_id) ON DELETE SET NULL
 );
 	`;
 
@@ -741,6 +776,53 @@ export class DbService implements OnModuleInit {
   }
   deletePost(postId: string): void { this.run("DELETE FROM posts WHERE id=?", [postId]); }
   updatePostStatus(postId: string, status: string): void { this.run("UPDATE posts SET status=? WHERE id=?", [status, postId]); }
+
+  // --- 격리(draft_posts): 게이트 미통과 글 보관/검수 ---
+  insertDraftPost(input: Row): string {
+    const id = randomUUID();
+    this.run(`INSERT INTO draft_posts (id, domain, slot_id, title, body_markdown, meta_description, images, design_template_id, region, primary_keyword, academy_names, facts_text, quality_issues, gate_stage, blocking_class, provider, model, job_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, input.domain, input.slot_id ?? null, input.title ?? null, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.region ?? null, input.primary_keyword ?? null, input.academy_names ?? null, input.facts_text ?? null, input.quality_issues ?? "[]", input.gate_stage ?? null, input.blocking_class === "A" ? "A" : "B", input.provider ?? null, input.model ?? null, input.job_id ?? null]);
+    return id;
+  }
+  listDraftPosts(domain: string, opts: { reviewStatus?: string; limit?: number } = {}): Row[] {
+    let sql = `SELECT id, domain, slot_id, title, meta_description, design_template_id, region, primary_keyword, quality_issues, gate_stage, blocking_class, review_status, provider, model, job_id, created_at, reviewed_at, length(body_markdown) AS body_chars FROM draft_posts WHERE domain=?`;
+    const args: any[] = [domain];
+    if (opts.reviewStatus) { sql += " AND review_status=?"; args.push(opts.reviewStatus); }
+    sql += " ORDER BY created_at DESC LIMIT ?"; args.push(opts.limit ?? 200);
+    return this.all(sql, args);
+  }
+  countDraftPosts(domain: string, reviewStatus = "pending"): number {
+    const row = this.get("SELECT COUNT(*) AS n FROM draft_posts WHERE domain=? AND review_status=?", [domain, reviewStatus]);
+    return Number(row?.n ?? 0);
+  }
+  getDraftPost(draftId: string): Row | undefined { return this.get("SELECT * FROM draft_posts WHERE id=?", [draftId]); }
+  setDraftReviewStatus(draftId: string, status: string): void {
+    this.run("UPDATE draft_posts SET review_status=?, reviewed_at=CURRENT_TIMESTAMP WHERE id=?", [status, draftId]);
+  }
+  // 관리자가 본문을 수정해 재검증한 결과를 반영(본문·이슈·차단등급 갱신).
+  updateDraftAfterRevalidate(draftId: string, bodyMarkdown: string, qualityIssuesJson: string, blockingClass: string): void {
+    this.run("UPDATE draft_posts SET body_markdown=?, quality_issues=?, blocking_class=? WHERE id=?",
+      [bodyMarkdown, qualityIssuesJson, blockingClass === "A" ? "A" : "B", draftId]);
+  }
+  deleteDraftPost(draftId: string): void { this.run("DELETE FROM draft_posts WHERE id=?", [draftId]); }
+  // 검수 통과 draft 를 실제 발행글로 승격. 슬롯당 slug 재사용 규칙(uniqueSlug)을 그대로 따른다.
+  // 안전 판단(blocking_class==='B' 차단)은 호출부(컨트롤러)에서 강제한다.
+  promoteDraftToPost(draftId: string): string {
+    const draft = this.getDraftPost(draftId);
+    if (!draft) throw new Error("draft not found");
+    const title = String(draft.title || "").trim() || "제목 없음";
+    const slug = this.uniqueSlug(draft.domain, slugify(title), draft.slot_id ?? null);
+    const postId = this.insertPost({
+      domain: draft.domain, slot_id: draft.slot_id ?? null, slug, title, body_markdown: draft.body_markdown,
+      meta_description: draft.meta_description ?? null, images: draft.images ?? null, design_template_id: draft.design_template_id,
+      provider: draft.provider ?? null, model: draft.model ?? null, job_id: draft.job_id ?? null,
+      region: draft.region ?? null, primary_keyword: draft.primary_keyword ?? null, academy_names: draft.academy_names ?? null,
+    });
+    if (draft.slot_id) this.updateSlotStatus(draft.slot_id, "published");
+    this.setDraftReviewStatus(draftId, "promoted");
+    return postId;
+  }
   listPostsForDedup(domain: string, includeNoindex = false): Row[] {
     const statuses = includeNoindex ? "('published','noindex')" : "('published')";
     return this.all(`SELECT p.id, p.slug, p.title, p.body_markdown, p.status, p.generated_at, s.priority_score AS priority_score FROM posts p LEFT JOIN slots s ON s.slot_id = p.slot_id WHERE p.domain=? AND p.status IN ${statuses} ORDER BY p.generated_at ASC`, [domain]);

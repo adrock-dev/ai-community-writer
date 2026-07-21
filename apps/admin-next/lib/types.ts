@@ -180,6 +180,37 @@ export interface PostDetail extends PostSummary {
   output_tokens?: number;
 }
 
+// 격리(draft) 검수: 품질 게이트에 걸려 발행되지 못한 글.
+export type IssueSeverityClass = "A" | "B";
+export type DraftReviewStatus = "pending" | "dismissed" | "promoted";
+export interface DraftIssue { code: string; class: IssueSeverityClass; }
+export interface DraftSummary {
+  id: string;
+  domain: string;
+  slot_id: string | null;
+  title: string | null;
+  meta_description: string | null;
+  design_template_id: string | null;
+  region: string | null;
+  primary_keyword: string | null;
+  quality_issues: DraftIssue[];
+  gate_stage: string | null;
+  blocking_class: IssueSeverityClass;
+  review_status: DraftReviewStatus;
+  provider: string | null;
+  model: string | null;
+  job_id: string | null;
+  created_at: string;
+  reviewed_at: string | null;
+  body_chars: number;
+}
+export interface DraftDetail extends DraftSummary {
+  body_markdown: string;
+  images?: string | Record<string, string> | null;
+  facts_text?: string | null;
+}
+export interface DraftListPayload { count: number; pending: number; items: DraftSummary[]; }
+
 export interface Academy {
   id: string;
   domain: string;
