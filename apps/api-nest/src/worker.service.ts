@@ -13,8 +13,46 @@ import { seededCandidateSample, selectAcademiesForRegion } from "./academy-candi
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
 import { studentReviewFactLines } from "./academy-review-evidence.js";
+import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 
 type Row = Record<string, any>;
+
+// 품질 게이트 실패를 격리(draft_posts) 저장까지 이어주는 오류.
+// 기존 실패 처리(슬롯 failed·잡 카운트)는 그대로 두고, catch 에서 초안을 보존하는 데
+// 필요한 정보만 함께 실어 나른다. message 는 기존 문자열 포맷을 그대로 유지한다.
+export class QualityGateError extends Error {
+  constructor(
+    readonly stage: "article" | "final_surface",
+    readonly issues: string[],
+    readonly draft: Row,
+  ) {
+    super(`generated article ${stage === "article" ? "quality" : "final surface"} gate failed: ${issues.join(", ")}`);
+    this.name = "QualityGateError";
+  }
+}
+
+// 게이트 실패 시점의 생성물을 격리 초안 레코드로 변환한다.
+// facts_text 까지 보관해야 관리자 재검증이 워커 게이트를 그대로 재현할 수 있다.
+function draftFromGeneration(domain: string, slot: Row, input: {
+  title: string; markdown: string; images: Record<string, string>; factsText: string;
+  designTemplateId: string; provider?: string | null; model?: string | null;
+}): Row {
+  const academyNames = candidateNamesFromFacts(input.factsText).filter((name) => input.markdown.includes(name));
+  return {
+    domain,
+    title: input.title,
+    body_markdown: input.markdown,
+    meta_description: metaDescription(input.markdown),
+    images: Object.keys(input.images).length ? JSON.stringify(input.images) : null,
+    design_template_id: input.designTemplateId,
+    region: String(slot.region || "") || null,
+    primary_keyword: String(slot.primary_keyword || "") || null,
+    academy_names: academyNames.length ? JSON.stringify(academyNames) : null,
+    facts_text: input.factsText,
+    provider: input.provider ?? null,
+    model: input.model ?? null,
+  };
+}
 
 type GenerationFacts = { text: string; images: Record<string, string>; academyCount: number; firstAcademyName: string };
 type ArticlePattern = { pattern_type?: string; pattern?: string; count?: number; example_title?: string; article_type?: string };
@@ -238,7 +276,10 @@ export class WorkerService {
             qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
           }
         }
-        if (qualityIssues.length) throw new Error(`generated article quality gate failed: ${qualityIssues.join(", ")}`);
+        if (qualityIssues.length) throw new QualityGateError("article", qualityIssues, draftFromGeneration(domain, slot, {
+          title: forcedTitle || extractTitle(markdown, slot.primary_keyword),
+          markdown, images, factsText, designTemplateId, provider: result.provider, model,
+        }));
         // 규칙으로 확정한 제목이 있으면 강제(LLM 즉흥 방지). 없으면 기존대로 본문 H1 추출.
         const title = forcedTitle || extractTitle(markdown, slot.primary_keyword);
         markdown = rewriteH1Title(markdown, title);
@@ -251,7 +292,9 @@ export class WorkerService {
         }
         t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
         const finalIssues = [...postSurfaceQualityIssues({ title, body_markdown: markdown, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: designTemplateId }, 3500, renderedCandidateCount(markdown, factsText), monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
-        if (finalIssues.length) throw new Error(`generated article final surface gate failed: ${finalIssues.join(", ")}`);
+        if (finalIssues.length) throw new QualityGateError("final_surface", finalIssues, draftFromGeneration(domain, slot, {
+          title, markdown, images, factsText, designTemplateId, provider: result.provider, model,
+        }));
         // 내부링크(P3)는 비차단 신호다: 관련 후보가 주어졌는데 링크가 없으면 실패시키지 않고 경고로만 남긴다(대량 실패 방지).
         const qualityWarnings = [...internalLinkIssues(markdown, factsText), ...t01Issues.filter((issue) => issue.severity !== "hard_failure").map((issue) => `t01_${issue.severity}_${issue.code}`)];
         // 내용 기반 이미지 생성: LLM이 실제 배치한 생성 슬롯만, 그 슬롯이 놓인 섹션 내용에 맞춰 만든다.
@@ -297,8 +340,22 @@ export class WorkerService {
         ok++; producedThisRun++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 완료`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: true, duration_sec: durationSec, chars: markdown.length, model, design_template_id: designTemplateId, generated_image_count: Object.keys(images).filter((key) => key.startsWith("generated_")).length, image_warnings: imageWarnings, quality_warnings: qualityWarnings, ...(t01LegacyPlusContext ? { t01_generation_mode: t01LegacyPlusContext.mode, t01_quality_issues: t01Issues, t01_repair_failure_history: t01RepairFailureHistory, t01_repair_stop_reason: t01RepairStopReason } : {}) });
       } catch (error: any) {
         const message = error?.message || String(error);
+        // 게이트 실패로 버려지던 본문을 격리 보관한다(관리자 검수용). 공개 경로와 분리된 draft_posts 로만 들어간다.
+        // 격리 저장이 실패해도 기존 실패 처리(슬롯 failed·잡 카운트)는 그대로 진행한다.
+        let draftId: string | null = null;
+        if (error instanceof QualityGateError) {
+          try {
+            draftId = this.db.insertDraftPost({
+              ...error.draft,
+              domain, slot_id: sid, job_id: jobId,
+              gate_stage: error.stage,
+              quality_issues: JSON.stringify(classifyIssues(error.issues)),
+              blocking_class: blockingClass(error.issues),
+            });
+          } catch { draftId = null; }
+        }
         this.db.updateSlotStatus(sid, "failed", message);
-        fail++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 실패`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, error: message });
+        fail++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 실패`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, error: message, ...(draftId ? { draft_id: draftId } : {}) });
       }
       if (index < slotIds.length - 1) {
         this.db.updateJobProgress(jobId, { step: "다음 글 작성 전 대기 중", slotId: null, processed: ok, failed: fail });
