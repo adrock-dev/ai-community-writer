@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, updateDomain, updateTemplate } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -1388,6 +1388,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         {runtimeApis && <span className="muted small">{runtimeApis.sync_defaults.review_source_note}</span>}
       </div>
     </div>
+    {/* 묶음 1.5 — 전역 지역 사전. 1·2단계와 달리 도메인별이 아니라 전역 공용이라 번호를 붙이지 않는다. */}
+    <RegionDirectoryCard domain={domain.domain} />
     {/* 묶음 2 — 지역자료 동기화 */}
     <div className="card card-pad grid">
       <div className="spread"><h3 style={{ margin: 0 }}>1단계 · 지역자료 동기화</h3><span className="badge">지역 데이터 · region 축</span></div>
@@ -1914,6 +1916,73 @@ function parseJsonCount(value: unknown): number {
     return Array.isArray(parsed) ? parsed.length : 0;
   } catch { return 0; }
 }
+
+// 전역 행정구역 사전(읍·면·동). 1·2단계와 달리 도메인별 운영 선택이 아니라 전역 사실 참조라
+// 번호를 붙이지 않는다. 번호를 달면 "새 도메인마다 해야 하는 일"로 읽히는데, 실제로는
+// 도메인 생성 시 자동으로 준비되고 행정구역 개편 때만 갱신하면 된다.
+function RegionDirectoryCard({ domain }: { domain: string }) {
+  const [status, setStatus] = useState<RegionDirectoryStatus | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    getRegionDirectory(domain).then((s) => { if (alive) setStatus(s); }).catch(() => { if (alive) setStatus(null); });
+    return () => { alive = false; };
+  }, [domain]);
+
+  const onSync = async () => {
+    setBusy(true); setMsg("");
+    try {
+      const next = await syncRegionDirectory(domain);
+      setStatus(next);
+      setMsg(`${next.total.toLocaleString()}개 반영`);
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "동기화에 실패했습니다.");
+    } finally { setBusy(false); }
+  };
+
+  const sigungu = status?.by_level?.["2"] ?? 0;
+  const submunicipal = status?.by_level?.["3"] ?? 0;
+  const shuttle = status?.shuttle;
+
+  return (
+    <div className="card card-pad grid">
+      <div className="spread">
+        <h3 style={{ margin: 0 }}>공용 지역 사전</h3>
+        <span className="badge info">전역 · 도메인 무관</span>
+      </div>
+      <p className="muted small">
+        읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 <b>어느 지역까지 셔틀이 오는지</b> 판별하는 데 씁니다.
+        도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, <b>도메인을 만들 때 자동으로 준비</b>됩니다.
+        아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다.
+      </p>
+      {status
+        ? <p className="small">
+            시·군·구 <b>{sigungu.toLocaleString()}</b> · 읍·면·동 <b>{submunicipal.toLocaleString()}</b>
+            {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""}
+            {shuttle && shuttle.with_shuttle > 0
+              ? ` — 이 도메인에서 셔틀 자료가 있는 학원 ${shuttle.with_shuttle.toLocaleString()}곳 중 ${shuttle.with_region.toLocaleString()}곳의 운행 지역을 확인했습니다.`
+              : ""}
+          </p>
+        : <p className="muted small">사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요.</p>}
+      {status && status.total === 0 && (
+        <p className="uploaded-notice" style={{ padding: "8px 12px", margin: 0 }}>
+          ⚠️ 사전이 비어 있습니다. 셔틀 <b>운행 지역</b>만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다.
+        </p>
+      )}
+      <div className="row">
+        <button className="btn" disabled={busy} onClick={onSync}>{busy ? "갱신 중..." : "지역 사전 갱신"}</button>
+        {msg && <span className="small muted">{msg}</span>}
+      </div>
+      <p className="muted small">
+        갱신해도 <b>지역 축·학원 지역 배정은 바뀌지 않습니다</b>(1·2단계와 별도 표를 씁니다).
+        셔틀 운행 지역은 학원자료 동기화 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계를 다시 실행해야 반영됩니다.
+      </p>
+    </div>
+  );
+}
+
 function publicBrandName(value: string): string {
   return value.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || value;
 }

@@ -134,5 +134,17 @@ export async function downloadPostExport(domain: string, body: { post_ids: strin
 }
 export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; include_blog_reviews?: boolean; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 }) =>
   api<{ ok: true; fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; warnings?: string[] }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
+// 전역 행정구역 사전(region_directory). 도메인별이 아니라 모든 도메인이 같은 표를 본다.
+// domain 을 넘기면 그 도메인에서 사전이 실제로 얼마나 쓰이는지(셔틀 운행 지역 매칭) 함께 받는다.
+export type RegionDirectoryStatus = {
+  total: number;
+  by_level: Record<string, number>;
+  synced_at: string | null;
+  shuttle?: { with_shuttle: number; with_region: number };
+};
+export const getRegionDirectory = (domain?: string) =>
+  api<RegionDirectoryStatus>(`/settings/region-directory${domain ? `?domain=${encodeURIComponent(domain)}` : ""}`);
+export const syncRegionDirectory = (domain?: string) =>
+  api<RegionDirectoryStatus & { ok: true; fetched: number; upserted: number; skipped: number }>("/settings/region-directory/sync", { method: "POST", body: JSON.stringify(domain ? { domain } : {}) });
 export const syncDrivingplusRegions = (domain: string, body: { level?: "all" | "2" | "3"; replace_axis?: boolean; max?: number }) =>
   api<{ ok: true; level: string; axis_replaced: boolean; fetched: number; upserted: number; skipped: number }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/regions`, { method: "POST", body: JSON.stringify(body) });

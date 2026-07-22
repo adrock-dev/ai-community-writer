@@ -384,6 +384,8 @@ export class DbService implements OnModuleInit {
       ["review_json", "ALTER TABLE academies ADD COLUMN review_json TEXT"],
       ["blog_reviews", "ALTER TABLE academies ADD COLUMN blog_reviews TEXT"],
       ["synced_at", "ALTER TABLE academies ADD COLUMN synced_at TEXT"],
+      // 원천 학원 소개 본문(seoContent). 근거 보관용이며 프롬프트에 자동 주입하지 않는다.
+      ["seo_content", "ALTER TABLE academies ADD COLUMN seo_content TEXT"],
     ];
     for (const [col, sql] of academyMigrations) if (!academyCols.has(col)) this.db.exec(sql);
     const customTemplateCols = new Set(this.all("PRAGMA table_info(custom_templates)").map((r) => r.name));
@@ -961,14 +963,24 @@ export class DbService implements OnModuleInit {
         const price = formatTuitionFact(performance);
         const shuttle = formatShuttleFact((row.shuttleBuses ?? []) as DrivingplusShuttleBus[], nearbyDirectoryRegions(directory, nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude)));
         const hours = formatOperatingHoursFact((row.operateHour ?? null) as DrivingplusOperateHour | null);
+        // extra 는 원천 응답을 손실 없이 보관하는 자리다(컬럼으로 승격한 값 외 전부).
+        // 새 키를 읽어 facts/프롬프트로 올릴지는 별도 판단이며, 여기서는 저장만 한다.
         const extra = JSON.stringify({
           drivingplus_id: externalId,
           review_count: reviews.length,
           blog_review_count: blogReviews.length,
+          // 원천이 준 개수(필터 이전). 저장 개수와 차이가 곧 부정·저품질로 걸러진 양이다.
+          source_review_count: Array.isArray(row.reviews) ? row.reviews.length : 0,
+          source_blog_review_count: Array.isArray(row.blogReviews) ? row.blogReviews.length : 0,
+          review_stats: row.reviewStats ?? null,
+          blog_review_stats: row.blogReviewStats ?? null,
           license_types: row.licenseTypes ?? [],
           education_performance: performance,
           price_observations: row.priceObservations ?? [],
           shuttle_buses: row.shuttleBuses ?? [],
+          shuttle_bus_url: nullableText(row.shuttleBusUrl),
+          shuttle_bus_detail: nullableText(row.shuttleBusDetail),
+          shuttle_bus_image_url: nullableText(row.shuttleBusImageUrl),
           operate_hour: row.operateHour ?? null,
           road_courses: row.roadCourses ?? [],
         });
@@ -1069,6 +1081,15 @@ export class DbService implements OnModuleInit {
     return { fetched: rows.length, upserted, skipped };
   }
   listRegionDirectory(): Row[] { return this.all("SELECT * FROM region_directory"); }
+  /** 사전이 실제로 얼마나 쓰이는지 보여주는 지표(관리자 화면용). */
+  shuttleRegionCoverage(domain: string): { with_shuttle: number; with_region: number } {
+    const row = this.get(
+      `SELECT COUNT(*) n, SUM(CASE WHEN shuttle LIKE '%운행 지역%' THEN 1 ELSE 0 END) r
+       FROM academies WHERE domain=? AND COALESCE(TRIM(shuttle),'') <> ''`,
+      [domain],
+    );
+    return { with_shuttle: Number(row?.n ?? 0), with_region: Number(row?.r ?? 0) };
+  }
   regionDirectoryStatus(): { total: number; by_level: Record<string, number>; synced_at: string | null } {
     const total = Number(this.get("SELECT COUNT(*) n FROM region_directory")?.n ?? 0);
     const by_level: Record<string, number> = {};

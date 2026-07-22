@@ -828,14 +828,18 @@ export class AdminController {
   // 전역 행정구역 사전. 도메인별이 아니라 모든 도메인이 같은 표를 본다.
   // 도메인 생성 시 자동으로 준비되므로 이 엔드포인트는 수동 갱신(행정구역 개편 등)용이다.
   @Get("settings/region-directory")
-  regionDirectoryStatus(@Req() req: Request, @Headers() headers: Record<string, string>) {
-    checkAuth(req, headers); return this.db.regionDirectoryStatus();
+  regionDirectoryStatus(@Req() req: Request, @Headers() headers: Record<string, string>, @Query() query: Row) {
+    checkAuth(req, headers);
+    const domain = String(query.domain || "").trim();
+    // domain 을 주면 그 도메인에서 사전이 실제로 얼마나 쓰이는지 함께 돌려준다(관리자 카드 지표).
+    return { ...this.db.regionDirectoryStatus(), ...(domain ? { shuttle: this.db.shuttleRegionCoverage(domain) } : {}) };
   }
   @Post("settings/region-directory/sync")
-  async syncRegionDirectory(@Req() req: Request, @Headers() headers: Record<string, string>) {
+  async syncRegionDirectory(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row = {}) {
     checkAuth(req, headers);
+    const domain = String(body?.domain || "").trim();
     const result = await this.regionDirectory.sync();
-    return { ok: true, ...result, ...this.db.regionDirectoryStatus() };
+    return { ok: true, ...result, ...this.db.regionDirectoryStatus(), ...(domain ? { shuttle: this.db.shuttleRegionCoverage(domain) } : {}) };
   }
 
   // 업종 레지스트리(라벨 MVP): 작업환경에서 key/label 추가·삭제. key 는 프리셋 선택·프롬프트에 쓰인다.
