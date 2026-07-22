@@ -4,8 +4,8 @@ import { availableLicensesFromSource } from "./academy-course-evidence.js";
 
 type Row = Record<string, any>;
 
-export const T01_DATA_GATED_MODE = "t01_data_gated_v2" as const;
-export type T01GenerationMode = "legacy" | typeof T01_DATA_GATED_MODE;
+/** Internal typed evidence context used by Legacy Plus validation. */
+export const T01_FACT_VALIDATION_CONTEXT = "t01_legacy_plus_internal" as const;
 export type T01RegionRelation = "target_region" | "same_parent_region" | "other_region" | "unknown";
 export type T01VariantId = "region_like_comparison" | "distance_expanded_comparison" | "criteria_first_grouped_comparison" | "insufficient_comparison";
 export type T01ModifierCategory = "composition" | "evidence" | "audience";
@@ -46,7 +46,7 @@ export type T01TypedModifier = {
 };
 
 export type T01DataGatedContext = {
-  mode: typeof T01_DATA_GATED_MODE;
+  mode: typeof T01_FACT_VALIDATION_CONTEXT;
   targetRegion: string;
   selection: Pick<AcademySelectionTrace, "configuredMinimum" | "candidatePoolLimit" | "nearbyRadiusKm" | "farRadiusKm"> & {
     regionLikeCount: number;
@@ -85,14 +85,6 @@ const FIELD_LABELS: Array<[keyof Pick<T01AcademyCandidate, "address" | "tuition"
   ["address", "주소"], ["tuition", "수강료"], ["shuttle", "셔틀"], ["operatingSchedule", "운영시간"], ["passRate", "합격률"], ["phone", "전화"],
 ];
 
-export function isT01DataGatedMode(value: unknown): value is typeof T01_DATA_GATED_MODE {
-  return value === T01_DATA_GATED_MODE;
-}
-
-export function shouldUseT01DataGatedMode(templateId: unknown, generationMode: unknown): boolean {
-  return String(templateId || "") === "T01" && isT01DataGatedMode(generationMode);
-}
-
 export function buildT01DataGatedContext(targetRegion: string, candidates: Row[], trace: AcademySelectionTrace, seed: string, labels: Array<string | null | undefined>): T01DataGatedContext {
   const traceById = new Map(trace.mergedCandidatePool.map((candidate) => [candidate.academyId, candidate]));
   const normalized = candidates.map((candidate, index) => normalizeCandidate(candidate, traceById.get(candidateKey(candidate)), targetRegion, index + 1, seed));
@@ -100,7 +92,7 @@ export function buildT01DataGatedContext(targetRegion: string, candidates: Row[]
   const { selectedVariant, compatibleVariants } = selectT01Variant(normalized, commonFactFields, seed);
   const modifiers = resolveT01Modifiers(labels, normalized, selectedVariant);
   return {
-    mode: T01_DATA_GATED_MODE,
+    mode: T01_FACT_VALIDATION_CONTEXT,
     targetRegion,
     selection: {
       configuredMinimum: trace.configuredMinimum,
@@ -119,45 +111,6 @@ export function buildT01DataGatedContext(targetRegion: string, candidates: Row[]
     modifiers,
     includeFaq: shouldIncludeT01Faq(seed),
   };
-}
-
-export function t01StructuredPromptPayload(context: T01DataGatedContext): string {
-  // Distances and coordinates are retrieval-only evidence.  They remain in
-  // the internal context for validation, but must not become prose facts.
-  const { nearbyRadiusKm: _nearbyRadiusKm, farRadiusKm: _farRadiusKm, ...selection } = context.selection;
-  const candidates = context.candidates.map(({ straightLineDistanceKm: _distance, latitude: _latitude, longitude: _longitude, ...candidate }) => candidate);
-  return JSON.stringify({ ...context, selection, candidates }, null, 2);
-}
-
-export function t01DataGatedPromptContract(context: T01DataGatedContext): string {
-  const activeModifiers = context.modifiers.filter((modifier) => modifier.active);
-  return [
-    "T01 데이터 기반 비교 계약 (이 계약은 글에 노출하지 않는다):",
-    "- 이 계약은 legacy 템플릿 구조 또는 수식어 문구와 충돌할 경우 우선한다.",
-    "- 아래 JSON의 candidate만 소개한다. 없는 가격·셔틀·운영시간·합격률·후기를 만들지 않는다.",
-    "- stored_region_like는 저장된 region LIKE 조회 후보다. supplement/far_guarantee는 요청 지역 소재라고 쓰지 말고 storedRegion 또는 address를 사실대로 쓰며, 주변/확장 후보가 포함된 이유를 설명한다.",
-    "- 거리 수치·km·직선거리·도로거리·이동시간은 글에 쓰지 않는다. 후보가 주제 지역 밖이면 실제 storedRegion 또는 address와 인근 후보 포함 사실만 쓴다.",
-    "- regionRelation이 target_region이 아닌 후보는 실제 지역 관계와 주소를 후보 카드와 표에서 분명히 한다.",
-    "- 사실을 먼저 쓰고, 적합 대상·상담 질문은 해당 facts에서만 도출한다. 순위·최상급·합격 보장 표현을 쓰지 않는다.",
-    context.includeFaq
-      ? "- 이번 슬롯은 선택형 FAQ 포함 회전이다. 비교·체크리스트와 별도로 `자주 묻는 질문` H2를 두고, 비용·셔틀·수강 일정처럼 제공 facts 또는 상담 확인 범위 안의 질문 2~4개를 답한다."
-      : "- 이번 슬롯은 FAQ 미포함 회전이다. FAQ를 억지로 추가하지 말고 비교표·체크리스트·결론으로 결정 지원을 마무리한다.",
-    `- 선택 composition: ${context.selectedVariant}. ${variantDirective(context.selectedVariant)}`,
-    activeModifiers.length ? `- 활성 modifier 지침:\n${activeModifiers.flatMap((modifier) => modifier.promptDirectives.map((directive) => `  - ${modifier.originalLabel}: ${directive}`)).join("\n")}` : "- 활성 modifier 없음: 근거 없는 수식어 강조를 추가하지 않는다.",
-    "구조화 후보 데이터:",
-    t01StructuredPromptPayload(context),
-  ].join("\n");
-}
-
-export function t01DataGatedStructureGuide(context: T01DataGatedContext): string {
-  const faq = context.includeFaq
-    ? "'자주 묻는 질문' H2를 두고 비용·셔틀·수강 일정의 확인 방법을 2~4개 문답으로 작성한다."
-    : "FAQ는 별도 섹션으로 두지 않고 비교표·체크리스트·결론에 필요한 확인 질문을 통합한다.";
-  return `${variantDirective(context.selectedVariant)} ${faq}`;
-}
-
-export function t01ActiveModifierLabels(context: T01DataGatedContext): string[] {
-  return context.modifiers.filter((modifier) => modifier.active).map((modifier) => modifier.originalLabel);
 }
 
 export function t01QualityIssues(markdown: string, context: T01DataGatedContext): T01QualityIssue[] {
@@ -221,8 +174,8 @@ function normalizeHeadingText(value: unknown): string {
 }
 
 /**
- * T01 v2 native gate only.  This keeps the legacy/non-T01 article gate
- * contract untouched while making factual claims distinguishable from safe
+ * Shared T01 factual-claim classifier. It keeps the legacy/non-T01 article
+ * gate contract untouched while distinguishing factual claims from safe
  * "check with the academy" guidance.
  */
 export function t01ClaimContexts(markdown: string, topic: T01ClaimTopic): T01ClaimContext[] {
@@ -425,9 +378,3 @@ function normalizedMoneyValues(value: string): string[] {
   });
 }
 function issue(code: string, severity: T01QualityIssue["severity"], message: string): T01QualityIssue { return { code, severity, message }; }
-function variantDirective(variant: T01VariantId): string {
-  if (variant === "distance_expanded_comparison") return "먼저 지역 내/region-like 후보와 보충 후보가 함께 포함된 이유를 설명하고, 각 후보의 실제 지역을 밝힌 뒤 비교표와 확인사항으로 마무리한다. 거리 수치와 km는 쓰지 않는다.";
-  if (variant === "criteria_first_grouped_comparison") return "검증된 운영 형태처럼 구조화된 공통 필드만 기준으로 후보를 묶고, 순위나 품질 우열로 그룹화하지 않는다.";
-  if (variant === "insufficient_comparison") return "후보와 공통 필드가 부족함을 숨기지 말고, 확인 가능한 후보와 등록 전 체크리스트 중심으로 작성한다.";
-  return "지역 기준 후보를 동일한 확인 가능 필드로 순차 소개하고, 마지막 비교표와 상황별 확인사항으로 결정 지원을 한다.";
-}

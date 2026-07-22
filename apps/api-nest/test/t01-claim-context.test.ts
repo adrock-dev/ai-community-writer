@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { t01ClaimContexts, t01QualityIssues } from "../src/t01-data-gated.js";
+import { T01_FACT_VALIDATION_CONTEXT, t01ClaimContexts, t01QualityIssues } from "../src/t01-data-gated.js";
 import type { T01DataGatedContext } from "../src/t01-data-gated.js";
 
 function context(facts: { shuttle?: string; passRate?: string } = {}): T01DataGatedContext {
   return {
-    mode: "t01_data_gated_v2",
+    mode: T01_FACT_VALIDATION_CONTEXT,
     targetRegion: "테스트시",
     selection: { configuredMinimum: 2, candidatePoolLimit: 7, nearbyRadiusKm: 20, farRadiusKm: 50, regionLikeCount: 2, supplementCount: 0, farCount: 0, finalBodyCount: 2 },
     candidates: ["A", "B"].map((academyName, index) => ({
@@ -36,7 +36,7 @@ const actualFalsePositiveFixtures = [
   { id: "wonju-pass-rate", topic: "pass_rate" as const, candidateId: 355, sentence: "수강료, 셔틀, 운영시간, 합격률은 제공 자료에 없어 비교표에서 임의로 채우지 않았으며, 상담 시 동일한 질문으로 확인하는 항목으로 남겨 두었습니다.", supportingFact: null, prior: "hard_failure", expected: "pass", reason: "합격률을 임의로 작성하지 않았다는 설명" },
 ];
 
-describe("T01 v2 claim-context detector", () => {
+describe("T01 claim-context detector", () => {
   it("저장된 네 pair의 실제 false positive 문장 8개를 assertion으로 오인하지 않는다", () => {
     expect(actualFalsePositiveFixtures).toHaveLength(8);
     for (const fixture of actualFalsePositiveFixtures) {

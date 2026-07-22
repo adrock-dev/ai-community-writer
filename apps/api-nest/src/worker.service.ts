@@ -13,6 +13,7 @@ import { seededCandidateSample, selectAcademiesForRegion } from "./academy-candi
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
 import { studentReviewFactLines } from "./academy-review-evidence.js";
+import { normalizeImageSlotMarkup } from "./post-rendering.js";
 import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 
 type Row = Record<string, any>;
@@ -667,7 +668,7 @@ export function normalizeGeneratedMarkdown(summary: string, images: Record<strin
       removeInternalLeakage(
         normalizeKoreanSpacing(
           stripPseudoSlots(
-            stripPreamble(summary)
+            stripPreamble(normalizeImageSlotMarkup(summary))
               .replace(/^```(?:markdown|md)?\s*/i, "")
               .replace(/```\s*$/i, "")
               .replace(/\[(\d+)\]/g, "")

@@ -287,6 +287,7 @@ describe("T01 Legacy Plus", () => {
       ...base,
       data: {
         ...base.data,
+        selectedVariant: "distance_expanded_comparison",
         candidates: base.data.candidates.map((candidate, index) => index === 1 ? {
           ...candidate,
           storedRegion: "다른시",
@@ -299,7 +300,9 @@ describe("T01 Legacy Plus", () => {
     const result = finalizeLegacyPlusMarkdown("### 첫학원\n설명\n\n### 둘학원\n설명", outside);
     expect(result).toContain("실제 소재지는 다른시입니다.");
     expect(result).not.toMatch(/확장 후보|인근 후보|거리 기준/u);
-    expect(t01LegacyPlusQualityIssues(result, outside).map((issue) => issue.code)).not.toContain("legacy_plus_actual_region_missing");
+    const codes = t01LegacyPlusQualityIssues(result, outside).map((issue) => issue.code);
+    expect(codes).not.toContain("legacy_plus_actual_region_missing");
+    expect(codes).not.toContain("distance_expansion_not_explained");
   });
 
   it("반복된 후보 H3와 동일 산문 문장은 사실을 더하지 않고 한 번만 남긴다", () => {

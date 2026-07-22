@@ -1,3 +1,5 @@
+import type { T01AcademyCandidate } from "./t01-data-gated.js";
+
 type Row = Record<string, any>;
 
 export const STUDENT_REVIEW_SOURCE = "DrivingPlus 수강생 리뷰";
@@ -8,6 +10,17 @@ export type StudentReviewEvidence = {
   rating: number | null;
   postedAt: string | null;
   authorMasked: string | null;
+};
+
+/** A presentation-safe review selected for one final article candidate. */
+export type AcademyContentReviewCandidate = {
+  academyId: string;
+  academyName: string;
+  text: string;
+  source: { label: typeof STUDENT_REVIEW_SOURCE; url: null; identifier: null };
+  eligibleForContent: boolean;
+  exclusionReasons: string[];
+  selectionScore: number;
 };
 
 /**
@@ -46,6 +59,51 @@ export function selectedStudentReviewForAcademy(row: Row, seed: string): Student
 export function studentReviewFactLines(row: Row, seed: string): string[] {
   const review = selectedStudentReviewForAcademy(row, seed);
   return review ? [`수강생 리뷰: “${review.quote}” (출처: ${review.source})`] : [];
+}
+
+/**
+ * Select at most one source review for each final academy.  This belongs to
+ * the reusable evidence adapter rather than a retired generation mode, and
+ * preserves final candidate order for deterministic article assembly.
+ */
+export function selectEligibleReviewsByAcademy(candidates: T01AcademyCandidate[], seed: string): AcademyContentReviewCandidate[] {
+  return candidates.flatMap((candidate) => {
+    const eligible = (candidate.studentReviews || [])
+      .map((review) => reviewContentCandidate(candidate, review.quote, review.source))
+      .filter((review) => review.eligibleForContent)
+      .sort((left, right) => right.selectionScore - left.selectionScore
+        || stableRank(`${seed}|${left.academyId}|${left.text}`) - stableRank(`${seed}|${right.academyId}|${right.text}`)
+        || left.text.localeCompare(right.text));
+    return eligible.slice(0, 1);
+  });
+}
+
+function reviewContentCandidate(candidate: T01AcademyCandidate, text: string, source: typeof STUDENT_REVIEW_SOURCE): AcademyContentReviewCandidate {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  const exclusionReasons: string[] = [];
+  if (!normalized) exclusionReasons.push("empty_text");
+  if (normalized.length < 12) exclusionReasons.push("too_short");
+  if (/\b(?:\d{2,3}-\d{3,4}-\d{4}|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,})\b/u.test(normalized)) exclusionReasons.push("personal_data");
+  if (isPromotionalOnly(normalized)) exclusionReasons.push("promotional_only");
+  if (!source) exclusionReasons.push("missing_source");
+  const selectionScore = 30
+    + Math.min(25, Math.floor(normalized.length / 8))
+    + (/(?:설명|상담|수업|강사|일정|차량|연습|안내|예약)/u.test(normalized) ? 18 : 0)
+    - (/(?:추천|최고|대박|완벽|무조건|강력)/u.test(normalized) ? 8 : 0);
+  return {
+    academyId: candidate.academyId,
+    academyName: candidate.academyName,
+    text: normalized,
+    source: { label: source, url: null, identifier: null },
+    eligibleForContent: exclusionReasons.length === 0,
+    exclusionReasons,
+    selectionScore,
+  };
+}
+
+function isPromotionalOnly(text: string): boolean {
+  const signals = text.match(/(?:최고|대박|완벽|무조건|강력\s*추천|가성비\s*최고|친절)/gu) || [];
+  return signals.length >= 2 && text.length < 70;
 }
 
 function parseJsonArray(value: unknown): Row[] {
@@ -96,4 +154,13 @@ function stableIndex(seed: string, modulo: number): number {
     hash = Math.imul(hash, 16777619) >>> 0;
   }
   return modulo <= 1 ? 0 : hash % modulo;
+}
+
+function stableRank(seed: string): number {
+  let hash = 2166136261 >>> 0;
+  for (let index = 0; index < seed.length; index++) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash;
 }

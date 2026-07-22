@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildT01DataGatedContext, t01ActiveModifierLabels, t01DataGatedPromptContract, t01DataGatedStructureGuide, t01QualityIssues, t01StructuredPromptPayload } from "../src/t01-data-gated.js";
+import { buildT01DataGatedContext, t01QualityIssues } from "../src/t01-data-gated.js";
 import type { AcademySelectionTrace, AcademySelectionTraceCandidate } from "../src/academy-candidate-selection.js";
-import { getArchetype } from "../src/archetypes.js";
-import { buildPrompt } from "../src/worker.service.js";
 
 const target = "테스트시";
 
@@ -30,7 +28,7 @@ function trace(entries: AcademySelectionTraceCandidate[]): AcademySelectionTrace
   };
 }
 
-describe("T01 data-gated candidate adapter", () => {
+describe("T01 typed candidate adapter", () => {
   it("후보 선택 결과를 바꾸지 않고 source·stored region·missing field를 typed candidate에 보존한다", () => {
     const rows = [candidate("직접", "direct", { price: "500,000원" }), candidate("보충", "supplement", { region: "인접시", address: "인접시 보충로", shuttle: "역 셔틀" })];
     const selection = trace([
@@ -46,18 +44,13 @@ describe("T01 data-gated candidate adapter", () => {
     expect(context.modifiers.map((modifier) => [modifier.originalLabel, modifier.active])).toEqual([["비용절약", true], ["셔틀편리", true]]);
   });
 
-  it("슬롯별 선택 수강생 리뷰 원문과 출처만 v2 prompt payload에 보존한다", () => {
+  it("슬롯별 선택 수강생 리뷰 원문과 출처만 typed candidate에 보존한다", () => {
     const rows = [candidate("A", "a", { review_json: JSON.stringify([{ author: "홍길동", point: 5, date: "2026-07-01", content: "강사님 설명이 자세해서 안심됐습니다." }]) }), candidate("B", "b")];
     const selection = trace([traceCandidate("A", "a", "stored_region_like"), traceCandidate("B", "b", "stored_region_like", { retrievalRank: 2 })]);
     const context = buildT01DataGatedContext(target, rows, selection, "slot", []);
     expect(context.candidates[0]?.studentReviews).toEqual([{
       quote: "강사님 설명이 자세해서 안심됐습니다.", source: "DrivingPlus 수강생 리뷰",
     }]);
-    const payload = t01StructuredPromptPayload(context);
-    expect(payload).toContain('"studentReviews"');
-    expect(payload).not.toContain('"rating"');
-    expect(payload).not.toContain('"postedAt"');
-    expect(payload).not.toContain('"authorMasked"');
   });
 
   it("원천 SEO 설명에 명시된 면허 과정만 typed candidate와 공통 비교 필드에 보존한다", () => {
@@ -75,7 +68,7 @@ describe("T01 data-gated candidate adapter", () => {
     expect(context.candidates[1]?.availableLicenses).not.toContain("1종 대형");
   });
 
-  it("근거 없는 legacy modifier는 v2에서 비활성화하고 비활성 사유를 보존한다", () => {
+  it("근거 없는 legacy modifier는 typed context에서 비활성화하고 비활성 사유를 보존한다", () => {
     const rows = [candidate("A", "a"), candidate("B", "b")];
     const selection = trace([traceCandidate("A", "a", "stored_region_like"), traceCandidate("B", "b", "stored_region_like", { retrievalRank: 2 })]);
     const context = buildT01DataGatedContext(target, rows, selection, "slot", ["셔틀편리", "야간반"]);
@@ -83,22 +76,6 @@ describe("T01 data-gated candidate adapter", () => {
       { originalLabel: "셔틀편리", active: false, inactiveReason: "no_shuttle_facts" },
       { originalLabel: "야간반", active: false, inactiveReason: "no_structured_schedule_fact" },
     ]);
-  });
-
-  it("v2 prompt에는 data-gated structure와 활성 modifier만 넘기므로 legacy 문자열이 구조를 되살리지 않는다", () => {
-    const rows = [candidate("A", "a"), candidate("B", "b")];
-    const selection = trace([traceCandidate("A", "a", "stored_region_like"), traceCandidate("B", "b", "stored_region_like", { retrievalRank: 2 })]);
-    const context = buildT01DataGatedContext(target, rows, selection, "slot", ["셔틀편리", "야간반"]);
-    const slot = { template_id: "T01", slot_id: "slot", region: target, primary_keyword: `${target} 운전면허학원`, modifier_1: "셔틀편리", modifier_2: "야간반" };
-    const legacy = buildPrompt({ display_name: "테스트" }, slot, "facts", "comparison", getArchetype("local"), "", true);
-    const v2 = buildPrompt({ display_name: "테스트" }, slot, "facts", "comparison", getArchetype("local"), "", true, undefined, {
-      structureGuide: t01DataGatedStructureGuide(context), modifierLabels: t01ActiveModifierLabels(context),
-    });
-    expect(legacy).toContain("수식어: 셔틀편리, 야간반");
-    expect(v2).toContain("수식어: ");
-    expect(v2).not.toContain("수식어: 셔틀편리");
-    expect(v2).toContain("지역 기준 후보를 동일한 확인 가능 필드로 순차 소개");
-    expect(v2).toContain("슬롯별로 선택된 실제 수강생 원문 1건");
   });
 
   it("verified academy type이 둘이면 region-like와 criteria-first만 seed 경쟁 후보가 된다", () => {
@@ -117,32 +94,14 @@ describe("T01 data-gated candidate adapter", () => {
     expect(context.selectedVariant).toBe("insufficient_comparison");
   });
 
-  it("FAQ는 legacy와 같은 slot seed 회전에서만 선택형으로 포함한다", () => {
-    const rows = [candidate("A", "a"), candidate("B", "b")];
-    const selection = trace([traceCandidate("A", "a", "stored_region_like"), traceCandidate("B", "b", "stored_region_like", { retrievalRank: 2 })]);
-    const withFaq = buildT01DataGatedContext(target, rows, selection, "live-ab-01-전북특별자치도 익산시", []);
-    const withoutFaq = buildT01DataGatedContext(target, rows, selection, "slot", []);
-    expect(withFaq.includeFaq).toBe(true);
-    expect(withoutFaq.includeFaq).toBe(false);
-    expect(t01DataGatedStructureGuide(withFaq)).toContain("자주 묻는 질문");
-  });
 });
 
-describe("T01 v2 prompt and severity gate", () => {
+describe("T01 shared fact validation", () => {
   const rows = [candidate("직접", "direct", { price: "500,000원" }), candidate("보충", "supplement", { region: "인접시", address: "인접시 보충로" })];
   const context = buildT01DataGatedContext(target, rows, trace([
     traceCandidate("직접", "direct", "stored_region_like"),
     traceCandidate("보충", "supplement", "supplement", { storedRegion: "인접시", address: "인접시 보충로", straightLineDistanceKm: 12.3, retrievalRank: 2 }),
   ]), "slot", ["상담전확인"]);
-
-  it("structured payload에는 source·stored region·missing field만 넣고 거리 추출 정보는 제외한다", () => {
-    const contract = t01DataGatedPromptContract(context);
-    expect(contract).toContain('"retrievalSource": "supplement"');
-    expect(contract).toContain('"storedRegion": "인접시"');
-    expect(contract).not.toContain('"straightLineDistanceKm"');
-    expect(contract).not.toContain('"nearbyRadiusKm"');
-    expect(contract).toContain("거리 수치·km");
-  });
 
   it("보충 후보의 실제 지역/확장 고지가 없으면 hard failure로 잡는다", () => {
     const markdown = "# 제목\n\n## 비교\n|항목|직접|보충|\n|---|---|---|\n|주소|테스트시|테스트시|\n\n### 직접\n설명\n\n### 보충\n설명";
@@ -185,12 +144,4 @@ describe("T01 v2 prompt and severity gate", () => {
     expect(t01QualityIssues(markdown, context)).toContainEqual(expect.objectContaining({ code: "repeated_consultation_phrase", severity: "score_penalty" }));
   });
 
-  it("FAQ 포함 회전에서 FAQ 섹션이 빠지면 hard failure로 잡는다", () => {
-    const faqContext = buildT01DataGatedContext(target, rows, trace([
-      traceCandidate("직접", "direct", "stored_region_like"),
-      traceCandidate("보충", "supplement", "supplement", { storedRegion: "인접시", address: "인접시 보충로", straightLineDistanceKm: 12.3, retrievalRank: 2 }),
-    ]), "live-ab-01-전북특별자치도 익산시", ["상담전확인"]);
-    const markdown = "# 제목\n\n## 비교\n|항목|직접|보충|\n|---|---|---|\n|주소|테스트시|인접시|\n\n### 직접\n설명\n\n### 보충\n인접시 보충로에 있는 주변 후보입니다.";
-    expect(t01QualityIssues(markdown, faqContext)).toContainEqual(expect.objectContaining({ code: "faq_variant_not_rendered", severity: "hard_failure" }));
-  });
 });

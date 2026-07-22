@@ -1,4 +1,4 @@
-import { selectEligibleReviewsByAcademy, type HybridDecisionSupportUnit, type HybridReviewCandidate } from "./t01-hybrid.js";
+import { selectEligibleReviewsByAcademy, type AcademyContentReviewCandidate } from "./academy-review-evidence.js";
 import { t01QualityIssues, type T01DataGatedContext, type T01QualityIssue } from "./t01-data-gated.js";
 import { courseFactText } from "./academy-course-evidence.js";
 
@@ -7,7 +7,16 @@ export const T01_LEGACY_PLUS_MODE = "t01_legacy_plus_v1" as const;
 export type T01LegacyPlusContext = {
   mode: typeof T01_LEGACY_PLUS_MODE;
   data: T01DataGatedContext;
-  selectedReviews: HybridReviewCandidate[];
+  selectedReviews: AcademyContentReviewCandidate[];
+};
+
+type LegacyPlusDecisionSupportUnit = {
+  section: "faq" | "checklist";
+  text: string;
+  topic: "location" | "shuttle" | "tuition" | "schedule" | "license" | "internal_test" | "region_relation" | "other";
+  intent: "verification" | "selection" | "explanation" | "action" | "other";
+  action: "contact_academy" | "compare_candidates" | "check_route" | null;
+  answerSummary: string | null;
 };
 
 export type LegacyPlusComparisonFocus = "license_course" | "operating_model" | "verified_basics";
@@ -198,7 +207,7 @@ export function legacyPlusDesignGuide(): string {
 export function dedupeLegacyPlusDecisionSupport(markdown: string): string {
   const lines = String(markdown || "").split(/\r?\n/);
   const checklist = sectionRange(lines, /체크리스트/u);
-  const keptChecklist: HybridDecisionSupportUnit[] = [];
+  const keptChecklist: LegacyPlusDecisionSupportUnit[] = [];
   if (checklist) {
     for (let index = checklist.start; index < checklist.end; index++) {
       const text = checklistItem(lines[index] || "");
@@ -210,7 +219,7 @@ export function dedupeLegacyPlusDecisionSupport(markdown: string): string {
   }
   const faq = sectionRange(lines, /(?:FAQ|자주\s*(?:묻는|생기는|추가)\s*(?:질문|FAQ))/iu);
   if (faq) {
-    const keptFaq: HybridDecisionSupportUnit[] = [];
+    const keptFaq: LegacyPlusDecisionSupportUnit[] = [];
     for (const block of faqBlocks(lines, faq)) {
       const unit = decisionUnit("faq", block.text);
       const duplicate = keptChecklist.some((item) => sameFaqChecklistDecision(item, unit))
@@ -286,7 +295,9 @@ export function t01LegacyPlusQualityIssues(markdown: string, context: T01LegacyP
   const factual = t01QualityIssues(markdown, context.data)
     // Legacy Plus keeps the actual-region fact but deliberately does not use
     // the retired v2 "expanded candidate" narrative as article structure.
-    .filter((item) => !["faq_variant_not_rendered", "non_primary_candidate_region_disclosure_missing"].includes(item.code));
+    // `actualRegionIssues` below keeps the substantive location disclosure;
+    // the v2-only warning must not demand words that Legacy Plus forbids.
+    .filter((item) => !["faq_variant_not_rendered", "non_primary_candidate_region_disclosure_missing", "distance_expansion_not_explained"].includes(item.code));
   return [...factual, ...candidateHeadingIssues(markdown, context.data), ...basicInfoIssues(markdown, context.data), ...actualRegionIssues(markdown, context.data), ...reviewIssues(markdown, context.selectedReviews), ...decisionSupportIssues(markdown), ...locationCompositionIssues(markdown), ...emptyHeadingIssues(markdown)];
 }
 
@@ -428,7 +439,7 @@ function locationCompositionIssues(markdown: string): T01QualityIssue[] {
   return [];
 }
 
-function reviewIssues(markdown: string, reviews: HybridReviewCandidate[]): T01QualityIssue[] {
+function reviewIssues(markdown: string, reviews: AcademyContentReviewCandidate[]): T01QualityIssue[] {
   const lines = String(markdown || "").split(/\r?\n/);
   const markers = lines.filter((line) => /^>\s*/.test(line) || /출처:\s*DrivingPlus 수강생 리뷰/u.test(line));
   if (!reviews.length) return markers.some((line) => /수강생\s*(?:리뷰|후기)|출처:/u.test(line))
@@ -485,7 +496,7 @@ function emptyHeadingIssues(markdown: string): T01QualityIssue[] {
   return [];
 }
 
-function parseDecisionSupport(markdown: string): { checklist: HybridDecisionSupportUnit[]; faq: HybridDecisionSupportUnit[]; hasChecklist: boolean; hasFaq: boolean } {
+function parseDecisionSupport(markdown: string): { checklist: LegacyPlusDecisionSupportUnit[]; faq: LegacyPlusDecisionSupportUnit[]; hasChecklist: boolean; hasFaq: boolean } {
   const lines = String(markdown || "").split(/\r?\n/);
   const checklistRange = sectionRange(lines, /체크리스트/u);
   const faqRange = sectionRange(lines, /(?:FAQ|자주\s*(?:묻는|생기는|추가)\s*(?:질문|FAQ))/iu);
@@ -522,7 +533,7 @@ function checklistItem(line: string): string {
   return String(line || "").replace(/^\s*(?:[-*]|\d+[.)]|[✅☑✔])\s*/, "").trim();
 }
 
-function decisionUnit(section: "faq" | "checklist", text: string): HybridDecisionSupportUnit {
+function decisionUnit(section: "faq" | "checklist", text: string): LegacyPlusDecisionSupportUnit {
   const clean = String(text).replace(/[*_`]/g, "").trim();
   const topic = /셔틀/u.test(clean) ? "shuttle" : /수강료|비용|가격/u.test(clean) ? "tuition" : /시간|일정|주말|야간|수업/u.test(clean) ? "schedule" : /면허|과정/u.test(clean) ? "license" : /자체\s*시험/u.test(clean) ? "internal_test" : /주변|인근|다른\s*지역|포함\s*이유/u.test(clean) ? "region_relation" : /주소|소재지|위치/u.test(clean) ? "location" : "other";
   const intent = /왜|이유|어떤\s*기준|어떻게\s*해석/u.test(clean) ? "explanation" : /확인|문의|물어|상담/u.test(clean) ? "verification" : /비교|선택|어떤\s*학원/u.test(clean) ? "selection" : /[?？]$/u.test(clean) ? "verification" : "other";
@@ -530,11 +541,11 @@ function decisionUnit(section: "faq" | "checklist", text: string): HybridDecisio
   return { section, text: clean, topic, intent, action, answerSummary: section === "faq" ? normalized(clean) : null };
 }
 
-function sameDecision(left: HybridDecisionSupportUnit, right: HybridDecisionSupportUnit): boolean {
+function sameDecision(left: LegacyPlusDecisionSupportUnit, right: LegacyPlusDecisionSupportUnit): boolean {
   return normalized(left.text) === normalized(right.text) || (left.topic === right.topic && left.topic !== "other" && left.intent === right.intent && left.action === right.action);
 }
 
-function sameFaqChecklistDecision(checklist: HybridDecisionSupportUnit, faq: HybridDecisionSupportUnit): boolean {
+function sameFaqChecklistDecision(checklist: LegacyPlusDecisionSupportUnit, faq: LegacyPlusDecisionSupportUnit): boolean {
   if (sameDecision(checklist, faq)) return true;
   return checklist.topic === faq.topic
     && checklist.topic !== "other"
@@ -542,7 +553,7 @@ function sameFaqChecklistDecision(checklist: HybridDecisionSupportUnit, faq: Hyb
     && ["verification", "other"].includes(checklist.intent);
 }
 
-function hasDuplicates(items: HybridDecisionSupportUnit[]): boolean {
+function hasDuplicates(items: LegacyPlusDecisionSupportUnit[]): boolean {
   return items.some((item, index) => items.slice(index + 1).some((other) => sameDecision(item, other)));
 }
 

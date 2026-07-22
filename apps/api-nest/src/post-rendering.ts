@@ -2,7 +2,22 @@ import { DbService, safeJson } from "./db.service.js";
 
 type Row = Record<string, any>;
 
+/**
+ * The generation contract uses standalone `[IMAGE:key]` lines.  Models
+ * occasionally wrap that token in ordinary Markdown image syntax, e.g.
+ * `![학원 사진]( [IMAGE:academy_1] )`.  That is not a valid URL and used to
+ * leak as broken Markdown into the rendered article.  Normalize only that
+ * exact wrapper; ordinary Markdown images and links remain untouched.
+ */
+export function normalizeImageSlotMarkup(markdown: string): string {
+  return String(markdown || "").replace(
+    /!?\[[^\]\r\n]*\]\(\s*(\[IMAGE:[A-Za-z0-9_-]+\])\s*\)/g,
+    "$1",
+  );
+}
+
 export function renderMarkdown(markdown: string, images: Record<string, string> = {}): string {
+  markdown = normalizeImageSlotMarkup(markdown);
   // ### 학원명부터 다음 학원/섹션 전까지(이름·설명·이미지·관련후기)를 하나의 카드로 묶어 학원 경계를 명확히 한다.
   const out: string[] = [];
   let card: string[] | null = null;
@@ -22,7 +37,7 @@ export function renderMarkdown(markdown: string, images: Record<string, string> 
 }
 
 export function stripPseudoSlotsForRender(markdown: string): string {
-  return markdown.split(/\r?\n/)
+  return normalizeImageSlotMarkup(markdown).split(/\r?\n/)
     .filter((line) => !/^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE|INTERNAL_LINK)_SLOT:[^\]]+\]$/i.test(line.trim()))
     .join("\n")
     .replace(/\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE|INTERNAL_LINK)_SLOT:[^\]]+\]/gi, "")
