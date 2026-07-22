@@ -2,6 +2,7 @@ import { Body, Controller, Get, Header, HttpException, Inject, Param, Post, Quer
 import type { Request, Response } from "express";
 import { createReadStream, existsSync } from "node:fs";
 import { DbService } from "./db.service.js";
+import { publicBrandName } from "./brand.js";
 import { generatedImageFilePath, safeImageFilename } from "./image-generation.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 
@@ -80,9 +81,14 @@ export class PublicController {
 }
 
 function publicSiteSummary(row: Row): Row {
+  // 공개 응답에는 관리자 라벨(display_name 원본)을 그대로 싣지 않는다 — 라벨에는 "○○ 샘플",
+  // "운전전문학원2" 같은 내부 구분값이 들어간다. 두 키 모두 해석된 공개 브랜드명을 내보내고,
+  // display_name 은 기존 소비자(연동 키트)를 위한 하위호환 별칭으로만 남긴다.
+  const brand = publicBrandName(row);
   return {
     domain: row.domain,
-    display_name: row.display_name,
+    brand_name: brand,
+    display_name: brand,
     brand_color: row.brand_color,
     design_template_id: row.design_template_id,
     logo_url: row.logo_url ?? null,

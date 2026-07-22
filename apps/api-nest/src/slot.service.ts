@@ -5,6 +5,7 @@ import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX
 import { filterExcludedSlots } from "./exclusions.js";
 import { resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
 import { academyMin, academyPool, getArchetype, buildKeyword, type Archetype } from "./archetypes.js";
+import { isConflictingAxisPair } from "./t16-axis-comparison.js";
 
 type Row = Record<string, any>;
 
@@ -63,18 +64,33 @@ export class SlotService {
       const candidatesByPrimary: Row[][] = [];
       // interleaveByPrimary 는 그룹(토픽)당 최대 ceil(maxPerTemplate/그룹수) 개만 읽는다(그룹 길이 동일).
       // 전체 데카르트곱(수백만)을 다 만들지 않도록 토픽별 생성량을 그만큼(+여유 1)으로 제한한다.
-      // 그룹 길이가 균일하고 interleave 가 build 순서대로 앞에서부터 읽으므로 선택 결과·순서는 불변(골든 0-diff).
       const perTopicCap = Math.max(1, Math.ceil(maxPerTemplate / topicUnits.length) + 1);
+      const comboCount = personaValues.length * intentValues.length * modifierCombos.length;
       for (const topic of topicUnits) {
         const primaryRows: Row[] = [];
-        build: for (const persona of personaValues) for (const intent of intentValues) for (const [m1, m2] of modifierCombos) {
-          const parts = [topic.hashKey, persona.value || "", intent.value || "", m1 || "", m2 || ""];
+        // 토픽마다 조합 열거의 '시작점'을 흩어 놓는다.
+        //
+        // interleaveByPrimary 는 모든 그룹의 index 0 을 먼저 훑고 index 1 로 넘어간다. 토픽 수가
+        // maxPerTemplate 보다 많으면(지역 251곳 vs 상한 40) index 0 에서 상한이 차 index 1 에
+        // 도달하지 못한다. 예전에는 모든 토픽이 같은 지점에서 열거를 시작해 index 0 이 항상
+        // persona[0]·intent[0]·modifier[0] 이었고, 그 결과 전 슬롯이 동일 축 조합을 가졌다
+        // (실측: 골든 T01/T07/T14/T15 각 40건이 persona·intent·수식어 모두 1종류, 운영 DB T01 100/100 동일).
+        // 축이 프롬프트에 들어가도 글을 구분하지 못하던 원인이 이것이다.
+        //
+        // 시작점은 토픽 문자열 해시라 (a) 재생성 시 동일 결과 = slot_id idempotency 유지,
+        // (b) 축 값 배열의 순서가 바뀌어도 흔들리지 않는다.
+        const comboStart = comboCount > 1 ? axisComboOffset(topic.hashKey, comboCount) : 0;
+        for (let step = 0; step < comboCount && primaryRows.length < perTopicCap; step++) {
+          const { persona, intent, m1, m2 } = axisComboAt(comboStart + step, personaValues, intentValues, modifierCombos);
+          // 축이 서로 다른 일을 해야 하는데 modifier 와 intent 가 같은 데이터를 가리키면 한 축이 낭비된다
+          // (예: 비용절약 × 비용구성). 그런 조합은 건너뛰고 다음 조합을 본다.
+          if (isConflictingAxisPair(m1, intent) || isConflictingAxisPair(m2, intent)) continue;
+          const parts = [topic.hashKey, persona || "", intent || "", m1 || "", m2 || ""];
           primaryRows.push({
             slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: topic.primaryKeyword,
-            region: topic.region, persona: persona.value ?? null, intent: intent.value ?? null,
+            region: topic.region, persona, intent,
             modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(topic.sv, topic.kd, spec.weight)
           });
-          if (primaryRows.length >= perTopicCap) break build;
         }
         if (primaryRows.length) candidatesByPrimary.push(primaryRows);
       }
@@ -369,6 +385,43 @@ function priority(sv: number | null, kd: number | null, weight: number): number 
   const kdNorm = (100 - (kd ?? 50)) / 100;
   return Math.round(Math.min(Math.max((svNorm * 0.6 + kdNorm * 0.4) * weight * 100, 0), 100) * 100) / 100;
 }
+/**
+ * 축 조합 열거 — n 번째 조합을 (persona, intent, modifier쌍) 으로 분해한다.
+ *
+ * persona 가 가장 빠르게 변하도록 분해한다. 토픽별 시작점이 흩어져 있어도 인접 step 에서
+ * 먼저 확보되는 다양성이 '독자(persona)'가 되게 하려는 것이다 — 축 중 글의 방향을 가장
+ * 크게 바꾸는 값이기 때문이다.
+ */
+function axisComboAt(
+  n: number,
+  personas: Row[],
+  intents: Row[],
+  modifiers: Array<[string | null, string | null]>,
+): { persona: string | null; intent: string | null; m1: string | null; m2: string | null } {
+  const p = Math.max(1, personas.length);
+  const i = Math.max(1, intents.length);
+  const m = Math.max(1, modifiers.length);
+  const total = p * i * m;
+  const index = ((n % total) + total) % total;
+  const pair = modifiers[Math.floor(index / (p * i)) % m] ?? [null, null];
+  return {
+    persona: personas[index % p]?.value ?? null,
+    intent: intents[Math.floor(index / p) % i]?.value ?? null,
+    m1: pair[0] ?? null,
+    m2: pair[1] ?? null,
+  };
+}
+
+/** 토픽 문자열 → 조합 시작점(FNV-1a). 결정적이고 외부 의존이 없다. */
+function axisComboOffset(key: string, comboCount: number): number {
+  let hash = 2166136261 >>> 0;
+  for (let index = 0; index < key.length; index++) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash % comboCount;
+}
+
 function modifierPairs(values: Row[], count: number): Array<[string | null, string | null]> {
   if (count === 0) return [[null, null]];
   if (count === 1) return values.length ? values.map((m) => [m.value, null]) : [[null, null]];

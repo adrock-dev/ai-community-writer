@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { formatDateTime, formatShortDate } from "@/lib/date";
+import { publicBrandName } from "@/lib/brand";
 import { getDesignTheme, resolveDesignId } from "@/lib/design-theme";
 import type { DesignTemplateId, PostDetail, DomainConfig } from "@/lib/types";
 
@@ -29,7 +30,7 @@ export default function PostDetailClient({ domain, postId }: { domain: string; p
   const designId = resolveDesignId(rawDesignId);
   const design = getDesignTheme(designId, domainConfig?.brand_color);
   const articleClass = `design-${designId}`;
-  const brand = publicBrandName(domainConfig?.display_name ?? domain);
+  const brand = publicBrandName(domainConfig ?? domain);
   const articleStyle = { ["--accent" as string]: design.accent, ["--accent-soft" as string]: design.soft, ["--primary" as string]: design.accent, background: design.pageBg };
   const contentHtml = toPreviewBlocks(prepareBodyHtml(renderedHtml, post.title, null));
   const chips = designChips(designId);
@@ -133,9 +134,6 @@ function escapeAttr(s: string) { return escapeHtml(s).replace(/'/g, "&#39;"); }
 function resolveDesign(value: string | null | undefined): DesignTemplateId {
   return resolveDesignId(value);
 }
-function publicBrandName(value: string): string {
-  return value.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || value;
-}
 function prepareBodyHtml(html: string, title: string, heroImage: string | null): string {
   let out = html.trim();
   const escapedTitle = escapeRegExp(escapeHtml(title.trim()));
@@ -215,7 +213,7 @@ function renderStandaloneHtml({ post, domainConfig, domain, designId, bodyHtml }
   const design = getDesignTheme(designId, domainConfig?.brand_color);
   const articleClass = `design-${designId}`;
   const visibleDesignId = designId;
-  const brand = publicBrandName(domainConfig?.display_name ?? domain);
+  const brand = publicBrandName(domainConfig ?? domain);
   const title = post.title || brand;
   const contentHtml = toPreviewBlocks(prepareBodyHtml(bodyHtml, post.title, null));
   const chips = designChips(designId);

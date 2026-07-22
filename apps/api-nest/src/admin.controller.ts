@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Param, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
+import { publicBrandName } from "./brand.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
 import { RegionDirectoryService } from "./region-directory.service.js";
 import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
@@ -95,11 +96,13 @@ export class AdminController {
     checkAuth(req, headers);
     const domain = String(body.domain || "").trim().toLowerCase();
     const display_name = String(body.display_name || "").trim();
+    // 공개 브랜드명은 선택 입력이다. 비우면 brand.ts 폴백이 display_name 을 쓴다.
+    const brand_name = String(body.brand_name || "").trim();
     const vertical = String(body.vertical || DEFAULT_DRIVING_VERTICAL).trim();
     if (!domain || !display_name) throw new HttpException("domain, display_name required", 400);
     if (!this.db.getVerticals().some((v) => v.key === vertical)) throw new HttpException("등록되지 않은 업종입니다. 작업환경에서 먼저 추가하세요.", 400);
     if (this.db.getDomain(domain)) throw new HttpException("domain already exists", 409);
-    this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit, templates_enabled: JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS) });
+    this.db.createDomain({ domain, display_name, brand_name: brand_name || null, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit, templates_enabled: JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS) });
     // 새 도메인은 디자인 자동 매칭으로 시작한다: 글마다 슬롯의 글 유형 기본 디자인을 적용(docs/design-template-mapping.md).
     this.db.updateDomain(domain, { design_template_id: AUTO_DESIGN_TEMPLATE_ID, common_principles: body.common_principles || body.content_brief || DEFAULT_DRIVING_COMMON_PRINCIPLES });
     if (body.apply_preset !== false) this.slots.applyPreset(domain, vertical);
@@ -262,7 +265,7 @@ export class AdminController {
     const axes = (Array.isArray(body.axes) ? body.axes : []).map((a: any) => String(a)).filter((a: string) => ["persona", "intent", "modifier"].includes(a));
     if (!axes.length) throw new HttpException("axes required (persona/intent/modifier 중 하나 이상)", 400);
     const keywords = (Array.isArray(body.keywords) ? body.keywords : []).map((k: any) => String(k).trim()).filter(Boolean).slice(0, 20);
-    const prompt = buildAxisSuggestPrompt({ domainName: String(config.display_name || domain), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), keywords, axes, commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype) });
+    const prompt = buildAxisSuggestPrompt({ domainName: publicBrandName({ ...config, domain }), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), keywords, axes, commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype) });
     const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
     if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
     const suggestions = parseAxisSuggestion(result.summary, axes);
@@ -939,7 +942,7 @@ function renderSingleHtmlExport(domainConfig: Row, domain: string, post: Row): s
   const design = getDesignTheme(designId, domainConfig.brand_color);
   const articleClass = `design-${designId}`;
   const visibleDesignId = designId;
-  const brand = publicBrandName(String(domainConfig.display_name || domain));
+  const brand = publicBrandName({ ...domainConfig, domain });
   const title = String(post.title || brand);
   const contentHtml = toPreviewBlocks(prepareBodyHtml(String(post.body_html || ""), title));
   const chips = designChips(designId);
@@ -1180,7 +1183,6 @@ function parseAxisSuggestion(text: string, axes: string[]): Record<string, strin
   return out;
 }
 
-function publicBrandName(value: string): string { return value.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || value; }
 function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function escapeHtml(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c)); }
 function escapeAttr(s: string): string { return escapeHtml(s).replace(/'/g, "&#39;"); }

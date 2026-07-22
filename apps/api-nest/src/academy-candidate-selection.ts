@@ -225,3 +225,75 @@ function mulberry32(value: number): () => number {
     return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
   };
 }
+
+/**
+ * T16 전용 — 후보를 **거리 하나로만** 고른다.
+ *
+ * `selectAcademiesForRegion`(T01)은 지역 문자열로 조회한 후보(`direct`)를 거리와 무관하게 먼저
+ * 채운다. 그래서 지역 안의 먼 학원이 지역 밖의 가까운 학원보다 앞선다(실측: 34개 지역 중 4곳에서
+ * 역전. 김포시는 지역 내 7.4km 가 지역 밖 6.6km 보다 앞섰다). 또 저장 지역 표기가 흔들리면
+ * (`"경기 고양시"` vs `"경기도 고양시"`) 같은 구 안의 학원도 문자열 매칭에 실패한다.
+ *
+ * 학원 좌표는 현재 100% 채워져 있으므로 거리만으로 일관되게 정렬한다. 좌표가 없는 학원은
+ * 거리를 알 수 없어 후보에서 제외한다(잘못된 거리로 엉뚱한 지역에 편입되는 것보다 안전하다).
+ *
+ * 반경 상수는 T01 과 공유한다 — 별도 정책을 만들지 않는다.
+ */
+export function selectAcademiesByDistance(
+  db: AcademySelectionDb,
+  domain: string,
+  region: string,
+  limit: number,
+  academyTypes: string[] = [],
+  minRequired: number = ACADEMY_MIN_FOR_BEST,
+): AcademySelectionResult {
+  const trace: AcademySelectionTrace = {
+    targetRegion: region, configuredMinimum: minRequired, candidatePoolLimit: limit,
+    nearbyRadiusKm: ACADEMY_NEARBY_MAX_KM, farRadiusKm: ACADEMY_MIN_GUARANTEE_MAX_KM,
+    regionLikeCandidates: [], supplementCandidates: [], farCandidates: [],
+    duplicatesRemoved: [], excludedCandidates: [], mergedCandidatePool: [],
+  };
+  if (!academyTypes.length) return { candidates: [], trace };
+
+  const keyOf = (academy: Row) => String(academy.external_id || academy.id || academy.name);
+  const target = db.getSeoRegion(domain, region);
+  const targetLat = finiteNumber(target?.latitude);
+  const targetLng = finiteNumber(target?.longitude);
+  const all = db.listAcademies(domain, { academy_types: academyTypes, limit: 5000 });
+  for (const academy of all) {
+    if (!isUsableAcademy(academy)) trace.excludedCandidates.push({ academyId: keyOf(academy), academyName: String(academy.name || ""), reason: "not_usable" });
+  }
+  if (targetLat === null || targetLng === null) return { candidates: [], trace };
+
+  const scored = all
+    .filter(isUsableAcademy)
+    .map((academy) => ({ academy, distanceKm: academyDistanceKm(academy, targetLat, targetLng) }))
+    .filter((row): row is { academy: Row; distanceKm: number } => row.distanceKm !== null)
+    .sort((left, right) => left.distanceKm - right.distanceKm
+      || String(left.academy.name).localeCompare(String(right.academy.name), "ko"));
+
+  // 1차 반경으로 채우고, 최소 개수에 못 미치면 보장 반경까지만 확장한다(전국 아무거나 방지).
+  const within = scored.filter((row) => row.distanceKm <= ACADEMY_NEARBY_MAX_KM).slice(0, limit);
+  const picked = within.length >= minRequired
+    ? within
+    : scored.filter((row) => row.distanceKm <= ACADEMY_MIN_GUARANTEE_MAX_KM).slice(0, Math.max(limit, minRequired));
+
+  const inRegion = (academy: Row) => String(academy.address || "").includes(region) || String(academy.region || "") === region;
+  picked.forEach((row, index) => {
+    const candidate: AcademySelectionTraceCandidate = {
+      academyId: keyOf(row.academy), academyName: String(row.academy.name || ""),
+      storedRegion: String(row.academy.region || ""), address: String(row.academy.address || ""),
+      latitude: finiteNumber(row.academy.latitude), longitude: finiteNumber(row.academy.longitude),
+      straightLineDistanceKm: Math.round(row.distanceKm * 10) / 10,
+      retrievalSource: inRegion(row.academy) ? "stored_region_like" : row.distanceKm <= ACADEMY_NEARBY_MAX_KM ? "supplement" : "far_guarantee",
+      inclusionReason: inRegion(row.academy) ? "address_contains_target" : row.distanceKm <= ACADEMY_NEARBY_MAX_KM ? "within_nearby_radius" : "within_far_guarantee",
+      retrievalRank: index + 1,
+    };
+    (candidate.retrievalSource === "stored_region_like" ? trace.regionLikeCandidates
+      : candidate.retrievalSource === "supplement" ? trace.supplementCandidates
+      : trace.farCandidates).push(candidate);
+    trace.mergedCandidatePool.push(candidate);
+  });
+  // 거리순을 그대로 유지한다(그룹별로 나눠 담아도 후보 배열은 정렬 순서를 지킨다).
+  return { candidates: picked.map((row) => ({ ...row.academy, distance_km: Math.round(row.distanceKm * 10) / 10 })), trace };
+}

@@ -122,6 +122,33 @@ function stripPublicReviewAttribution(text) {
 }
 const REVIEW_SUPPLEMENT_LEAK_PATTERN = "(?:긍정\\s*)?(?:수강생|블로그)\\s*리뷰(?:글)?\\s*보충자료";
 
+// 거리·이동시간 단정 검사 — quality-gate.ts 의 distanceClaimIssues 미러.
+// 후보를 거리로 뽑더라도 본문에서 거리를 주장하면 안 된다(직선거리는 실제 이동을 설명하지 못한다).
+function distanceClaimIssues(markdown) {
+  const text = String(markdown || '');
+  const issues = [];
+  if (/\d+(?:\.\d+)?\s*(?:km|킬로미터)/iu.test(text)) issues.push('distance_number_claim');
+  if (/(?:직선\s*거리|도로\s*거리|이동\s*시간|소요\s*시간|차로\s*\d+\s*분|도보\s*\d+\s*분)/u.test(text)) issues.push('travel_time_claim');
+  return issues;
+}
+
+// 제목 부제가 주장하는 축을 facts 가 뒷받침하는지 — quality-gate.ts 의 titleAxisEvidenceIssues 미러.
+function titleAxisEvidenceIssues(title, facts) {
+  const t = String(title || '');
+  const f = String(facts || '');
+  const issues = [];
+  const claims = [
+    [/후기|리뷰/u, /수강생 리뷰:/u, 'title_claims_review_without_facts'],
+    [/셔틀/u, /셔틀:/u, 'title_claims_shuttle_without_facts'],
+    [/수강료|비용|최저가|가격/u, /수강료:/u, 'title_claims_price_without_facts'],
+    [/야간|주말|운영\s*시간|시간대/u, /영업시간:/u, 'title_claims_hours_without_facts'],
+  ];
+  for (const [inTitle, inFacts, code] of claims) {
+    if (inTitle.test(t) && !inFacts.test(f)) issues.push(code);
+  }
+  return issues;
+}
+
 // AI 상투표현 검사: quality-gate.ts 의 aiClicheIssues 와 동일 목록/규칙(형식적 메타서술·블로그 프레임·판박이 마무리).
 const AI_CLICHE_PHRASES = [
   "알아보겠습니다", "알아보도록", "알아보는 시간", "살펴보겠습니다", "살펴보도록", "짚어보겠습니다",
@@ -531,7 +558,7 @@ function walk(dir, found) {
 }
 
 // quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
-export { adjacentHeadingCount, AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
+export { distanceClaimIssues, titleAxisEvidenceIssues, adjacentHeadingCount, AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
 
 // CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

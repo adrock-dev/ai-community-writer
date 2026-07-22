@@ -143,4 +143,30 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
       expect(qa.renderMarkdown(sample, images)).toBe(stripCardWrapper(renderMarkdown(sample, images)));
     });
   }
+
+  // T16 게이트도 두 구현이 갈라지면 안 된다 — 런타임은 막고 qa 는 통과시키는(또는 반대) 드리프트 방지.
+  describe("distanceClaimIssues", () => {
+    const samples = ["학원까지 13.2km 거리입니다.", "약 5 km 안에 있습니다.", "직선 거리로 가깝습니다.", "차로 15분 걸립니다.", "도보 10분 거리입니다.", "거리와 상관없이 상담에서 확인하세요."];
+    for (const sample of samples) {
+      it(`탐지 결과가 일치한다: "${sample.slice(0, 16)}"`, () => {
+        expect(qa.distanceClaimIssues(sample)).toEqual(qg.distanceClaimIssues(sample));
+      });
+    }
+  });
+
+  describe("titleAxisEvidenceIssues", () => {
+    const cases: Array<[string, string]> = [
+      ["○○시 운전면허학원 BEST 5! 수강생 후기로 확인하는", "[1] 가 / 주소: 서울"],
+      ["○○시 운전면허학원 BEST 5! 수강생 후기로 확인하는", "[1] 가 / 수강생 리뷰: “좋아요”"],
+      ["○○시 운전면허학원 BEST 5! 셔틀 운행 지역과 면허 과정 고르기", "[1] 가 / 주소: 서울"],
+      ["○○시 운전면허학원 BEST 5! 수강료 비교와 운영 시간까지", "[1] 가 / 수강료: 70만원 / 영업시간: 09-18"],
+      ["○○시 운전면허학원 BEST 5! 상담 전 체크와 면허 과정 고르기", "[1] 가 / 주소: 서울"],
+    ];
+    for (const [title, facts] of cases) {
+      it(`탐지 결과가 일치한다: "${title.slice(-14)}"`, () => {
+        expect(qa.titleAxisEvidenceIssues(title, facts)).toEqual(qg.titleAxisEvidenceIssues(title, facts));
+      });
+    }
+  });
+
 });

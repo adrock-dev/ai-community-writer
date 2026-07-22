@@ -30,6 +30,8 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS domains (
   domain TEXT PRIMARY KEY,
   display_name TEXT NOT NULL,
+  -- 공개 브랜드명(글 본문·CTA·공개 API). 비면 display_name 으로 폴백한다(brand.ts).
+  brand_name TEXT,
   vertical TEXT NOT NULL,
   theme TEXT NOT NULL DEFAULT 'clean' CHECK (theme IN ('clean','modern','pro')),
   brand_color TEXT DEFAULT '#0066ff',
@@ -329,6 +331,9 @@ export class DbService implements OnModuleInit {
 
   private migrate(): void {
     const domainCols = new Set(this.all("PRAGMA table_info(domains)").map((r) => r.name));
+    // 공개 브랜드명 분리. NULL 로 추가만 하고 값을 채우지 않는다 — 폴백(brand.ts)이 기존 동작을
+    // 그대로 유지하므로, 운영자가 직접 지정한 도메인만 라벨과 브랜드가 갈라진다.
+    if (!domainCols.has("brand_name")) this.db.exec("ALTER TABLE domains ADD COLUMN brand_name TEXT");
     if (!domainCols.has("design_template_id")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_id TEXT NOT NULL DEFAULT 'local-guide'");
     if (!domainCols.has("design_template_overrides")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_overrides TEXT");
     if (!domainCols.has("custom_design_templates")) this.db.exec("ALTER TABLE domains ADD COLUMN custom_design_templates TEXT");
@@ -504,12 +509,12 @@ export class DbService implements OnModuleInit {
       FROM domains t ORDER BY t.created_at DESC`);
   }
   getDomain(domain: string): Row | undefined { return this.get("SELECT * FROM domains WHERE domain=?", [domain]); }
-  createDomain(input: { domain: string; display_name: string; vertical: string; theme?: string; brand_color?: string; daily_limit?: number; templates_enabled?: string }): void {
-    this.run(`INSERT INTO domains (domain, display_name, vertical, theme, brand_color, daily_limit, templates_enabled) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [input.domain, input.display_name, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0, input.templates_enabled || JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS)]);
+  createDomain(input: { domain: string; display_name: string; brand_name?: string | null; vertical: string; theme?: string; brand_color?: string; daily_limit?: number; templates_enabled?: string }): void {
+    this.run(`INSERT INTO domains (domain, display_name, brand_name, vertical, theme, brand_color, daily_limit, templates_enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [input.domain, input.display_name, input.brand_name || null, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0, input.templates_enabled || JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS)]);
   }
   updateDomain(domain: string, fields: Row): void {
-    const allowed = new Set(["display_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords", "monitored_phrases"]);
+    const allowed = new Set(["display_name", "brand_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords", "monitored_phrases"]);
     const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
     if (!entries.length) return;
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);

@@ -37,6 +37,8 @@ export interface PostDetail extends PostListItem {
 
 export interface SiteConfig {
   domain: string;
+  /** 공개 브랜드명. 구버전 API 는 이 필드가 없으므로 display_name 으로 폴백한다. */
+  brand_name?: string | null;
   display_name: string;
   brand_color: string | null;
   design_template_id: string;

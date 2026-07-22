@@ -103,7 +103,10 @@ export interface AcademyCoverage {
 
 export interface DomainConfig {
   domain: string;
+  /** 관리자 목록에서 도메인을 구분하는 내부 라벨. */
   display_name: string;
+  /** 글 본문·CTA·공개 API 에 노출되는 이름. 비면 display_name 으로 폴백(lib/brand.ts). */
+  brand_name?: string | null;
   vertical: string;
   theme: string;
   brand_color: string | null;

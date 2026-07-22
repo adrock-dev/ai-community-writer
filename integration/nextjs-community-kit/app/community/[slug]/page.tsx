@@ -37,7 +37,8 @@ export default async function CommunityPostPage({ params }: { params: Promise<{ 
   if (!result) notFound();
   const { post, site } = result;
   const bodyHtml = stripLeadingH1(post.body_html);
-  const brand = site?.display_name?.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || undefined;
+  // 브랜드 정규화는 API(publicSiteSummary)가 끝낸 상태로 내려온다 — 여기서 다시 손대지 않는다.
+  const brand = (site?.brand_name || site?.display_name)?.trim() || undefined;
   const jsonLd = buildPostJsonLd(post, site);
 
   return (

@@ -4,12 +4,14 @@ import { resolve } from "node:path";
 import { runLlm } from "./llm-runner.js";
 import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, DRIVING_AUTHORITATIVE_SOURCES_GUIDE, TITLE_RULES, defaultDesignForTemplate, type TitleRule } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
+import { publicBrandName } from "./brand.js";
+import { buildT16AxisPlan, normalizeT16ReviewAttribution, t16FactsForPrompt, t16PromptContract, t16StructureGuide, T16_TEMPLATE_ID, type T16AxisPlan } from "./t16-axis-comparison.js";
 import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
-import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
-import { seededCandidateSample, selectAcademiesForRegion } from "./academy-candidate-selection.js";
+import { articleQualityIssues, distanceClaimIssues, titleAxisEvidenceIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
+import { seededCandidateSample, selectAcademiesByDistance, selectAcademiesForRegion } from "./academy-candidate-selection.js";
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
 import { studentReviewFactLines } from "./academy-review-evidence.js";
@@ -56,7 +58,7 @@ function draftFromGeneration(domain: string, slot: Row, input: {
   };
 }
 
-type GenerationFacts = { text: string; images: Record<string, string>; academyCount: number; firstAcademyName: string };
+type GenerationFacts = { text: string; images: Record<string, string>; academyCount: number; firstAcademyName: string; academies: Row[] };
 type ArticlePattern = { pattern_type?: string; pattern?: string; count?: number; example_title?: string; article_type?: string };
 type ArticlePatternSummary = { average_structure_metrics?: Row; top_title_patterns?: ArticlePattern[]; top_heading_patterns?: ArticlePattern[] };
 export type GenerationPromptOptions = {
@@ -196,7 +198,9 @@ export class WorkerService {
           : null;
         // 제목 규칙(생성 시점 해석): 실제 후보 수로 제목 확정 → 프롬프트 주입. 후보 수 부족(min_generate 미만)이면 생성하지 않는다.
         const titleRule = (templateSpec?.title_rule as TitleRule | undefined) ?? TITLE_RULES[String(slot.template_id || "")];
-        const titleCtx = { region: String(slot.region || ""), count: facts.academyCount, keyword: String(slot.primary_keyword || ""), academyName: facts.firstAcademyName };
+        // T16: 슬롯 축(modifier/intent)을 facts 근거로 검증·강등해 이 글의 비교 기준·필수 응답·제목 부제를 확정한다.
+        const t16Plan: T16AxisPlan | null = isT16Slot(slot, archetype) ? buildT16AxisPlan(slot, facts.academies) : null;
+        const titleCtx = { region: String(slot.region || ""), count: facts.academyCount, keyword: String(slot.primary_keyword || ""), academyName: facts.firstAcademyName, subtitle: t16Plan?.subtitle };
         const titleResolved = resolveTitleFromRule(titleRule, titleCtx);
         // 슬롯 수동 제목이 있으면 규칙 제목보다 우선(생성 시점 치환). 스킵 판정은 규칙(min_generate)이 유지한다.
         const forcedTitle = effectiveGenerationTitle(slot.title, titleResolved.title, titleCtx);
@@ -222,7 +226,7 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const promptFactsText = t01LegacyPlusContext ? legacyPlusFactsForPrompt(factsText) : factsText;
+        const promptFactsText = t01LegacyPlusContext ? legacyPlusFactsForPrompt(factsText) : t16Plan ? t16FactsForPrompt(factsText) : factsText;
         const t01PromptOptions: GenerationPromptOptions | undefined = t01LegacyPlusContext ? {
           structureGuide: legacyPlusStructureGuide(t01LegacyPlusContext),
           writingGuide: legacyPlusWritingGuide(t01LegacyPlusContext),
@@ -238,10 +242,18 @@ export class WorkerService {
           faqInstruction: legacyPlusFaqPromptInstruction(),
           readerFlow: true,
           t01Comparison: true,
+        } : t16Plan ? {
+          // T16: facts 가공·글 뼈대·톤은 Legacy Plus 의 범용 헬퍼를 재사용하고(SEO 설명·키워드·좌표·리뷰 제거,
+          // 원본 패턴 블록의 도메인 이탈 노이즈 차단), 구조만 축이 정한 열·주제·질문으로 확장한다.
+          structureGuide: t16StructureGuide(structureGuideForArchetype(archetype, structureSeed(slot)), t16Plan),
+          articlePatternGuide: legacyPlusArticlePatternGuide(),
+          designGuide: legacyPlusDesignGuide(),
+          readerFlow: true,
+          t01Comparison: true,
         } : (isT01Family ? { t01Comparison: true } : undefined);
         const effectiveDirection = t01LegacyPlusContext ? legacyPlusTemplateDirection(t01LegacyPlusContext) : templateDirection;
         const legacyPrompt = buildPrompt(domainMeta, slot, promptFactsText, designTemplateId, archetype, effectiveDirection, academyTypes.length > 0, forcedTitle, t01PromptOptions);
-        const t01Contract = t01LegacyPlusContext ? t01LegacyPlusPromptContract(t01LegacyPlusContext) : "";
+        const t01Contract = t01LegacyPlusContext ? t01LegacyPlusPromptContract(t01LegacyPlusContext) : t16Plan ? t16PromptContract(t16Plan, slot) : "";
         const prompt = t01Contract ? `${legacyPrompt}\n\n${t01Contract}` : legacyPrompt;
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
@@ -249,8 +261,9 @@ export class WorkerService {
         if (!result.ok || !result.summary.trim()) throw new Error(result.error || "empty summary");
         let markdown = normalizeGeneratedMarkdown(result.summary, images, domain);
         if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
+        if (t16Plan) markdown = normalizeT16ReviewAttribution(markdown);
         let t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
-        let qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
+        let qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...(t16Plan ? [...distanceClaimIssues(markdown), ...titleAxisEvidenceIssues(forcedTitle || "", promptFactsText)] : []), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
         let durationSec = result.duration_sec;
         let costUsd = result.cost_usd || 0;
         let inputTokens = result.input_tokens || 0;
@@ -374,14 +387,17 @@ export class WorkerService {
   }
 
   private buildFacts(domain: string, slot: Row, opts: { maxAcademyImages?: number; perAcademyImages?: number } = {}, academyTypes?: string[], archetype?: Archetype): GenerationFacts {
-    if (!slot.region) return { text: "", images: {}, academyCount: 0, firstAcademyName: "" };
+    if (!slot.region) return { text: "", images: {}, academyCount: 0, firstAcademyName: "", academies: [] };
     const region = String(slot.region);
     // 후보 풀 크기·최소 개수·글에 쓰는 개수는 아키타입이 정한다(비교형 7/2/5, 단독형 1/1/1).
     const poolSize = academyPool(archetype);
     const minReq = academyMin(archetype);
     const used = Math.min(poolSize, ACADEMY_USED_PER_POST);
     // 풀(가까운 순)에서 슬롯별 시드 랜덤으로 used 곳을 뽑는다. 같은 슬롯은 항상 같은 조합(재현), 다른 슬롯은 다른 조합.
-    const pool = this.pickAcademiesForRegion(domain, region, poolSize, academyTypes, minReq);
+    // T16 은 거리 단일 기준으로 뽑는다(지역 문자열 매칭을 거리보다 우선하지 않는다).
+    const pool = isT16Slot(slot, archetype)
+      ? selectAcademiesByDistance(this.db, domain, region, poolSize, academyTypes ?? [], minReq).candidates
+      : this.pickAcademiesForRegion(domain, region, poolSize, academyTypes, minReq);
     const seed = String(slot.slot_id ?? slot.id ?? `${region}|${slot.primary_keyword ?? ""}`);
     const academies = seededCandidateSample(pool, used, seed);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
@@ -421,7 +437,7 @@ export class WorkerService {
       `작성 범위: 아래 항목에 없는 학원명·가격·합격률·셔틀·후기는 만들지 않는다`,
       `노출 방식: 이 입력 묶음 자체를 출처나 참고자료로 쓰지 않는다`,
     ].join("\n");
-    return { text: [header, body, relatedText].filter(Boolean).join("\n\n"), images, academyCount: academies.length, firstAcademyName: String(academies[0]?.name || "") };
+    return { text: [header, body, relatedText].filter(Boolean).join("\n\n"), images, academyCount: academies.length, firstAcademyName: String(academies[0]?.name || ""), academies };
   }
 
   private imagesForSlot(domain: string, slot: Row): Record<string, string> {
@@ -789,8 +805,9 @@ function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplate
     ? "실제 소재지가 대상 지역과 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, 비교표 또는 해당 학원 소개에서 실제 지역만 정확히 적는다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다."
     : "주소가 주제 지역과 다른 후보는 해당 지역 안의 학원이 아니라 \"인근 후보\"로만 구분해 설명한다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.";
   const repairNaturalToneGuide = options?.readerFlow
-    ? `원문보다 더 자연스럽고 풍성한 ${brand} 블로그 톤으로 작성하되, 면허 과정·운영 형태·실제 수강생 경험은 실제 차이가 있을 때만 보이게 한다. 주소를 비교의 중심이나 장점으로 만들지 않고, 표·기본 정보·체크리스트가 같은 사실을 반복하지 않게 한다. ${personaMobilityGuide}`
-    : `원문보다 더 자연스럽고 풍성한 ${brand} 블로그 톤으로 작성하되, 원본 레퍼런스처럼 구체적인 지역 생활권·비용 확인점·사진·내부링크·CTA가 보이게 만든다.`;
+    // buildPrompt 와 같은 이유로 브랜드명을 톤 지시에서 뺀다(모델이 모르는 대상은 톤 앵커가 못 된다).
+    ? `원문보다 더 자연스럽고 풍성한 블로그 톤으로 작성하되, 면허 과정·운영 형태·실제 수강생 경험은 실제 차이가 있을 때만 보이게 한다. 주소를 비교의 중심이나 장점으로 만들지 않고, 표·기본 정보·체크리스트가 같은 사실을 반복하지 않게 한다. ${personaMobilityGuide}`
+    : "원문보다 더 자연스럽고 풍성한 블로그 톤으로 작성하되, 원본 레퍼런스처럼 구체적인 지역 생활권·비용 확인점·사진·내부링크·CTA가 보이게 만든다.";
   return `아래 Markdown 글은 품질 게이트를 통과하지 못했다. 확인된 콘텐츠 재료만 사용해서 같은 주제의 완성형 글로 다시 작성하라.
 
 브랜드: ${brand}
@@ -875,6 +892,12 @@ function isSelectableDesign(id: string): boolean {
 }
 
 // 구조 변형 선택 시드 — 학원 샘플링과 동일하게 슬롯 식별자 기반(같은 슬롯=같은 구조=재현성).
+// T16 계열 판정 — 빌트인 T16 과 T16 에서 복제한 커스텀 유형(kind=local_axis) 모두 포함.
+// 커스텀은 template_id 가 다르므로 아키타입으로도 본다.
+function isT16Slot(slot: Row, archetype?: Archetype): boolean {
+  return String(slot.template_id || "") === T16_TEMPLATE_ID || archetype?.id === "local_axis";
+}
+
 function structureSeed(slot: Row): string {
   return String(slot.slot_id ?? slot.id ?? `${slot.region ?? ""}|${slot.primary_keyword ?? ""}`);
 }
@@ -902,7 +925,7 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
       "- 후보 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·자체시험·수강생 리뷰를 필요한 경우에만 활용한다. 각 후보는 반드시 `### 학원명` H3로 시작하고, 한두 문장의 자연스러운 소개 뒤에 제공된 주소·전화·운영 과정·운영 형태 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리한다. 후보별 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 주소는 기본 정보이지 추천 이유가 아니다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다.",
     ].join("\n")
     : [
-      `- 딱딱한 데이터 나열이 아니라 ${brand} 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 후보로 연결한다.`,
+      "- 딱딱한 데이터 나열이 아니라 사람이 쓴 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 후보로 연결한다.",
       "- 원본처럼 \"왜 이 후보가 이 지역/상황에 맞는지\"를 구체화한다. 주소만 쓰지 말고 생활권, 셔틀 확인 포인트, 면허 종류, 상담 질문, 사진을 같이 엮는다.",
       "- 후보 소개는 원본 블로그의 카드형 리듬을 따른다. 후보마다 반드시 '### 후보명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.",
     ].join("\n");
@@ -910,7 +933,9 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
     ? "- 각 후보는 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 비교표의 중심 열로 쓰지 않는다."
     : "- 후보별 설명에는 가능한 경우 학원명, 주소, 전화, 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다. 전화번호는 자료에 있는 번호만 그대로 쓰고 다른 번호를 만들지 않는다.";
   const academyPrinciples = options?.academyPrinciples ?? DRIVING_ACADEMY_PRINCIPLES;
-  return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
+  // 역할 문장에는 브랜드명을 넣지 않는다. 모델은 그 브랜드의 기존 글을 모르므로 "○○ 블로그처럼"은
+  // 실질 지시가 없는 빈 문장이 되고, 아래 「브랜드:」 선언과 CTA 지침이 이미 이름을 전달한다.
+  return `너는 한국어 SEO 블로그 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 
 브랜드: ${brand}
 업종: ${domain.vertical || "driving"}
@@ -1134,9 +1159,6 @@ function formatMetric(value: any, fallback: string): string {
 }
 
 
-function publicBrandName(domain: Row): string {
-  return String(domain.display_name || domain.domain || "서비스").replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || "서비스";
-}
 function extractTitle(md: string, fallback: string) {
   return cleanGeneratedTitle(md.split(/\r?\n/).map((l) => l.trim()).find((l) => l.startsWith("# "))?.slice(2).trim() || fallback);
 }
@@ -1152,7 +1174,7 @@ export function resolveTitleFromRule(rule: TitleRule | undefined, ctx: TitleCont
   const title = substituteTitlePlaceholders(template, ctx);
   return { title: title || null, skip: false };
 }
-type TitleContext = { region: string; count: number; keyword: string; academyName: string };
+type TitleContext = { region: string; count: number; keyword: string; academyName: string; subtitle?: string };
 // 제목 플레이스홀더 치환(규칙·수동 오버라이드 공용). {개수} = 실제 후보 수(직접+인근+보장 선정분).
 export function substituteTitlePlaceholders(template: string, ctx: TitleContext): string {
   return template
@@ -1160,6 +1182,8 @@ export function substituteTitlePlaceholders(template: string, ctx: TitleContext)
     .replace(/\{개수\}/g, String(ctx.count))
     .replace(/\{키워드\}/g, ctx.keyword)
     .replace(/\{학원명\}/g, ctx.academyName)
+    // {부제}는 T16 축 계획이 채운다. 값이 없으면 앞의 구분 기호("! ")까지 함께 지워 제목이 깨지지 않게 한다.
+    .replace(/\s*[!·]?\s*\{부제\}/g, ctx.subtitle ? `! ${ctx.subtitle}` : "")
     .replace(/\s+/g, " ").trim();
 }
 // 확정 제목 우선순위: 슬롯 수동 제목 > 규칙 제목 > null(=LLM H1). 수동 제목도 생성 시점 플레이스홀더 치환.

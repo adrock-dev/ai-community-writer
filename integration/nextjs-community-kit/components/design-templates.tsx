@@ -48,7 +48,8 @@ export interface DesignLayoutProps {
  * PostRenderer 가 만든 본문을 children 으로 받는다.
  */
 export function DesignLayout({ designId, title, ctaHref = "#", brand = "운전면허플러스", brandColor, children }: DesignLayoutProps): ReactNode {
-  const publicBrand = brand.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || brand;
+  // 브랜드 정규화는 API(publicSiteSummary)가 완료한 상태로 내려온다 — 여기서 다시 손대지 않는다.
+  const publicBrand = brand.trim() || brand;
   const d = resolveDesign(designId);
   const spec = SPECS[d];
   const accent = normalizeHexColor(brandColor, spec.accent);

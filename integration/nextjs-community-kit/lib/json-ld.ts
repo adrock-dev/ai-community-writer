@@ -26,7 +26,7 @@ export function buildPostJsonLd(post: PostDetail, site: SiteConfig | null): Reco
   if (!SITE_BASE) return null;
   const url = `${SITE_BASE}/community/${post.slug}`;
   const images = Object.values(post.images ?? {}).filter(Boolean);
-  const publisherName = site?.display_name || site?.domain || undefined;
+  const publisherName = site?.brand_name || site?.display_name || site?.domain || undefined;
   // author 는 사이트 조직(이름+홈 URL), publisher 는 여기에 로고까지(Article 은 publisher.logo 를 권장).
   // 로고는 site.logo_url 이 설정됐을 때만 넣는다(없으면 생략 — 날조하지 않는다).
   const org = publisherName ? { "@type": "Organization", name: publisherName, ...(SITE_BASE ? { url: SITE_BASE } : {}) } : undefined;

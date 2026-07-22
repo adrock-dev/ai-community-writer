@@ -115,6 +115,43 @@ function stripOwnSiteRefs(text: string, siteHost?: string): string {
     .replace(/출처:\s*DrivingPlus\s+수강생\s+리뷰/gi, "");
 }
 
+/**
+ * 거리·이동시간 단정 검사 (T16 등 거리 기준으로 후보를 뽑는 글유형).
+ *
+ * 후보를 거리로 고르더라도 본문에서 거리를 주장하면 안 된다. 직선거리는 강 건너 3km 가 실제
+ * 40분인 것을 설명하지 못해 독자를 오도한다. 후보 선택 기준(내부)과 본문 서술(외부)을 분리한다.
+ */
+export function distanceClaimIssues(markdown: string): string[] {
+  const text = String(markdown || "");
+  const issues: string[] = [];
+  if (/\d+(?:\.\d+)?\s*(?:km|킬로미터)/iu.test(text)) issues.push("distance_number_claim");
+  if (/(?:직선\s*거리|도로\s*거리|이동\s*시간|소요\s*시간|차로\s*\d+\s*분|도보\s*\d+\s*분)/u.test(text)) issues.push("travel_time_claim");
+  return issues;
+}
+
+/**
+ * 제목 부제가 주장하는 축을 facts 가 뒷받침하는지 검사.
+ *
+ * 제목은 프롬프트의 최상위 계약이라 본문이 제목을 따라간다. "수강생 후기로 확인하는" 인데 리뷰가
+ * 없으면 모델이 후기를 지어내는 압력이 생긴다. 축 강등(t16-axis-comparison)이 정상 동작하면
+ * 여기서 걸릴 일이 없다 — 이 게이트는 그 강등이 깨졌을 때의 마지막 방어선이다.
+ */
+export function titleAxisEvidenceIssues(title: string, facts: string): string[] {
+  const t = String(title || "");
+  const f = String(facts || "");
+  const issues: string[] = [];
+  const claims: Array<[RegExp, RegExp, string]> = [
+    [/후기|리뷰/u, /수강생 리뷰:/u, "title_claims_review_without_facts"],
+    [/셔틀/u, /셔틀:/u, "title_claims_shuttle_without_facts"],
+    [/수강료|비용|최저가|가격/u, /수강료:/u, "title_claims_price_without_facts"],
+    [/야간|주말|운영\s*시간|시간대/u, /영업시간:/u, "title_claims_hours_without_facts"],
+  ];
+  for (const [inTitle, inFacts, code] of claims) {
+    if (inTitle.test(t) && !inFacts.test(f)) issues.push(code);
+  }
+  return issues;
+}
+
 export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>, boilerplatePhrases: string[] = [], siteHost?: string): string[] {
   const issues: string[] = [];
   const chars = markdown.trim().length;

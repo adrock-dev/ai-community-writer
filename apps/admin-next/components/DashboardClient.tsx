@@ -58,6 +58,7 @@ export default function DashboardClient() {
         body: JSON.stringify({
           domain: newDomain,
           display_name: String(fd.get("display_name") || "").trim(),
+          brand_name: String(fd.get("brand_name") || "").trim(),
           vertical: String(fd.get("vertical") || "").trim(),
           brand_color: String(fd.get("brand_color") || "#2563eb"),
           daily_limit: Number(fd.get("daily_limit") || 0),
@@ -108,8 +109,10 @@ export default function DashboardClient() {
         <form onSubmit={createDomain} className="card card-pad grid" style={{ maxWidth: 720, marginBottom: 20 }}>
           <div className="grid grid-2">
             <Field label="도메인"><input className="input" name="domain" placeholder="drive.example.com" required pattern="[a-z0-9.\-]+" /></Field>
-            <Field label="표시 이름"><input className="input" name="display_name" placeholder="강남 운전면허센터" required /></Field>
+            <Field label="표시 이름 (관리자 전용)"><input className="input" name="display_name" placeholder="예: 평택 운영본" required /></Field>
           </div>
+          <Field label="브랜드명 (글에 노출 · 선택)"><input className="input" name="brand_name" placeholder="예: 운전면허플러스" /></Field>
+          <p className="muted small">생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다.</p>
           <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</select></Field>
           <div className="grid grid-2">
             <Field label="브랜드 컬러">

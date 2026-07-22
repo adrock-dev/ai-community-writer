@@ -42,6 +42,15 @@ export const B_ISSUE_STEMS: readonly string[] = [
   "risky_duration_or_pass_guarantee_claim",
   "unverified_specific_price_claim",
   "unverified_review_claim",
+  // T16 — 후보를 거리로 뽑더라도 본문에서 거리를 주장하면 독자를 오도한다(직선거리 ≠ 실제 이동).
+  "distance_number_claim",
+  "travel_time_claim",
+  // T16 — 제목 부제가 주장하는 축을 facts 가 뒷받침하지 못하면 모델이 지어내는 압력이 생긴다.
+  // 축 강등(t16-axis-comparison)이 정상이면 여기 걸릴 일이 없다 — 마지막 방어선.
+  "title_claims_review_without_facts",
+  "title_claims_shuttle_without_facts",
+  "title_claims_price_without_facts",
+  "title_claims_hours_without_facts",
   // facts 가 준 안심번호 외의 전화번호(실번호·셔틀 안내문에 섞인 번호 등)를 노출한 경우.
   "unlisted_phone_number",
   "inflated_candidate_count",
