@@ -572,7 +572,7 @@ function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { t
   if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "테스트 작성 시작", mode: "basic", focus: "test-write" };
   if (domain.templates_enabled.length === 0) return { title: "글 생성 준비를 시작하세요", desc: "새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있습니다. 「글 생성」 흐름을 처음부터 따라가세요.", cta: "글 생성 흐름 시작", mode: "basic", focus: "source" };
   if (totalSlots === 0) return { title: "원천 데이터부터 준비하세요", desc: "글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 글 후보를 만드세요.", cta: "원천 데이터 준비", mode: "basic", focus: "source" };
-  if (!domain.common_principles) return { title: "공통 원칙을 먼저 저장하세요", desc: "후보는 있지만 공통 작성 원칙이 비어 있습니다. 확인된 데이터 사용·과장 금지 같은 공통 기준을 잡으면 생성 품질이 안정됩니다.", cta: "공통 원칙 열기", mode: "basic", focus: "plan" };
+  if (!domain.common_principles) return { title: "공통 원칙을 먼저 저장하세요", desc: "후보는 있지만 공통 작성 원칙이 비어 있습니다. 이 사이트에서만 쓰는 말투·태도를 적어 두면 글의 결이 일정해집니다.", cta: "공통 원칙 열기", mode: "basic", focus: "plan" };
   if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "완성 글 검수", mode: "review", focus: "posts" };
   return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "후보 만들기", mode: "basic", focus: "slot-create" };
 }
@@ -588,8 +588,8 @@ function Principles({ domain, busy, onSave, onRefresh }: { domain: DomainConfig;
   }
   return <div className="card card-pad grid" data-tour="plan-brief">
     <h2>공통 작성 원칙</h2>
-    <p className="muted" style={{ margin: "-8px 0" }}>모든 글 유형에 공통 적용되는 안전·데이터 원칙, 제외어, 그리고 <b>키워드 마스터</b>(아래 표)입니다. 글 유형별 방향성·축·키워드 선택은 「글유형/디자인」 탭의 커스텀 글유형에서 관리합니다(빌트인 글유형은 복제해 커스텀으로 조정).</p>
-    <Field label="공통 작성 원칙 (모든 글 유형 공통)"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="확인된 데이터만 사용하고, 가격·합격률·셔틀은 자료가 있을 때만 단정한다. 확인 가능한 사실이 부족하면 숫자를 부풀리지 말고 확인 방법 중심으로 정직하게 작성한다." /></Field>
+    <p className="muted" style={{ margin: "-8px 0" }}>모든 글 유형에 공통 적용되는 <b>말투·태도</b>, 제외어, 그리고 <b>키워드 마스터</b>(아래 표)입니다. 글 유형별 방향성·축·키워드 선택은 「글유형/디자인」 탭의 커스텀 글유형에서 관리합니다(빌트인 글유형은 복제해 커스텀으로 조정).</p>
+    <Field label="공통 작성 원칙 (모든 글 유형 공통)"><textarea className="textarea" rows={7} value={brief} onChange={(e) => setBrief(e.target.value)} placeholder="처음 준비하는 독자도 이해할 수 있는 쉬운 표현을 쓰되, 신뢰감 있는 전문가의 설명 톤을 유지한다.&#10;광고성·낚시성 문구와 근거 없는 과장 표현을 쓰지 않는다.&#10;경쟁 브랜드나 특정 업체를 비방하지 않고 균형 있게 설명한다." /><p className="muted small"><b>이 사이트만의 말투·태도</b>를 적는 칸입니다. 확인된 데이터만 사용·가격/합격률 날조 금지·후보 수 부풀리기 금지 같은 <b>안전·데이터 규칙은 이미 생성 프롬프트와 품질 게이트가 강제</b>하므로 여기에 다시 적지 않아도 됩니다. 오히려 중복해서 채우면 이 칸에서만 전달되는 말투 지시가 묻힙니다. 비워 두면 기본 원칙이 적용됩니다.</p></Field>
     <Field label="생성 제외 키워드/문구"><textarea className="textarea" rows={4} value={excludedKeywords} onChange={(e) => setExcludedKeywords(e.target.value)} placeholder={"실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보"} /><p className="muted small">한 줄에 하나씩 입력하면 후보 생성, 후보 검색, 작성 큐, 최종 저장 전에 제외됩니다.</p></Field>
     <Field label="반복 감시 문구 (중복 방지)"><textarea className="textarea" rows={4} value={monitoredPhrases} onChange={(e) => setMonitoredPhrases(e.target.value)} placeholder={"후기 요약에서는 친절한 상담과 꼼꼼한 설명이 확인됩니다\n정리하면 선택 기준은 단순합니다"} /><p className="muted small">여러 글에서 똑같이 반복되는 판박이 문장을 한 줄에 하나씩 입력하면, 생성 품질 게이트가 이 문구를 감지해 다른 표현으로 다시 쓰도록(중복 콘텐츠 방지) 합니다. 제외어와 달리 글을 건너뛰지 않고 재작성합니다.</p></Field>
     <div className="row"><button className="btn primary" onClick={save} disabled={busy}>{busy ? "저장 중..." : "저장"}</button></div>
