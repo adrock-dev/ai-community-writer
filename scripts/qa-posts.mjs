@@ -329,6 +329,10 @@ function renderedSurfaceIssues(html, expected) {
   if (tableRowCount < expected.tableRows) issues.push(`rendered_missing_table_rows:${tableRowCount}/${expected.tableRows}`);
   if (expected.usedImageKeys.length && renderedImageCount !== expected.usedImageKeys.length) issues.push(`rendered_image_mismatch:${renderedImageCount}/${expected.usedImageKeys.length}`);
   if (/<h1>[\s\S]*\n[\s\S]*<\/h1>/.test(html)) issues.push('rendered_h1_wraps_body');
+  // 마크다운 마커가 벗겨지지 않은 채 문단으로 떨어진 경우(리스트가 문단으로 렌더된 흔적).
+  // 발행 글 21건 중 7건에서 체크리스트 마지막 항목이 `<p>- ✅ …</p>` 로 새던 것을 잡는다.
+  const markerParagraphs = (html.match(/<p>\s*(?:[-*]\s+|\d+[.)]\s+)/g) || []).length;
+  if (markerParagraphs) issues.push(`rendered_list_marker_in_paragraph:${markerParagraphs}`);
   return issues;
 }
 
@@ -359,7 +363,10 @@ function markdownBlocks(markdown) {
   const blocks = [];
   let current = [];
   let currentKind = null;
+  // 리스트 도중의 빈 줄은 CommonMark 의 loose list 이지 리스트의 끝이 아니다(post-rendering.ts 와 동일 규칙).
+  let pendingListBreak = false;
   const flush = () => {
+    pendingListBreak = false;
     if (!current.length) return;
     blocks.push(current.join('\n').trim());
     current = [];
@@ -367,11 +374,13 @@ function markdownBlocks(markdown) {
   };
   for (const line of String(markdown || '').split(/\r?\n/)) {
     const trimmed = line.trim();
+    if (!trimmed && currentKind === 'list') { pendingListBreak = true; continue; }
     if (!trimmed || /^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(trimmed)) { flush(); continue; }
     const mixedImageBlocks = splitMixedImageTokenLine(trimmed);
     if (mixedImageBlocks) { flush(); blocks.push(...mixedImageBlocks); continue; }
     if (/^#{1,3}\s+/.test(trimmed) || /^\[IMAGE:[A-Za-z0-9_-]+\]$/.test(trimmed)) { flush(); blocks.push(trimmed); continue; }
     const kind = trimmed.includes('|') ? 'table' : isListLine(trimmed) ? 'list' : trimmed.startsWith('>') ? 'quote' : 'paragraph';
+    if (pendingListBreak) { if (kind !== 'list') flush(); pendingListBreak = false; }
     if (currentKind && currentKind !== kind) flush();
     currentKind = kind;
     current.push(trimmed);
@@ -414,7 +423,10 @@ function isListLine(line) {
 
 function isMarkdownListBlock(raw) {
   const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return lines.length >= 2 && lines.every(isListLine);
+  if (!lines.length) return false;
+  if (lines.length >= 2) return lines.every(isListLine);
+  // 한 줄짜리 블록은 진짜 마크다운 마커일 때만 리스트로 본다(post-rendering.ts 와 동일 규칙).
+  return /^[-*]\s+/.test(lines[0]) || /^\d+[.)]\s+/.test(lines[0]);
 }
 
 function renderMarkdownList(raw) {
@@ -502,7 +514,7 @@ function walk(dir, found) {
 }
 
 // quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
-export { AI_CLICHE_PHRASES, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution };
+export { AI_CLICHE_PHRASES, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
 
 // CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

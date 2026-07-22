@@ -84,7 +84,12 @@ function markdownBlocks(markdown: string): string[] {
   const blocks: string[] = [];
   let current: string[] = [];
   let currentKind: "paragraph" | "list" | "quote" | "table" | null = null;
+  // 리스트 도중의 빈 줄은 CommonMark 의 loose list 이지 리스트의 끝이 아니다. 여기서 바로 끊으면
+  // 뒤따르는 항목이 별도 블록(1줄짜리)이 되어 `- ` 마커가 그대로 노출된 <p> 로 렌더됐다.
+  // 다음 비어있지 않은 줄까지 보고 리스트가 이어지면 같은 블록으로 유지한다.
+  let pendingListBreak = false;
   const flush = () => {
+    pendingListBreak = false;
     if (!current.length) return;
     blocks.push(current.join("\n").trim());
     current = [];
@@ -92,11 +97,13 @@ function markdownBlocks(markdown: string): string[] {
   };
   for (const line of markdown.split(/\r?\n/)) {
     const trimmed = line.trim();
+    if (!trimmed && currentKind === "list") { pendingListBreak = true; continue; }
     if (!trimmed || /^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(trimmed)) { flush(); continue; }
     const mixedImageBlocks = splitMixedImageTokenLine(trimmed);
     if (mixedImageBlocks) { flush(); blocks.push(...mixedImageBlocks); continue; }
     if (/^#{1,3}\s+/.test(trimmed) || /^\[IMAGE:[A-Za-z0-9_-]+\]$/.test(trimmed)) { flush(); blocks.push(trimmed); continue; }
     const kind: "paragraph" | "list" | "quote" | "table" = trimmed.includes("|") ? "table" : isListLine(trimmed) ? "list" : trimmed.startsWith(">") ? "quote" : "paragraph";
+    if (pendingListBreak) { if (kind !== "list") flush(); pendingListBreak = false; }
     if (currentKind && currentKind !== kind) flush();
     currentKind = kind;
     current.push(trimmed);
@@ -149,7 +156,11 @@ function isListLine(line: string): boolean { return /^[-*]\s+/.test(line) || /^\
 
 function isMarkdownList(raw: string): boolean {
   const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return lines.length >= 2 && lines.every(isListLine);
+  if (!lines.length) return false;
+  if (lines.length >= 2) return lines.every(isListLine);
+  // 한 줄짜리 블록은 진짜 마크다운 마커(-, *, 1.)일 때만 리스트로 본다. isListLine 은 ✅ 로 시작하는
+  // 줄도 항목으로 보지만, ✅ 만 붙은 한 문장은 일반 문단일 수 있어 문단으로 남긴다(오탐 방지).
+  return /^[-*]\s+/.test(lines[0]!) || /^\d+[.)]\s+/.test(lines[0]!);
 }
 
 function renderMarkdownList(raw: string): string {

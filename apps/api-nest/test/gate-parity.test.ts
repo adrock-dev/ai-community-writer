@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import * as qg from "../src/quality-gate.js";
+import { renderMarkdown } from "../src/post-rendering.js";
 // 렌더 인식 게이트(scripts/qa-posts.mjs)는 런타임 게이트(quality-gate.ts)의 품질 규칙을 미러링한다.
 // 두 곳이 어긋나면(P6 드리프트 가드) 이 테스트가 실패한다. qa-posts.mjs 는 CLI 진입점에서만 main() 을
 // 돌리므로 import 는 부수효과가 없다(DB 를 열지 않는다).
@@ -89,6 +90,24 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
   for (const sample of repeatedSamples) {
     it(`repeatedSentenceIssues 탐지 결과가 일치한다: "${sample.slice(2, 18)}"`, () => {
       expect(detects(qa.repeatedSentenceIssues, sample)).toBe(detects(qg.repeatedSentenceIssues, sample));
+    });
+  }
+
+  // 품질 규칙뿐 아니라 렌더러도 qa-posts.mjs 에 미러돼 있다. 이쪽이 어긋나 있어서 loose list 렌더 버그가
+  // 두 곳에 똑같이 남아 있었고 게이트가 자기 버그를 못 잡았다. 유일한 의도적 차이는 학원 카드 래퍼다.
+  const stripCardWrapper = (html: string) => html.replace(/<section class="academy-card">/g, "").replace(/<\/section>/g, "");
+  const renderSamples: [string, Record<string, string>][] = [
+    ["- 첫째\n- 둘째\n\n- 셋째", {}],
+    ["본문 문단\n\n- 유일한 항목", {}],
+    ["본문\n\n✅ 확인이 필요합니다", {}],
+    ["- 항목\n\n이어지는 문단입니다", {}],
+    ["첫 문단\n\n둘째 문단", {}],
+    ["# 제목\n\n## 소제목\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- 항목\n\n- 항목2", {}],
+    ["### 학원명\n\n[IMAGE:academy_1]\n\n> 후기 — 출처: DrivingPlus 수강생 리뷰", { academy_1: "https://example.test/a.jpg" }],
+  ];
+  for (const [sample, images] of renderSamples) {
+    it(`renderMarkdown 결과가 두 렌더러에서 동일하다: "${sample.slice(0, 16).replace(/\n/g, "⏎")}"`, () => {
+      expect(qa.renderMarkdown(sample, images)).toBe(stripCardWrapper(renderMarkdown(sample, images)));
     });
   }
 });
