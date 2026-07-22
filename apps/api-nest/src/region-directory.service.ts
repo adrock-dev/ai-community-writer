@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { DbService } from "./db.service.js";
 import { DrivingplusApiService } from "./drivingplus-api.service.js";
 
@@ -17,7 +17,12 @@ export class RegionDirectoryService {
   /** 같은 프로세스에서 동시 요청이 겹쳐도 원천을 두 번 때리지 않는다. */
   private inFlight: Promise<{ fetched: number; upserted: number; skipped: number } | null> | null = null;
 
-  constructor(private readonly db: DbService, private readonly drivingplus: DrivingplusApiService) {}
+  // tsx(esbuild)는 emitDecoratorMetadata 를 지원하지 않아 타입만으로는 주입되지 않는다.
+  // 저장소의 다른 서비스와 같이 @Inject 를 명시한다(빠뜨리면 런타임에 undefined 가 된다).
+  constructor(
+    @Inject(DbService) private readonly db: DbService,
+    @Inject(DrivingplusApiService) private readonly drivingplus: DrivingplusApiService,
+  ) {}
 
   /** 행정구역은 수년 단위로만 바뀐다. 이 기간 안에 받은 사전은 다시 받지 않는다. */
   private static readonly FRESH_DAYS = 30;
