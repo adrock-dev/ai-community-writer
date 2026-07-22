@@ -196,11 +196,20 @@ function splitSentences(paragraph) {
     .filter(Boolean);
 }
 
+// `## 큰 주제` 다음에 `### 개별 항목`이 오는 것(상위→하위)은 정상 구조다. 사람이 쓴 글에서도
+// 흔하고, 하위 항목마다 본문이 있으면 읽는 데 문제가 없다. 예전에는 이것도 결함으로 보고
+// 후처리(ensureHeadingBodies)가 제목을 되풀이하는 문장을 끼워 넣어 통과시켰는데, 그 문장은
+// 정보량이 0이라 모든 글의 품질을 떨어뜨렸다. 같은 깊이 이하가 연달아 나올 때만 결함으로 본다
+// (`### 학원A` → `### 학원B` 는 실제로 내용이 빠진 것이다).
+function headingDepth(line) {
+  return (String(line).trim().match(/^#+/) || [""])[0].length;
+}
 function adjacentHeadingCount(body) {
   const lines = String(body || '').split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   let count = 0;
   for (let i = 0; i < lines.length - 1; i++) {
-    if (/^#{2,3}\s+/.test(lines[i] || '') && /^#{2,3}\s+/.test(lines[i + 1] || '')) count++;
+    const current = lines[i] || '', next = lines[i + 1] || '';
+    if (/^#{2,3}\s+/.test(current) && /^#{2,3}\s+/.test(next) && headingDepth(next) <= headingDepth(current)) count++;
   }
   return count;
 }
@@ -522,7 +531,7 @@ function walk(dir, found) {
 }
 
 // quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
-export { AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
+export { adjacentHeadingCount, AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
 
 // CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

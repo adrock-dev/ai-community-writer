@@ -498,7 +498,12 @@ function emptyHeadingIssues(markdown: string): T01QualityIssue[] {
     if (!/^#{2,3}\s+/.test(lines[index] || "")) continue;
     let next = index + 1;
     while (next < lines.length && !lines[next]!.trim()) next++;
-    if (next >= lines.length || /^#{1,3}\s+/.test(lines[next] || "")) return [issue("legacy_plus_empty_heading", "hard_failure", "내용 없는 H2/H3가 있음")];
+    // 상위→하위(H2 → H3)는 정상 구조이므로 비었다고 보지 않는다(quality-gate 의 adjacentHeadingCount 와 동일 기준).
+    const depth = (value: string) => (String(value).trim().match(/^#+/) || [""])[0].length;
+    const following = lines[next] || "";
+    if (next >= lines.length || (/^#{1,3}\s+/.test(following) && depth(following) <= depth(lines[index] || ""))) {
+      return [issue("legacy_plus_empty_heading", "hard_failure", "내용 없는 H2/H3가 있음")];
+    }
   }
   return [];
 }

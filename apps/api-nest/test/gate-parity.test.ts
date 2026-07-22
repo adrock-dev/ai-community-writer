@@ -102,6 +102,20 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
     });
   }
 
+  // 상위→하위 헤딩(`## 주제` → `### 항목`)은 정상 구조다. 두 게이트가 어긋나면 한쪽만
+  // 통과하는 글이 생기고, 예전처럼 후처리가 의미 없는 문장을 끼워 넣게 된다.
+  const headingSamples = [
+    "## 후보별 차이\n### 가나다학원\n본문입니다.",
+    "### 가나다학원\n### 라마바학원\n본문입니다.",
+    "## 첫 섹션\n## 둘째 섹션\n본문입니다.",
+    "## 섹션\n본문이 바로 옵니다.",
+  ];
+  for (const sample of headingSamples) {
+    it(`adjacentHeadingCount 가 두 게이트에서 같다: "${sample.slice(0, 18).replace(/\n/g, "⏎")}"`, () => {
+      expect(qa.adjacentHeadingCount(sample)).toBe(qg.adjacentHeadingCount(sample));
+    });
+  }
+
   const repeatedSamples = [
     "# 제목\n\n확인된 과정은 1종 보통, 2종 보통입니다.\n\n다른 설명이 이어진다.\n\n확인된 과정은 1종 보통, 2종 보통입니다.",
     "# 제목\n\nA학원은 평택시에 있습니다.\n\nB학원은 안성시에 있습니다.",
