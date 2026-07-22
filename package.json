@@ -15,7 +15,8 @@
     "test:golden": "npm --prefix apps/api-nest run test:golden",
     "lint": "biome lint",
     "format": "biome format --write",
-    "lint:fix": "biome check --write"
+    "lint:fix": "biome check --write",
+    "sync:academies": "npm --prefix apps/api-nest run sync:academies --"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.1"

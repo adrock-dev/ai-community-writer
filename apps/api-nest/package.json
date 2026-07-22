@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "worker:once": "tsx src/worker-once.ts",
-    "test:golden": "tsx scripts/tests/golden-runner.ts"
+    "test:golden": "tsx scripts/tests/golden-runner.ts",
+    "sync:academies": "tsx src/sync-academies-once.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",
