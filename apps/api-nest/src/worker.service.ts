@@ -13,6 +13,7 @@ import { seededCandidateSample, selectAcademiesForRegion } from "./academy-candi
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
 import { studentReviewFactLines } from "./academy-review-evidence.js";
+import { courseFactText } from "./academy-course-evidence.js";
 import { normalizeImageSlotMarkup } from "./post-rendering.js";
 import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 
@@ -392,6 +393,10 @@ export class WorkerService {
       for (const imageKey of imageKeys) images[imageKey.key] = imageKey.url;
       const parts = [`[${i + 1}] ${a.name}`];
       for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["전화", "phone"], ["대표전화", "vphone"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"]] as const) if (a[key]) parts.push(`${label}: ${a[key]}`);
+      // 운영 과정은 원천의 구조화 필드에서 온다. facts 에 명시해 두면 하위 경로가 SEO 설명을
+      // 다시 파싱하지 않아도 되고(단일 출처), 자동·수동 구분이 그대로 살아 있다.
+      const courses = courseFactText(a);
+      if (courses) parts.push(`운영 과정: ${courses}`);
       parts.push(...reviewFactsForAcademy(a, seed));
       const academyType = humanAcademyType(a.academy_type);
       if (academyType) parts.push(`운영 형태: ${academyType}`);
