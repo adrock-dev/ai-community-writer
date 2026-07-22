@@ -5,7 +5,8 @@ import { dirname, resolve } from "node:path";
 import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_TEMPLATE_IDS, DRIVING_ORIGINAL_TEMPLATE_IDS, TEMPLATE_SPECS, TITLE_RULES, type AxisName, type JobKind, type TemplateSpecShape, type TitleRule } from "./constants.js";
 import { parseExclusionTerms, slotExclusionSql } from "./exclusions.js";
 import { drivingplusApiBaseUrl } from "./runtime-config.js";
-import { formatOperatingHoursFact, formatShuttleFact, formatTuitionFact } from "./drivingplus-academy-facts.js";
+import { formatOperatingHoursFact, formatTuitionFact } from "./drivingplus-academy-facts.js";
+import { formatShuttleFact, type RegionDirectoryEntry } from "./drivingplus-shuttle-facts.js";
 import type { DrivingplusEducationPerformance, DrivingplusOperateHour, DrivingplusShuttleBus } from "./drivingplus-api.service.js";
 
 // node:sqlite is available in the project's Node 25 runtime and keeps the Nest port dependency-light.
@@ -936,6 +937,8 @@ export class DbService implements OnModuleInit {
     let reviewCount = 0, blogReviewCount = 0;
     const warnings: string[] = [];
     const regions = this.listSeoRegions(domain);
+    // 셔틀 운행 지역 판별용 전역 사전. 동기화 1회당 한 번만 읽고 학원별로 반경 안만 추린다.
+    const directory = this.listRegionDirectory() as unknown as Array<RegionDirectoryEntry & { latitude: number | null; longitude: number | null }>;
     const syncedAt = nowSql();
     this.transaction(() => {
       for (const row of rows) {
@@ -956,7 +959,7 @@ export class DbService implements OnModuleInit {
         // 합격률 원천은 어디에도 없다. 합격률로 오독하면 글에 근거 없는 합격 주장이 실린다.
         const performance = (row.educationPerformance ?? null) as DrivingplusEducationPerformance | null;
         const price = formatTuitionFact(performance);
-        const shuttle = formatShuttleFact((row.shuttleBuses ?? []) as DrivingplusShuttleBus[]);
+        const shuttle = formatShuttleFact((row.shuttleBuses ?? []) as DrivingplusShuttleBus[], nearbyDirectoryRegions(directory, nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude)));
         const hours = formatOperatingHoursFact((row.operateHour ?? null) as DrivingplusOperateHour | null);
         const extra = JSON.stringify({
           drivingplus_id: externalId,
@@ -1398,6 +1401,29 @@ function isPositiveReviewText(text: string, point: number | null): boolean {
   if (point !== null && point !== undefined && point < 4) return false;
   if (point !== null && point !== undefined && point >= 4) return true;
   return POSITIVE_REVIEW_RE.test(text);
+}
+
+// 셔틀 안내문에 등장한 지명을 판별할 때 후보를 학원 주변으로 좁힌다.
+// 전국 사전과 그냥 대조하면 "서구"·"남구"처럼 여러 도시에 있는 이름을 구분할 수 없다.
+const SHUTTLE_REGION_RADIUS_KM = 25;
+function nearbyDirectoryRegions<T extends { latitude: number | null; longitude: number | null }>(
+  directory: T[],
+  latitude: number | null,
+  longitude: number | null,
+): T[] {
+  if (latitude === null || longitude === null) return [];
+  return directory.filter((entry) => {
+    if (entry.latitude === null || entry.longitude === null) return false;
+    return haversineKm(latitude, longitude, entry.latitude, entry.longitude) <= SHUTTLE_REGION_RADIUS_KM;
+  });
+}
+
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLng = (lng2 - lng1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(a));
 }
 
 function bestRegionForAddress(address: string | null, regions: Row[]): string | null {

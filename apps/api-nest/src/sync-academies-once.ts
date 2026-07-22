@@ -1,6 +1,7 @@
 import "reflect-metadata";
 import { DbService } from "./db.service.js";
 import { DrivingplusApiService } from "./drivingplus-api.service.js";
+import { RegionDirectoryService } from "./region-directory.service.js";
 
 /**
  * 학원 동기화 1회 실행(worker-once 와 같은 CLI 진입점 패턴).
@@ -22,6 +23,10 @@ async function main(): Promise<void> {
 
   const api = new DrivingplusApiService();
   console.log(`[sync] base=${api.baseUrl} domain=${domain}`);
+
+  // 셔틀 운행 지역은 이 시점에 계산해 저장하므로 지역 사전이 먼저 있어야 한다.
+  const ensured = await new RegionDirectoryService(db, api).ensure().catch(() => null);
+  if (ensured) console.log(`[sync] 지역 사전 준비: upserted=${ensured.upserted}`);
 
   const rows = await api.fetchAcademies({
     includeReviews: true,

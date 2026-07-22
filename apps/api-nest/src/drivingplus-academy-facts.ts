@@ -1,15 +1,17 @@
-import type { DrivingplusEducationPerformance, DrivingplusOperateHour, DrivingplusShuttleBus } from "./drivingplus-api.service.js";
+import type { DrivingplusEducationPerformance, DrivingplusOperateHour } from "./drivingplus-api.service.js";
 
 /**
  * DrivingPlus 원천 구조체를 academies 의 price/shuttle/hours 텍스트 컬럼으로 바꾸는 포맷터.
  *
  * 이 값들은 그대로 생성 프롬프트의 "확인된 콘텐츠 재료"에 들어가고(worker.buildFacts 가
- * `수강료: …` / `셔틀: …` / `영업시간: …` 라벨로 붙인다), T01 데이터 게이트의 후보 필드
+ * `수강료: …` / `영업시간: …` 라벨로 붙인다), T01 데이터 게이트의 후보 필드
  * (t01-data-gated.normalizeCandidate)로도 읽힌다. 따라서 두 가지를 반드시 지킨다.
  *
  * 1) 자료에 있는 사실만 적는다. 커버리지·편의성·합격 가능성을 추정하지 않는다.
  * 2) facts 한 줄은 " / " 로 필드를 잇고 품질 게이트가 `[^/\n]+` 로 값을 읽으므로,
  *    값 안에 슬래시·개행이 남으면 필드 경계가 깨진다(노선명 "공휴일/일요일 노선" 등 실재).
+ *
+ * 셔틀은 지역 사전 매칭이 필요해 drivingplus-shuttle-facts.ts 로 분리했다.
  */
 
 /** facts 한 줄에 안전하게 담기도록 슬래시·개행·중복 공백을 제거한다. */
@@ -53,47 +55,6 @@ export function formatTuitionFact(performance: DrivingplusEducationPerformance |
   if (Number.isFinite(year) && Number.isFinite(quarter)) conditions.push(`${year}년 ${quarter}분기 기준`);
   const suffix = conditions.length ? ` (${conditions.join(", ")})` : "";
   return factSafeText(`${parts.join(", ")}${suffix}`);
-}
-
-const MAX_LISTED_ROUTES = 3;
-const MAX_LISTED_STOPS = 3;
-
-/**
- * 노선명은 지역명("안산")과 차량번호("2호차")가 섞여 있어 그 자체를 운행 범위로 해석하면 안 된다.
- * 따라서 노선명·경유지·문의처를 '자료에 있는 그대로' 나열만 하고 커버리지를 서술하지 않는다.
- */
-export function formatShuttleFact(buses: DrivingplusShuttleBus[] | null | undefined): string | null {
-  const routes = (buses ?? []).filter((bus) => bus && (factSafeText(bus.title) || factSafeText(bus.runDirection)));
-  if (!routes.length) return null;
-
-  const titles: string[] = [];
-  for (const bus of routes) {
-    const title = factSafeText(bus.title);
-    if (title && !titles.includes(title)) titles.push(title);
-  }
-  const stops: string[] = [];
-  for (const bus of routes) {
-    for (const stop of bus.times ?? []) {
-      const name = factSafeText(stop?.runDirection);
-      if (name && !stops.includes(name)) stops.push(name);
-    }
-  }
-  const phone = routes.map((bus) => factSafeText(bus.phone)).find(Boolean) || "";
-
-  const segments: string[] = [];
-  if (titles.length) {
-    const shown = titles.slice(0, MAX_LISTED_ROUTES).join(", ");
-    const rest = titles.length > MAX_LISTED_ROUTES ? ` 외 ${titles.length - MAX_LISTED_ROUTES}개` : "";
-    segments.push(`운행 노선 ${titles.length}개(${shown}${rest})`);
-  } else {
-    segments.push(`운행 노선 ${routes.length}개`);
-  }
-  if (stops.length) {
-    const shown = stops.slice(0, MAX_LISTED_STOPS).join(", ");
-    segments.push(`자료 기준 경유지 ${stops.length}곳(${shown} 등)`);
-  }
-  if (phone) segments.push(`셔틀 문의 ${phone}`);
-  return factSafeText(segments.join(" · "));
 }
 
 const DAY_FIELDS = [

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { factSafeText, formatOperatingHoursFact, formatShuttleFact, formatTuitionFact } from "../src/drivingplus-academy-facts.js";
+import { factSafeText, formatOperatingHoursFact, formatTuitionFact } from "../src/drivingplus-academy-facts.js";
 
 // 표본은 실제 DrivingPlus dev 응답에서 그대로 가져왔다.
 // 이 세 값은 생성 프롬프트의 facts 로 그대로 들어가므로 사실 왜곡·필드 경계 붕괴를 막는 게 목적이다.
@@ -42,32 +42,6 @@ describe("formatTuitionFact", () => {
     expect(formatTuitionFact(null)).toBeNull();
     expect(formatTuitionFact({ ...performance, fees: null })).toBeNull();
     expect(formatTuitionFact({ ...performance, fees: { type1Manual: null, type1Auto: null, type2Auto: null, vatIncluded: true, examFeeIncluded: true } })).toBeNull();
-  });
-});
-
-describe("formatShuttleFact", () => {
-  it("노선 수·노선명·경유지·문의처를 자료 그대로 적는다", () => {
-    const text = formatShuttleFact([
-      { title: "1호차", runDirection: "신제주", content: null, footContent: null, phone: "064-000-0000", times: [{ time: "", runDirection: "학원출발" }, { time: "7분", runDirection: "연동" }] },
-      { title: "2호차", runDirection: "구제주", content: null, footContent: null, phone: null, times: [{ time: "9분", runDirection: "노형" }] },
-    ]);
-    expect(text).toBe("운행 노선 2개(1호차, 2호차) · 자료 기준 경유지 3곳(학원출발, 연동, 노형 등) · 셔틀 문의 064-000-0000");
-  });
-
-  it("노선이 많아도 프롬프트가 부풀지 않게 앞의 몇 개만 나열하고 나머지는 개수로 적는다", () => {
-    const many = ["1호차", "2호차", "3호차", "4호차", "5호차"].map((title) => ({ title, runDirection: null, content: null, footContent: null, phone: null, times: [] }));
-    expect(formatShuttleFact(many)).toBe("운행 노선 5개(1호차, 2호차, 3호차 외 2개)");
-  });
-
-  it("시간표가 없는 노선도 운행 사실만 적고 경유지를 만들지 않는다", () => {
-    const text = formatShuttleFact([{ title: "목포 전지역", runDirection: "예약 시 운행", content: null, footContent: null, phone: null, times: [] }]);
-    expect(text).toBe("운행 노선 1개(목포 전지역)");
-    expect(text).not.toContain("경유지");
-  });
-
-  it("셔틀 자료가 없으면 null 이다", () => {
-    expect(formatShuttleFact([])).toBeNull();
-    expect(formatShuttleFact(null)).toBeNull();
   });
 });
 

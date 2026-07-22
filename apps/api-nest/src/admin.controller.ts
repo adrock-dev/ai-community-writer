@@ -613,6 +613,9 @@ export class AdminController {
   @Post("domains/:domain/sync/drivingplus/academies")
   async syncDrivingplusAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row = {}) {
     checkAuth(req, headers); this.requireDomain(domain);
+    // 셔틀 운행 지역은 학원 동기화 시점에 계산해 저장한다. 사전이 없으면 지역이 비므로 먼저 확보한다
+    // (이미 최신이면 원천을 호출하지 않는다). 실패해도 학원 동기화는 계속 진행한다.
+    await this.regionDirectory.ensure().catch(() => null);
     const rows = await this.drivingplus.fetchAcademies({
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
@@ -647,6 +650,9 @@ export class AdminController {
     const regions = await this.drivingplus.fetchSeoRegions(level);
     const regionSummary = this.db.upsertSeoRegions(domain, regions);
     if (body.replace_axis) this.db.bulkReplaceAxis(domain, "region", regions.map((r) => ({ value: r.region, weight: r.level === 2 ? 5 : 3, monthly_search_volume: null, competition_kd: null })));
+    // 셔틀 운행 지역은 학원 동기화 시점에 계산해 저장한다. 사전이 없으면 지역이 비므로 먼저 확보한다
+    // (이미 최신이면 원천을 호출하지 않는다). 실패해도 학원 동기화는 계속 진행한다.
+    await this.regionDirectory.ensure().catch(() => null);
     const academies = await this.drivingplus.fetchAcademies({
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
