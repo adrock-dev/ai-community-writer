@@ -232,6 +232,7 @@ export interface Academy {
   seo_title?: string | null;
   seo_keywords?: string | null;
   seo_description?: string | null;
+  seo_content?: string | null;
   latitude?: number | null;
   longitude?: number | null;
   thumb_url?: string | null;

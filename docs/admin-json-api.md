@@ -946,6 +946,12 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 { "count": 10, "items": [] }
 ```
 
+`items`는 명시 화이트리스트로만 구성된다.
+
+`id`, `region`, `name`, `address`, `price`, `shuttle`, `hours`, `pass_rate`, `phone`, `vphone`, `review`, `seo_title`, `seo_keywords`, `seo_description`, `latitude`, `longitude`, `thumb_url`, `photos`(배열로 파싱), `academy_type`, `synced_at`.
+
+원천 흔적(`source_name`, `source_url`, `external_id`, `extra`), 리뷰 원문 페이로드(`review_json`, `blog_reviews`), 원천 마케팅 문구(`seo_content`)는 노출하지 않는다.
+
 ### `POST /api/v1/{domain}/academies`
 
 공개 쓰기용 엔드포인트다. `PUBLIC_WRITE_TOKEN`이 설정되어 있으면 `token` 쿼리 또는 `x-public-write-token` 헤더가 일치해야 한다.

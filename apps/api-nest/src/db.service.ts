@@ -969,9 +969,9 @@ export class DbService implements OnModuleInit {
           drivingplus_id: externalId,
           review_count: reviews.length,
           blog_review_count: blogReviews.length,
-          // 원천이 준 개수(필터 이전). 저장 개수와 차이가 곧 부정·저품질로 걸러진 양이다.
-          source_review_count: Array.isArray(row.reviews) ? row.reviews.length : 0,
-          source_blog_review_count: Array.isArray(row.blogReviews) ? row.blogReviews.length : 0,
+          // 동기화 레이어로 들어온 개수(API 레이어 긍정 필터 통과분). 원천 총량은 review_stats 를 본다.
+          fetched_review_count: Array.isArray(row.reviews) ? row.reviews.length : 0,
+          fetched_blog_review_count: Array.isArray(row.blogReviews) ? row.blogReviews.length : 0,
           review_stats: row.reviewStats ?? null,
           blog_review_stats: row.blogReviewStats ?? null,
           license_types: row.licenseTypes ?? [],
@@ -986,14 +986,14 @@ export class DbService implements OnModuleInit {
         });
         const existing = this.get("SELECT id FROM academies WHERE domain=? AND external_id=?", [domain, externalId]);
         if (existing) {
-          this.run(`UPDATE academies SET region=?, name=?, address=?, price=?, shuttle=?, hours=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND domain=?`,
-            [region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt, existing.id, domain]);
+          this.run(`UPDATE academies SET region=?, name=?, address=?, price=?, shuttle=?, hours=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, seo_content=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND domain=?`,
+            [region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt, existing.id, domain]);
         } else {
-          this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, price, shuttle, hours, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
+          this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, price, shuttle, hours, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, seo_content, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, seo_content=excluded.seo_content, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
             WHERE academies.external_id IS NULL OR academies.external_id=excluded.external_id`,
-            [randomUUID(), domain, externalId, region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt]);
+            [randomUUID(), domain, externalId, region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt]);
         }
         upserted++;
       }
@@ -1354,6 +1354,8 @@ function normalizeDrivingplusReviews(value: unknown): Row[] {
       point,
       content: content.slice(0, 500),
       date: nullableText(row.date),
+      images: Array.isArray(row.images) ? row.images.map((v) => String(v || "").trim()).filter(Boolean).slice(0, 3) : [],
+      num_like: nullableNumber(row.numLike),
     };
   }).filter(Boolean).slice(0, 10) as Row[];
 }

@@ -13,6 +13,8 @@ export interface DrivingplusAcademy {
   roadAddress?: string | null;
   phone?: string | null;
   vphone?: string | null;
+  /** 원천이 만든 학원 소개 본문(마케팅 문구). 근거 자료로만 보관하고 본문에 그대로 옮기지 않는다. */
+  seoContent?: string | null;
   roadLatitude?: number | null;
   roadLongitude?: number | null;
   thumbSavePath?: string | null;
@@ -20,13 +22,45 @@ export interface DrivingplusAcademy {
   photos?: string[];
   reviews?: DrivingplusReview[];
   blogReviews?: DrivingplusBlogReview[];
+  /** 리뷰 목록 endpoint 의 집계값. includeReviews/includeBlogReviews 로 조회했을 때만 채워진다. */
+  reviewStats?: DrivingplusReviewStats | null;
+  blogReviewStats?: DrivingplusBlogReviewStats | null;
   /** 아래 필드는 운영 endpoint 에는 없고 dev endpoint 에만 내려온다(없으면 빈 값). */
   licenseTypes?: DrivingplusLicenseType[];
   educationPerformance?: DrivingplusEducationPerformance | null;
   priceObservations?: DrivingplusPriceObservation[];
   shuttleBuses?: DrivingplusShuttleBus[];
+  /** shuttleBuses 노선표와 별개로 내려오는 셔틀 안내 필드(안내 URL·설명·안내 이미지). */
+  shuttleBusUrl?: string | null;
+  shuttleBusDetail?: string | null;
+  shuttleBusImageUrl?: string | null;
   operateHour?: DrivingplusOperateHour | null;
   roadCourses?: DrivingplusRoadCourse[];
+}
+
+/**
+ * 리뷰 목록 응답의 집계값.
+ * totalCount/averagePoint 는 원천 전체 기준(부정 리뷰 필터 이전)이고 sourceCount 는 이번 페이지가 준 개수다.
+ * 저장만 하고 본문에서 단정하지 않는다(평점·리뷰 수를 그대로 쓰면 근거 없는 신뢰도 주장이 된다).
+ */
+export interface DrivingplusReviewStats {
+  totalCount: number | null;
+  averagePoint: number | null;
+  sourceCount: number;
+}
+
+/** 블로그 리뷰 집계. totalCount 는 원천 검색엔진의 총 노출 건수라 학원 언급 글 수가 아니다(과대). */
+export interface DrivingplusBlogReviewStats {
+  searchTotalCount: number | null;
+  sourceCount: number;
+}
+
+export interface DrivingplusReviewPage extends DrivingplusReviewStats {
+  reviews: DrivingplusReview[];
+}
+
+export interface DrivingplusBlogReviewPage extends DrivingplusBlogReviewStats {
+  reviews: DrivingplusBlogReview[];
 }
 
 export interface DrivingplusLicenseType {
@@ -87,6 +121,8 @@ export interface DrivingplusShuttleBus {
   content: string | null;
   footContent: string | null;
   phone: string | null;
+  /** 원천 UI 의 노선 배지 색상. 콘텐츠 근거는 아니고 원문 보존용이다. */
+  backgroundColor: string | null;
   times?: DrivingplusShuttleStop[];
 }
 
@@ -108,6 +144,8 @@ export interface DrivingplusRoadCourse {
   content: string | null;
   imageUrl: string | null;
   youtubeVideoId: string | null;
+  /** 원천 스키마에는 있으나 현재 전 건 null 이다(값이 채워지면 그대로 보관된다). */
+  difficulty: string | null;
 }
 
 export interface DrivingplusReview {
@@ -116,6 +154,8 @@ export interface DrivingplusReview {
   point?: number | null;
   content: string;
   date?: string | null;
+  images?: string[];
+  numLike?: number | null;
 }
 
 export interface DrivingplusBlogReview {
@@ -150,33 +190,48 @@ export class DrivingplusApiService {
       const next: DrivingplusAcademy = { ...academy };
       if (opts.includeReviews) {
         try {
-          const reviews = await this.fetchReviews(academy.id, reviewLimit, reviewSort);
-          next.reviews = reviews.length ? reviews : academy.reviews;
+          const page = await this.fetchReviews(academy.id, reviewLimit, reviewSort);
+          next.reviews = page.reviews.length ? page.reviews : academy.reviews;
+          next.reviewStats = { totalCount: page.totalCount, averagePoint: page.averagePoint, sourceCount: page.sourceCount };
         } catch {
           next.reviews = academy.reviews;
         }
       }
       if (!opts.includeBlogReviews) return next;
       try {
-        return { ...next, blogReviews: await this.fetchBlogReviews(academy.id, blogReviewLimit) };
+        const page = await this.fetchBlogReviews(academy.id, blogReviewLimit);
+        return {
+          ...next,
+          blogReviews: page.reviews,
+          blogReviewStats: { searchTotalCount: page.searchTotalCount, sourceCount: page.sourceCount },
+        };
       } catch {
         return next;
       }
     });
   }
 
-  async fetchReviews(academyId: number, limit = 5, sort: "new" | "point" = "point"): Promise<DrivingplusReview[]> {
+  async fetchReviews(academyId: number, limit = 5, sort: "new" | "point" = "point"): Promise<DrivingplusReviewPage> {
     const payload = await this.get<{ code?: number; message?: string; data?: unknown }>(`/v1/review/list/${encodeURIComponent(String(academyId))}?sort=${sort}&limit=${encodeURIComponent(String(limit))}`);
     const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
     const rows = Array.isArray(data.reviews) ? data.reviews : [];
-    return rows.map(normalizeReview).filter((row): row is DrivingplusReview => Boolean(row)).slice(0, Math.max(1, limit));
+    return {
+      reviews: rows.map(normalizeReview).filter((row): row is DrivingplusReview => Boolean(row)).slice(0, Math.max(1, limit)),
+      totalCount: num(data.totalCount),
+      averagePoint: num(data.point),
+      sourceCount: rows.length,
+    };
   }
 
-  async fetchBlogReviews(academyId: number, limit = 3): Promise<DrivingplusBlogReview[]> {
+  async fetchBlogReviews(academyId: number, limit = 3): Promise<DrivingplusBlogReviewPage> {
     const payload = await this.get<{ code?: number; message?: string; data?: unknown }>(`/v1/blog-review/list/${encodeURIComponent(String(academyId))}?limit=${encodeURIComponent(String(limit))}`);
     const data = payload.data && typeof payload.data === "object" ? payload.data as Record<string, unknown> : {};
     const rows = Array.isArray(data.reviews) ? data.reviews : [];
-    return rows.map(normalizeBlogReview).filter((row): row is DrivingplusBlogReview => Boolean(row)).slice(0, Math.max(1, limit));
+    return {
+      reviews: rows.map(normalizeBlogReview).filter((row): row is DrivingplusBlogReview => Boolean(row)).slice(0, Math.max(1, limit)),
+      searchTotalCount: num(data.totalCount),
+      sourceCount: rows.length,
+    };
   }
 
   async fetchSeoRegions(level: SeoRegionLevel = "2"): Promise<DrivingplusSeoRegion[]> {
@@ -212,7 +267,8 @@ function requireArray(payload: { data?: unknown }, label: string): unknown[] {
   return payload.data;
 }
 
-function normalizeAcademy(value: unknown): DrivingplusAcademy | null {
+/** 원천 응답 1건 → 내부 타입. 여기서 빠뜨린 필드는 DB 까지 못 가므로 테스트가 필드 보존을 잠근다. */
+export function normalizeAcademy(value: unknown): DrivingplusAcademy | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
   const id = Number(row.id);
@@ -224,6 +280,7 @@ function normalizeAcademy(value: unknown): DrivingplusAcademy | null {
     seoTitle: str(row.seoTitle),
     seoKeywords: str(row.seoKeywords),
     seoDescription: str(row.seoDescription),
+    seoContent: str(row.seoContent),
     roadAddress: str(row.roadAddress),
     phone: str(row.phone),
     vphone: str(row.vphone),
@@ -237,6 +294,9 @@ function normalizeAcademy(value: unknown): DrivingplusAcademy | null {
     educationPerformance: normalizeEducationPerformance(row.educationPerformance),
     priceObservations: Array.isArray(row.priceObservations) ? row.priceObservations.map(normalizePriceObservation) : [],
     shuttleBuses: Array.isArray(row.shuttleBuses) ? row.shuttleBuses.map(normalizeShuttleBus) : [],
+    shuttleBusUrl: str(row.shuttleBusUrl) || null,
+    shuttleBusDetail: str(row.shuttleBusDetail) || null,
+    shuttleBusImageUrl: str(row.shuttleBusImageUrl) || null,
     operateHour: normalizeOperateHour(row.operateHour),
     roadCourses: Array.isArray(row.roadCourses) ? row.roadCourses.map(normalizeRoadCourse) : [],
   };
@@ -304,6 +364,7 @@ function normalizeShuttleBus(value: unknown): DrivingplusShuttleBus {
     content: str(row.content) || null,
     footContent: str(row.footContent) || null,
     phone: str(row.phone) || null,
+    backgroundColor: str(row.backgroundColor) || null,
     times: Array.isArray(row.times)
       ? row.times.map((stop) => {
         const cell = stop && typeof stop === "object" ? stop as Record<string, unknown> : {};
@@ -336,6 +397,7 @@ function normalizeRoadCourse(value: unknown): DrivingplusRoadCourse {
     content: str(row.content) || null,
     imageUrl: str(row.imageUrl) || null,
     youtubeVideoId: str(row.youtubeVideoId) || null,
+    difficulty: str(row.difficulty) || null,
   };
 }
 
@@ -350,7 +412,15 @@ function normalizeReview(value: unknown): DrivingplusReview | null {
   const content = cleanText(row.content);
   const point = num(row.point);
   if (!isPositiveReviewText(content, point)) return null;
-  return { id: num(row.id), author: str(row.author), point, content: content.slice(0, 500), date: str(row.date) };
+  return {
+    id: num(row.id),
+    author: str(row.author),
+    point,
+    content: content.slice(0, 500),
+    date: str(row.date),
+    images: Array.isArray(row.images) ? row.images.map(str).filter(Boolean).slice(0, 3) : [],
+    numLike: num(row.numLike),
+  };
 }
 
 function normalizeBlogReview(value: unknown): DrivingplusBlogReview | null {

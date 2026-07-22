@@ -65,11 +65,11 @@ export class AcademyResearchService {
       seo_description: academy.seoDescription ?? null,
       raw_json: academy,
     });
-    const [reviews, blogReviews] = await Promise.all([
-      this.drivingplus.fetchReviews(academy.id, opts.reviewLimit ?? 5).catch(() => academy.reviews ?? []),
-      this.drivingplus.fetchBlogReviews(academy.id, opts.blogReviewLimit ?? 5).catch(() => academy.blogReviews ?? []),
+    const [reviewPage, blogReviewPage] = await Promise.all([
+      this.drivingplus.fetchReviews(academy.id, opts.reviewLimit ?? 5).then((page) => page.reviews).catch(() => academy.reviews ?? []),
+      this.drivingplus.fetchBlogReviews(academy.id, opts.blogReviewLimit ?? 5).then((page) => page.reviews).catch(() => academy.blogReviews ?? []),
     ]);
-    return this.storeReviews(externalId, { ...academy, reviews, blogReviews });
+    return this.storeReviews(externalId, { ...academy, reviews: reviewPage, blogReviews: blogReviewPage });
   }
 
   // ---- AI 심층조사 ----
