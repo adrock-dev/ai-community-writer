@@ -95,7 +95,15 @@ describe("T01 Legacy Plus", () => {
     expect(legacyPlusWritingGuide()).toContain("실제 수강생 리뷰");
     expect(legacyPlusWritingGuide()).toContain("기계적으로 같게 맞추지 않는다");
     expect(legacyPlusWritingGuide()).toContain("확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다");
-    expect(legacyPlusArticlePatternGuide()).toContain("자연스러운 서술");
+    // 글의 뼈대는 독자의 의사결정 순서다(가상 인물·체험을 만드는 스토리텔링이 아니다).
+    expect(legacyPlusArticlePatternGuide()).toContain("독자의 의사결정 순서");
+    expect(legacyPlusArticlePatternGuide()).toContain("가상의 인물이나 체험을 만드는 방식이 아니라");
+    // 독자 상황에서 열고, 확인된 사실로 뒷받침되는 범위에서 상황별 선택을 제시한다.
+    expect(legacyPlusStructureGuide()).toContain("이 글을 찾은 독자가 실제로 처했을 상황에서 연다");
+    expect(legacyPlusStructureGuide()).toContain("자료로 뒷받침되지 않는 추천 대상은 만들지 않는다");
+    // 문체는 대화체를 허용하되 가상 경험·광고 문구는 계속 금지한다.
+    expect(legacyPlusWritingGuide()).toContain("한 문단은 1~3문장으로 짧게 끊고");
+    expect(legacyPlusWritingGuide()).toContain("글쓴이가 직접 다녀온 것처럼 쓰지 않는다");
   });
 
   it("이동 제약이 명시된 페르소나는 확인된 셔틀 지역과 연결하되 근거 없는 단정은 막는다", () => {
