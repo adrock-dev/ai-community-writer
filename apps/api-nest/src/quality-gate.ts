@@ -20,8 +20,18 @@ export const AI_CLICHE_PHRASES = [
   "정리해보겠습니다", "정리해 보겠습니다", "정리해드리겠습니다", "살펴보았습니다", "알아봤습니다",
   "이 글에서는", "이번 글에서는", "이번 포스팅", "본 포스팅", "포스팅에서는",
   "도움이 되셨", "도움이 되길 바", "도움이 되기를 바", "참고하시기 바랍니다", "마무리하겠습니다", "마치겠습니다",
-  "여러분",
 ];
+// "여러분"은 AI 상투구가 아니라 2인칭 호칭이다. 대화체 글에서는 정상 표현이라 한 번
+// 등장했다고 막으면 친근한 문체 자체가 불가능해진다(발행 글에서도 정상 문장이 걸렸다).
+// 남발할 때만 잡는다 — 기준은 "모든 문단에서 반복하지 않는다"이다.
+// scripts/qa-posts.mjs 가 이 값을 미러링한다(어긋나면 gate-parity.test.ts 실패).
+export const SECOND_PERSON_ADDRESS = "여러분";
+export const SECOND_PERSON_ADDRESS_LIMIT = 3;
+export function overusedSecondPersonIssues(text: string): string[] {
+  const count = String(text || "").split(SECOND_PERSON_ADDRESS).length - 1;
+  return count >= SECOND_PERSON_ADDRESS_LIMIT ? [`overused_second_person_${count}`] : [];
+}
+
 export function aiClicheIssues(text: string): string[] {
   const found = AI_CLICHE_PHRASES.filter((phrase) => text.includes(phrase));
   return found.length ? [`ai_cliche_expressions_${found.join("·")}`] : [];
@@ -120,6 +130,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (h2Count > 10) issues.push(`too_many_h2_${h2Count}`);
   issues.push(...readabilityIssues(markdown));
   issues.push(...aiClicheIssues(markdown));
+  issues.push(...overusedSecondPersonIssues(markdown));
   issues.push(...repeatedSentenceIssues(markdown));
   issues.push(...boilerplatePhraseIssues(markdown, boilerplatePhrases));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
@@ -168,6 +179,7 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   if (h2Count > 10) issues.push(`too_many_h2_${h2Count}`);
   issues.push(...readabilityIssues(markdown));
   issues.push(...aiClicheIssues(`${title}\n${markdown}`));
+  issues.push(...overusedSecondPersonIssues(`${title}\n${markdown}`));
   issues.push(...repeatedSentenceIssues(markdown));
   issues.push(...boilerplatePhraseIssues(`${title}\n${markdown}`, boilerplatePhrases));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");

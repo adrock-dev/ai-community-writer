@@ -83,6 +83,25 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
     });
   }
 
+  // "여러분"은 하드 실패에서 반복 금지로 완화했다. 두 게이트의 임계값이 어긋나면
+  // 한쪽에서만 통과하는 글이 생기므로 값과 동작을 함께 잠근다.
+  it("2인칭 호칭 임계값이 두 게이트에서 동일하다", () => {
+    expect(qa.SECOND_PERSON_ADDRESS).toBe(qg.SECOND_PERSON_ADDRESS);
+    expect(qa.SECOND_PERSON_ADDRESS_LIMIT).toBe(qg.SECOND_PERSON_ADDRESS_LIMIT);
+  });
+
+  const secondPersonSamples = [
+    "여러분 안녕하세요.",
+    "여러분 안녕하세요. 여러분 반갑습니다.",
+    "여러분 안녕하세요. 여러분 반갑습니다. 여러분 또 만나요.",
+    "2인칭 호칭이 없는 문장입니다.",
+  ];
+  for (const sample of secondPersonSamples) {
+    it(`overusedSecondPersonIssues 탐지 결과가 일치한다: "${sample.slice(0, 20)}"`, () => {
+      expect(detects(qa.overusedSecondPersonIssues, sample)).toBe(detects(qg.overusedSecondPersonIssues, sample));
+    });
+  }
+
   const repeatedSamples = [
     "# 제목\n\n확인된 과정은 1종 보통, 2종 보통입니다.\n\n다른 설명이 이어진다.\n\n확인된 과정은 1종 보통, 2종 보통입니다.",
     "# 제목\n\nA학원은 평택시에 있습니다.\n\nB학원은 안성시에 있습니다.",

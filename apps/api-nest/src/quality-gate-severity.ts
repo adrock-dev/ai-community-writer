@@ -29,6 +29,8 @@ export const A_ISSUE_STEMS: readonly string[] = [
   "overlong_paragraph",
   "overlong_sentence",
   "hard_sentences",
+  // 2인칭 호칭 남발(대화체 허용 범위를 넘은 경우). 문체 문제라 A(자연스러움) 계열이다.
+  "overused_second_person",
   "missing_internal_link",
 ];
 

@@ -67,6 +67,7 @@ function issuesFor(row, monitoredByDomain) {
   const readability = readabilityIssues(body);
   issues.push(...readability);
   issues.push(...aiClicheIssues(`${row.title}\n${body}`));
+  issues.push(...overusedSecondPersonIssues(`${row.title}\n${body}`));
   issues.push(...repeatedSentenceIssues(body));
   issues.push(...boilerplatePhraseIssues(`${row.title}\n${body}`, monitoredByDomain.get(row.domain) || []));
   if (!row.design_template_id) issues.push('missing_design_template_id');
@@ -127,8 +128,15 @@ const AI_CLICHE_PHRASES = [
   "정리해보겠습니다", "정리해 보겠습니다", "정리해드리겠습니다", "살펴보았습니다", "알아봤습니다",
   "이 글에서는", "이번 글에서는", "이번 포스팅", "본 포스팅", "포스팅에서는",
   "도움이 되셨", "도움이 되길 바", "도움이 되기를 바", "참고하시기 바랍니다", "마무리하겠습니다", "마치겠습니다",
-  "여러분",
 ];
+
+// quality-gate.ts 미러: "여러분"은 2인칭 호칭이라 한 번 등장은 정상이고 남발만 잡는다.
+const SECOND_PERSON_ADDRESS = "여러분";
+const SECOND_PERSON_ADDRESS_LIMIT = 3;
+function overusedSecondPersonIssues(text) {
+  const count = String(text || '').split(SECOND_PERSON_ADDRESS).length - 1;
+  return count >= SECOND_PERSON_ADDRESS_LIMIT ? [`overused_second_person_${count}`] : [];
+}
 function aiClicheIssues(text) {
   const found = AI_CLICHE_PHRASES.filter((phrase) => text.includes(phrase));
   return found.length ? [`ai_cliche_expressions:${found.join('·')}`] : [];
@@ -514,7 +522,7 @@ function walk(dir, found) {
 }
 
 // quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
-export { AI_CLICHE_PHRASES, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
+export { AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
 
 // CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
