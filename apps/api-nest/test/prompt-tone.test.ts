@@ -1,0 +1,43 @@
+import { afterEach, describe, expect, it } from "vitest";
+import { buildPrompt } from "../src/worker.service.js";
+
+// 전 글유형 공통 문체 지침. 되돌릴 수단(SEO_PROMPT_STYLE=formal)이 살아 있는지 함께 잠근다.
+//
+// 기존 지침은 금지 목록에 "여러분"을 넣고 있었다. 품질 게이트에서는 반복 금지로 완화했는데
+// 프롬프트가 계속 금지해서, 모델이 독자에게 말 거는 표현을 통째로 피했다(표본 4건 질문형 0·2인칭 0).
+
+const slot = { template_id: "T01", region: "경기도 남양주시", primary_keyword: "남양주 운전면허학원", slot_id: "s1" };
+const prompt = () => buildPrompt({ display_name: "테스트" }, slot, "facts", "comparison", undefined, "", true);
+
+afterEach(() => { delete process.env.SEO_PROMPT_STYLE; });
+
+describe("공통 문체 지침", () => {
+  it("기본은 대화체 — 2인칭 호칭을 허용하고 어떤 문체를 쓸지 지시한다", () => {
+    const p = prompt();
+    expect(p).toContain("독자에게 말을 거는 블로그 문체");
+    expect(p).toContain('독자를 "여러분"으로 부르거나');
+    expect(p).toContain("문단마다 반복하지 않는다");
+    expect(p).toContain("같은 종결을 세 문장 이상 연속으로 쓰지 않는다");
+  });
+
+  it("기본에서도 실제 AI 상투구는 계속 금지한다", () => {
+    const p = prompt();
+    for (const banned of ["이번 글에서는", "살펴보겠습니다", "도움이 되셨기를", "이번 포스팅"]) {
+      expect(p).toContain(banned);
+    }
+    // 과한 구어체·이모지는 계속 막는다.
+    expect(p).toContain("감탄사·이모지를 쓰지는 않는다");
+  });
+
+  it("SEO_PROMPT_STYLE=formal 로 기존 격식체 지침을 되돌릴 수 있다", () => {
+    process.env.SEO_PROMPT_STYLE = "formal";
+    const p = prompt();
+    expect(p).toContain('"~살펴보았습니다", "여러분"');
+    expect(p).not.toContain("독자에게 말을 거는 블로그 문체");
+  });
+
+  it("알 수 없는 값은 기본(대화체)으로 취급한다", () => {
+    process.env.SEO_PROMPT_STYLE = "unknown";
+    expect(prompt()).toContain("독자에게 말을 거는 블로그 문체");
+  });
+});
