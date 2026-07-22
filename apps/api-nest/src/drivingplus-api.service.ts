@@ -25,10 +25,13 @@ export interface DrivingplusAcademy {
   /** 리뷰 목록 endpoint 의 집계값. includeReviews/includeBlogReviews 로 조회했을 때만 채워진다. */
   reviewStats?: DrivingplusReviewStats | null;
   blogReviewStats?: DrivingplusBlogReviewStats | null;
-  /** 아래 필드는 운영 endpoint 에는 없고 dev endpoint 에만 내려온다(없으면 빈 값). */
+  // licenseTypes·educationPerformance·roadCourses 는 운영 endpoint 에도 내려온다(2026-07-22 확인:
+  // 336/329/233건). priceObservations 는 키만 있고 운영은 전 건 빈 배열이다. 반면 seoContent 와
+  // 셔틀·영업시간 계열은 운영에 키 자체가 없다. 필드별 현황은 docs/source-field-usage.md 참고.
   licenseTypes?: DrivingplusLicenseType[];
   educationPerformance?: DrivingplusEducationPerformance | null;
   priceObservations?: DrivingplusPriceObservation[];
+  /** 아래 셔틀·영업시간 계열은 dev endpoint 에만 내려온다(없으면 빈 값). */
   shuttleBuses?: DrivingplusShuttleBus[];
   /** shuttleBuses 노선표와 별개로 내려오는 셔틀 안내 필드(안내 URL·설명·안내 이미지). */
   shuttleBusUrl?: string | null;

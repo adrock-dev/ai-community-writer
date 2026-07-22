@@ -384,7 +384,8 @@ export class DbService implements OnModuleInit {
       ["review_json", "ALTER TABLE academies ADD COLUMN review_json TEXT"],
       ["blog_reviews", "ALTER TABLE academies ADD COLUMN blog_reviews TEXT"],
       ["synced_at", "ALTER TABLE academies ADD COLUMN synced_at TEXT"],
-      // 원천 학원 소개 본문(seoContent). 근거 보관용이며 프롬프트에 자동 주입하지 않는다.
+      // 원천 학원 소개 본문(seoContent). 보관 전용 — 인근 지명·면허 종별이 seo_description·
+      // licenseTypes 와 중복이고 일부는 불일치라 프롬프트에 넣지 않는다(docs/source-field-usage.md §3.1).
       ["seo_content", "ALTER TABLE academies ADD COLUMN seo_content TEXT"],
     ];
     for (const [col, sql] of academyMigrations) if (!academyCols.has(col)) this.db.exec(sql);
@@ -956,7 +957,8 @@ export class DbService implements OnModuleInit {
         reviewCount += reviews.length;
         blogReviewCount += blogReviews.length;
         const reviewText = reviewSummaryText(reviews);
-        // dev endpoint 에만 있는 구조체(운영에는 없음 → null/빈 배열로 안전하게 흘러간다).
+        // 셔틀·영업시간 계열은 dev endpoint 에만 있다(운영에는 키가 없음 → null/빈 배열로 안전하게
+        // 흘러간다). 수강료·면허 종별은 운영에도 내려온다. 필드별 현황은 docs/source-field-usage.md.
         // pass_rate 는 의도적으로 채우지 않는다: accidentRate 는 교통사고율, graduates 는 수료생 수이며
         // 합격률 원천은 어디에도 없다. 합격률로 오독하면 글에 근거 없는 합격 주장이 실린다.
         const performance = (row.educationPerformance ?? null) as DrivingplusEducationPerformance | null;
