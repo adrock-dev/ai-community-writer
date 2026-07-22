@@ -131,6 +131,8 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (hasRiskyDurationClaim(markdown)) issues.push("risky_duration_or_pass_guarantee_claim");
   if (!hasVerifiedPriceFacts(facts) && hasSpecificMoneyClaim(markdown)) issues.push("unverified_specific_price_claim");
   if (!hasReviewFacts(facts) && hasSpecificReviewClaim(markdown)) issues.push("unverified_review_claim");
+  const unlistedPhones = unlistedPhoneNumbers(markdown, facts);
+  if (unlistedPhones.length) issues.push(`unlisted_phone_number_${unlistedPhones.join("·")}`);
   // 후보 수 과장 검사는 학원 후보가 있는 글(학원형)에만 적용한다(키워드형은 candidateNames 가 비어 오탐 방지).
   // 기준은 'facts에 준 개수'가 아니라 '본문에 실제 실린 후보 수'(이름이 본문에 등장한 수) — 제목/헤딩이 그보다 큰 숫자를 주장하면 실패.
   if (candidateNames.length > 0) {
@@ -272,6 +274,19 @@ function hasSpecificMoneyClaim(value: string): boolean {
 
 function hasVerifiedPriceFacts(facts: string): boolean {
   return /(?:수강료|가격|비용):\s*[^/\n]+/u.test(facts);
+}
+
+// 공개 글에 실릴 수 있는 전화번호는 facts 가 준 번호(안심번호)뿐이다. 실번호는 facts 에 넣지 않지만
+// 셔틀 안내문·블로그 후기 같은 다른 필드 본문에 섞여 들어와(각각 131건·5건) 그대로 실릴 수 있다.
+// 프롬프트 지시만으로는 새어 나간 전력이 있어(발행 글 20편 중 9편) 게이트로 막는다.
+// 앞자리는 지역번호(02, 031)뿐 아니라 안심번호(0507)까지 4자리가 온다. \d{1,2} 로 두면
+// "0507-2000-0240" 이 온전히 안 잡히고 "07-2000-0240" 으로 잘려, 안심번호와 실번호를
+// 같은 기준으로 비교할 수 없게 된다. 앞뒤 경계도 함께 요구한다.
+const PHONE_NUMBER_RE = /(?<![\d-])0\d{1,3}-\d{3,4}-\d{4}(?![\d-])/g;
+export function unlistedPhoneNumbers(markdown: string, facts: string): string[] {
+  const allowed = new Set(String(facts || "").match(PHONE_NUMBER_RE) || []);
+  const used = String(markdown || "").match(PHONE_NUMBER_RE) || [];
+  return [...new Set(used.filter((number) => !allowed.has(number)))];
 }
 
 function hasReviewFacts(facts: string): boolean {

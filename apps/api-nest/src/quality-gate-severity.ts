@@ -40,6 +40,8 @@ export const B_ISSUE_STEMS: readonly string[] = [
   "risky_duration_or_pass_guarantee_claim",
   "unverified_specific_price_claim",
   "unverified_review_claim",
+  // facts 가 준 안심번호 외의 전화번호(실번호·셔틀 안내문에 섞인 번호 등)를 노출한 경우.
+  "unlisted_phone_number",
   "inflated_candidate_count",
   "missing_real_candidate_name",
   "table_missing_real_candidate_name",

@@ -85,7 +85,7 @@ function legacyPlusPromptFactLine(line: string): string {
   const courses = byLabel.get("운영 과정") || courseFactText({ seo_description: byLabel.get("SEO 설명") });
   const keep = [
     courses ? `운영 과정: ${courses}` : "",
-    ...["운영 형태", "수강료", "셔틀", "영업시간", "합격률", "주소", "전화", "대표전화", "사진 슬롯"]
+    ...["운영 형태", "수강료", "셔틀", "영업시간", "합격률", "주소", "전화", "사진 슬롯"]
       .map((label) => byLabel.get(label) ? `${label}: ${byLabel.get(label)}` : ""),
   ].filter(Boolean);
   return [identity, ...keep].join(" / ");

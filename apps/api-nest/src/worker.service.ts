@@ -392,7 +392,12 @@ export class WorkerService {
       const imageKeys = remaining > 0 ? firstImageKeys(a, i + 1, Math.min(perAcademyImages, remaining)) : [];
       for (const imageKey of imageKeys) images[imageKey.key] = imageKey.url;
       const parts = [`[${i + 1}] ${a.name}`];
-      for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["전화", "phone"], ["대표전화", "vphone"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"]] as const) if (a[key]) parts.push(`${label}: ${a[key]}`);
+      for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"]] as const) if (a[key]) parts.push(`${label}: ${a[key]}`);
+      // 공개 글에 노출할 연락처는 안심번호(vphone) 하나뿐이다. 실번호(phone)는 facts 에 아예
+      // 넣지 않는다. 두 번호를 다 보내면 프롬프트로 "우선"을 지시해도 모델이 둘을 병기했다
+      // (발행 글 20편 중 9편). 노출 여부는 프롬프트가 아니라 입력에서 끊는다.
+      const contactPhone = String(a.vphone || "").trim();
+      if (contactPhone) parts.push(`전화: ${contactPhone}`);
       // 운영 과정은 원천의 구조화 필드에서 온다. facts 에 명시해 두면 하위 경로가 SEO 설명을
       // 다시 파싱하지 않아도 되고(단일 출처), 자동·수동 구분이 그대로 살아 있다.
       const courses = courseFactText(a);
@@ -897,7 +902,7 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
     ].join("\n");
   const academyDetailGuide = options?.readerFlow
     ? "- 각 후보는 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 비교표의 중심 열로 쓰지 않는다."
-    : "- 후보별 설명에는 가능한 경우 학원명, 주소, 대표전화(vphone 우선), 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다.";
+    : "- 후보별 설명에는 가능한 경우 학원명, 주소, 전화, 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다. 전화번호는 자료에 있는 번호만 그대로 쓰고 다른 번호를 만들지 않는다.";
   const academyPrinciples = options?.academyPrinciples ?? DRIVING_ACADEMY_PRINCIPLES;
   return `너는 ${brand} 블로그를 쓰는 한국어 SEO 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
 

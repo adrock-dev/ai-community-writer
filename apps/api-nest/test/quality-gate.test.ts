@@ -4,6 +4,7 @@ import {
   articleQualityIssues,
   boilerplatePhraseIssues,
   candidateCountFromFacts,
+  unlistedPhoneNumbers,
   candidateNamesFromFacts,
   internalLinkIssues,
   postSurfaceQualityIssues,
@@ -235,5 +236,44 @@ describe("facts 파서", () => {
 
   it("test/더미 후보명은 제외한다", () => {
     expect(candidateNamesFromFacts("[1] 테스트학원 / 어딘가")).toEqual([]);
+  });
+});
+
+// 공개 글에 실릴 전화번호는 facts 가 준 안심번호뿐이다. 실번호는 facts 에 넣지 않지만
+// 셔틀 안내문(131건)·블로그 후기(5건) 본문에 섞여 들어와 그대로 실릴 수 있다.
+// 프롬프트 지시만으로는 새어 나간 전력이 있어(발행 글 20편 중 9편) 게이트로 막는다.
+describe("facts 밖 전화번호 노출 차단", () => {
+  const facts = "[1] 가나다운전전문학원 / 주소: 서울시 어딘가 / 전화: 0507-2000-0240";
+
+  it("facts 에 있는 번호는 통과시킨다", () => {
+    expect(unlistedPhoneNumbers("문의는 0507-2000-0240 으로 하세요.", facts)).toEqual([]);
+  });
+
+  it("facts 에 없는 실번호를 잡는다", () => {
+    expect(unlistedPhoneNumbers("학원문의 : 032-446-1199", facts)).toEqual(["032-446-1199"]);
+  });
+
+  it("여러 번호가 섞이면 facts 밖 번호만 골라낸다", () => {
+    expect(unlistedPhoneNumbers("대표 0507-2000-0240, 일반 031-595-2900", facts)).toEqual(["031-595-2900"]);
+  });
+
+  it("같은 번호가 여러 번 나와도 한 번만 보고한다", () => {
+    expect(unlistedPhoneNumbers("063-547-6200 그리고 063-547-6200", facts)).toEqual(["063-547-6200"]);
+  });
+
+  it("전화번호가 없으면 빈 배열이다", () => {
+    expect(unlistedPhoneNumbers("전화번호 언급이 없는 본문", facts)).toEqual([]);
+  });
+});
+
+describe("전화번호 추출 경계", () => {
+  it("안심번호를 잘라서 읽지 않는다(0507-… 에서 07-… 로 매칭되면 안 됨)", () => {
+    // 경계가 없으면 facts 의 0507 번호가 07 번호로 잘려 실번호와 구분이 무너진다.
+    expect(unlistedPhoneNumbers("전화: 0507-2000-0297", "전화: 0507-2000-0297")).toEqual([]);
+    expect(unlistedPhoneNumbers("전화: 0507-2000-0297", "전화: 0507-2000-0111")).toEqual(["0507-2000-0297"]);
+  });
+
+  it("지역번호 실번호는 온전히 잡는다", () => {
+    expect(unlistedPhoneNumbers("문의 031-595-2900", "전화: 0507-2000-0297")).toEqual(["031-595-2900"]);
   });
 });
