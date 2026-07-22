@@ -16,7 +16,8 @@
     "lint": "biome lint",
     "format": "biome format --write",
     "lint:fix": "biome check --write",
-    "sync:academies": "npm --prefix apps/api-nest run sync:academies --"
+    "sync:academies": "npm --prefix apps/api-nest run sync:academies --",
+    "sync:region-directory": "npm --prefix apps/api-nest run sync:region-directory"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.1"

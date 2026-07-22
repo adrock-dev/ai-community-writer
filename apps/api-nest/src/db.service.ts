@@ -175,6 +175,25 @@ CREATE TABLE IF NOT EXISTS seo_regions (
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_seo_regions_domain_region ON seo_regions(domain, region);
+-- 전역 행정구역 사전. seo_regions 와 의도적으로 분리한다.
+-- seo_regions 는 '어느 지역에 글을 쓸 것인가'라는 도메인별 운영 선택이고, 소비처 두 곳이
+-- level 2 만 있다고 암묵적으로 가정한다(bestRegionForAddress 는 '가장 긴 매칭'을,
+-- slot.buildRegionCoords 는 '높은 level 우선'을 쓴다). 여기에 읍·면·동을 섞으면 학원 지역
+-- 배정과 슬롯 좌표가 조용히 뒤집힌다. 이 표는 '대한민국 행정구역이 무엇인가'라는 사실
+-- 참조라서 도메인과 무관하고, 재동기화로 언제든 복구 가능한 파생 데이터다.
+CREATE TABLE IF NOT EXISTS region_directory (
+  region TEXT PRIMARY KEY,
+  level INTEGER NOT NULL,
+  sido TEXT NOT NULL,
+  sigungu TEXT,
+  submunicipal TEXT,
+  latitude REAL,
+  longitude REAL,
+  source_name TEXT,
+  synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_region_directory_sub ON region_directory(submunicipal);
+CREATE INDEX IF NOT EXISTS idx_region_directory_level ON region_directory(level);
 CREATE TABLE IF NOT EXISTS custom_templates (
   domain TEXT NOT NULL,
   template_id TEXT NOT NULL,
@@ -387,6 +406,19 @@ export class DbService implements OnModuleInit {
       FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
     )`);
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_seo_regions_domain_region ON seo_regions(domain, region)");
+    this.db.exec(`CREATE TABLE IF NOT EXISTS region_directory (
+      region TEXT PRIMARY KEY,
+      level INTEGER NOT NULL,
+      sido TEXT NOT NULL,
+      sigungu TEXT,
+      submunicipal TEXT,
+      latitude REAL,
+      longitude REAL,
+      source_name TEXT,
+      synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_region_directory_sub ON region_directory(submunicipal)");
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_region_directory_level ON region_directory(level)");
     this.db.exec(`CREATE TABLE IF NOT EXISTS custom_templates (
       domain TEXT NOT NULL,
       template_id TEXT NOT NULL,
@@ -1008,6 +1040,37 @@ export class DbService implements OnModuleInit {
       }
     });
     return { fetched: rows.length, upserted, skipped };
+  }
+  // 전역 행정구역 사전. 도메인 인자가 없는 것이 의도다(모든 도메인이 같은 표를 본다).
+  upsertRegionDirectory(rows: Row[], sourceName = "DrivingPlus"): { fetched: number; upserted: number; skipped: number } {
+    let upserted = 0, skipped = 0;
+    const syncedAt = nowSql();
+    this.transaction(() => {
+      for (const row of rows) {
+        const level = Number(row.level);
+        const region = String(row.region || "").trim();
+        const parts = region.split(/\s+/).filter(Boolean);
+        // 시·도만 있는 행(parts 1개)은 매칭 토큰이 없어 쓸모가 없다.
+        if (!Number.isFinite(level) || parts.length < 2) { skipped++; continue; }
+        const sido = parts[0]!;
+        const sigungu = parts[1] ?? null;
+        const submunicipal = parts.length >= 3 ? parts.slice(2).join(" ") : null;
+        this.run(`INSERT INTO region_directory (region, level, sido, sigungu, submunicipal, latitude, longitude, source_name, synced_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(region) DO UPDATE SET level=excluded.level, sido=excluded.sido, sigungu=excluded.sigungu, submunicipal=excluded.submunicipal,
+            latitude=excluded.latitude, longitude=excluded.longitude, source_name=excluded.source_name, synced_at=excluded.synced_at`,
+          [region, level, sido, sigungu, submunicipal, nullableNumber(row.latitude), nullableNumber(row.longitude), sourceName, syncedAt]);
+        upserted++;
+      }
+    });
+    return { fetched: rows.length, upserted, skipped };
+  }
+  listRegionDirectory(): Row[] { return this.all("SELECT * FROM region_directory"); }
+  regionDirectoryStatus(): { total: number; by_level: Record<string, number>; synced_at: string | null } {
+    const total = Number(this.get("SELECT COUNT(*) n FROM region_directory")?.n ?? 0);
+    const by_level: Record<string, number> = {};
+    for (const row of this.all("SELECT level, COUNT(*) n FROM region_directory GROUP BY level ORDER BY level")) by_level[String(row.level)] = Number(row.n);
+    return { total, by_level, synced_at: (this.get("SELECT MAX(synced_at) s FROM region_directory")?.s as string) ?? null };
   }
   deleteAcademy(domain: string, id: string): number { return this.run("DELETE FROM academies WHERE id=? AND domain=?", [id, domain]).changes ?? 0; }
   deleteAcademies(domain: string, region?: string): number {

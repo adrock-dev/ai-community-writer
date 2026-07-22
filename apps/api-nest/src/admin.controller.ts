@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inje
 import type { Request, Response } from "express";
 import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
+import { RegionDirectoryService } from "./region-directory.service.js";
 import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
@@ -30,6 +31,7 @@ export class AdminController {
     @Inject(DbService) private readonly db: DbService,
     @Inject(SlotService) private readonly slots: SlotService,
     @Inject(DrivingplusApiService) private readonly drivingplus: DrivingplusApiService,
+    @Inject(RegionDirectoryService) private readonly regionDirectory: RegionDirectoryService,
   ) {}
 
   @Get("options")
@@ -101,6 +103,9 @@ export class AdminController {
     // 새 도메인은 디자인 자동 매칭으로 시작한다: 글마다 슬롯의 글 유형 기본 디자인을 적용(docs/design-template-mapping.md).
     this.db.updateDomain(domain, { design_template_id: AUTO_DESIGN_TEMPLATE_ID, common_principles: body.common_principles || body.content_brief || DEFAULT_DRIVING_COMMON_PRINCIPLES });
     if (body.apply_preset !== false) this.slots.applyPreset(domain, vertical);
+    // 전역 지역 사전을 미리 준비해 둔다(비어 있거나 오래됐을 때만 원천 호출).
+    // 비차단이다 — 원천이 죽어 있어도 도메인 생성은 성공해야 한다.
+    this.regionDirectory.ensureInBackground(`domain:${domain}`);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }
 
@@ -812,6 +817,19 @@ export class AdminController {
     if (!raw) return [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS];
     try { const v = JSON.parse(raw); return Array.isArray(v) ? v.filter((x: unknown): x is string => typeof x === "string") : [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS]; }
     catch { return [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS]; }
+  }
+
+  // 전역 행정구역 사전. 도메인별이 아니라 모든 도메인이 같은 표를 본다.
+  // 도메인 생성 시 자동으로 준비되므로 이 엔드포인트는 수동 갱신(행정구역 개편 등)용이다.
+  @Get("settings/region-directory")
+  regionDirectoryStatus(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers); return this.db.regionDirectoryStatus();
+  }
+  @Post("settings/region-directory/sync")
+  async syncRegionDirectory(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers);
+    const result = await this.regionDirectory.sync();
+    return { ok: true, ...result, ...this.db.regionDirectoryStatus() };
   }
 
   // 업종 레지스트리(라벨 MVP): 작업환경에서 key/label 추가·삭제. key 는 프리셋 선택·프롬프트에 쓰인다.
