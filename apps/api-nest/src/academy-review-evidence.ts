@@ -48,12 +48,28 @@ export function studentReviewsForAcademy(row: Row): StudentReviewEvidence[] {
   return reviews;
 }
 
-/** One review per academy is selected reproducibly for a slot, without exposing
- * author, date, or rating in generation facts. */
+/**
+ * 학원마다 본문에 실을 수강생 리뷰를 하나 고른다. 같은 슬롯이면 같은 리뷰가 나온다(재현성).
+ * 작성자·작성일·평점은 생성 facts 에 노출하지 않는다.
+ *
+ * 반드시 '적격 리뷰 중에서' 뽑는다. 예전에는 전체에서 먼저 뽑고 나중에 적격 검사를 했는데,
+ * 그러면 뽑힌 하나가 탈락할 때 다른 적격 리뷰가 있어도 그 학원은 리뷰를 통째로 잃는다.
+ * (현재 데이터에서는 동기화 시점 긍정 필터 덕분에 손실 0건이지만, 적격 조건이 강해지면
+ *  조용히 리뷰가 사라지는 구조였다.)
+ */
 export function selectedStudentReviewForAcademy(row: Row, seed: string): StudentReviewEvidence | null {
-  const reviews = studentReviewsForAcademy(row);
+  const all = studentReviewsForAcademy(row);
+  const reviews = all.filter((review) => isContentEligibleReviewText(review.quote));
   if (!reviews.length) return null;
   return reviews[stableIndex(`${seed}|${row.external_id ?? row.id ?? row.name ?? ""}`, reviews.length)] ?? null;
+}
+
+/** 본문 인용 적격 조건. reviewContentCandidate 의 제외 사유와 같은 기준을 쓴다. */
+export function isContentEligibleReviewText(text: unknown): boolean {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  if (!normalized || normalized.length < 12) return false;
+  if (/\b(?:\d{2,3}-\d{3,4}-\d{4}|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,})\b/u.test(normalized)) return false;
+  return !isPromotionalOnly(normalized);
 }
 
 export function studentReviewFactLines(row: Row, seed: string): string[] {

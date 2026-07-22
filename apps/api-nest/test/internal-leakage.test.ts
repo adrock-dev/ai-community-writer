@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { removeInternalLeakage } from "../src/worker.service.js";
+import { normalizeGeneratedMarkdown, removeInternalLeakage } from "../src/worker.service.js";
 
 // 정규화 단계의 내부 누출 제거(removeInternalLeakage)는 '자기 공개 도메인 내부링크'를 지우면 안 된다.
 // (P3 내부링크가 살아남아 발행되려면 필수. 내부 API host·브랜드명은 계속 제거되어야 한다.)
@@ -56,5 +56,28 @@ describe("removeInternalLeakage 자기 도메인 예외", () => {
   it("보충자료가 아닌 정상 리뷰 서술은 보존한다", () => {
     const md = "정상 문단\n\n수강생 리뷰를 한 건 인용했습니다\n\n다음 문단";
     expect(removeInternalLeakage(md, "app.drivingplus.me")).toContain("수강생 리뷰를 한 건 인용했습니다");
+  });
+});
+
+// 인접 헤딩 보강은 정보량 0인 문장을 넣으므로 최소 범위에서만 동작해야 한다.
+// `## 큰 주제` → `### 개별 항목` 은 정상 구조인데 여기에도 채우는 바람에 모든 글에
+// 제목을 되풀이하는 문장이 하나씩 실렸다("후보별로 확인할 차이에서 확인할 내용을…").
+describe("ensureHeadingBodies 범위", () => {
+  const fill = (md: string) => normalizeGeneratedMarkdown(md, {}, "app.drivingplus.me");
+
+  it("H2 다음 H3(상위→하위)는 채우지 않는다", () => {
+    const out = fill("# 제목\n\n## 후보별로 확인할 차이\n\n### 가나다학원\n\n본문입니다.\n");
+    expect(out).not.toContain("확인할 내용을 아래에 이어서");
+    expect(out).not.toContain("관련 정보는 아래 내용을 참고하세요");
+  });
+
+  it("같은 깊이가 연달아 나오면(H3→H3) 실제로 내용이 빠진 것이라 채운다", () => {
+    const out = fill("# 제목\n\n### 가나다학원\n\n### 라마바학원\n\n본문입니다.\n");
+    expect(out).toMatch(/확인할 내용을 아래에 이어서|관련 정보는 아래 내용을 참고하세요/);
+  });
+
+  it("H2 다음 H2 도 채운다", () => {
+    const out = fill("# 제목\n\n## 첫 섹션\n\n## 둘째 섹션\n\n본문입니다.\n");
+    expect(out).toMatch(/확인할 내용을 아래에 이어서|관련 정보는 아래 내용을 참고하세요/);
   });
 });

@@ -693,8 +693,13 @@ export function normalizeGeneratedMarkdown(summary: string, images: Record<strin
   );
 }
 
-// 인접 헤딩 사이 빈 본문 보강(가독성 게이트 충족). 예전에는 고정 문장을 넣어 글마다 동일 문장이 반복됐다(중복 콘텐츠).
-// 이제 섹션 제목을 넣은 문맥 문장으로 채워 글·섹션마다 겹치지 않게 한다. 조사(받침) 문제 없는 프레임만 쓰고 2종을 번갈아 쓴다.
+// 인접 헤딩 사이 빈 본문 보강. 채워 넣는 문장은 정보량이 0이라 최소 범위에서만 쓴다.
+//
+// H2 바로 뒤에 H3 가 오는 것(`## 후보별 차이` → `### 학원명`)은 큰 주제 아래 개별 항목을 두는
+// 정상 구조이고, 어떤 게이트도 이를 결함으로 보지 않는다(실측: 최근 6편에서 이 문장을 빼도
+// thin_sections·h2 관련 이슈 0건). 그런데도 채우고 있어서 모든 글에 제목을 되풀이하는
+// 무의미한 문장이 하나씩 실렸다. 이제 같은 깊이의 헤딩이 연달아 나올 때만 채운다
+// (`### 학원A` → `### 학원B` 는 실제로 내용이 빠진 것이다).
 function ensureHeadingBodies(md: string): string {
   const lines = md.split(/\r?\n/);
   const out: string[] = [];
@@ -708,7 +713,8 @@ function ensureHeadingBodies(md: string): string {
     out.push(line);
     if (!/^#{2,3}\s+/.test(line.trim())) continue;
     const next = lines.slice(i + 1).find((candidate) => candidate.trim());
-    if (next && /^#{2,3}\s+/.test(next.trim())) {
+    const depth = (value: string) => (value.trim().match(/^#+/) || [""])[0].length;
+    if (next && /^#{2,3}\s+/.test(next.trim()) && depth(next) <= depth(line)) {
       const heading = line.trim().replace(/^#{2,3}\s+/, "").replace(/[*_`#]/g, "").trim();
       out.push(heading ? frame(heading, filled++) : "아래에 이어서 관련 내용을 정리했습니다.");
       out.push("");
