@@ -20,6 +20,94 @@ export interface DrivingplusAcademy {
   photos?: string[];
   reviews?: DrivingplusReview[];
   blogReviews?: DrivingplusBlogReview[];
+  /** 아래 필드는 운영 endpoint 에는 없고 dev endpoint 에만 내려온다(없으면 빈 값). */
+  licenseTypes?: DrivingplusLicenseType[];
+  educationPerformance?: DrivingplusEducationPerformance | null;
+  priceObservations?: DrivingplusPriceObservation[];
+  shuttleBuses?: DrivingplusShuttleBus[];
+  operateHour?: DrivingplusOperateHour | null;
+  roadCourses?: DrivingplusRoadCourse[];
+}
+
+export interface DrivingplusLicenseType {
+  code: string;
+  label: string;
+}
+
+/**
+ * 분기 단위 교육실적. fees 는 공시 성격의 수강료다.
+ * accidentRate 는 '교통사고율'이고 graduates 는 '수료생 수'이며, 둘 다 합격률이 아니다.
+ * 합격률 원천은 어디에도 없으므로 academies.pass_rate 는 계속 비워 둔다.
+ */
+export interface DrivingplusEducationPerformance {
+  year: number | null;
+  quarter: number | null;
+  fees: {
+    type1Manual: number | null;
+    type1Auto: number | null;
+    type2Auto: number | null;
+    vatIncluded: boolean | null;
+    examFeeIncluded: boolean | null;
+  } | null;
+  capacity: number | null;
+  graduates: number | null;
+  injuryAccidents: number | null;
+  accidentRate: number | null;
+}
+
+/** 외부 수집 가격 관측치(naver_place 등). 신뢰도·수집시점이 제각각이라 본문 단정에는 쓰지 않는다. */
+export interface DrivingplusPriceObservation {
+  source: string | null;
+  sourceUrl: string | null;
+  licenseType: string | null;
+  courseType: string | null;
+  gearType: string | null;
+  applicantType: string | null;
+  priceUnit: string | null;
+  priceKind: string | null;
+  amount: number | null;
+  amountMax: number | null;
+  amountVatIncluded: number | null;
+  vatIncluded: boolean | null;
+  vatFlagSource: string | null;
+  examFeeIncluded: boolean | null;
+  rawLabel: string | null;
+  confidence: string | null;
+  collectedAt: string | null;
+}
+
+export interface DrivingplusShuttleStop {
+  time: string | null;
+  runDirection: string | null;
+}
+
+export interface DrivingplusShuttleBus {
+  title: string | null;
+  runDirection: string | null;
+  content: string | null;
+  footContent: string | null;
+  phone: string | null;
+  times?: DrivingplusShuttleStop[];
+}
+
+export interface DrivingplusOperateHour {
+  monOpenTime: string | null; monCloseTime: string | null; monIsHoliday: boolean | null;
+  tueOpenTime: string | null; tueCloseTime: string | null; tueIsHoliday: boolean | null;
+  wedOpenTime: string | null; wedCloseTime: string | null; wedIsHoliday: boolean | null;
+  thuOpenTime: string | null; thuCloseTime: string | null; thuIsHoliday: boolean | null;
+  friOpenTime: string | null; friCloseTime: string | null; friIsHoliday: boolean | null;
+  satOpenTime: string | null; satCloseTime: string | null; satIsHoliday: boolean | null;
+  sunOpenTime: string | null; sunCloseTime: string | null; sunIsHoliday: boolean | null;
+  holidayOpenTime: string | null; holidayCloseTime: string | null; holidayIsHoliday?: boolean | null;
+  notice: string | null;
+}
+
+export interface DrivingplusRoadCourse {
+  title: string | null;
+  subtitle: string | null;
+  content: string | null;
+  imageUrl: string | null;
+  youtubeVideoId: string | null;
 }
 
 export interface DrivingplusReview {
@@ -145,7 +233,115 @@ function normalizeAcademy(value: unknown): DrivingplusAcademy | null {
     type: str(row.type),
     photos: Array.isArray(row.photos) ? row.photos.map(str).filter(Boolean) : [],
     reviews: Array.isArray(row.reviews) ? row.reviews.map(normalizeReview).filter((review): review is DrivingplusReview => Boolean(review)) : [],
+    licenseTypes: Array.isArray(row.licenseTypes) ? row.licenseTypes.map(normalizeLicenseType).filter((type): type is DrivingplusLicenseType => Boolean(type)) : [],
+    educationPerformance: normalizeEducationPerformance(row.educationPerformance),
+    priceObservations: Array.isArray(row.priceObservations) ? row.priceObservations.map(normalizePriceObservation) : [],
+    shuttleBuses: Array.isArray(row.shuttleBuses) ? row.shuttleBuses.map(normalizeShuttleBus) : [],
+    operateHour: normalizeOperateHour(row.operateHour),
+    roadCourses: Array.isArray(row.roadCourses) ? row.roadCourses.map(normalizeRoadCourse) : [],
   };
+}
+
+function normalizeLicenseType(value: unknown): DrivingplusLicenseType | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const label = str(row.label);
+  if (!label) return null;
+  return { code: str(row.code), label };
+}
+
+function normalizeEducationPerformance(value: unknown): DrivingplusEducationPerformance | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const feesRow = row.fees && typeof row.fees === "object" ? row.fees as Record<string, unknown> : null;
+  return {
+    year: num(row.year),
+    quarter: num(row.quarter),
+    fees: feesRow
+      ? {
+        type1Manual: num(feesRow.type1Manual),
+        type1Auto: num(feesRow.type1Auto),
+        type2Auto: num(feesRow.type2Auto),
+        vatIncluded: bool(feesRow.vatIncluded),
+        examFeeIncluded: bool(feesRow.examFeeIncluded),
+      }
+      : null,
+    capacity: num(row.capacity),
+    graduates: num(row.graduates),
+    injuryAccidents: num(row.injuryAccidents),
+    accidentRate: num(row.accidentRate),
+  };
+}
+
+function normalizePriceObservation(value: unknown): DrivingplusPriceObservation {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    source: str(row.source) || null,
+    sourceUrl: str(row.sourceUrl) || null,
+    licenseType: str(row.licenseType) || null,
+    courseType: str(row.courseType) || null,
+    gearType: str(row.gearType) || null,
+    applicantType: str(row.applicantType) || null,
+    priceUnit: str(row.priceUnit) || null,
+    priceKind: str(row.priceKind) || null,
+    amount: num(row.amount),
+    amountMax: num(row.amountMax),
+    amountVatIncluded: num(row.amountVatIncluded),
+    vatIncluded: bool(row.vatIncluded),
+    vatFlagSource: str(row.vatFlagSource) || null,
+    examFeeIncluded: bool(row.examFeeIncluded),
+    rawLabel: str(row.rawLabel) || null,
+    confidence: str(row.confidence) || null,
+    collectedAt: str(row.collectedAt) || null,
+  };
+}
+
+function normalizeShuttleBus(value: unknown): DrivingplusShuttleBus {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    title: str(row.title) || null,
+    runDirection: str(row.runDirection) || null,
+    content: str(row.content) || null,
+    footContent: str(row.footContent) || null,
+    phone: str(row.phone) || null,
+    times: Array.isArray(row.times)
+      ? row.times.map((stop) => {
+        const cell = stop && typeof stop === "object" ? stop as Record<string, unknown> : {};
+        return { time: str(cell.time) || null, runDirection: str(cell.runDirection) || null };
+      })
+      : [],
+  };
+}
+
+function normalizeOperateHour(value: unknown): DrivingplusOperateHour | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const day = (prefix: string) => ({
+    [`${prefix}OpenTime`]: str(row[`${prefix}OpenTime`]) || null,
+    [`${prefix}CloseTime`]: str(row[`${prefix}CloseTime`]) || null,
+    [`${prefix}IsHoliday`]: bool(row[`${prefix}IsHoliday`]),
+  });
+  return {
+    ...day("mon"), ...day("tue"), ...day("wed"), ...day("thu"),
+    ...day("fri"), ...day("sat"), ...day("sun"), ...day("holiday"),
+    notice: str(row.notice) || null,
+  } as DrivingplusOperateHour;
+}
+
+function normalizeRoadCourse(value: unknown): DrivingplusRoadCourse {
+  const row = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return {
+    title: str(row.title) || null,
+    subtitle: str(row.subtitle) || null,
+    content: str(row.content) || null,
+    imageUrl: str(row.imageUrl) || null,
+    youtubeVideoId: str(row.youtubeVideoId) || null,
+  };
+}
+
+function bool(value: unknown): boolean | null {
+  if (value === true || value === false) return value;
+  return null;
 }
 
 function normalizeReview(value: unknown): DrivingplusReview | null {

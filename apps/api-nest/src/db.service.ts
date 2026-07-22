@@ -5,6 +5,8 @@ import { dirname, resolve } from "node:path";
 import { AXES, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_TEMPLATE_IDS, DRIVING_ORIGINAL_TEMPLATE_IDS, TEMPLATE_SPECS, TITLE_RULES, type AxisName, type JobKind, type TemplateSpecShape, type TitleRule } from "./constants.js";
 import { parseExclusionTerms, slotExclusionSql } from "./exclusions.js";
 import { drivingplusApiBaseUrl } from "./runtime-config.js";
+import { formatOperatingHoursFact, formatShuttleFact, formatTuitionFact } from "./drivingplus-academy-facts.js";
+import type { DrivingplusEducationPerformance, DrivingplusOperateHour, DrivingplusShuttleBus } from "./drivingplus-api.service.js";
 
 // node:sqlite is available in the project's Node 25 runtime and keeps the Nest port dependency-light.
 const sqlite = await import("node:sqlite" as string) as any;
@@ -917,16 +919,34 @@ export class DbService implements OnModuleInit {
         reviewCount += reviews.length;
         blogReviewCount += blogReviews.length;
         const reviewText = reviewSummaryText(reviews);
+        // dev endpoint 에만 있는 구조체(운영에는 없음 → null/빈 배열로 안전하게 흘러간다).
+        // pass_rate 는 의도적으로 채우지 않는다: accidentRate 는 교통사고율, graduates 는 수료생 수이며
+        // 합격률 원천은 어디에도 없다. 합격률로 오독하면 글에 근거 없는 합격 주장이 실린다.
+        const performance = (row.educationPerformance ?? null) as DrivingplusEducationPerformance | null;
+        const price = formatTuitionFact(performance);
+        const shuttle = formatShuttleFact((row.shuttleBuses ?? []) as DrivingplusShuttleBus[]);
+        const hours = formatOperatingHoursFact((row.operateHour ?? null) as DrivingplusOperateHour | null);
+        const extra = JSON.stringify({
+          drivingplus_id: externalId,
+          review_count: reviews.length,
+          blog_review_count: blogReviews.length,
+          license_types: row.licenseTypes ?? [],
+          education_performance: performance,
+          price_observations: row.priceObservations ?? [],
+          shuttle_buses: row.shuttleBuses ?? [],
+          operate_hour: row.operateHour ?? null,
+          road_courses: row.roadCourses ?? [],
+        });
         const existing = this.get("SELECT id FROM academies WHERE domain=? AND external_id=?", [domain, externalId]);
         if (existing) {
-          this.run(`UPDATE academies SET region=?, name=?, address=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND domain=?`,
-            [region, name, address, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), JSON.stringify({ drivingplus_id: externalId, review_count: reviews.length, blog_review_count: blogReviews.length }), "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt, existing.id, domain]);
+          this.run(`UPDATE academies SET region=?, name=?, address=?, price=?, shuttle=?, hours=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND domain=?`,
+            [region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt, existing.id, domain]);
         } else {
-          this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
+          this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, price, shuttle, hours, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
             WHERE academies.external_id IS NULL OR academies.external_id=excluded.external_id`,
-            [randomUUID(), domain, externalId, region, name, address, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), JSON.stringify({ drivingplus_id: externalId, review_count: reviews.length, blog_review_count: blogReviews.length }), "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt]);
+            [randomUUID(), domain, externalId, region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt]);
         }
         upserted++;
       }
