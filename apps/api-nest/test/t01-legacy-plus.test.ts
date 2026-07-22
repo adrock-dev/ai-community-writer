@@ -82,20 +82,23 @@ describe("T01 Legacy Plus", () => {
     expect(plus).not.toContain("위치/동선, 추천 대상");
     expect(plus).not.toContain("지역 생활권과 출퇴근/통학 동선을 짚고");
     expect(plus).not.toContain("지역 기준 거리를 비교표에 반영");
-    expect(plus).toContain("생활권·동선·통학을 새 비교축이나 후보의 장점으로 만들지 않는다");
+    // 셔틀 자료가 생기기 전에는 이동 관련 서술을 통째로 막았다. 이제는 확인된 셔틀 운행
+    // 지역은 쓰게 하고, 근거 없는 접근성 단정만 막는다.
+    expect(plus).toContain("확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다");
+    expect(plus).toContain("주소만으로 통학 편의·접근성·가까움을 단정하지 않는다");
     expect(plus).toContain("수식어: 상담전확인");
   });
 
-  it("Legacy Plus 전용 구조·작성법은 자연스러운 Legacy 흐름을 유지하고 이동 제약은 페르소나 조건으로만 허용한다", () => {
+  it("Legacy Plus 전용 구조·작성법은 자연스러운 Legacy 흐름을 유지하고 확인된 셔틀 지역은 허용한다", () => {
     expect(legacyPlusStructureGuide()).toContain("면허 과정");
     expect(legacyPlusStructureGuide()).not.toContain("생활권");
     expect(legacyPlusWritingGuide()).toContain("실제 수강생 리뷰");
     expect(legacyPlusWritingGuide()).toContain("기계적으로 같게 맞추지 않는다");
-    expect(legacyPlusWritingGuide()).toContain("페르소나가 이동 조건을 명시할 때만");
+    expect(legacyPlusWritingGuide()).toContain("확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다");
     expect(legacyPlusArticlePatternGuide()).toContain("자연스러운 서술");
   });
 
-  it("이동 제약이 명시된 페르소나에서는 생활권·동선을 확인 조건으로만 허용한다", () => {
+  it("이동 제약이 명시된 페르소나는 확인된 셔틀 지역과 연결하되 근거 없는 단정은 막는다", () => {
     const slot = { template_id: "T01", region: target, primary_keyword: `${target} 운전면허학원`, slot_id: "commute-reader-flow", persona: "직장 출퇴근과 통학 시간을 함께 고려하는 면허 준비자" };
     const prompt = buildPrompt({ display_name: "테스트" }, slot, "facts", "comparison", getArchetype("local"), "", true, undefined, {
       structureGuide: legacyPlusStructureGuide(),
@@ -104,8 +107,10 @@ describe("T01 Legacy Plus", () => {
       designGuide: legacyPlusDesignGuide(),
       readerFlow: true,
     });
-    expect(prompt).toContain("페르소나에 명시된 이동 조건은 독자가 등록 전 확인할 조건으로 제한해 자연스럽게 쓸 수 있다");
-    expect(prompt).toContain("주소만으로 특정 학원의 통학 편의·접근성·가까움을 단정하지 않는다");
+    expect(prompt).toContain("페르소나에 명시된 이동 조건을 확인된 셔틀 운행 지역과 연결해");
+    expect(prompt).toContain("주소만으로 통학 편의·접근성·가까움을 단정하지 않는다");
+    // 셔틀 자료가 없는 학원까지 운행 범위를 넓히는 것은 계속 막는다.
+    expect(prompt).toContain("셔틀 자료가 없는 학원의 운행 범위를 추측하거나");
     expect(prompt).not.toContain("통학하기 편하다");
   });
 

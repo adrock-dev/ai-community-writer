@@ -774,8 +774,8 @@ function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplate
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
   const personaMobilityGuide = personaHasMobilityConstraint
-    ? "페르소나의 이동 조건은 독자가 확인할 질문으로 제한해 자연스럽게 반영할 수 있다. 다만 주소만으로 특정 학원이 가깝다·통학하기 편하다·접근성이 좋다고 결론 내리지 않는다."
-    : "페르소나에 이동 조건이 없으므로 생활권·동선·통학을 새 비교축으로 만들지 않는다.";
+    ? "페르소나의 이동 조건을 확인된 셔틀 운행 지역과 연결해 자연스럽게 쓸 수 있다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다."
+    : "확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
   const candidateRepairGuide = options?.readerFlow
     ? `후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험·수강생 리뷰 중 실제 차이가 있을 때만 선택 상황과 연결한다. 모든 후보를 같은 과정·확인 문장으로 시작하지 않는다. 실제 지역은 짧은 사실로만 적고 주소를 소개 중심으로 쓰지 않는다. ${personaMobilityGuide}`
     : "후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다: '### 후보명' → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.";
@@ -886,8 +886,8 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동\s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
   const personaMobilityGuide = personaHasMobilityConstraint
-    ? "페르소나에 명시된 이동 조건은 독자가 등록 전 확인할 조건으로 제한해 자연스럽게 쓸 수 있다. 다만 주소만으로 특정 학원의 통학 편의·접근성·가까움을 단정하지 않는다."
-    : "페르소나에 이동 조건이 없으므로 생활권·동선·통학을 새 비교축이나 후보의 장점으로 만들지 않는다.";
+    ? "페르소나에 명시된 이동 조건을 확인된 셔틀 운행 지역과 연결해 독자가 판단할 수 있게 쓴다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다."
+    : "확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
   const academyNarrativeGuide = options?.readerFlow
     ? [
       "- 이 글의 흐름은 ‘독자 질문 → 학원별 차이 → 객관 정보 → 선택 도움’이다. 도입은 지역에서 면허를 준비할 때 생기는 현실적인 고민을 한두 짧은 문단으로 열고 후보 소개로 자연스럽게 이어 간다. 면허 종류·교육 과정·전문학원 여부는 실제 차이가 있거나 독자의 고민과 맞을 때만 활용하며, 모든 도입의 고정 주제로 삼지 않는다.",
