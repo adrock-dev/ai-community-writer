@@ -193,4 +193,10 @@ describe("문체 지침", () => {
     expect(guide).toContain("가상의 수강생");
     expect(guide).toContain("직접 다녀온 것처럼");
   });
+
+  it("여러 학원 공통 조건(수강료 단서 등)은 한 번만 밝히도록 지시한다 — 후보마다 반복 = repeated_sentence 격리 원인", () => {
+    const guide = t16WritingGuide({ persona: "초보자" });
+    expect(guide).toContain("공통 조건");
+    expect(guide).toContain("후보마다 되풀이하지 않는다");
+  });
 });
