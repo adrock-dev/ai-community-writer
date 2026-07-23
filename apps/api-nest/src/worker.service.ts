@@ -439,9 +439,10 @@ export class WorkerService {
       `소개 가능한 후보 수: ${academies.length}곳`,
       `사용 가능한 사진: ${Object.keys(images).length ? Object.keys(images).map((key) => `[IMAGE:${key}]`).join(", ") : "없음"}`,
       `후기 문구 보유 후보: ${academies.filter((a) => a.review).length}곳`,
+      academyTypeGlossary(academies),
       `작성 범위: 아래 항목에 없는 학원명·가격·합격률·셔틀·후기는 만들지 않는다`,
       `노출 방식: 이 입력 묶음 자체를 출처나 참고자료로 쓰지 않는다`,
-    ].join("\n");
+    ].filter(Boolean).join("\n");
     return { text: [header, body, relatedText].filter(Boolean).join("\n\n"), images, academyCount: academies.length, firstAcademyName: String(academies[0]?.name || ""), academies };
   }
 
@@ -615,6 +616,25 @@ function humanAcademyType(value: unknown): string {
     test_center: "운전면허시험장",
   };
   return map[raw] || raw.replace(/_/g, " ").trim();
+}
+
+/**
+ * 후보에 등장하는 운영 형태의 의미를 한 번만 설명한다(academy vs exam_academy 차이).
+ *
+ * facts 에는 `운영 형태: 자동차운전전문학원` 처럼 라벨만 들어가는데, 모델은 이 유형이 실제로
+ * 무엇이 다른지 모른다. 이건 특정 intent 전용 지식이 아니라, 학원을 소개하는 모든 글유형이
+ * 글 전반에서 배경으로 알고 있어야 하는 도메인 상식이라 buildFacts 공통 헤더에 항상 넣는다.
+ * '치른다'로 서술한다 — 비교글 out-of-scope 게이트가 막는 '시험 접수·응시' 표현을 피하면서
+ * "시험을 어디서 보는가"라는 차이를 전달한다. 등장하지 않는 유형은 넣지 않는다.
+ */
+export function academyTypeGlossary(academies: Row[]): string {
+  const types = new Set(academies.map((academy) => String(academy.academy_type || "").trim()));
+  const lines: string[] = [];
+  if (types.has("exam_academy")) lines.push("자동차운전전문학원: 학원 안에 시험 코스가 있어 기능·도로주행까지 학원에서 치르는 유형");
+  if (types.has("academy")) lines.push("운전학원: 차량 연습 중심으로, 기능·도로주행은 관할 운전면허시험장에서 치르는 유형");
+  // "참고"로 명시한다 — 글이 반드시 이 차이를 설명해야 하는 건 아니다. 유형을 정확히 이해하고 쓰되,
+  // 주제와 맞을 때만 자연스럽게 활용하라는 배경 지식이다.
+  return lines.length ? `운영 형태 참고(배경 지식일 뿐 반드시 본문에 설명할 필요는 없음): ${lines.join(" / ")}` : "";
 }
 
 
