@@ -62,6 +62,15 @@ describe("축 계획", () => {
     expect(plan.question.length).toBeGreaterThan(0);
   });
 
+  it("비교표 열에 실제 소재지·학원명을 넣지 않는다 — 계약문이 항상 붙여 중복되기 때문", () => {
+    // 실측: modifier=가까운 이 columns 에 "실제 소재지"를 넣어 표 열이 두 번 나왔다.
+    for (const modifier of Object.keys(T16_MODIFIERS)) {
+      const plan = buildT16AxisPlan({ modifier_1: modifier }, withPrice);
+      expect(plan.columns).not.toContain("실제 소재지");
+      expect(plan.columns).not.toContain("학원명");
+    }
+  });
+
   it("같은 데이터를 가리키는 modifier×intent 조합은 충돌로 판정한다", () => {
     expect(isConflictingAxisPair("비용절약", "비용구성")).toBe(true);
     expect(isConflictingAxisPair("야간반", "일정확인")).toBe(true);

@@ -63,7 +63,8 @@ export const T16_MODIFIERS: Record<string, ModifierSpec> = {
   야간반: { columns: ["운영 시간", "운영 과정"], requires: ["hours"], focus: "퇴근 후 다닐 수 있는 시간대 확인", fallback: "상담전확인" },
   주말반: { columns: ["운영 시간", "운영 과정"], requires: ["hours"], focus: "주말 운영 여부를 확인하는 방법", fallback: "상담전확인" },
   상담전확인: { columns: ["운영 과정", "운영 형태"], requires: ["course"], focus: "상담 전에 정리해 둘 항목", fallback: null },
-  가까운: { columns: ["실제 소재지", "운영 과정"], requires: ["region"], focus: "생활 동선에서 확인할 점", fallback: null },
+  // 실제 소재지는 계약문이 항상 마지막에 붙이므로 columns 에 넣지 않는다(넣으면 표 열이 중복된다).
+  가까운: { columns: ["운영 과정", "운영 형태"], requires: ["region"], focus: "생활 동선에서 확인할 점", fallback: null },
 };
 
 // ── intent: 무엇을 알려주는가 ────────────────────────────────────────────────
@@ -144,10 +145,12 @@ export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
   const rawIntent = String(slot.intent || "").trim() || "과정선택";
   const mod = resolveWithFallback(T16_MODIFIERS, rawModifier, academies, demoted);
   const int = resolveWithFallback(T16_INTENTS, rawIntent, academies, demoted);
+  // 학원명·실제 소재지는 계약문이 항상 붙이므로 columns 에서 걸러 표 열 중복을 막는다(정의 실수 방어).
+  const columns = mod.spec.columns.filter((column) => column !== "실제 소재지" && column !== "학원명");
   return {
     modifier: mod.key,
     intent: int.key,
-    columns: mod.spec.columns,
+    columns,
     focus: mod.spec.focus,
     question: int.spec.question,
     subtitle: `${modifierSubtitle(mod.key)} ${int.spec.subtitle}`.replace(/\s+/g, " ").trim(),
