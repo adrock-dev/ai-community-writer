@@ -184,7 +184,7 @@ describe("문체 지침", () => {
 
   it("persona 가 없어도 안전한 도입 예시를 준다", () => {
     const guide = t16WritingGuide({});
-    expect(guide).toContain("고민되실");
+    expect(guide).toContain("무엇부터 봐야 할지");
     expect(guide.length).toBeGreaterThan(100);
   });
 
@@ -205,10 +205,10 @@ describe("문체 지침", () => {
     const expert = t16WritingGuide({ persona: "초보자" }, "expert");
     // 대화체는 친근 어투, 전문가는 설명 톤 — 어투만 갈린다.
     expect(conv).toContain("친근한 블로그 에디터");
-    expect(conv).toContain("고민되실");
+    expect(conv).toContain("고민되는 경우가 많죠");
     expect(expert).toContain("전문가 설명 톤");
     expect(expert).not.toContain("친근한 블로그 에디터");
-    expect(expert).not.toContain("고민되실");
+    expect(expert).not.toContain("고민되는 경우가 많죠");
     // 콘텐츠·상세도·날조 금지는 톤과 무관하게 양쪽에 있다.
     for (const shared of ["최소 3~4문장", "공통 조건", "가상의 수강생"]) {
       expect(conv).toContain(shared);
