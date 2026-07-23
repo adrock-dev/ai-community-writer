@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getArchetype } from "../src/archetypes.js";
 import { shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE } from "../src/t01-legacy-plus.js";
-import { buildPrompt } from "../src/worker.service.js";
+import { buildPrompt, readerFacingModifierLabels } from "../src/worker.service.js";
 
 describe("T01 generation mode isolation", () => {
   it("Legacy Plus는 T01 계보에서만 선택되고 명시 legacy는 기존 경로를 유지한다", () => {
@@ -66,5 +66,21 @@ describe("T01 generation mode isolation", () => {
     expect(t01Prompt).toContain("| 비교 항목 | 후보 A | 후보 B |");
     expect(t01Prompt).toContain("비교표의 중심 열");
     expect(t01Prompt).not.toContain("각 학원을 행으로 두는 요약표");
+  });
+
+  it("'가까운'·'근처'는 독자용 수식어 라벨에서 빼고 나머지는 유지한다", () => {
+    // 후보를 직선거리로 뽑는 선택 힌트일 뿐이라 프롬프트 '수식어:' 줄에 노출하지 않는다.
+    expect(readerFacingModifierLabels({ modifier_1: "주말반", modifier_2: "가까운" })).toEqual(["주말반"]);
+    expect(readerFacingModifierLabels({ modifier_1: "근처", modifier_2: "" })).toEqual([]);
+    expect(readerFacingModifierLabels({ modifier_1: "비용절약", modifier_2: "셔틀편리" })).toEqual(["비용절약", "셔틀편리"]);
+  });
+
+  it("내부링크 권장은 facts에 '관련 글 후보'가 있을 때만 노출한다", () => {
+    const promptFor = (facts: string) => buildPrompt({ display_name: "테스트" }, {
+      template_id: "T16", slot_id: "T16_x", region: "테스트시", primary_keyword: "테스트시 운전면허학원", modifier_1: "주말반",
+    }, facts, "comparison", getArchetype("local_axis"), "", true, null, { t01Comparison: true, readerFlow: true });
+    // 재료에 내부 관련 글 후보가 없으면 근거 없는 내부링크 유도(→ URL 날조 압력)를 걸지 않는다.
+    expect(promptFor("소개 가능한 후보 수: 2곳")).not.toContain("관련 내부링크 2~4개 권장");
+    expect(promptFor("관련 글 후보(...): \n- 글: https://x/community/y")).toContain("관련 내부링크 2~4개 권장");
   });
 });

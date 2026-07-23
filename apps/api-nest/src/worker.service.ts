@@ -233,11 +233,7 @@ export class WorkerService {
           articlePatternGuide: legacyPlusArticlePatternGuide(t01LegacyPlusContext),
           designGuide: legacyPlusDesignGuide(),
           academyPrinciples: legacyPlusAcademyPrinciples(),
-          // "가까운" is a retrieval/selection hint for this mode, not a
-          // reader-facing comparison axis.  Legacy and every other mode keep
-          // their stored modifier labels unchanged.
-          modifierLabels: [slot.modifier_1, slot.modifier_2]
-            .filter((label): label is string => Boolean(label && !/^(?:가까운|근처)$/u.test(String(label).trim()))),
+          modifierLabels: readerFacingModifierLabels(slot),
           reviewInstruction: legacyPlusReviewPromptInstruction(t01LegacyPlusContext),
           faqInstruction: legacyPlusFaqPromptInstruction(),
           readerFlow: true,
@@ -253,6 +249,8 @@ export class WorkerService {
           designGuide: legacyPlusDesignGuide(),
           readerFlow: true,
           t01Comparison: true,
+          // "가까운/근처"는 선택 힌트일 뿐 독자용 관점이 아니라 라벨에서 뺀다(helper 주석 참조).
+          modifierLabels: readerFacingModifierLabels(slot),
         } : (isT01Family ? { t01Comparison: true } : undefined);
         const effectiveDirection = t01LegacyPlusContext ? legacyPlusTemplateDirection(t01LegacyPlusContext) : templateDirection;
         const legacyPrompt = buildPrompt(domainMeta, slot, promptFactsText, designTemplateId, archetype, effectiveDirection, academyTypes.length > 0, forcedTitle, t01PromptOptions);
@@ -933,6 +931,17 @@ function structureSeed(slot: Row): string {
   return String(slot.slot_id ?? slot.id ?? `${slot.region ?? ""}|${slot.primary_keyword ?? ""}`);
 }
 
+/**
+ * 프롬프트 '수식어:' 줄에 노출할 라벨. "가까운/근처"는 후보를 직선거리로 뽑는 선택 힌트일 뿐
+ * (academy-candidate-selection) 독자용 관점 라벨이 아니라서 뺀다 — 노출하면 근거 없는 근접·접근성
+ * 주장을 유도해 T16 거리 게이트(distance_number_claim)와 엇박이 난다. 축 해석(buildT16AxisPlan)은
+ * slot.modifier_1 을 직접 읽으므로 이 스트립은 축 선택에 영향이 없다. Legacy Plus·T16 공용.
+ */
+export function readerFacingModifierLabels(slot: Row): string[] {
+  return [slot.modifier_1, slot.modifier_2]
+    .filter((label): label is string => Boolean(label && !/^(?:가까운|근처)$/u.test(String(label).trim())));
+}
+
 export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string, hasAcademy: boolean, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
   const isT01AcademyComparison = isT01AcademyComparisonPrompt(slot, hasAcademy, options);
@@ -1011,7 +1020,7 @@ ${isT01AcademyComparison ? (isAcademyProfile ? "학원 소개 범위:" : "비교
 ${authoritativeSourceGuide}
 
 원본 레퍼런스 품질 기준:
-- 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장(단 학원 사진 슬롯은 아래 '카드별 1장' 규칙을 따르므로 이 권장 수치에 묶이지 않는다), 관련 내부링크 2~4개 권장, FAQ는 필수 아님.
+- 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장(단 학원 사진 슬롯은 아래 '카드별 1장' 규칙을 따르므로 이 권장 수치에 묶이지 않는다)${/관련 글 후보/.test(facts) ? ", 관련 내부링크 2~4개 권장" : ""}, FAQ는 필수 아님.
 ${academyNarrativeGuide}
 ${academyScopeGuide ? `- ${academyScopeGuide}` : ""}
 - ${options?.readerFlow ? "후보가 적거나 비교 정보가 희소하면 주소·인근 여부를 글의 주제로 키우지 말고, 실제 후보명과 짧은 객관 정보·공통 확인 순서를 중심으로 쓴다." : "후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 ‘직접 확인 가능한 후보와 인근 선택지’처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다."}
