@@ -75,12 +75,17 @@ describe("T01 generation mode isolation", () => {
     expect(readerFacingModifierLabels({ modifier_1: "비용절약", modifier_2: "셔틀편리" })).toEqual(["비용절약", "셔틀편리"]);
   });
 
-  it("내부링크 권장은 facts에 '관련 글 후보'가 있을 때만 노출한다", () => {
+  it("내부링크는 facts에 '관련 글 후보'가 없으면 금지하고, 있으면(재개 시) 유도한다", () => {
     const promptFor = (facts: string) => buildPrompt({ display_name: "테스트" }, {
       template_id: "T16", slot_id: "T16_x", region: "테스트시", primary_keyword: "테스트시 운전면허학원", modifier_1: "주말반",
     }, facts, "comparison", getArchetype("local_axis"), "", true, null, { t01Comparison: true, readerFlow: true });
-    // 재료에 내부 관련 글 후보가 없으면 근거 없는 내부링크 유도(→ URL 날조 압력)를 걸지 않는다.
-    expect(promptFor("소개 가능한 후보 수: 2곳")).not.toContain("관련 내부링크 2~4개 권장");
-    expect(promptFor("관련 글 후보(...): \n- 글: https://x/community/y")).toContain("관련 내부링크 2~4개 권장");
+    // 현재 기본: 후보 미제공 → 내부 링크 '금지'. 근거 없는 유도(→ 죽은 링크)를 걸지 않는다.
+    const off = promptFor("소개 가능한 후보 수: 2곳");
+    expect(off).not.toContain("관련 내부링크 2~4개 권장");
+    expect(off).toContain("자사 사이트의 다른 글로 연결하는 내부 링크는 넣지 않는다");
+    // 재개(관련 글 후보 복원) 시엔 자동으로 유도 분기로 전환된다.
+    const on = promptFor("관련 글 후보(...): \n- 글: https://x/community/y");
+    expect(on).toContain("관련 내부링크 2~4개 권장");
+    expect(on).not.toContain("자사 사이트의 다른 글로 연결하는 내부 링크는 넣지 않는다");
   });
 });

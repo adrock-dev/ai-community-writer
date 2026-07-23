@@ -457,17 +457,21 @@ export class WorkerService {
     return images;
   }
 
-  private relatedPostsForSlot(domain: string, slot: Row): Row[] {
-    const region = String(slot.region || "").trim();
-    const keyword = String(slot.primary_keyword || "").replace(region, "").trim();
-    const terms = [region, keyword].filter((term) => term.length >= 2).slice(0, 2);
-    if (!terms.length) return this.db.all("SELECT title, slug FROM posts WHERE domain=? AND status='published' ORDER BY generated_at DESC LIMIT 5", [domain]);
-    const rows = this.db.all("SELECT title, slug FROM posts WHERE domain=? AND status='published' ORDER BY generated_at DESC LIMIT 80", [domain]);
-    return rows
-      .map((post) => ({ ...post, score: terms.reduce((sum, term) => sum + (String(post.title || "").includes(term) ? 2 : 0) + (String(post.slug || "").includes(term.replace(/\s+/g, "-")) ? 1 : 0), 0) }))
-      .sort((a, b) => b.score - a.score)
-      .filter((post) => post.score > 0)
-      .slice(0, 5);
+  private relatedPostsForSlot(_domain: string, _slot: Row): Row[] {
+    // 내부(자사) 글 링크 비활성화. 공개 사이트가 링크 대상 글을 아직 안정적으로 서빙하지 못해
+    // (생성 예정/미발행 포함) 죽은 링크가 발행 글에 남아 신뢰도를 떨어뜨렸다. 후보를 아예 제공하지
+    // 않으므로 facts 에 '관련 글 후보'가 없고 → buildPrompt/repair 가 내부 링크를 '금지'로 전환하며
+    // → stripUnofferedInternalLinks 가 모델이 그래도 만든 /community/ 링크를 전부 해제한다.
+    //
+    // 재개하려면 아래 published 조회를 복원한다(프롬프트·스트립은 facts 유무로 자동 전환됨):
+    //   const region = String(slot.region || "").trim();
+    //   const keyword = String(slot.primary_keyword || "").replace(region, "").trim();
+    //   const terms = [region, keyword].filter((t) => t.length >= 2).slice(0, 2);
+    //   if (!terms.length) return this.db.all("SELECT title, slug FROM posts WHERE domain=? AND status='published' ORDER BY generated_at DESC LIMIT 5", [domain]);
+    //   const rows = this.db.all("SELECT title, slug FROM posts WHERE domain=? AND status='published' ORDER BY generated_at DESC LIMIT 80", [domain]);
+    //   return rows.map((p) => ({ ...p, score: terms.reduce((s, t) => s + (String(p.title||"").includes(t)?2:0) + (String(p.slug||"").includes(t.replace(/\s+/g,"-"))?1:0), 0) }))
+    //     .sort((a, b) => b.score - a.score).filter((p) => p.score > 0).slice(0, 5);
+    return [];
   }
 
   // 학원 타입은 글유형(spec.academy_types)이 단일 소스다. 선택값이 있으면 그 타입만, 비어 있으면 학원정보를 쓰지 않는다(빈 배열).
@@ -883,7 +887,7 @@ ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" �
 - 체크리스트는 포함한다. ${options?.faqInstruction || "FAQ는 질문형 의도이거나 템플릿 필수 구조에 FAQ가 명시된 경우에만 2~4개로 짧게 둔다."}
 - 사용 가능한 이미지 슬롯이 있으면 실제 키만 [IMAGE:academy_1] 형식으로 배치한다. 학원 사진 슬롯([IMAGE:academy_*])은 제공된 것을 하나도 빠뜨리지 말고 해당 학원 카드 안에 1장씩 넣는다(후보가 5곳이면 5장). 그 외 슬롯은 3~4개까지만 쓴다.
 - 학원명·가격·셔틀·면허종류·준비물처럼 독자가 스캔해야 하는 핵심어는 Markdown bold를 적당히 사용한다.
-- 관련 글 후보가 있으면 실제 링크만 2~4개 연결한다. 후보가 없으면 링크를 꾸며내지 않는다.
+- ${/관련 글 후보/.test(facts) ? "관련 글 후보가 있으면 실제 링크만 2~4개 연결한다. 후보가 없으면 링크를 꾸며내지 않는다." : "자사 사이트 내부 글로 연결하는 링크는 넣지 않는다. 재료에 실제로 주어진 외부 URL(공신력 출처·블로그 후기 등)만 링크로 쓴다."}
 - [1], [2] 같은 출처번호와 입력 묶음 표현(확인된 콘텐츠 재료, 작성 범위, 소개 가능한 후보 수, API 자료, 후보 수, 참고자료, 내부 API URL 등)은 노출하지 않는다.
 - ${authoritativeSourceGuide}
 - 이번 입력의 학원 API는 출처가 아니라 내부 데이터다.
@@ -987,6 +991,13 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
     ? "- 각 후보는 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 " + tableNoun + "의 중심 열로 쓰지 않는다."
     : "- 후보별 설명에는 가능한 경우 학원명, 주소, 전화, 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다. 전화번호는 자료에 있는 번호만 그대로 쓰고 다른 번호를 만들지 않는다.";
   const academyPrinciples = options?.academyPrinciples ?? DRIVING_ACADEMY_PRINCIPLES;
+  // 내부(자사) 글 링크: facts 에 '관련 글 후보'가 실제로 주어졌을 때만 유도한다. 현재 후보 제공이
+  // 꺼져 있어(relatedPostsForSlot→[]) 항상 '금지' 분기로 떨어진다 — 죽은 내부 링크로 신뢰도가
+  // 깎이는 것을 막기 위함. 외부(공신력 출처·블로그 후기)처럼 재료에 주어진 URL 링크는 계속 허용한다.
+  const hasRelatedPosts = /관련 글 후보/.test(facts);
+  const internalLinkGuide = hasRelatedPosts
+    ? "- \"확인된 콘텐츠 재료\"에 '관련 글 후보'가 있으면, 그 중 최소 1개(가능하면 2~4개)를 반드시 본문에 [앵커 텍스트](URL) 형태 Markdown 링크로 자연스럽게 연결한다. 앵커는 문맥에 맞게 쓰고, URL은 재료에 있는 것만 그대로 쓴다. 관련 글 후보가 없으면 내부링크를 만들지 않는다(URL을 지어내지 않는다)."
+    : "- 자사 사이트의 다른 글로 연결하는 내부 링크는 넣지 않는다. 링크는 확인된 콘텐츠 재료에 실제로 주어진 외부 URL(공신력 출처·블로그 후기 등)만 그대로 쓴다.";
   // 역할 문장에는 브랜드명을 넣지 않는다. 모델은 그 브랜드의 기존 글을 모르므로 "○○ 블로그처럼"은
   // 실질 지시가 없는 빈 문장이 되고, 아래 「브랜드:」 선언과 CTA 지침이 이미 이름을 전달한다.
   return `너는 한국어 SEO 블로그 에디터다. 아래 슬롯과 검증된 자료만 사용해, 회사 콘텐츠 상세 페이지와 HTML 다운로드에서 바로 읽히는 완성형 Markdown 글을 작성하라.
@@ -1023,13 +1034,13 @@ ${isT01AcademyComparison ? (isAcademyProfile ? "학원 소개 범위:" : "비교
 ${authoritativeSourceGuide}
 
 원본 레퍼런스 품질 기준:
-- 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장(단 학원 사진 슬롯은 아래 '카드별 1장' 규칙을 따르므로 이 권장 수치에 묶이지 않는다)${/관련 글 후보/.test(facts) ? ", 관련 내부링크 2~4개 권장" : ""}, FAQ는 필수 아님.
+- 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장(단 학원 사진 슬롯은 아래 '카드별 1장' 규칙을 따르므로 이 권장 수치에 묶이지 않는다)${hasRelatedPosts ? ", 관련 내부링크 2~4개 권장" : ""}, FAQ는 필수 아님.
 ${academyNarrativeGuide}
 ${academyScopeGuide ? `- ${academyScopeGuide}` : ""}
 - ${options?.readerFlow ? "후보가 적거나 비교 정보가 희소하면 주소·인근 여부를 글의 주제로 키우지 말고, 실제 후보명과 짧은 객관 정보·공통 확인 순서를 중심으로 쓴다." : "후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 ‘직접 확인 가능한 후보와 인근 선택지’처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다."}
 - ${missingFactGuide}
 - 수강료 자료가 없으면 60만원대, 70만원대, 709,600원 같은 구체 금액을 추정하지 않는다. 비용 문단은 “상담 시 확인할 항목” 중심으로 쓴다.
-- "확인된 콘텐츠 재료"에 '관련 글 후보'가 있으면, 그 중 최소 1개(가능하면 2~4개)를 반드시 본문에 [앵커 텍스트](URL) 형태 Markdown 링크로 자연스럽게 연결한다. 앵커는 문맥에 맞게 쓰고, URL은 재료에 있는 것만 그대로 쓴다. 관련 글 후보가 없으면 내부링크를 만들지 않는다(URL을 지어내지 않는다).
+${internalLinkGuide}
 - ${options?.reviewInstruction || "제공된 수강생 리뷰는 슬롯별로 선택된 실제 수강생 원문 1건이다. 리뷰가 있는 학원은 이 1건만 후보 설명 안에 Markdown 인용(> “원문” — 출처: 운전면허PLUS 실제 수강생 리뷰)으로 그대로 노출한다. 테마 요약·재서술·출처 삭제는 금지하며, 작성자·작성일·평점과 제공되지 않은 후기 문구는 쓰거나 만들지 않는다. 리뷰가 없으면 실제 후기처럼 꾸며 쓰지 말고 상담 확인 팁으로 대체한다."}
 - 긍정 블로그 리뷰글 보충자료가 있으면 공식 근거처럼 단정하지 말고 “블로그 후기 흐름에서는 이런 점을 확인할 수 있다” 정도로 자연스럽게 녹인다. 링크를 넣을 때는 제공된 실제 URL만 사용한다.
 
