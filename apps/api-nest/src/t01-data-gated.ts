@@ -30,7 +30,7 @@ export type T01AcademyCandidate = {
   passRate: string | null;
   phone: string | null;
   reviewEvidencePresent: boolean;
-  studentReviews: Array<{ quote: string; source: "DrivingPlus 수강생 리뷰" }>;
+  studentReviews: Array<{ quote: string; source: "운전면허PLUS 실제 수강생 리뷰" }>;
   missingFields: string[];
 };
 
@@ -199,8 +199,8 @@ function addUnverifiedClaimIssues(issues: T01QualityIssue[], markdown: string, t
 }
 
 function isProvidedStudentReviewQuote(sentence: string, candidates: T01AcademyCandidate[]): boolean {
-  if (!sentence.includes("출처: DrivingPlus 수강생 리뷰")) return false;
-  const normalizedSentence = normalizeReviewText(sentence.replace(/\s*[—–-]?\s*출처:\s*DrivingPlus 수강생 리뷰.*$/u, ""));
+  if (!sentence.includes("출처: 운전면허PLUS 실제 수강생 리뷰")) return false;
+  const normalizedSentence = normalizeReviewText(sentence.replace(/\s*[—–-]?\s*출처:\s*운전면허PLUS 실제 수강생 리뷰.*$/u, ""));
   return candidates.some((candidate) => candidate.studentReviews.some((review) => {
     const normalizedReview = normalizeReviewText(review.quote);
     return normalizedSentence.includes(normalizedReview)

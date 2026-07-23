@@ -40,10 +40,10 @@ describe("T01 Legacy Plus", () => {
     expect(first.selectedReviews).toEqual(second.selectedReviews);
     expect(first.selectedReviews).toHaveLength(2);
     expect(first.selectedReviews.map((review) => review.academyId)).toEqual(["a", "b"]);
-    expect(first.selectedReviews).toContainEqual(expect.objectContaining({ source: expect.objectContaining({ label: "DrivingPlus 수강생 리뷰" }), eligibleForContent: true }));
+    expect(first.selectedReviews).toContainEqual(expect.objectContaining({ source: expect.objectContaining({ label: "운전면허PLUS 실제 수강생 리뷰" }), eligibleForContent: true }));
     const prompt = t01LegacyPlusPromptContract(first);
     expect(prompt).toContain("생성 뒤 원천 원문과 출처로 학원별 한 건씩 연결된다");
-    expect(prompt).not.toContain("DrivingPlus 수강생 리뷰");
+    expect(prompt).not.toContain("운전면허PLUS 실제 수강생 리뷰");
     expect(prompt).not.toContain("출처: 제공된 서비스명");
     expect(prompt).not.toContain("홍길동");
     expect(prompt).not.toContain("2026-07-01");
@@ -126,10 +126,10 @@ describe("T01 Legacy Plus", () => {
     const base = context();
     const noReview = { ...base, data: { ...base.data, candidates: base.data.candidates.map((candidate) => ({ ...candidate, studentReviews: [] })) }, selectedReviews: [] };
     expect(t01LegacyPlusPromptContract(noReview)).toContain("후기·출처·체험담을 만들지 않는다");
-    const markdown = "## 비교표\n| 항목 | 첫학원 | 둘학원 |\n|---|---|---|\n| 주소 | 테스트시 | 테스트시 |\n\n### 첫학원\n설명\n> 만들어진 후기\n출처: DrivingPlus 수강생 리뷰";
+    const markdown = "## 비교표\n| 항목 | 첫학원 | 둘학원 |\n|---|---|---|\n| 주소 | 테스트시 | 테스트시 |\n\n### 첫학원\n설명\n> 만들어진 후기\n출처: 운전면허PLUS 실제 수강생 리뷰";
     expect(t01LegacyPlusQualityIssues(markdown, noReview).map((issue) => issue.code)).toContain("legacy_plus_unverified_review_claim");
     const clean = finalizeLegacyPlusMarkdown("### 첫학원\n면허 과정을 확인하세요.\n\n### 둘학원\n운영 형태를 확인하세요.", noReview);
-    expect(clean).not.toContain("DrivingPlus 수강생 리뷰");
+    expect(clean).not.toContain("운전면허PLUS 실제 수강생 리뷰");
     expect(t01LegacyPlusQualityIssues(clean, noReview).map((issue) => issue.code)).not.toContain("legacy_plus_review_count");
   });
 
@@ -146,7 +146,7 @@ describe("T01 Legacy Plus", () => {
       selectedReviews: [{ ...plus.selectedReviews[0]!, text: "여러분에게 도움이 됐다는 수강생 경험입니다." }],
     };
     const reviewResult = finalizeLegacyPlusMarkdown("### 첫학원\n설명\n\n### 둘학원\n설명", reviewWithAudienceAddress);
-    expect(reviewResult).toContain("> 여러분에게 도움이 됐다는 수강생 경험입니다. — 출처: DrivingPlus 수강생 리뷰");
+    expect(reviewResult).toContain("> 여러분에게 도움이 됐다는 수강생 경험입니다. — 출처: 운전면허PLUS 실제 수강생 리뷰");
   });
 
   it("원천 리뷰 인용 안에만 있는 상투 표현은 무시하지만 생성 본문에 있으면 계속 차단한다", () => {
@@ -160,7 +160,7 @@ describe("T01 Legacy Plus", () => {
   });
 
   it("legacy facts의 후보별 review/theme만 제거하고 나머지 서술 재료는 유지한다", () => {
-    const facts = "후기 문구 보유 후보: 2곳\n[1] 첫학원 / 주소: 테스트시 / 수강생 리뷰: ‘후기’ (출처: DrivingPlus 수강생 리뷰) / 긍정 블로그 리뷰글 보충자료: 후기 흐름\n[2] 둘학원 / 주소: 테스트시";
+    const facts = "후기 문구 보유 후보: 2곳\n[1] 첫학원 / 주소: 테스트시 / 수강생 리뷰: ‘후기’ (출처: 운전면허PLUS 실제 수강생 리뷰) / 긍정 블로그 리뷰글 보충자료: 후기 흐름\n[2] 둘학원 / 주소: 테스트시";
     const result = legacyPlusFactsForPrompt(facts);
     expect(result).toContain("첫학원 / 주소: 테스트시");
     expect(result).toContain("둘학원 / 주소: 테스트시");
@@ -257,7 +257,7 @@ describe("T01 Legacy Plus", () => {
       ...base,
       data: { ...base.data, candidates: base.data.candidates.map((candidate, index) => ({
         ...candidate,
-        studentReviews: index === 0 ? [{ quote: reviewText, source: "DrivingPlus 수강생 리뷰" as const }] : [],
+        studentReviews: index === 0 ? [{ quote: reviewText, source: "운전면허PLUS 실제 수강생 리뷰" as const }] : [],
       })) },
       selectedReviews: [first],
     };
@@ -268,7 +268,7 @@ describe("T01 Legacy Plus", () => {
   it("원천 review와 같은 인용의 출처 표기를 정규화하고 추출용 거리 문장은 제거한다", () => {
     const plus = context();
     const review = plus.selectedReviews[0]!;
-    const markdown = `### ${review.academyName}\n> ${truncateLegacyPlusReview(review.text)} — DrivingPlus 수강생 리뷰\n지역 중심 기준 거리는 약 13.2km입니다.`;
+    const markdown = `### ${review.academyName}\n> ${truncateLegacyPlusReview(review.text)} — 운전면허PLUS 실제 수강생 리뷰\n지역 중심 기준 거리는 약 13.2km입니다.`;
     const result = finalizeLegacyPlusMarkdown(markdown, plus);
     expect(result).toContain(`출처: ${review.source.label}`);
     expect(result).not.toMatch(/13\.2km|지역 중심 기준 거리/u);

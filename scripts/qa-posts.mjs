@@ -117,7 +117,7 @@ function readabilityIssues(body) {
 
 // 내부 누출 검사의 공유 조각: quality-gate.ts 의 동명 상수/함수와 동일해야 한다.
 // 어긋나면 test/gate-parity.test.ts 가 실패한다.
-const PUBLIC_REVIEW_ATTRIBUTION_PATTERN = "출처:\\s*DrivingPlus\\s+수강생\\s+리뷰";
+const PUBLIC_REVIEW_ATTRIBUTION_PATTERN = "출처:\\s*운전면허PLUS\\s+실제\\s+수강생\\s+리뷰";
 function stripPublicReviewAttribution(text) {
   return String(text || '').replace(new RegExp(PUBLIC_REVIEW_ATTRIBUTION_PATTERN, 'gi'), '');
 }

@@ -274,18 +274,19 @@ export function t16FactsForPrompt(facts: string): string {
     .join("\n");
 }
 
-/** 수강생 리뷰 출처의 표준 표기. 품질 게이트가 이 형태만 내부 유출 검사에서 면제한다. */
-const T16_REVIEW_ATTRIBUTION = "출처: DrivingPlus 수강생 리뷰";
+/** 수강생 리뷰 출처의 표준 표기. 품질 게이트가 이 형태를 정상 콘텐츠로 인정한다. */
+const T16_REVIEW_ATTRIBUTION = "출처: 운전면허PLUS 실제 수강생 리뷰";
 
 /**
  * 리뷰 출처 표기를 표준형으로 정규화한다.
  *
- * `DrivingPlus` 는 그 자체로 하드 실패 토큰이고(quality-gate `exposes_internal_fact_language`),
- * 면제는 정규식 완전 일치 하나뿐이다. 모델이 "출처: DrivingPlus 리뷰" 처럼 한 글자만 다르게 써도
- * 글 전체가 게이트에서 떨어진다. 프롬프트로만 강제하지 말고 생성 뒤 여기서 표기를 맞춘다.
+ * 공개 출처는 "운전면허PLUS 실제 수강생 리뷰"다. 그런데 모델이 원천 시스템명 `DrivingPlus`(그 자체로
+ * 내부 유출 하드 실패 토큰)나 "운전면허 플러스"·"운전면허PLUS 리뷰" 같은 변형을 쓰면 게이트에서
+ * 떨어지거나 표기가 흔들린다. 프롬프트로만 강제하지 말고 생성 뒤 여기서 모든 변형을 표준형으로 맞춘다.
  */
 export function normalizeT16ReviewAttribution(markdown: string): string {
+  const brand = "(?:운전면허\\s*(?:PLUS|플러스)|DrivingPlus)";
   return String(markdown || "")
-    .replace(/출처\s*[:：]?\s*DrivingPlus\s*(?:수강생\s*)?(?:리뷰|후기)/gu, T16_REVIEW_ATTRIBUTION)
-    .replace(/(?<!출처:\s)DrivingPlus\s+수강생\s+(?:리뷰|후기)/gu, T16_REVIEW_ATTRIBUTION);
+    .replace(new RegExp(`출처\\s*[:：]?\\s*${brand}\\s*(?:실제\\s*)?(?:수강생\\s*)?(?:리뷰|후기)`, "gu"), T16_REVIEW_ATTRIBUTION)
+    .replace(new RegExp(`(?<!출처:\\s)${brand}\\s+(?:실제\\s+)?수강생\\s+(?:리뷰|후기)`, "gu"), T16_REVIEW_ATTRIBUTION);
 }

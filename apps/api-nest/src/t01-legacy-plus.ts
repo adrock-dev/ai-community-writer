@@ -251,10 +251,10 @@ export function dedupeLegacyPlusDecisionSupport(markdown: string): string {
  */
 export function finalizeLegacyPlusMarkdown(markdown: string, context: T01LegacyPlusContext): string {
   const attributed = stripLegacyPlusClicheAudienceAddress(String(markdown || "")).split(/\r?\n/).map((line) => {
-    if (!/^>\s*/.test(line) || /출처:\s*DrivingPlus 수강생 리뷰/u.test(line)) return line;
+    if (!/^>\s*/.test(line) || /출처:\s*운전면허PLUS 실제 수강생 리뷰/u.test(line)) return line;
     const matchesReview = context.selectedReviews.some((review) => normalized(line).includes(normalized(truncateLegacyPlusReview(review.text))));
-    return matchesReview && line.includes("DrivingPlus 수강생 리뷰")
-      ? line.replace("DrivingPlus 수강생 리뷰", "출처: DrivingPlus 수강생 리뷰")
+    return matchesReview && line.includes("운전면허PLUS 실제 수강생 리뷰")
+      ? line.replace("운전면허PLUS 실제 수강생 리뷰", "출처: 운전면허PLUS 실제 수강생 리뷰")
       : line;
   }).filter((line) => !/(?:\d+(?:\.\d+)?\s*km|직선\s*거리|도로\s*거리|지역\s*중심\s*기준\s*거리)/iu.test(line)).join("\n");
   return removeRepeatedNarrativeSentences(
@@ -448,7 +448,7 @@ function locationCompositionIssues(markdown: string): T01QualityIssue[] {
 
 function reviewIssues(markdown: string, reviews: AcademyContentReviewCandidate[]): T01QualityIssue[] {
   const lines = String(markdown || "").split(/\r?\n/);
-  const markers = lines.filter((line) => /^>\s*/.test(line) || /출처:\s*DrivingPlus 수강생 리뷰/u.test(line));
+  const markers = lines.filter((line) => /^>\s*/.test(line) || /출처:\s*운전면허PLUS 실제 수강생 리뷰/u.test(line));
   if (!reviews.length) return markers.some((line) => /수강생\s*(?:리뷰|후기)|출처:/u.test(line))
     ? [issue("legacy_plus_unverified_review_claim", "hard_failure", "선택된 원천 리뷰가 없는데 리뷰 또는 출처를 노출함")]
     : [];
@@ -474,7 +474,7 @@ function reviewIssues(markdown: string, reviews: AcademyContentReviewCandidate[]
     }
   }
   const quoteCount = lines.filter((line) => /^>\s*/.test(line)).length;
-  const sourceCount = lines.filter((line) => /출처:\s*DrivingPlus 수강생 리뷰/u.test(line)).length;
+  const sourceCount = lines.filter((line) => /출처:\s*운전면허PLUS 실제 수강생 리뷰/u.test(line)).length;
   if (quoteCount !== reviews.length || sourceCount !== reviews.length || expectedQuotes.length !== new Set(expectedQuotes).size) {
     issues.push(issue("legacy_plus_review_count", "hard_failure", `학원별 리뷰·출처는 각각 ${reviews.length}개여야 함`));
   }

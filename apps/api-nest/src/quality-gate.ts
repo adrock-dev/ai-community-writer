@@ -61,7 +61,7 @@ export function boilerplatePhraseIssues(text: string, extra: string[] = []): str
 // 수강생 리뷰 출처 표기는 내부 구현 참조가 아니라 공개 글의 정상 콘텐츠다.
 // Legacy Plus 계약은 이 표기가 '없으면' hard_failure(legacy_plus_review_source_missing)이므로,
 // 누출 검사가 이를 제외하지 않으면 한쪽에서 필수인 문장 때문에 다른 쪽에서 떨어진다.
-export const PUBLIC_REVIEW_ATTRIBUTION_PATTERN = "출처:\\s*DrivingPlus\\s+수강생\\s+리뷰";
+export const PUBLIC_REVIEW_ATTRIBUTION_PATTERN = "출처:\\s*운전면허PLUS\\s+실제\\s+수강생\\s+리뷰";
 export function stripPublicReviewAttribution(text: string): string {
   return String(text || "").replace(new RegExp(PUBLIC_REVIEW_ATTRIBUTION_PATTERN, "gi"), "");
 }
@@ -110,9 +110,9 @@ function offeredInternalUrls(facts: string): string[] {
 // 브랜드명(DrivingPlus)은 자기 host 를 지워도 그대로 남아 계속 잡힌다(host 문자열이 서로 부분집합이 아님).
 function stripOwnSiteRefs(text: string, siteHost?: string): string {
   return (siteHost ? text.split(siteHost).join("") : text)
-    // Public review citations are allowed; an implementation/API reference to
-    // DrivingPlus remains an internal-leakage violation.
-    .replace(/출처:\s*DrivingPlus\s+수강생\s+리뷰/gi, "");
+    // 공개 리뷰 출처("운전면허PLUS 실제 수강생 리뷰")는 정상 콘텐츠라 유출 검사 전에 제거한다.
+    // 원천 시스템명 DrivingPlus 는 여전히 유출 위반으로 남는다(아래 exposes_internal_fact_language).
+    .replace(/출처:\s*운전면허PLUS\s+실제\s+수강생\s+리뷰/gi, "");
 }
 
 /**

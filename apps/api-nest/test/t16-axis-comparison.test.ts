@@ -123,16 +123,26 @@ describe("facts 가공", () => {
 });
 
 describe("리뷰 출처 정규화", () => {
-  // 게이트는 "출처: DrivingPlus 수강생 리뷰" 완전 일치만 내부 유출 검사에서 면제한다.
-  // 한 글자만 달라도 글 전체가 하드 실패하므로 생성 뒤 표기를 맞춘다.
-  it("표기 변형을 표준형으로 맞춘다", () => {
-    for (const variant of ["출처: DrivingPlus 리뷰", "출처:DrivingPlus 수강생 후기", "출처 : DrivingPlus 수강생 리뷰"]) {
-      expect(normalizeT16ReviewAttribution(`> “좋아요” — ${variant}`)).toContain("출처: DrivingPlus 수강생 리뷰");
+  // 공개 표준형은 "출처: 운전면허PLUS 실제 수강생 리뷰". 모델이 원천명 DrivingPlus 나 한글/공백 변형을
+  // 써도 표준형으로 맞춘다(DrivingPlus 는 그대로 두면 내부 유출 하드 실패이므로 정규화가 흡수한다).
+  it("원천명·한글·공백 변형을 모두 표준형으로 맞춘다", () => {
+    const variants = [
+      "출처: DrivingPlus 리뷰",
+      "출처:DrivingPlus 수강생 후기",
+      "출처 : 운전면허플러스 수강생 리뷰",
+      "출처: 운전면허 PLUS 실제 수강생 후기",
+    ];
+    for (const variant of variants) {
+      expect(normalizeT16ReviewAttribution(`> “좋아요” — ${variant}`)).toContain("출처: 운전면허PLUS 실제 수강생 리뷰");
     }
   });
 
+  it("정규화 뒤에는 원천명 DrivingPlus 가 남지 않는다", () => {
+    expect(normalizeT16ReviewAttribution("> “좋아요” — 출처: DrivingPlus 수강생 리뷰")).not.toContain("DrivingPlus");
+  });
+
   it("이미 표준형이면 그대로 둔다", () => {
-    const line = "> “좋아요” — 출처: DrivingPlus 수강생 리뷰";
+    const line = "> “좋아요” — 출처: 운전면허PLUS 실제 수강생 리뷰";
     expect(normalizeT16ReviewAttribution(line)).toBe(line);
   });
 });

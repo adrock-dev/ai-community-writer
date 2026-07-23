@@ -15,7 +15,7 @@ describe("academy student review evidence", () => {
       { quote: "상담부터 수업 일정 안내까지 이해하기 쉬웠어요.", source: STUDENT_REVIEW_SOURCE, rating: 4, postedAt: "2026/07/02", authorMasked: "김*" },
     ]);
     expect(studentReviewFactLines({ review_json: JSON.stringify([{ author: "홍길동", point: 5, date: "2026-07-01", content: "강사님 설명이 자세해서 긴장이 많이 풀렸습니다." }]) }, "slot-a")[0])
-      .toBe("수강생 리뷰: “강사님 설명이 자세해서 긴장이 많이 풀렸습니다.” (출처: DrivingPlus 수강생 리뷰)");
+      .toBe("수강생 리뷰: “강사님 설명이 자세해서 긴장이 많이 풀렸습니다.” (출처: 운전면허PLUS 실제 수강생 리뷰)");
   });
 
   it("review_json이 없을 때만 기존 review 줄을 별도 원문으로 사용하고 중복은 제거한다", () => {

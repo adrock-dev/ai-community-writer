@@ -49,7 +49,7 @@ describe("T01 typed candidate adapter", () => {
     const selection = trace([traceCandidate("A", "a", "stored_region_like"), traceCandidate("B", "b", "stored_region_like", { retrievalRank: 2 })]);
     const context = buildT01DataGatedContext(target, rows, selection, "slot", []);
     expect(context.candidates[0]?.studentReviews).toEqual([{
-      quote: "강사님 설명이 자세해서 안심됐습니다.", source: "DrivingPlus 수강생 리뷰",
+      quote: "강사님 설명이 자세해서 안심됐습니다.", source: "운전면허PLUS 실제 수강생 리뷰",
     }]);
   });
 

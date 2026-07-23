@@ -2,7 +2,7 @@ import type { T01AcademyCandidate } from "./t01-data-gated.js";
 
 type Row = Record<string, any>;
 
-export const STUDENT_REVIEW_SOURCE = "DrivingPlus 수강생 리뷰";
+export const STUDENT_REVIEW_SOURCE = "운전면허PLUS 실제 수강생 리뷰";
 
 export type StudentReviewEvidence = {
   quote: string;

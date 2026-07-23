@@ -70,10 +70,10 @@ describe("T01 claim-context detector", () => {
   it("입력에 있는 원문·출처 수강생 리뷰의 과거 셔틀 언급은 현재 셔틀 주장으로 오인하지 않는다", () => {
     const review = "셔틀을 운영해서 학원 오가는데 편했고 선생님들이 친절하셨어요.";
     const suppliedContext = context();
-    suppliedContext.candidates[0]!.studentReviews = [{ quote: review, source: "DrivingPlus 수강생 리뷰" }];
-    const markdown = `> “${review}” — 출처: DrivingPlus 수강생 리뷰 · 평점: 5/5`;
+    suppliedContext.candidates[0]!.studentReviews = [{ quote: review, source: "운전면허PLUS 실제 수강생 리뷰" }];
+    const markdown = `> “${review}” — 출처: 운전면허PLUS 실제 수강생 리뷰 · 평점: 5/5`;
     expect(t01QualityIssues(markdown, suppliedContext).map((item) => item.code)).not.toContain("unverified_shuttle_claim");
-    expect(claimCodes(`> “${review}” — 출처: DrivingPlus 수강생 리뷰 · 평점: 5/5`)).toContain("unverified_shuttle_claim");
+    expect(claimCodes(`> “${review}” — 출처: 운전면허PLUS 실제 수강생 리뷰 · 평점: 5/5`)).toContain("unverified_shuttle_claim");
   });
 
   it("합격률의 긍정 사실, 안전 문맥, 일반 조언을 구분한다", () => {

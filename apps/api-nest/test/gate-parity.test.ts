@@ -58,8 +58,8 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
   });
 
   const attributionSamples = [
-    "> 강사님이 친절했어요 — 출처: DrivingPlus 수강생 리뷰",
-    "> 연습장이 넓어요 — 출처:DrivingPlus  수강생   리뷰",
+    "> 강사님이 친절했어요 — 출처: 운전면허PLUS 실제 수강생 리뷰",
+    "> 연습장이 넓어요 — 출처:운전면허PLUS  실제   수강생   리뷰",
     "내부 자료는 DrivingPlus API 에서 가져왔다",
     "",
   ];
@@ -136,7 +136,7 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
     ["- 항목\n\n이어지는 문단입니다", {}],
     ["첫 문단\n\n둘째 문단", {}],
     ["# 제목\n\n## 소제목\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n- 항목\n\n- 항목2", {}],
-    ["### 학원명\n\n[IMAGE:academy_1]\n\n> 후기 — 출처: DrivingPlus 수강생 리뷰", { academy_1: "https://example.test/a.jpg" }],
+    ["### 학원명\n\n[IMAGE:academy_1]\n\n> 후기 — 출처: 운전면허PLUS 실제 수강생 리뷰", { academy_1: "https://example.test/a.jpg" }],
   ];
   for (const [sample, images] of renderSamples) {
     it(`renderMarkdown 결과가 두 렌더러에서 동일하다: "${sample.slice(0, 16).replace(/\n/g, "⏎")}"`, () => {
