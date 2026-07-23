@@ -184,6 +184,24 @@ export function inconsistentListEmojiIssues(markdown: string): string[] {
 }
 
 /**
+ * 오도성 추론(사실→의미 비약) 소프트 경고. 사실 자체는 근거가 있는데 거기서 뽑은 '의미'가
+ * 논리적으로 보장되지 않는 결론으로 이어 독자를 오도하는 문장을 잡는다. 정성 판단이라
+ * 정규식으로 확실히 잡히는 대표 패턴만 검출하고(A/비차단, 표현이 다르면 놓칠 수 있음):
+ *  - 운영/영업 시간(학원이 열린 시간) → 개인 수업을 더 오래·많이·늦게까지 받는다는 비약
+ *  - 수강료 낮음/높음 → 교육 질이 낮다/좋다는 비약
+ * 문장 경계(.!?·줄바꿈) 안 근접 동시출현만 본다(오탐 최소화). scripts/qa-posts.mjs 가 미러링한다.
+ */
+export const MISLEADING_INFERENCE_PATTERNS: readonly RegExp[] = [
+  /(?:운영|영업)\s*시간[^.!?\n]{0,40}(?:오래|길게|많이|넉넉|늦게까지)[^.!?\n]{0,20}(?:수업|교육|배울|받을|연습|확보|다닐)/u,
+  /(?:오래|길게|많이|넉넉|늦게까지)[^.!?\n]{0,20}(?:수업|교육|배울|받을|연습|확보|다닐)[^.!?\n]{0,40}(?:운영|영업)\s*시간/u,
+  /(?:수강료|가격|비용|금액)[^.!?\n]{0,12}(?:낮|저렴|싸|비싸|높)[^.!?\n]{0,24}(?:교육|강의|수업|질|퀄|서비스)/u,
+];
+export function misleadingInferenceIssues(markdown: string): string[] {
+  const text = String(markdown || "");
+  return MISLEADING_INFERENCE_PATTERNS.some((re) => re.test(text)) ? ["misleading_inference"] : [];
+}
+
+/**
  * 제목 부제가 주장하는 축을 facts 가 뒷받침하는지 검사.
  *
  * 제목은 프롬프트의 최상위 계약이라 본문이 제목을 따라간다. "수강생 후기로 확인하는" 인데 리뷰가
@@ -228,6 +246,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (!isAnyMarkdownTable(markdown)) issues.push("missing_summary_table");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅)/m.test(markdown)) issues.push("missing_checklist_or_list");
   issues.push(...inconsistentListEmojiIssues(markdown));
+  issues.push(...misleadingInferenceIssues(markdown));
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
   if (/\[\d+\]/.test(markdown)) issues.push("contains_visible_citations");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
@@ -279,6 +298,7 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅|✓)/m.test(markdown)) issues.push("missing_checklist_or_list");
   issues.push(...inconsistentListEmojiIssues(markdown));
+  issues.push(...misleadingInferenceIssues(markdown));
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
   if (/\[\d+\]/.test(markdown)) issues.push("contains_visible_citations");
   if (/(운전선생|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(stripOwnSiteRefs(`${title}\n${markdown}`, siteHost))) issues.push("exposes_internal_fact_language");

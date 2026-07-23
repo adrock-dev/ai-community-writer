@@ -7,6 +7,7 @@ import {
   unlistedPhoneNumbers,
   candidateNamesFromFacts,
   internalLinkIssues,
+  misleadingInferenceIssues,
   postSurfaceQualityIssues,
   repeatedSentenceIssues,
   stripUnofferedInternalLinks,
@@ -250,6 +251,17 @@ describe("데이터 없는 단정 차단", () => {
   it("검증된 후기 자료가 없는데 후기를 인용하면 잡아낸다", () => {
     const md = "# 제목\n\n실제 수강생 후기에 따르면 만족도가 높습니다.";
     expect(articleQualityIssues(md, "", {})).toContain("unverified_review_claim");
+  });
+
+  it("오도성 추론(운영시간→수업시간 등 비약)을 경고로 잡고, 올바른 서술은 통과한다", () => {
+    // 비약: 운영시간(학원이 열린 시간) → 수업을 더 오래/늦게까지 받는다
+    expect(misleadingInferenceIssues("월~금 07:00~21:00 운영시간이 길어 교육을 오래 받을 수 있어요.")).toEqual(["misleading_inference"]);
+    expect(misleadingInferenceIssues("늦게까지 수업을 받고 싶다면 이 학원 운영 시간을 눈여겨보세요.")).toEqual(["misleading_inference"]);
+    // 수강료 낮음 → 교육 질 비약
+    expect(misleadingInferenceIssues("수강료가 낮아 교육 질이 떨어질까 걱정되죠.")).toEqual(["misleading_inference"]);
+    // 올바른 서술(운영시간을 '내 일정이 맞는지 확인할 창'으로만 씀)은 무관
+    expect(misleadingInferenceIssues("월~금 07:00~21:00 안에서 가능한 수업 시간대를 상담에서 확인하세요.")).toEqual([]);
+    expect(misleadingInferenceIssues("1종 보통 780,000원으로 안내돼 있어요.")).toEqual([]);
   });
 
   it("콜론형 리뷰 facts(T16/academy-review-evidence)가 있으면 후기 인용을 허용한다", () => {

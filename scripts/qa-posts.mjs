@@ -71,6 +71,7 @@ function issuesFor(row, monitoredByDomain) {
   issues.push(...repeatedSentenceIssues(body));
   issues.push(...boilerplatePhraseIssues(`${row.title}\n${body}`, monitoredByDomain.get(row.domain) || []));
   issues.push(...inconsistentListEmojiIssues(body));
+  issues.push(...misleadingInferenceIssues(body));
   if (!row.design_template_id) issues.push('missing_design_template_id');
   if (!['editorial', 'comparison', 'local-guide', 'checklist', 'conversion', 'custom'].includes(String(row.design_template_id || ''))) issues.push(`unknown_design_template:${row.design_template_id}`);
   if (h2 >= 4 && !hasFinalUtilitySection(body)) issues.push('template_structure_missing_final_utility_section');
@@ -142,6 +143,19 @@ function inconsistentListEmojiIssues(markdown) {
     }
   }
   return closeBlock() ? ['inconsistent_list_emoji'] : [];
+}
+
+// 오도성 추론(사실→의미 비약) 소프트 경고 — quality-gate.ts 의 misleadingInferenceIssues 미러.
+// 운영시간(학원이 열린 시간)→개인 수업 더 오래·늦게까지, 수강료 낮음/높음→교육 질 같은 비약을
+// 문장 경계 안 근접 동시출현으로만 잡는다(A/비차단, 표현이 다르면 놓칠 수 있음).
+const MISLEADING_INFERENCE_PATTERNS = [
+  /(?:운영|영업)\s*시간[^.!?\n]{0,40}(?:오래|길게|많이|넉넉|늦게까지)[^.!?\n]{0,20}(?:수업|교육|배울|받을|연습|확보|다닐)/u,
+  /(?:오래|길게|많이|넉넉|늦게까지)[^.!?\n]{0,20}(?:수업|교육|배울|받을|연습|확보|다닐)[^.!?\n]{0,40}(?:운영|영업)\s*시간/u,
+  /(?:수강료|가격|비용|금액)[^.!?\n]{0,12}(?:낮|저렴|싸|비싸|높)[^.!?\n]{0,24}(?:교육|강의|수업|질|퀄|서비스)/u,
+];
+function misleadingInferenceIssues(markdown) {
+  const text = String(markdown || '');
+  return MISLEADING_INFERENCE_PATTERNS.some((re) => re.test(text)) ? ['misleading_inference'] : [];
 }
 
 // 거리·이동시간 단정 검사 — quality-gate.ts 의 distanceClaimIssues 미러.
@@ -580,7 +594,7 @@ function walk(dir, found) {
 }
 
 // quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
-export { inconsistentListEmojiIssues, distanceClaimIssues, titleAxisEvidenceIssues, adjacentHeadingCount, AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
+export { inconsistentListEmojiIssues, misleadingInferenceIssues, distanceClaimIssues, titleAxisEvidenceIssues, adjacentHeadingCount, AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
 
 // CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

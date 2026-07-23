@@ -185,4 +185,19 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
     }
   });
 
+  describe("misleadingInferenceIssues", () => {
+    const samples = [
+      "월~금 07:00~21:00 운영시간이 길어 교육을 오래 받을 수 있어요.",  // 비약 → 플래그
+      "늦게까지 수업을 받고 싶다면 이 학원 운영 시간을 보세요.",         // 비약(역순) → 플래그
+      "운영 시간 안에서 가능한 수업 시간대를 상담에서 확인하세요.",      // 정상 → 무관
+      "수강료가 낮아 교육 질이 떨어질까 걱정되죠.",                     // 수강료→질 → 플래그
+      "1종 보통 780,000원으로 안내돼 있어요.",                          // 사실 나열 → 무관
+    ];
+    for (const sample of samples) {
+      it(`탐지 결과가 일치한다: "${sample.slice(0, 14)}"`, () => {
+        expect(qa.misleadingInferenceIssues(sample)).toEqual(qg.misleadingInferenceIssues(sample));
+      });
+    }
+  });
+
 });

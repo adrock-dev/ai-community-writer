@@ -32,6 +32,8 @@ export const A_ISSUE_STEMS: readonly string[] = [
   "overused_second_person",
   // 한 목록 안 이모지 혼용. 스타일 문제라 A 계열(repair 로 같은 이모지로 통일 가능).
   "inconsistent_list_emoji",
+  // 사실→의미 추론 비약(운영시간→수업시간 등). 정규식 휴리스틱이라 A(비차단, repair 로 완화).
+  "misleading_inference",
   "missing_internal_link",
 ];
 
