@@ -174,9 +174,8 @@ describe("프롬프트 계약문", () => {
 });
 
 describe("문체 지침", () => {
-  it("스토리텔링·친절 톤 요소와 persona 를 도입 예시에 엮는다", () => {
+  it("스토리텔링·친절 톤 요소를 담는다(범용 자연스러움은 commonToneGuide 로 이동)", () => {
     const guide = t16WritingGuide({ persona: "야간반을 찾는 직장인" });
-    expect(guide).toContain("야간반을 찾는 직장인");
     expect(guide).toContain("궁금");
     expect(guide).toContain("친근한 블로그 에디터");
     expect(guide).toContain("사실만 나열하지 않는다");

@@ -27,6 +27,8 @@ describe("공통 문체 지침", () => {
     for (const ending of ["-거예요", "-네요", "-답니다"]) {
       expect(p).toContain(ending);
     }
+    // 범용 자연스러움(라벨 주입·압축·판박이·읽기 흐름)은 전 글유형 공통이다(commonToneGuide).
+    expect(p).toContain("소리 내어 읽어 걸리는 문장이 없게 다듬는다");
   });
 
   it("기본에서도 실제 AI 상투구는 계속 금지한다", () => {

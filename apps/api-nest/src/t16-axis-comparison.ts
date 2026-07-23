@@ -241,8 +241,7 @@ export function t16ToneFromDirection(direction: string): "conversational" | "exp
  * 따라 정한다. 이 함수는 방향성이 준 tone 으로 도입 예시·에디터 어투만 갈라, 같은 T16 콘텐츠를
  * 대화체(기본)로도 전문가 톤으로도 쓸 수 있게 한다(전문가판은 T16 복제 커스텀 유형).
  */
-export function t16WritingGuide(slot: Row, tone: "conversational" | "expert" = "conversational"): string {
-  const persona = String(slot.persona || "").trim();
+export function t16WritingGuide(_slot: Row, tone: "conversational" | "expert" = "conversational"): string {
   const isExpert = tone === "expert";
   const openingExample = isExpert
     ? "예: 무엇부터 확인해야 하는지 그 순서를 짚어 준다."
@@ -253,7 +252,6 @@ export function t16WritingGuide(slot: Row, tone: "conversational" | "expert" = "
   return [
     `- 도입은 검색어를 그대로 반복하지 말고, 독자가 실제로 처한 상황과 궁금증에서 연다. ${openingExample} 고를 항목이 많아 판단이 쉽지 않다는 점에 짧게 공감한 뒤 이 글에서 볼 기준과 후보로 이어 간다.`,
     editorToneLine,
-    `- 독자 상황${persona ? `(예: ${persona})` : ""}은 분류 라벨을 문장에 그대로 옮기지 말고 자연스러운 말로 풀어 쓰고, 한 문장에 상황·비용·질문·공감을 욱여넣지 말고 나눈다. 지침의 예시 문구는 글자 그대로 베끼지 말고 맥락에 맞게 새로 쓰며, 소리 내어 읽어 걸리는 문장이 없게 흐름을 다듬는다.`,
     "- 같은 틀을 반복하지 않는다: 후보마다 \"이런 분에게 ~한 곳입니다\" 식 마무리를 되풀이하지 말고(특징만 말하고 끝내도 된다), 사실을 \"확인돼 있어요/안내돼 있어/확인됩니다\"로 문장마다 감싸지 않는다(자료 기준임은 글에서 한 번만 밝힌다).",
     "- 후보 소개는 \"과정을 운영합니다 / 실제 소재지는 ~입니다\" 식으로 사실만 나열하지 않는다. 각 학원에서 실제로 확인된 사실이 그 독자에게 어떤 의미인지 한 문장으로 이어 준다. 모든 후보를 같은 문장 구조로 시작하지 않는다.",
     "- 각 후보는 한 문장으로 스치지 말고 최소 3~4문장으로 소개한다. 순서 예시: ① 어디에 있고 어떤 상황의 독자에게 맞는지 → ② 자료로 확인된 특징(면허 과정·수강료·셔틀·운영시간·시설 등) 두 가지 이상 → ③ 그 특징이 이 독자에게 주는 의미 한 문장 → ④ 확인된 후기가 있으면 한 줄만 자연스럽게 녹인다. 자료에 없는 정보는 지어내지 말고 상담에서 확인할 질문으로 남긴다.",
