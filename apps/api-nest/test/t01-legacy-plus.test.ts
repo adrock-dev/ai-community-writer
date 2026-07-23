@@ -58,7 +58,7 @@ describe("T01 Legacy Plus", () => {
     expect(prompt).toContain("주소·전화는 학원별 기본 정보로 한 번씩 명확히 적되");
     expect(prompt).toContain("전체 주소·전화번호를 기본 열로 쓰지 않으며");
     expect(prompt).toContain("짧은 기본 정보 불릿");
-    expect(prompt).toContain("별도 후보군이나 섹션으로 나누지 않는다");
+    expect(prompt).toContain("별도 그룹이나 섹션으로 나누지 않는다");
     expect(prompt).not.toContain("주변 지역 후보가 있으면");
     expect(prompt).not.toContain("표에 우선 쓸 공통 정보: 주소");
   });
