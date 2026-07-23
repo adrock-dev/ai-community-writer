@@ -17,7 +17,6 @@ export const A_ISSUE_STEMS: readonly string[] = [
   "too_long",
   "not_enough_h2",
   "too_many_h2",
-  "missing_comparison_table",
   "missing_summary_table",
   "missing_checklist_or_list",
   "thin_sections",

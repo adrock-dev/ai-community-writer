@@ -182,7 +182,6 @@ export function titleAxisEvidenceIssues(title: string, facts: string): string[] 
 export function articleQualityIssues(markdown: string, facts: string, images: Record<string, string>, boilerplatePhrases: string[] = [], siteHost?: string): string[] {
   const issues: string[] = [];
   const chars = markdown.trim().length;
-  const candidateCount = candidateCountFromFacts(facts);
   const candidateNames = candidateNamesFromFacts(facts);
   const h2Count = (markdown.match(/^##\s+/gm) || []).length;
   const imageKeys = Object.keys(images);
@@ -197,7 +196,9 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   issues.push(...overusedSecondPersonIssues(markdown));
   issues.push(...repeatedSentenceIssues(markdown));
   issues.push(...boilerplatePhraseIssues(markdown, boilerplatePhrases));
-  if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
+  // 표 유무만 본다(비교 매트릭스/요약표 구분 없음). 글유형(T01 비교표·T16 요약표)을 게이트가 알 수 없고
+  // 둘 다 '표 없음'이 곧 실패이므로 중립 코드 하나로 통일한다(라벨이 T16 요약표 철학과 어긋나지 않게).
+  if (!isAnyMarkdownTable(markdown)) issues.push("missing_summary_table");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅)/m.test(markdown)) issues.push("missing_checklist_or_list");
   issues.push(...inconsistentListEmojiIssues(markdown));
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
@@ -247,7 +248,7 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   issues.push(...overusedSecondPersonIssues(`${title}\n${markdown}`));
   issues.push(...repeatedSentenceIssues(markdown));
   issues.push(...boilerplatePhraseIssues(`${title}\n${markdown}`, boilerplatePhrases));
-  if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
+  if (!isAnyMarkdownTable(markdown)) issues.push("missing_summary_table");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅|✓)/m.test(markdown)) issues.push("missing_checklist_or_list");
   issues.push(...inconsistentListEmojiIssues(markdown));

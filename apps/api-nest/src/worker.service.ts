@@ -815,10 +815,15 @@ function normalizeKoreanSpacing(text: string): string {
 function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
   const isT01AcademyComparison = isT01AcademyComparisonPrompt(slot, true, options);
+  // buildPrompt 와 동일: T16(local_axis)은 '소개·안내' 글이라 '비교글' 프레이밍을 쓰지 않는다.
+  const isAcademyProfile = isT01AcademyComparison && archetype?.id === "local_axis";
+  const tableNoun = isAcademyProfile ? "요약표" : "비교표";
   const authoritativeSourceGuide = authoritativeSourceGuideForPrompt(slot, true, options);
-  const comparisonScopeGuide = isT01AcademyComparison
-    ? "이 글은 학원 비교글이다. 시험 접수·응시·면허 발급·준비 서류 같은 일반 제도 안내나 외부 공식 절차 링크는 본문·FAQ·체크리스트·CTA에 넣지 않는다. 학원별로 확인된 사실과 선택에 필요한 질문만 남긴다."
-    : "";
+  const academyScopeGuide = !isT01AcademyComparison
+    ? ""
+    : isAcademyProfile
+      ? "이 글은 학원을 하나씩 소개·안내하는 글이다. 시험 접수·응시·면허 발급·준비 서류 같은 일반 제도 안내나 외부 공식 절차 링크는 본문·FAQ·체크리스트·CTA에 넣지 않는다. 학원별로 확인된 사실과 선택에 필요한 질문만 남긴다."
+      : "이 글은 학원 비교글이다. 시험 접수·응시·면허 발급·준비 서류 같은 일반 제도 안내나 외부 공식 절차 링크는 본문·FAQ·체크리스트·CTA에 넣지 않는다. 학원별로 확인된 사실과 선택에 필요한 질문만 남긴다.";
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
   const personaMobilityGuide = personaHasMobilityConstraint
@@ -828,11 +833,11 @@ function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplate
     ? `후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험·수강생 리뷰 중 실제 차이가 있을 때만 선택 상황과 연결한다. 모든 후보를 같은 과정·확인 문장으로 시작하지 않는다. 실제 지역은 짧은 사실로만 적고 주소를 소개 중심으로 쓰지 않는다. ${personaMobilityGuide}`
     : "후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다: '### 후보명' → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.";
   const nonPrimaryRepairGuide = options?.readerFlow
-    ? "실제 소재지가 대상 지역과 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, 비교표 또는 해당 학원 소개에서 실제 지역만 정확히 적는다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다."
+    ? `실제 소재지가 대상 지역과 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, ${tableNoun} 또는 해당 학원 소개에서 실제 지역만 정확히 적는다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.`
     : "주소가 주제 지역과 다른 후보는 해당 지역 안의 학원이 아니라 \"인근 후보\"로만 구분해 설명한다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.";
   const repairNaturalToneGuide = options?.readerFlow
     // buildPrompt 와 같은 이유로 브랜드명을 톤 지시에서 뺀다(모델이 모르는 대상은 톤 앵커가 못 된다).
-    ? `원문보다 더 자연스럽고 풍성한 블로그 톤으로 작성하되, 면허 과정·운영 형태·실제 수강생 경험은 실제 차이가 있을 때만 보이게 한다. 주소를 비교의 중심이나 장점으로 만들지 않고, 표·기본 정보·체크리스트가 같은 사실을 반복하지 않게 한다. ${personaMobilityGuide}`
+    ? `원문보다 더 자연스럽고 풍성한 블로그 톤으로 작성하되, 면허 과정·운영 형태·실제 수강생 경험은 실제 차이가 있을 때만 보이게 한다. 주소를 ${tableNoun}의 중심이나 장점으로 만들지 않고, 표·기본 정보·체크리스트가 같은 사실을 반복하지 않게 한다. ${personaMobilityGuide}`
     : "원문보다 더 자연스럽고 풍성한 블로그 톤으로 작성하되, 원본 레퍼런스처럼 구체적인 지역 생활권·비용 확인점·사진·내부링크·CTA가 보이게 만든다.";
   return `아래 Markdown 글은 품질 게이트를 통과하지 못했다. 확인된 콘텐츠 재료만 사용해서 같은 주제의 완성형 글로 다시 작성하라.
 
@@ -870,10 +875,10 @@ ${facts || "없음"}
 - 좋은 리뷰라도 합격 보장·과장된 효능은 만들지 말고, 리뷰 원문에 없는 장점은 추가하지 않는다.
 - 후보 수보다 큰 숫자, 다른 지역 후보, 없는 가격·합격률·셔틀·후기·3일 합격·당일 합격·합격 보장 주장을 만들지 않는다.
 - 구체 금액은 수강료 자료가 있을 때만 쓴다. 자료가 없으면 “비용은 상담 때 확인”과 확인 질문으로 처리한다.
-${comparisonScopeGuide ? `- ${comparisonScopeGuide}` : ""}
+${academyScopeGuide ? `- ${academyScopeGuide}` : ""}
 - ${nonPrimaryRepairGuide}
 ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" 로 쓴다(글자 하나도 바꾸지 말 것). 본문을 이 제목에 맞춘다.` : "- 첫 줄은 '# ' 제목,"} H2 4~6개 중심, 많아도 10개를 넘기지 말고 3,500~5,600자 이내로 쓴다.
-- 후보 수와 관계없이 Markdown 표 1개를 반드시 포함한다. 후보가 1곳이면 비교표 대신 주소/연락처/과정/상담 확인점을 담은 요약표로 작성한다.
+- 후보 수와 관계없이 Markdown 표 1개를 반드시 포함한다. 후보가 1곳이면 주소/연락처/과정/상담 확인점을 담은 요약표로 작성한다.
 - 체크리스트는 포함한다. ${options?.faqInstruction || "FAQ는 질문형 의도이거나 템플릿 필수 구조에 FAQ가 명시된 경우에만 2~4개로 짧게 둔다."}
 - 사용 가능한 이미지 슬롯이 있으면 실제 키만 [IMAGE:academy_1] 형식으로 배치한다. 학원 사진 슬롯([IMAGE:academy_*])은 제공된 것을 하나도 빠뜨리지 말고 해당 학원 카드 안에 1장씩 넣는다(후보가 5곳이면 5장). 그 외 슬롯은 3~4개까지만 쓴다.
 - 학원명·가격·셔틀·면허종류·준비물처럼 독자가 스캔해야 하는 핵심어는 Markdown bold를 적당히 사용한다.
@@ -931,13 +936,24 @@ function structureSeed(slot: Row): string {
 export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, archetype: Archetype | undefined, direction: string, hasAcademy: boolean, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
   const isT01AcademyComparison = isT01AcademyComparisonPrompt(slot, hasAcademy, options);
+  // T16(local_axis)은 학원을 하나씩 '소개·안내'하는 글이라 T01 의 '비교글' 프레이밍과 충돌한다
+  // (t16-axis-comparison 계약: "우열을 정량 비교하려 애쓰지 말고"). 스코프 제한(도로교통공단 일반
+  // 절차·외부 공식 링크 제외)은 T01·T16 이 공유하되, '비교글'이라는 표현만 T16 에서 '소개글'로 바꾼다.
+  const isAcademyProfile = isT01AcademyComparison && archetype?.id === "local_axis";
+  // 표 지칭: T01 은 후보 우열을 견주는 '비교표', T16 은 각 학원 정보를 모아 보여주는 '요약표'.
+  // 같은 '표'를 유형에 맞게 부른다(T16 요약표를 '비교표'라 부르면 정량 비교로 수렴한다).
+  const tableNoun = isAcademyProfile ? "요약표" : "비교표";
   const authoritativeSourceGuide = authoritativeSourceGuideForPrompt(slot, hasAcademy, options);
-  const comparisonScopeGuide = isT01AcademyComparison
-    ? "이 글은 지역 운전면허학원 비교글이다. 도로교통공단의 시험 접수·응시·면허 발급, 준비 서류 등 일반 제도 안내와 외부 공식 절차 링크는 다루지 않는다. 제공된 학원별 사실과 그 차이를 비교하는 데 필요한 내용만 쓴다."
-    : "";
-  const missingFactGuide = isT01AcademyComparison
-    ? "가격·셔틀·합격률·후기는 검증된 자료가 있을 때만 단정한다. 자료가 없는 항목은 본문을 일반 상담 가이드로 채우지 말고, 후보별 비교에 꼭 필요한 경우에만 짧은 공통 확인 행동으로 남긴다. 준비 서류·시험 접수·면허 발급 같은 일반 절차는 넣지 않는다."
-    : "가격·셔틀·합격률·후기는 검증된 자료에 있을 때만 단정한다. 없으면 \"상담 때 확인\"으로 처리하되, 무엇을 물어봐야 하는지 구체적인 질문으로 써서 빈말처럼 보이지 않게 한다.";
+  const academyScopeGuide = !isT01AcademyComparison
+    ? ""
+    : isAcademyProfile
+      ? "이 글은 지역 운전면허학원을 하나씩 소개·안내하는 글이다. 도로교통공단의 시험 접수·응시·면허 발급, 준비 서류 등 일반 제도 안내와 외부 공식 절차 링크는 다루지 않는다. 각 학원의 확인된 사실을 소개하는 데 필요한 내용만 쓴다."
+      : "이 글은 지역 운전면허학원 비교글이다. 도로교통공단의 시험 접수·응시·면허 발급, 준비 서류 등 일반 제도 안내와 외부 공식 절차 링크는 다루지 않는다. 제공된 학원별 사실과 그 차이를 비교하는 데 필요한 내용만 쓴다.";
+  const missingFactGuide = !isT01AcademyComparison
+    ? "가격·셔틀·합격률·후기는 검증된 자료에 있을 때만 단정한다. 없으면 \"상담 때 확인\"으로 처리하되, 무엇을 물어봐야 하는지 구체적인 질문으로 써서 빈말처럼 보이지 않게 한다."
+    : isAcademyProfile
+      ? "가격·셔틀·합격률·후기는 검증된 자료가 있을 때만 단정한다. 자료가 없는 항목은 본문을 일반 상담 가이드로 채우지 말고, 후보 소개에 꼭 필요한 경우에만 짧은 공통 확인 행동으로 남긴다. 준비 서류·시험 접수·면허 발급 같은 일반 절차는 넣지 않는다."
+      : "가격·셔틀·합격률·후기는 검증된 자료가 있을 때만 단정한다. 자료가 없는 항목은 본문을 일반 상담 가이드로 채우지 말고, 후보별 비교에 꼭 필요한 경우에만 짧은 공통 확인 행동으로 남긴다. 준비 서류·시험 접수·면허 발급 같은 일반 절차는 넣지 않는다.";
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
   const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동\s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
   const personaMobilityGuide = personaHasMobilityConstraint
@@ -946,7 +962,7 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
   const academyNarrativeGuide = options?.readerFlow
     ? [
       "- 이 글의 흐름은 ‘독자 질문 → 학원별 차이 → 객관 정보 → 선택 도움’이다. 도입은 지역에서 면허를 준비할 때 생기는 현실적인 고민을 한두 짧은 문단으로 열고 후보 소개로 자연스럽게 이어 간다. 면허 종류·교육 과정·전문학원 여부는 실제 차이가 있거나 독자의 고민과 맞을 때만 활용하며, 모든 도입의 고정 주제로 삼지 않는다.",
-      "- 주소·전화·실제 소재지는 오표현을 막는 보조 사실이다. 주소를 후보 소개의 첫 문장·추천 이유·비교표의 중심 열로 삼지 않는다. 실제 지역이 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, 해당 학원 소개 또는 비교표에 실제 지역명만 짧게 적는다.",
+      `- 주소·전화·실제 소재지는 오표현을 막는 보조 사실이다. 주소를 후보 소개의 첫 문장·추천 이유·${tableNoun}의 중심 열로 삼지 않는다. 실제 지역이 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, 해당 학원 소개 또는 ${tableNoun}에 실제 지역명만 짧게 적는다.`,
       `- ${personaMobilityGuide} 거리 수치, 이동시간, 셔틀 가능성을 추측하지 않는다.`,
       "- 후보 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·자체시험·수강생 리뷰를 필요한 경우에만 활용한다. 각 후보는 반드시 `### 학원명` H3로 시작하고, 한두 문장의 자연스러운 소개 뒤에 제공된 주소·전화·운영 과정·운영 형태 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리한다. 후보별 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 주소는 기본 정보이지 추천 이유가 아니다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다.",
     ].join("\n")
@@ -956,7 +972,7 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
       "- 후보 소개는 원본 블로그의 카드형 리듬을 따른다. 후보마다 반드시 '### 후보명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.",
     ].join("\n");
   const academyDetailGuide = options?.readerFlow
-    ? "- 각 후보는 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 비교표의 중심 열로 쓰지 않는다."
+    ? "- 각 후보는 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 " + tableNoun + "의 중심 열로 쓰지 않는다."
     : "- 후보별 설명에는 가능한 경우 학원명, 주소, 전화, 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다. 전화번호는 자료에 있는 번호만 그대로 쓰고 다른 번호를 만들지 않는다.";
   const academyPrinciples = options?.academyPrinciples ?? DRIVING_ACADEMY_PRINCIPLES;
   // 역할 문장에는 브랜드명을 넣지 않는다. 모델은 그 브랜드의 기존 글을 모르므로 "○○ 블로그처럼"은
@@ -991,13 +1007,13 @@ ${facts || "없음"}
 절대 원칙:
 ${DRIVING_ABSOLUTE_PRINCIPLES}${hasAcademy ? `\n${academyPrinciples}` : ""}
 
-${isT01AcademyComparison ? "비교글 범위:" : "공신력 출처(EEAT, 선택):"}
+${isT01AcademyComparison ? (isAcademyProfile ? "학원 소개 범위:" : "비교글 범위:") : "공신력 출처(EEAT, 선택):"}
 ${authoritativeSourceGuide}
 
 원본 레퍼런스 품질 기준:
 - 원본 엑셀의 평균 형태에 맞춘다: 4,000~5,200자대, H2는 4~6개 중심, 표 1개 이상, 리스트 1개 이상, 이미지 3~4개 권장(단 학원 사진 슬롯은 아래 '카드별 1장' 규칙을 따르므로 이 권장 수치에 묶이지 않는다), 관련 내부링크 2~4개 권장, FAQ는 필수 아님.
 ${academyNarrativeGuide}
-${comparisonScopeGuide ? `- ${comparisonScopeGuide}` : ""}
+${academyScopeGuide ? `- ${academyScopeGuide}` : ""}
 - ${options?.readerFlow ? "후보가 적거나 비교 정보가 희소하면 주소·인근 여부를 글의 주제로 키우지 말고, 실제 후보명과 짧은 객관 정보·공통 확인 순서를 중심으로 쓴다." : "후보가 적은 지역은 억지로 BEST 숫자를 키우지 말고 ‘직접 확인 가능한 후보와 인근 선택지’처럼 정직하게 풀되, 실제 후보명이 보이게 쓴다."}
 - ${missingFactGuide}
 - 수강료 자료가 없으면 60만원대, 70만원대, 709,600원 같은 구체 금액을 추정하지 않는다. 비용 문단은 “상담 시 확인할 항목” 중심으로 쓴다.
@@ -1008,9 +1024,9 @@ ${comparisonScopeGuide ? `- ${comparisonScopeGuide}` : ""}
 필수 출력 구조:
 ${forcedTitle ? `- 첫 줄 H1 제목은 반드시 정확히 "# ${forcedTitle}" 로 쓴다(글자 하나도 바꾸지 말 것). 본문 도입·소제목·후보 수 서술을 이 제목에 맞춰 일관되게 쓴다.` : "- 첫 줄은 '# ' H1 제목. 제목은 주 키워드/지역/직접 매칭 후보 수와 모순되면 안 된다."}
 - H2 섹션은 4~6개를 기본으로 사용한다. 너무 잘게 쪼개 원본과 다르게 보이지 않게 하고, 많아도 10개를 넘기지 않는다.
-- 권장 흐름은 템플릿 필수 구조를 우선 따른다. 공통적으로 도입 → 기준 → 후보/절차 → 비교/요약 → 체크리스트 → 상담/예약 CTA가 자연스럽게 이어져야 한다.
+- 권장 흐름은 템플릿 필수 구조를 우선 따른다. 공통적으로 도입 → 기준 → 후보/절차 → ${isAcademyProfile ? "요약" : "비교/요약"} → 체크리스트 → 상담/예약 CTA가 자연스럽게 이어져야 한다.
 - 제공된 학원 수와 관계없이 Markdown 표 1개를 반드시 포함한다. 후보가 1곳이면 주소/연락처/과정/추천 대상/상담 확인점을 담은 요약표로 작성한다.
-- 표는 정상 Markdown 표로 작성한다. 예: | 비교 항목 | 후보 A | 후보 B | 형태. 실제 후보가 있으면 표 안에도 실제 후보명을 넣는다.
+- ${isAcademyProfile ? "표는 정상 Markdown 표로 작성한다. 예: | 학원 | 항목 A | 항목 B | 형태로 각 학원을 행으로 두는 요약표(우열을 매기는 비교표가 아니다). 실제 후보가 있으면 표 안에 실제 후보명을 넣는다." : "표는 정상 Markdown 표로 작성한다. 예: | 비교 항목 | 후보 A | 후보 B | 형태. 실제 후보가 있으면 표 안에도 실제 후보명을 넣는다."}
 ${academyDetailGuide}
 - 본문에는 제공된 이미지 슬롯만 사용한다. 학원/시험장 사진 슬롯([IMAGE:academy_*])은 각각 그 학원(또는 시험장)을 소개하는 카드 안에 배치한다(카드별 1장). **제공된 학원 사진 슬롯은 하나도 남기지 않고 모두 쓴다** — 후보가 5곳이고 슬롯이 5개면 5장을 모두 배치하며, 위 '이미지 3~4개 권장'을 이유로 마지막 후보의 사진을 빠뜨리지 않는다. 특정 대상을 소개하지 않는 일반 설명 문단이나 필기·앱처럼 학원과 무관한 글에는 넣지 않는다.
 - 생성 이미지 슬롯([IMAGE:generated_*])이 제공되면 서로 다른 섹션에 하나씩 배치한다. 학원 사진만 제공되면 생성 슬롯 없이 학원 사진만 배치한다.
@@ -1030,7 +1046,7 @@ ${academyDetailGuide}
 ${commonToneGuide()}
 - 도입·요약·후기 언급은 매번 다른 문장으로 쓰고, 다른 글에서 쓸 법한 상투적인 프레임 문장("확인된 후보 정보와 상담 전 체크포인트를 기준으로…", "후기 요약에서는 친절한 상담과 꼼꼼한 설명이 확인됩니다", "정리하면 선택 기준은 단순합니다" 등)을 그대로 재사용하지 말 것. 같은 글 안에서 동일한 문장을 반복하지 말 것(사실도 매번 다른 표현으로 쓴다).
 - 출력은 Markdown 본문만 제공하고 설명/주석은 쓰지 말 것.
-- 마지막에 참고자료/출처 목록을 붙이지 말 것.${isT01AcademyComparison ? " 학원 비교글에는 외부 공식 절차 링크를 넣지 않는다." : " 공신력 출처는 위 '공신력 출처' 지침대로 본문 문장 안에 인라인 링크로만 인용한다."}`;
+- 마지막에 참고자료/출처 목록을 붙이지 말 것.${isT01AcademyComparison ? (isAcademyProfile ? " 학원 소개글에는 외부 공식 절차 링크를 넣지 않는다." : " 학원 비교글에는 외부 공식 절차 링크를 넣지 않는다.") : " 공신력 출처는 위 '공신력 출처' 지침대로 본문 문장 안에 인라인 링크로만 인용한다."}`;
 }
 
 /**
@@ -1063,7 +1079,7 @@ function isT01AcademyComparisonPrompt(slot: Row, hasAcademy: boolean, options?: 
 
 function authoritativeSourceGuideForPrompt(slot: Row, hasAcademy: boolean, options?: GenerationPromptOptions): string {
   return isT01AcademyComparisonPrompt(slot, hasAcademy, options)
-    ? "- 학원별 비교와 직접 관련 없는 외부 공식 제도·절차 링크는 사용하지 않는다."
+    ? "- 이 글의 학원 내용과 직접 관련 없는 외부 공식 제도·절차 링크는 사용하지 않는다."
     : DRIVING_AUTHORITATIVE_SOURCES_GUIDE;
 }
 

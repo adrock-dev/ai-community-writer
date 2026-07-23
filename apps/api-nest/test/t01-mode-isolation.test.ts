@@ -36,4 +36,35 @@ describe("T01 generation mode isolation", () => {
     expect(t01ClonePrompt).not.toContain("https://www.safedriving.or.kr");
     expect(guidePrompt).toContain("https://www.safedriving.or.kr");
   });
+
+  it("T16(local_axis)은 스코프 제한은 유지하되 '비교글' 프레이밍을 '소개·안내글'로 바꾼다", () => {
+    const t16Prompt = buildPrompt({ display_name: "테스트" }, {
+      template_id: "T16", slot_id: "T16_test", region: "테스트시", primary_keyword: "테스트시 운전면허학원",
+      persona: "가성비 좋은 학원을 찾는 수강생", intent: "과정선택", modifier_1: "주말반",
+    }, "facts", "comparison", getArchetype("local_axis"), "독자에게 말을 거는 친근한 블로그 대화체", true, null, { t01Comparison: true, readerFlow: true });
+
+    // 스코프 제한(도로교통공단 일반 절차·외부 공식 링크 제외)은 T01 과 동일하게 유지된다.
+    expect(t16Prompt).toContain("외부 공식 절차 링크는 다루지 않는다");
+    expect(t16Prompt).not.toContain("https://www.safedriving.or.kr");
+    // '비교글' 프레이밍은 '소개·안내글'로 바뀐다(t16-axis-comparison 계약과 정합).
+    expect(t16Prompt).toContain("소개·안내하는 글이다");
+    expect(t16Prompt).toContain("학원 소개 범위:");
+    expect(t16Prompt).not.toContain("이 글은 지역 운전면허학원 비교글이다");
+    expect(t16Prompt).not.toContain("비교글 범위:");
+
+    // 표 지시도 요약표(로스터)로 바뀐다 — 비교 매트릭스 예시/‘비교표’ 지칭을 쓰지 않는다.
+    expect(t16Prompt).toContain("각 학원을 행으로 두는 요약표");
+    expect(t16Prompt).toContain("요약표의 중심 열");
+    expect(t16Prompt).not.toContain("| 비교 항목 | 후보 A | 후보 B |");
+    expect(t16Prompt).not.toContain("비교표의 중심 열");
+  });
+
+  it("T01 표 지시는 비교표(매트릭스)를 유지한다", () => {
+    const t01Prompt = buildPrompt({ display_name: "테스트" }, {
+      template_id: "T01", slot_id: "T01_test", region: "테스트시", primary_keyword: "테스트시 운전면허학원",
+    }, "facts", "comparison", getArchetype("local"), "", true, null, { t01Comparison: true, readerFlow: true });
+    expect(t01Prompt).toContain("| 비교 항목 | 후보 A | 후보 B |");
+    expect(t01Prompt).toContain("비교표의 중심 열");
+    expect(t01Prompt).not.toContain("각 학원을 행으로 두는 요약표");
+  });
 });
