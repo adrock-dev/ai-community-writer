@@ -197,7 +197,9 @@ describe("문체 지침", () => {
   it("여러 학원 공통 조건(수강료 단서 등)은 한 번만 밝히도록 지시한다 — 후보마다 반복 = repeated_sentence 격리 원인", () => {
     const guide = t16WritingGuide({ persona: "초보자" });
     expect(guide).toContain("공통 조건");
-    expect(guide).toContain("후보마다 되풀이하지 않는다");
+    expect(guide).toContain("학원마다 되풀이하지 않는다");
+    // 분리 배치: 부가세·검정료는 금액 옆, 기준 시점·상담 확인은 마무리 부근.
+    expect(guide).toContain("성격에 따라 나눠 배치한다");
   });
 
   it("톤은 파라미터로 갈리고, 콘텐츠·상세도 지침은 두 톤이 공유한다", () => {
