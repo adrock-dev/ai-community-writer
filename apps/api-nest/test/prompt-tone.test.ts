@@ -20,13 +20,22 @@ describe("공통 문체 지침", () => {
     expect(p).toContain("같은 종결을 세 문장 이상 연속으로 쓰지 않는다");
   });
 
+  it("문체 격식 수준을 글유형 방향성에 위임하고, 대화체는 종결어미를 넓게 허용한다", () => {
+    const p = prompt();
+    expect(p).toContain("글유형 방향성을 우선한다");
+    // 대화체에서 확장된 종결어미(전문가 톤에서는 -습니다 위주로 절제)
+    for (const ending of ["-거예요", "-네요", "-답니다"]) {
+      expect(p).toContain(ending);
+    }
+  });
+
   it("기본에서도 실제 AI 상투구는 계속 금지한다", () => {
     const p = prompt();
     for (const banned of ["이번 글에서는", "살펴보겠습니다", "도움이 되셨기를", "이번 포스팅"]) {
       expect(p).toContain(banned);
     }
-    // 이모지는 전면 금지가 아니라 계열 내 일관성으로 허용한다(체크리스트 ✅ 등). 남발·혼용만 막는다.
-    expect(p).toContain("같은 계열의 항목에 통일해 쓸 때만");
+    // 이모지: 대화체는 자유, 전문가 톤은 체크리스트 ✅ 외 제한. 어느 톤이든 목록 내 혼용만 막는다.
+    expect(p).toContain("전문가 톤에서는 체크리스트 ✅");
     expect(p).toContain("서로 다른 이모지를 섞지 않는다");
   });
 
