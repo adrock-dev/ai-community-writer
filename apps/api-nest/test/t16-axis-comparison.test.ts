@@ -167,9 +167,10 @@ describe("프롬프트 계약문", () => {
     const few = t16PromptContract(plan, {}, 2);
     expect(many).toContain("정보가 많으므로");
     expect(few).toContain("짧은 요약표");
-    // 어느 경우도 '우열을 매기는 비교표'가 아님을 명시한다.
-    expect(many).toContain("우열을 매기는 비교표가 아니라");
-    expect(few).toContain("우열을 매기는 비교표로 만들지 않는다");
+    // 어느 경우도 우열·순위표로 만들지 말라고 지시한다(단 '순위 아님' 설명 문장은 본문에 쓰지 않는다).
+    expect(many).toContain("우열·순위를 매기지 말고");
+    expect(few).toContain("우열·순위를 매기지 말고");
+    expect(many).toContain("본문에 쓰지 말고");
   });
 });
 
