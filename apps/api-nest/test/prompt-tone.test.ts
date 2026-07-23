@@ -39,6 +39,18 @@ describe("공통 문체 지침", () => {
     expect(p).toContain("서로 다른 이모지를 섞지 않는다");
   });
 
+  it("대화체 톤에 마케팅 에너지(감탄·응원)를 허용하되 전문가 톤은 차분하게 유지한다(#3)", () => {
+    const p = prompt();
+    // 대화체 에너지 허용
+    expect(p).toContain("느낌표와 가벼운 감탄");
+    expect(p).toContain("따뜻하게 응원해도 된다");
+    // 안전 경계: 활기는 확인된 사실 위에서만, 과장·합격보장 금지
+    expect(p).toContain("확인된 사실 위에서만");
+    expect(p).toContain("합격 보장");
+    // 전문가 톤은 감탄·응원 없이 차분
+    expect(p).toContain("전문가 톤에서는 감탄·응원 없이 차분하게 맺는다");
+  });
+
   it("SEO_PROMPT_STYLE=formal 로 기존 격식체 지침을 되돌릴 수 있다", () => {
     process.env.SEO_PROMPT_STYLE = "formal";
     const p = prompt();
