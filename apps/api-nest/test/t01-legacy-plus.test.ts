@@ -187,6 +187,8 @@ describe("T01 Legacy Plus", () => {
     expect(legacyPlusComparisonPlan(plus).directive).not.toContain("도입·비교표·학원별 첫 문장");
     expect(legacyPlusTemplateDirection(plus)).toContain("BEST 표기는 유지");
     expect(legacyPlusAcademyPrinciples()).toContain("주소·전화는 학원을 식별하는 기본 정보");
+    // 수강료 안내는 DRIVING_ACADEMY_PRINCIPLES 와 동기화 — Legacy Plus 가 공통 학원 원칙을 오버라이드하므로 여기에도 있어야 T01 에 들어간다.
+    expect(legacyPlusAcademyPrinciples()).toContain("정확한 금액은 상담으로 확인");
   });
 
   it("Legacy Plus는 공통 T01의 주소 우선·인근 후보군 지침을 대체하되 과정 중심 문장 구조를 강제하지 않는다", () => {
