@@ -9,6 +9,7 @@ import {
   internalLinkIssues,
   postSurfaceQualityIssues,
   repeatedSentenceIssues,
+  stripUnofferedInternalLinks,
 } from "../src/quality-gate.js";
 
 // 런타임 품질 게이트의 규칙별 동작을 고정한다. scripts/qa-posts.mjs 의 게이트와
@@ -196,6 +197,41 @@ describe("내부링크 게이트(P3)", () => {
   it("비차단 신호이므로 하드 게이트(articleQualityIssues)에는 포함되지 않는다", () => {
     const md = "# 제목\n\n## 섹션\n본문만 있고 링크가 없다.";
     expect(articleQualityIssues(md, relatedFacts, {})).not.toContain("missing_internal_link");
+  });
+});
+
+describe("지어낸 내부링크 해제(stripUnofferedInternalLinks)", () => {
+  const relatedFacts = "관련 글 후보:\n- 평택: https://example.com/community/pyeongtaek-guide\n- 안성: https://example.com/community/anseong-best";
+
+  it("제공 목록에 있는 내부링크는 그대로 둔다", () => {
+    const md = "자세한 내용은 [평택 총정리](https://example.com/community/pyeongtaek-guide)를 참고하세요.";
+    expect(stripUnofferedInternalLinks(md, relatedFacts)).toBe(md);
+  });
+
+  it("제공 목록에 없는(지어낸) 내부링크는 링크를 해제해 텍스트만 남긴다", () => {
+    const md = "관련 글 [없는 글](https://example.com/community/made-up-slug)도 보세요.";
+    expect(stripUnofferedInternalLinks(md, relatedFacts)).toBe("관련 글 없는 글도 보세요.");
+  });
+
+  it("offered 슬러그로 시작만 하는 다른 슬러그(…-3)는 서로 다른 글이므로 해제한다", () => {
+    const md = "[가짜](https://example.com/community/pyeongtaek-guide-3)";
+    expect(stripUnofferedInternalLinks(md, relatedFacts)).toBe("가짜");
+  });
+
+  it("관련 글 후보가 없으면 모든 /community/ 링크를 해제한다", () => {
+    const md = "[지어낸 글](https://example.com/community/whatever)";
+    expect(stripUnofferedInternalLinks(md, "소개 가능한 후보 수: 3곳")).toBe("지어낸 글");
+  });
+
+  it("/community/ 가 아닌 외부 링크(블로그·공신력 출처)는 건드리지 않는다", () => {
+    const md = "[네이버](https://blog.naver.com/x/123) 와 [공단](https://www.koroad.or.kr)";
+    expect(stripUnofferedInternalLinks(md, relatedFacts)).toBe(md);
+  });
+
+  it("URL 인코딩된 제공 링크(한글 슬러그)도 유지한다", () => {
+    const facts = "관련 글 후보:\n- 강릉: https://example.com/community/강릉-학원";
+    const md = "[강릉](https://example.com/community/%EA%B0%95%EB%A6%89-%ED%95%99%EC%9B%90)";
+    expect(stripUnofferedInternalLinks(md, facts)).toBe(md);
   });
 });
 

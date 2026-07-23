@@ -101,8 +101,35 @@ export function internalLinkIssues(markdown: string, facts: string): string[] {
   return hasInternalLink ? [] : ["missing_internal_link"];
 }
 
-function offeredInternalUrls(facts: string): string[] {
+export function offeredInternalUrls(facts: string): string[] {
   return Array.from(new Set(Array.from(String(facts || "").matchAll(/https?:\/\/\S+?\/community\/[^\s)]+/g)).map((m) => m[0]!)));
+}
+
+/**
+ * 모델이 '관련 글 후보'(facts)에 없는 /community/ 내부링크를 지어낸 경우(아직 생성 안 된 글의 슬러그를
+ * 패턴만 보고 만든 것) 그 링크를 해제한다(`[텍스트](url)` → `텍스트`). 발행 글에 죽은 내부링크가 남는 걸 막는다.
+ *
+ * 유지 기준은 '정확 일치'(+ 트레일링 슬래시·#앵커·?쿼리, URL 인코딩 형태 포함)다. offered 의 슬러그로
+ * '시작만' 하는 다른 슬러그(예: ...확인하는 vs ...확인하는-3)는 서로 다른 글이므로 유지하지 않는다.
+ * offered 가 비면(관련 글 후보 미제공) 모든 /community/ 링크가 가짜이므로 전부 해제한다.
+ * /community/ 외 링크(외부 블로그·공신력 출처 등)는 건드리지 않는다.
+ */
+export function stripUnofferedInternalLinks(markdown: string, facts: string): string {
+  const dec = (s: string) => { try { return decodeURIComponent(s); } catch { return s; } };
+  const offeredForms = new Set<string>();
+  for (const u of offeredInternalUrls(facts)) { offeredForms.add(u); offeredForms.add(dec(u)); }
+  const isOffered = (href: string): boolean => {
+    for (const f of [href, dec(href)]) {
+      for (const u of offeredForms) {
+        if (f === u || f === `${u}/` || f.startsWith(`${u}#`) || f.startsWith(`${u}?`)) return true;
+      }
+    }
+    return false;
+  };
+  return String(markdown || "").replace(
+    /\[([^\]]+)\]\(\s*(https?:\/\/[^\s)]+?\/community\/[^\s)]+)\s*\)/g,
+    (full, text: string, url: string) => (isOffered(url) ? full : text),
+  );
 }
 
 // 사이트 자기 공개 도메인(예: app.drivingplus.me) URL 은 내부 누출이 아니다 — 정상 내부링크의 host 다.

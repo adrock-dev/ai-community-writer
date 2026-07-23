@@ -10,7 +10,7 @@ import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writ
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
-import { articleQualityIssues, distanceClaimIssues, titleAxisEvidenceIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
+import { articleQualityIssues, distanceClaimIssues, titleAxisEvidenceIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, stripUnofferedInternalLinks, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
 import { seededCandidateSample, selectAcademiesByDistance, selectAcademiesForRegion } from "./academy-candidate-selection.js";
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
@@ -263,6 +263,8 @@ export class WorkerService {
         let markdown = normalizeGeneratedMarkdown(result.summary, images, domain);
         if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
         if (t16Plan) markdown = normalizeT16ReviewAttribution(markdown);
+        // 제공한 '관련 글 후보' 밖의 지어낸 /community/ 내부링크(미생성 글) 해제 — 발행 글의 죽은 링크 방지.
+        markdown = stripUnofferedInternalLinks(markdown, factsText);
         let t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
         let qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...(t16Plan ? [...distanceClaimIssues(markdown), ...titleAxisEvidenceIssues(forcedTitle || "", promptFactsText)] : []), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
         let durationSec = result.duration_sec;
@@ -294,6 +296,7 @@ export class WorkerService {
           if (repair.ok && repair.summary.trim()) {
             markdown = normalizeGeneratedMarkdown(repair.summary, images, domain);
             if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
+            markdown = stripUnofferedInternalLinks(markdown, factsText);
             t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
             qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
           }
