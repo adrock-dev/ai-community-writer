@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildT16AxisPlan, isConflictingAxisPair, normalizeT16ReviewAttribution,
-  t16FactsForPrompt, t16PromptContract, t16WritingGuide, T16_INTENTS, T16_MODIFIERS,
+  t16FactsForPrompt, t16PromptContract, t16ToneFromDirection, t16WritingGuide, T16_INTENTS, T16_MODIFIERS,
 } from "../src/t16-axis-comparison.js";
 import { TEMPLATE_SPECS, TITLE_RULES, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS } from "../src/constants.js";
 import { getArchetype } from "../src/archetypes.js";
@@ -198,5 +198,29 @@ describe("문체 지침", () => {
     const guide = t16WritingGuide({ persona: "초보자" });
     expect(guide).toContain("공통 조건");
     expect(guide).toContain("후보마다 되풀이하지 않는다");
+  });
+
+  it("톤은 파라미터로 갈리고, 콘텐츠·상세도 지침은 두 톤이 공유한다", () => {
+    const conv = t16WritingGuide({ persona: "초보자" }, "conversational");
+    const expert = t16WritingGuide({ persona: "초보자" }, "expert");
+    // 대화체는 친근 어투, 전문가는 설명 톤 — 어투만 갈린다.
+    expect(conv).toContain("친근한 블로그 에디터");
+    expect(conv).toContain("고민되실");
+    expect(expert).toContain("전문가 설명 톤");
+    expect(expert).not.toContain("친근한 블로그 에디터");
+    expect(expert).not.toContain("고민되실");
+    // 콘텐츠·상세도·날조 금지는 톤과 무관하게 양쪽에 있다.
+    for (const shared of ["최소 3~4문장", "공통 조건", "가상의 수강생"]) {
+      expect(conv).toContain(shared);
+      expect(expert).toContain(shared);
+    }
+    // 격식 수준(종결어미·이모지)은 여기서 하드코딩하지 않는다 — commonToneGuide 소관.
+    expect(expert).not.toContain("이 글은 대화체다");
+  });
+
+  it("t16ToneFromDirection: 방향성 텍스트로 톤을 판정한다(기본 대화체)", () => {
+    expect(t16ToneFromDirection("문체는 신뢰감 있는 전문가 설명 톤으로 차분하게 쓴다.")).toBe("expert");
+    expect(t16ToneFromDirection("독자에게 말을 거는 친근한 블로그 에디터의 대화체로 쓴다.")).toBe("conversational");
+    expect(t16ToneFromDirection("")).toBe("conversational");
   });
 });
