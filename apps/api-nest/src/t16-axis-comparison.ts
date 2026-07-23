@@ -150,6 +150,34 @@ function resolveWithFallback<T extends { requires: EvidenceKey[]; fallback: stri
   return { key: safeKey, spec: table[safeKey]! };
 }
 
+// 부제 변형: 같은 축이라도 슬롯마다 다른 문구가 나오게 슬롯 시드로 회전시킨다(제목 완전중복·부제 반복 완화).
+// slot_id 해시라 결정론적 — 같은 슬롯은 재생성해도 같은 부제(재현성·golden 유지). 각 배열 첫 항목이 기본형.
+const MODIFIER_SUBTITLE_VARIANTS: Record<string, string[]> = {
+  비용절약: ["수강료 아끼기부터", "가성비 따지기부터", "비용 먼저 챙기기부터"],
+  셔틀편리: ["우리 동네 셔틀부터", "셔틀 되는 곳부터", "통학 셔틀부터"],
+  야간반: ["야간반 여부부터", "퇴근 후 수업부터", "야간 운영부터"],
+  주말반: ["주말 수업부터", "주말반 여부부터", "주말 운영부터"],
+  상담전확인: ["상담 전 체크부터", "상담 전 기본 정보부터", "상담 준비부터"],
+  가까운: ["가까운 학원부터", "우리 동네부터", "가까운 곳부터"],
+};
+const INTENT_SUBTITLE_VARIANTS: Record<string, string[]> = {
+  과정선택: ["내게 맞는 면허 과정까지", "필요한 면허 과정까지", "면허 과정 고르기까지"],
+  학원유형: ["전문학원 차이까지", "학원 유형 비교까지", "전문·일반 차이까지"],
+  비용구성: ["수강료 구성까지", "무엇이 포함되는지까지", "수강료 항목까지"],
+  후기확인: ["생생한 수강생 후기까지", "실제 후기로 골라보기까지", "수강생 반응까지"],
+  일정확인: ["다닐 수 있는 시간표까지", "가능한 교육 일정까지", "운영 시간표까지"],
+};
+// FNV-1a 해시로 시드 → 인덱스(결정론적, Math.random 금지 — golden/재현성 보호).
+function subtitleVariantIndex(seed: string, n: number): number {
+  if (n <= 1) return 0;
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h % n;
+}
+function pickSubtitleVariant(variants: string[] | undefined, fallback: string, seed: string): string {
+  return variants && variants.length ? variants[subtitleVariantIndex(seed, variants.length)]! : fallback;
+}
+
 export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
   const demoted: string[] = [];
   const rawModifier = String(slot.modifier_1 || "").trim() || "상담전확인";
@@ -162,6 +190,10 @@ export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
   const extraColumn = mod.spec.summaryColumn ?? (hasEvidence(academies, "price") ? "수강료" : null);
   const summaryColumns = [extraColumn]
     .filter((column): column is string => Boolean(column) && !["실제 소재지", "학원명", "운영 과정"].includes(column!));
+  // 축별 부제 변형을 슬롯 시드로 회전 — 같은 축이라도 슬롯마다 다른 부제(제목 완전중복 방지).
+  const subtitleSeed = String(slot.slot_id ?? slot.id ?? `${slot.region}|${slot.persona}|${rawModifier}|${rawIntent}`);
+  const modSub = pickSubtitleVariant(MODIFIER_SUBTITLE_VARIANTS[mod.key], modifierSubtitle(mod.key), `${subtitleSeed}|m`);
+  const intSub = pickSubtitleVariant(INTENT_SUBTITLE_VARIANTS[int.key], int.spec.subtitle, `${subtitleSeed}|i`);
   return {
     modifier: mod.key,
     intent: int.key,
@@ -169,8 +201,8 @@ export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
     summaryColumns,
     focus: mod.spec.focus,
     question: int.spec.question,
-    // 유혹형 부제: "{benefit}부터 {action}까지!" — 제목 맨 끝에서도 완결되게 느낌표로 맺는다.
-    subtitle: ((s) => (s ? `${s}!` : s))(`${modifierSubtitle(mod.key)} ${int.spec.subtitle}`.replace(/\s+/g, " ").trim()),
+    // 유혹형 부제 "{benefit}부터 {action}까지!" + 슬롯 시드로 축별 변형 회전(제목/부제 반복 완화).
+    subtitle: ((s) => (s ? `${s}!` : s))(`${modSub} ${intSub}`.replace(/\s+/g, " ").trim()),
     demoted,
   };
 }
