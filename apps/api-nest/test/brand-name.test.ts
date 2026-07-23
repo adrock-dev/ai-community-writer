@@ -38,7 +38,9 @@ describe("프롬프트의 브랜드 주입 지점", () => {
   it("brand_name 이 선언·CTA 지침에 반영된다", () => {
     const p = promptFor({ brand_name: "운전면허플러스", display_name: "평택 운영본" });
     expect(p).toContain("브랜드: 운전면허플러스");
-    expect(p).toContain("운전면허플러스에서 비교·상담·예약으로 이어지는");
+    expect(p).toContain("운전면허플러스에서 상담·예약으로 이어지는");
+    // 연락처는 비교 대상이 아니라 연락·예약 수단으로만 쓰게 한다(모델의 "연락처를 비교" 오작성 예방).
+    expect(p).toContain("연락처·전화번호는 비교 대상이 아니라");
     expect(p).not.toContain("평택 운영본");
   });
 
