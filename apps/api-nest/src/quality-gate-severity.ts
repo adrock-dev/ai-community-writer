@@ -31,6 +31,8 @@ export const A_ISSUE_STEMS: readonly string[] = [
   "hard_sentences",
   // 2인칭 호칭 남발(대화체 허용 범위를 넘은 경우). 문체 문제라 A(자연스러움) 계열이다.
   "overused_second_person",
+  // 한 목록 안 이모지 혼용. 스타일 문제라 A 계열(repair 로 같은 이모지로 통일 가능).
+  "inconsistent_list_emoji",
   "missing_internal_link",
 ];
 

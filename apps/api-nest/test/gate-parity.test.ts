@@ -169,4 +169,20 @@ describe("게이트 미러 드리프트 가드(P6)", () => {
     }
   });
 
+
+  describe("inconsistentListEmojiIssues", () => {
+    const samples = [
+      "- ✅ 하나\n- ✅ 둘\n- ✅ 셋",           // 통일 → 통과
+      "- ✅ 하나\n- 🚗 둘\n- ⭐ 셋",           // 혼용 → 실패
+      "✅ 하나\n🚗 둘",                          // 마커 없이 이모지 직접, 혼용
+      "- 일반 하나\n- 일반 둘",                  // 이모지 없음 → 무관
+      "- ✅ 체크\n\n## 헤딩\n\n- 🚗 다른목록",  // 블록 분리 → 각각 1종, 통과
+    ];
+    for (const sample of samples) {
+      it(`탐지 결과가 일치한다: "${sample.slice(0, 14).replace(/\n/g, "⏎")}"`, () => {
+        expect(qa.inconsistentListEmojiIssues(sample)).toEqual(qg.inconsistentListEmojiIssues(sample));
+      });
+    }
+  });
+
 });

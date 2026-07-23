@@ -70,6 +70,7 @@ function issuesFor(row, monitoredByDomain) {
   issues.push(...overusedSecondPersonIssues(`${row.title}\n${body}`));
   issues.push(...repeatedSentenceIssues(body));
   issues.push(...boilerplatePhraseIssues(`${row.title}\n${body}`, monitoredByDomain.get(row.domain) || []));
+  issues.push(...inconsistentListEmojiIssues(body));
   if (!row.design_template_id) issues.push('missing_design_template_id');
   if (!['editorial', 'comparison', 'local-guide', 'checklist', 'conversion', 'custom'].includes(String(row.design_template_id || ''))) issues.push(`unknown_design_template:${row.design_template_id}`);
   if (h2 >= 4 && !hasFinalUtilitySection(body)) issues.push('template_structure_missing_final_utility_section');
@@ -121,6 +122,27 @@ function stripPublicReviewAttribution(text) {
   return String(text || '').replace(new RegExp(PUBLIC_REVIEW_ATTRIBUTION_PATTERN, 'gi'), '');
 }
 const REVIEW_SUPPLEMENT_LEAK_PATTERN = "(?:긍정\\s*)?(?:수강생|블로그)\\s*리뷰(?:글)?\\s*보충자료";
+
+// 한 목록 안에서 항목 앞 이모지가 2종 이상 섞이면 실패 — quality-gate.ts 의 inconsistentListEmojiIssues 미러.
+// 이모지 자체는 허용하되(체크리스트 ✅ 등) 같은 계열 항목은 같은 이모지로 통일해야 한다는 규칙 중,
+// 기계적으로 검출 가능한 부분만 강제한다. 화살표(U+2190~21FF)는 제외해 오탐을 막는다.
+const LIST_EMOJI_CLASS = '\\u{2600}-\\u{27BF}\\u{2B00}-\\u{2BFF}\\u{1F000}-\\u{1FAFF}✅✔✓';
+function inconsistentListEmojiIssues(markdown) {
+  const emoji = new RegExp(`^\\s*(?:[-*]\\s+|\\d+[.)]\\s+)?([${LIST_EMOJI_CLASS}])\\uFE0F?`, 'u');
+  const listItem = new RegExp(`^\\s*(?:[-*]\\s+|\\d+[.)]\\s+|[${LIST_EMOJI_CLASS}])`, 'u');
+  let block = null;
+  const closeBlock = () => { const bad = !!block && block.size >= 2; block = null; return bad; };
+  for (const line of String(markdown || '').split(/\r?\n/)) {
+    if (listItem.test(line)) {
+      block ??= new Set();
+      const m = line.match(emoji);
+      if (m) block.add(m[1]);
+    } else if (closeBlock()) {
+      return ['inconsistent_list_emoji'];
+    }
+  }
+  return closeBlock() ? ['inconsistent_list_emoji'] : [];
+}
 
 // 거리·이동시간 단정 검사 — quality-gate.ts 의 distanceClaimIssues 미러.
 // 후보를 거리로 뽑더라도 본문에서 거리를 주장하면 안 된다(직선거리는 실제 이동을 설명하지 못한다).
@@ -558,7 +580,7 @@ function walk(dir, found) {
 }
 
 // quality-gate.ts 미러(드리프트 가드용). test/gate-parity.test.ts 가 import 해서 quality-gate 와 대조한다.
-export { distanceClaimIssues, titleAxisEvidenceIssues, adjacentHeadingCount, AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
+export { inconsistentListEmojiIssues, distanceClaimIssues, titleAxisEvidenceIssues, adjacentHeadingCount, AI_CLICHE_PHRASES, SECOND_PERSON_ADDRESS, SECOND_PERSON_ADDRESS_LIMIT, overusedSecondPersonIssues, BOILERPLATE_PHRASES, HARD_SENTENCE_CHARS, OVERLONG_SENTENCE_CHARS, aiClicheIssues, boilerplatePhraseIssues, repeatedSentenceIssues, sentenceDifficultyIssues, PUBLIC_REVIEW_ATTRIBUTION_PATTERN, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution, renderMarkdown };
 
 // CLI 진입점으로 직접 실행됐을 때만 main() 을 돌린다(import 시에는 부수효과 없음).
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

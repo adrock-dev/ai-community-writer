@@ -25,8 +25,9 @@ describe("공통 문체 지침", () => {
     for (const banned of ["이번 글에서는", "살펴보겠습니다", "도움이 되셨기를", "이번 포스팅"]) {
       expect(p).toContain(banned);
     }
-    // 과한 구어체·이모지는 계속 막는다.
-    expect(p).toContain("감탄사·이모지를 쓰지는 않는다");
+    // 이모지는 전면 금지가 아니라 계열 내 일관성으로 허용한다(체크리스트 ✅ 등). 남발·혼용만 막는다.
+    expect(p).toContain("같은 계열의 항목에 통일해 쓸 때만");
+    expect(p).toContain("서로 다른 이모지를 섞지 않는다");
   });
 
   it("SEO_PROMPT_STYLE=formal 로 기존 격식체 지침을 되돌릴 수 있다", () => {

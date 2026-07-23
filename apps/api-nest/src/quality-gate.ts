@@ -130,6 +130,33 @@ export function distanceClaimIssues(markdown: string): string[] {
 }
 
 /**
+ * 한 목록(연속된 리스트 항목) 안에서 항목 앞 이모지가 2종 이상 섞이면 실패.
+ *
+ * 이모지 자체는 허용하되(체크리스트 ✅ 등), 같은 계열 항목은 같은 이모지로 통일해야 한다는
+ * 스타일 규칙을 기계적으로 검출 가능한 부분만 게이트로 강제한다. "계열"의 정성 판단은 하지 않고,
+ * 연속된 리스트 블록 하나에서 선두 이모지 종류만 센다(오탐 최소화). 이모지 없는 일반 불릿은 무관.
+ */
+// 이모지 문자류(항목 마커로 쓰이는 것). 화살표(U+2190~21FF)는 제외해 "→ 항목" 오탐을 막는다.
+const LIST_EMOJI_CLASS = "\\u{2600}-\\u{27BF}\\u{2B00}-\\u{2BFF}\\u{1F000}-\\u{1FAFF}✅✔✓";
+export function inconsistentListEmojiIssues(markdown: string): string[] {
+  const emoji = new RegExp(`^\\s*(?:[-*]\\s+|\\d+[.)]\\s+)?([${LIST_EMOJI_CLASS}])\\uFE0F?`, "u");
+  const listItem = new RegExp(`^\\s*(?:[-*]\\s+|\\d+[.)]\\s+|[${LIST_EMOJI_CLASS}])`, "u");
+  let block: Set<string> | null = null;
+  const closeBlock = () => { const bad = !!block && block.size >= 2; block = null; return bad; };
+  for (const line of String(markdown || "").split(/\r?\n/)) {
+    if (listItem.test(line)) {
+      block ??= new Set<string>();
+      const m = line.match(emoji);
+      if (m) block.add(m[1]!);
+    } else if (closeBlock()) {
+      // 리스트가 아닌 줄(빈 줄·헤딩·문단)은 블록 경계. 닫을 때 이모지가 2종 이상이면 실패.
+      return ["inconsistent_list_emoji"];
+    }
+  }
+  return closeBlock() ? ["inconsistent_list_emoji"] : [];
+}
+
+/**
  * 제목 부제가 주장하는 축을 facts 가 뒷받침하는지 검사.
  *
  * 제목은 프롬프트의 최상위 계약이라 본문이 제목을 따라간다. "수강생 후기로 확인하는" 인데 리뷰가
@@ -172,6 +199,7 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   issues.push(...boilerplatePhraseIssues(markdown, boilerplatePhrases));
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅)/m.test(markdown)) issues.push("missing_checklist_or_list");
+  issues.push(...inconsistentListEmojiIssues(markdown));
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
   if (/\[\d+\]/.test(markdown)) issues.push("contains_visible_citations");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
@@ -222,6 +250,7 @@ export function postSurfaceQualityIssues(post: Row, minChars = 2600, candidateCo
   if (!isAnyMarkdownTable(markdown)) issues.push(candidateCount >= 2 ? "missing_comparison_table" : "missing_summary_table");
   if (thinSectionCount(markdown) > 1) issues.push("thin_sections");
   if (!/(^|\n)\s*(?:[-*]\s+|\d+[.)]\s+|✅|✓)/m.test(markdown)) issues.push("missing_checklist_or_list");
+  issues.push(...inconsistentListEmojiIssues(markdown));
   if (/\[(?:TABLE|CTA|FAQ|QUOTE|IMAGE|INTERNAL_LINK)_SLOT:|\[INTERNAL_LINK:/i.test(markdown)) issues.push("contains_pseudo_slot");
   if (/\[\d+\]/.test(markdown)) issues.push("contains_visible_citations");
   if (/(운전선생|검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|zipcode\/search-seo|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(stripOwnSiteRefs(`${title}\n${markdown}`, siteHost))) issues.push("exposes_internal_fact_language");
