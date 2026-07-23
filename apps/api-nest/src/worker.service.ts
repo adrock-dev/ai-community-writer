@@ -199,7 +199,9 @@ export class WorkerService {
         // 제목 규칙(생성 시점 해석): 실제 후보 수로 제목 확정 → 프롬프트 주입. 후보 수 부족(min_generate 미만)이면 생성하지 않는다.
         const titleRule = (templateSpec?.title_rule as TitleRule | undefined) ?? TITLE_RULES[String(slot.template_id || "")];
         // T16: 슬롯 축(modifier/intent)을 facts 근거로 검증·강등해 이 글의 비교 기준·필수 응답·제목 부제를 확정한다.
-        const t16Plan: T16AxisPlan | null = isT16Slot(slot, archetype) ? buildT16AxisPlan(slot, facts.academies) : null;
+        const t16Plan: T16AxisPlan | null = isT16Slot(slot, archetype)
+          ? buildT16AxisPlan(slot, facts.academies, { variantOffset: this.db.getT16SubtitleOrdinal(slot) })
+          : null;
         const titleCtx = { region: String(slot.region || ""), count: facts.academyCount, keyword: String(slot.primary_keyword || ""), academyName: facts.firstAcademyName, subtitle: t16Plan?.subtitle };
         const titleResolved = resolveTitleFromRule(titleRule, titleCtx);
         // 슬롯 수동 제목이 있으면 규칙 제목보다 우선(생성 시점 치환). 스킵 판정은 규칙(min_generate)이 유지한다.

@@ -802,6 +802,22 @@ export class DbService implements OnModuleInit {
     return inserted;
   }
   getSlot(slotId: string): Row | undefined { return this.get("SELECT * FROM slots WHERE slot_id=?", [slotId]); }
+  /**
+   * T16 부제 변형 회전용 서수. 같은 (도메인·지역·수식어·의도) 슬롯을 slot_id로 정렬해 이 슬롯의
+   * 0-based 순위를 돌려준다 → buildT16AxisPlan variantOffset 으로 넘기면 형제마다 부제 조합이 겹치지
+   * 않아 제목 완전중복이 사라진다. 형제 집합이 바뀌면 순위(=부제)도 바뀔 수 있다(재현성은 집합 고정 시).
+   */
+  getT16SubtitleOrdinal(slot: Row): number {
+    const domain = String(slot.domain || "");
+    const slotId = String(slot.slot_id || "");
+    if (!domain || !slotId) return 0;
+    const rows = this.all(
+      "SELECT slot_id FROM slots WHERE domain=? AND IFNULL(region,'')=? AND IFNULL(modifier_1,'')=? AND IFNULL(intent,'')=? ORDER BY slot_id",
+      [domain, String(slot.region || ""), String(slot.modifier_1 || ""), String(slot.intent || "")],
+    );
+    const idx = rows.findIndex((r) => String(r.slot_id) === slotId);
+    return idx < 0 ? 0 : idx;
+  }
   updateSlotStatus(slotId: string, status: string, error?: string | null): void {
     if (error !== undefined) this.run("UPDATE slots SET status=?, last_error=? WHERE slot_id=?", [status, error, slotId]);
     else this.run("UPDATE slots SET status=? WHERE slot_id=?", [status, slotId]);

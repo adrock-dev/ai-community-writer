@@ -174,11 +174,26 @@ function subtitleVariantIndex(seed: string, n: number): number {
   for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
   return h % n;
 }
-function pickSubtitleVariant(variants: string[] | undefined, fallback: string, seed: string): string {
-  return variants && variants.length ? variants[subtitleVariantIndex(seed, variants.length)]! : fallback;
+// 수식어·의도 변형을 하나의 조합 공간(nMod×nInt)으로 보고 시드로 기준 칸을 정한 뒤 형제 서수만큼
+// 회전한다. eff∈[0,total)이 (수식어칸, 의도칸)에 일대일 대응하므로, 같은 (지역·축) 슬롯이 서로 다른
+// variantOffset(형제 서수)을 받으면 부제 문자열이 반드시 달라진다 → 제목 완전중복 0(형제 수 ≤ total일 때).
+function pickSubtitlePair(
+  modVariants: string[] | undefined,
+  modFallback: string,
+  intVariants: string[] | undefined,
+  intFallback: string,
+  seed: string,
+  offset: number,
+): { modSub: string; intSub: string } {
+  const mods = modVariants && modVariants.length ? modVariants : [modFallback];
+  const ints = intVariants && intVariants.length ? intVariants : [intFallback];
+  const total = mods.length * ints.length;
+  const base = subtitleVariantIndex(seed, total);
+  const eff = (((base + offset) % total) + total) % total;
+  return { modSub: mods[Math.floor(eff / ints.length)]!, intSub: ints[eff % ints.length]! };
 }
 
-export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
+export function buildT16AxisPlan(slot: Row, academies: Row[], opts?: { variantOffset?: number }): T16AxisPlan {
   const demoted: string[] = [];
   const rawModifier = String(slot.modifier_1 || "").trim() || "상담전확인";
   const rawIntent = String(slot.intent || "").trim() || "과정선택";
@@ -190,10 +205,17 @@ export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
   const extraColumn = mod.spec.summaryColumn ?? (hasEvidence(academies, "price") ? "수강료" : null);
   const summaryColumns = [extraColumn]
     .filter((column): column is string => Boolean(column) && !["실제 소재지", "학원명", "운영 과정"].includes(column!));
-  // 축별 부제 변형을 슬롯 시드로 회전 — 같은 축이라도 슬롯마다 다른 부제(제목 완전중복 방지).
+  // 축별 부제 변형을 슬롯 시드로 회전하고, 같은 (지역·축) 형제 서수(variantOffset)만큼 더 밀어
+  // 형제끼리 부제 조합이 겹치지 않게 한다(제목 완전중복 방지).
   const subtitleSeed = String(slot.slot_id ?? slot.id ?? `${slot.region}|${slot.persona}|${rawModifier}|${rawIntent}`);
-  const modSub = pickSubtitleVariant(MODIFIER_SUBTITLE_VARIANTS[mod.key], modifierSubtitle(mod.key), `${subtitleSeed}|m`);
-  const intSub = pickSubtitleVariant(INTENT_SUBTITLE_VARIANTS[int.key], int.spec.subtitle, `${subtitleSeed}|i`);
+  const { modSub, intSub } = pickSubtitlePair(
+    MODIFIER_SUBTITLE_VARIANTS[mod.key],
+    modifierSubtitle(mod.key),
+    INTENT_SUBTITLE_VARIANTS[int.key],
+    int.spec.subtitle,
+    subtitleSeed,
+    opts?.variantOffset ?? 0,
+  );
   return {
     modifier: mod.key,
     intent: int.key,
