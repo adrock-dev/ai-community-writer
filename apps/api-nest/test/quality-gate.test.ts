@@ -8,6 +8,7 @@ import {
   candidateNamesFromFacts,
   internalLinkIssues,
   misleadingInferenceIssues,
+  normalizeAcademyTerm,
   postSurfaceQualityIssues,
   repeatedSentenceIssues,
   stripUnofferedInternalLinks,
@@ -198,6 +199,29 @@ describe("내부링크 게이트(P3)", () => {
   it("비차단 신호이므로 하드 게이트(articleQualityIssues)에는 포함되지 않는다", () => {
     const md = "# 제목\n\n## 섹션\n본문만 있고 링크가 없다.";
     expect(articleQualityIssues(md, relatedFacts, {})).not.toContain("missing_internal_link");
+  });
+});
+
+describe("내부 용어 '후보' → '학원' 보정(normalizeAcademyTerm)", () => {
+  it("본문·소제목의 '후보'를 '학원'으로 바꾸되 조사도 종성에 맞춘다(유형 불문 — 본문만 본다)", () => {
+    expect(normalizeAcademyTerm("## 토요일 수강 여부가 궁금하다면, 후보별로 먼저 확인해 보세요"))
+      .toBe("## 토요일 수강 여부가 궁금하다면, 학원별로 먼저 확인해 보세요");
+    expect(normalizeAcademyTerm("강릉시를 기준으로 수강 후보를 찾는 분들을 위해"))
+      .toBe("강릉시를 기준으로 수강 학원을 찾는 분들을 위해");
+    expect(normalizeAcademyTerm("각 후보는 위치가 다릅니다. 인근 후보도 함께 봅니다."))
+      .toBe("각 학원은 위치가 다릅니다. 인근 학원도 함께 봅니다.");
+    expect(normalizeAcademyTerm("후보가 여럿이면 후보와 상담을 비교합니다."))
+      .toBe("학원이 여럿이면 학원과 상담을 비교합니다.");
+  });
+
+  it("'후보군'은 '학원군'이 아니라 '학원'으로(조사 정합 유지)", () => {
+    expect(normalizeAcademyTerm("별도 후보군으로 나누지 않는다")).toBe("별도 학원으로 나누지 않는다");
+    expect(normalizeAcademyTerm("인근 후보군을 따로 두지 않는다")).toBe("인근 학원을 따로 두지 않는다");
+  });
+
+  it("'후보'가 없는 본문은 그대로 둔다", () => {
+    const md = "# 강릉 운전면허학원\n\n두 곳의 운영 시간을 정리했어요.";
+    expect(normalizeAcademyTerm(md)).toBe(md);
   });
 });
 

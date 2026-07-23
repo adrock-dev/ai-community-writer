@@ -77,7 +77,7 @@ describe("T01 Legacy Plus", () => {
     expect(standard).toContain("위치/동선, 추천 대상");
     expect(standard).toContain("수식어: 가까운, 상담전확인");
     expect(plus).toContain("독자 질문 → 학원별 차이 → 객관 정보 → 선택 도움");
-    expect(plus).toContain("주소를 후보 소개의 첫 문장·추천 이유·비교표의 중심 열로 삼지 않는다");
+    expect(plus).toContain("주소를 학원 소개의 첫 문장·추천 이유·비교표의 중심 열로 삼지 않는다");
     expect(plus).toContain("짧은 기본 정보 불릿");
     expect(plus).not.toContain("위치/동선, 추천 대상");
     expect(plus).not.toContain("지역 생활권과 출퇴근/통학 동선을 짚고");
@@ -209,7 +209,7 @@ describe("T01 Legacy Plus", () => {
     });
     expect(prompt).toContain("SEO 제목의 BEST 표기는 유지");
     expect(prompt).toContain("모든 도입의 고정 주제로 삼지 않는다");
-    expect(prompt).toContain("후보별 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다");
+    expect(prompt).toContain("학원마다 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다");
     expect(prompt).not.toContain("취득하려는 면허 과정의 차이에서 시작한다");
     expect(prompt).not.toContain("주소가 주제 지역과 일치하는 후보를 먼저 소개한다");
     expect(prompt).not.toContain("인근/주변 후보를 별도 섹션으로 분리한다");

@@ -10,7 +10,7 @@ import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writ
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
-import { articleQualityIssues, distanceClaimIssues, titleAxisEvidenceIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, stripUnofferedInternalLinks, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
+import { articleQualityIssues, distanceClaimIssues, titleAxisEvidenceIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, stripUnofferedInternalLinks, normalizeAcademyTerm, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
 import { seededCandidateSample, selectAcademiesByDistance, selectAcademiesForRegion } from "./academy-candidate-selection.js";
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
@@ -265,6 +265,8 @@ export class WorkerService {
         if (t16Plan) markdown = normalizeT16ReviewAttribution(markdown);
         // 제공한 '관련 글 후보' 밖의 지어낸 /community/ 내부링크(미생성 글) 해제 — 발행 글의 죽은 링크 방지.
         markdown = stripUnofferedInternalLinks(markdown, factsText);
+        // 학원형 글: 내부 용어 '후보'가 본문·소제목에 새면 독자용 '학원'으로 보정(비학원형은 '정답 후보' 등 정상 용례라 제외).
+        if (academyTypes.length > 0) markdown = normalizeAcademyTerm(markdown);
         let t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
         let qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...(t16Plan ? [...distanceClaimIssues(markdown), ...titleAxisEvidenceIssues(forcedTitle || "", promptFactsText)] : []), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
         let durationSec = result.duration_sec;
@@ -297,6 +299,7 @@ export class WorkerService {
             markdown = normalizeGeneratedMarkdown(repair.summary, images, domain);
             if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
             markdown = stripUnofferedInternalLinks(markdown, factsText);
+            if (academyTypes.length > 0) markdown = normalizeAcademyTerm(markdown);
             t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
             qualityIssues = [...articleQualityIssues(markdown, factsText, images, monitoredPhrases, domain).filter((issue) => !t01LegacyPlusContext || !isLockedLegacyPlusReviewOnlyClicheIssue(issue, markdown, t01LegacyPlusContext)), ...t01ComparisonScopeIssues(markdown, isT01Family), ...t01Issues.filter((issue) => issue.severity === "hard_failure").map((issue) => `t01_${issue.code}`)];
           }
@@ -835,11 +838,11 @@ function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplate
     ? "페르소나의 이동 조건을 확인된 셔틀 운행 지역과 연결해 자연스럽게 쓸 수 있다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다."
     : "확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
   const candidateRepairGuide = options?.readerFlow
-    ? `후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험·수강생 리뷰 중 실제 차이가 있을 때만 선택 상황과 연결한다. 모든 후보를 같은 과정·확인 문장으로 시작하지 않는다. 실제 지역은 짧은 사실로만 적고 주소를 소개 중심으로 쓰지 않는다. ${personaMobilityGuide}`
-    : "후보별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 후보 시작은 반드시 '### 후보명' H3 소제목으로 둔다: '### 후보명' → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.";
+    ? `학원별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 학원 시작은 반드시 '### 학원명' H3 소제목으로 둔다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험·수강생 리뷰 중 실제 차이가 있을 때만 선택 상황과 연결한다. 모든 학원을 같은 과정·확인 문장으로 시작하지 않는다. 실제 지역은 짧은 사실로만 적고 주소를 소개 중심으로 쓰지 않는다. ${personaMobilityGuide}`
+    : "학원별 설명은 원본 블로그처럼 작은 카드형으로 쓰되, 각 학원 시작은 반드시 '### 학원명' H3 소제목으로 둔다: '### 학원명' → 위치/생활권 → 추천 대상 → 상담 때 확인할 질문 → 사진 순서.";
   const nonPrimaryRepairGuide = options?.readerFlow
-    ? `실제 소재지가 대상 지역과 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, ${tableNoun} 또는 해당 학원 소개에서 실제 지역만 정확히 적는다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.`
-    : "주소가 주제 지역과 다른 후보는 해당 지역 안의 학원이 아니라 \"인근 후보\"로만 구분해 설명한다. 후보 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.";
+    ? `실제 소재지가 대상 지역과 다른 학원도 별도 그룹이나 H2 섹션으로 나누지 말고, ${tableNoun} 또는 해당 학원 소개에서 실제 지역만 정확히 적는다. 학원 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.`
+    : "주소가 주제 지역과 다른 학원은 해당 지역 안의 학원이 아니라 \"인근 학원\"으로만 구분해 설명한다. 학원 추출용 거리 수치·km·직선거리·도로거리·이동시간은 본문에 쓰지 않는다.";
   const repairNaturalToneGuide = options?.readerFlow
     // buildPrompt 와 같은 이유로 브랜드명을 톤 지시에서 뺀다(모델이 모르는 대상은 톤 앵커가 못 된다).
     ? `원문보다 더 자연스럽고 풍성한 블로그 톤으로 작성하되, 면허 과정·운영 형태·실제 수강생 경험은 실제 차이가 있을 때만 보이게 한다. 주소를 ${tableNoun}의 중심이나 장점으로 만들지 않고, 표·기본 정보·체크리스트가 같은 사실을 반복하지 않게 한다. ${personaMobilityGuide}`
@@ -977,19 +980,19 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
     : "확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
   const academyNarrativeGuide = options?.readerFlow
     ? [
-      "- 이 글의 흐름은 ‘독자 질문 → 학원별 차이 → 객관 정보 → 선택 도움’이다. 도입은 지역에서 면허를 준비할 때 생기는 현실적인 고민을 한두 짧은 문단으로 열고 후보 소개로 자연스럽게 이어 간다. 면허 종류·교육 과정·전문학원 여부는 실제 차이가 있거나 독자의 고민과 맞을 때만 활용하며, 모든 도입의 고정 주제로 삼지 않는다.",
-      `- 주소·전화·실제 소재지는 오표현을 막는 보조 사실이다. 주소를 후보 소개의 첫 문장·추천 이유·${tableNoun}의 중심 열로 삼지 않는다. 실제 지역이 다른 학원도 별도 후보군이나 H2 섹션으로 나누지 말고, 해당 학원 소개 또는 ${tableNoun}에 실제 지역명만 짧게 적는다.`,
+      "- 이 글의 흐름은 ‘독자 질문 → 학원별 차이 → 객관 정보 → 선택 도움’이다. 도입은 지역에서 면허를 준비할 때 생기는 현실적인 고민을 한두 짧은 문단으로 열고 학원 소개로 자연스럽게 이어 간다. 면허 종류·교육 과정·전문학원 여부는 실제 차이가 있거나 독자의 고민과 맞을 때만 활용하며, 모든 도입의 고정 주제로 삼지 않는다.",
+      `- 주소·전화·실제 소재지는 오표현을 막는 보조 사실이다. 주소를 학원 소개의 첫 문장·추천 이유·${tableNoun}의 중심 열로 삼지 않는다. 실제 지역이 다른 학원도 별도 그룹이나 H2 섹션으로 나누지 말고, 해당 학원 소개 또는 ${tableNoun}에 실제 지역명만 짧게 적는다.`,
       `- ${personaMobilityGuide} 거리 수치, 이동시간, 셔틀 가능성을 추측하지 않는다.`,
-      "- 후보 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·자체시험·수강생 리뷰를 필요한 경우에만 활용한다. 각 후보는 반드시 `### 학원명` H3로 시작하고, 한두 문장의 자연스러운 소개 뒤에 제공된 주소·전화·운영 과정·운영 형태 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리한다. 후보별 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 주소는 기본 정보이지 추천 이유가 아니다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다.",
+      "- 학원 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·자체시험·수강생 리뷰를 필요한 경우에만 활용한다. 각 학원은 반드시 `### 학원명` H3로 시작하고, 한두 문장의 자연스러운 소개 뒤에 제공된 주소·전화·운영 과정·운영 형태 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리한다. 학원마다 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 주소는 기본 정보이지 추천 이유가 아니다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다.",
     ].join("\n")
     : [
-      "- 딱딱한 데이터 나열이 아니라 사람이 쓴 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 후보로 연결한다.",
-      "- 원본처럼 \"왜 이 후보가 이 지역/상황에 맞는지\"를 구체화한다. 주소만 쓰지 말고 생활권, 셔틀 확인 포인트, 면허 종류, 상담 질문, 사진을 같이 엮는다.",
-      "- 후보 소개는 원본 블로그의 카드형 리듬을 따른다. 후보마다 반드시 '### 후보명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.",
+      "- 딱딱한 데이터 나열이 아니라 사람이 쓴 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 학원으로 연결한다.",
+      "- 원본처럼 \"왜 이 학원이 이 지역/상황에 맞는지\"를 구체화한다. 주소만 쓰지 말고 생활권, 셔틀 확인 포인트, 면허 종류, 상담 질문, 사진을 같이 엮는다.",
+      "- 학원 소개는 원본 블로그의 카드형 리듬을 따른다. 학원마다 반드시 '### 학원명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.",
     ].join("\n");
   const academyDetailGuide = options?.readerFlow
-    ? "- 각 후보는 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 " + tableNoun + "의 중심 열로 쓰지 않는다."
-    : "- 후보별 설명에는 가능한 경우 학원명, 주소, 전화, 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다. 전화번호는 자료에 있는 번호만 그대로 쓰고 다른 번호를 만들지 않는다.";
+    ? "- 각 학원은 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 한두 문장의 자연스러운 소개를 쓰고, 확인된 면허 과정·운영 형태·자체시험 여부·수강생 리뷰는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~4개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 " + tableNoun + "의 중심 열로 쓰지 않는다."
+    : "- 학원별 설명에는 가능한 경우 학원명, 주소, 전화, 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다. 전화번호는 자료에 있는 번호만 그대로 쓰고 다른 번호를 만들지 않는다.";
   const academyPrinciples = options?.academyPrinciples ?? DRIVING_ACADEMY_PRINCIPLES;
   // 내부(자사) 글 링크: facts 에 '관련 글 후보'가 실제로 주어졌을 때만 유도한다. 현재 후보 제공이
   // 꺼져 있어(relatedPostsForSlot→[]) 항상 '금지' 분기로 떨어진다 — 죽은 내부 링크로 신뢰도가
