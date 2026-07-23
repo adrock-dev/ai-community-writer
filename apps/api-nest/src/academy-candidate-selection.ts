@@ -272,11 +272,15 @@ export function selectAcademiesByDistance(
     .sort((left, right) => left.distanceKm - right.distanceKm
       || String(left.academy.name).localeCompare(String(right.academy.name), "ko"));
 
-  // 1차 반경으로 채우고, 최소 개수에 못 미치면 보장 반경까지만 확장한다(전국 아무거나 방지).
+  // 1차 반경(20km)으로 채운다. 이 결과는 그대로 둔다 — 가장 가까운 후보를 버리면 안 된다.
   const within = scored.filter((row) => row.distanceKm <= ACADEMY_NEARBY_MAX_KM).slice(0, limit);
+  // 1차가 최소 개수에 못 미칠 때만, 20km 결과를 유지한 채 보장 반경(50km)에서 부족분만 채운다
+  // (T01 selectAcademiesForRegion 과 같은 정책 — 20km 결과를 버리고 50km 로 새로 채우면 안 된다).
   const picked = within.length >= minRequired
     ? within
-    : scored.filter((row) => row.distanceKm <= ACADEMY_MIN_GUARANTEE_MAX_KM).slice(0, Math.max(limit, minRequired));
+    : [...within, ...scored
+        .filter((row) => row.distanceKm > ACADEMY_NEARBY_MAX_KM && row.distanceKm <= ACADEMY_MIN_GUARANTEE_MAX_KM)
+        .slice(0, minRequired - within.length)];
 
   const inRegion = (academy: Row) => String(academy.address || "").includes(region) || String(academy.region || "") === region;
   picked.forEach((row, index) => {

@@ -393,13 +393,16 @@ export class WorkerService {
     const poolSize = academyPool(archetype);
     const minReq = academyMin(archetype);
     const used = Math.min(poolSize, ACADEMY_USED_PER_POST);
-    // 풀(가까운 순)에서 슬롯별 시드 랜덤으로 used 곳을 뽑는다. 같은 슬롯은 항상 같은 조합(재현), 다른 슬롯은 다른 조합.
     // T16 은 거리 단일 기준으로 뽑는다(지역 문자열 매칭을 거리보다 우선하지 않는다).
-    const pool = isT16Slot(slot, archetype)
+    const isT16 = isT16Slot(slot, archetype);
+    const pool = isT16
       ? selectAcademiesByDistance(this.db, domain, region, poolSize, academyTypes ?? [], minReq).candidates
       : this.pickAcademiesForRegion(domain, region, poolSize, academyTypes, minReq);
     const seed = String(slot.slot_id ?? slot.id ?? `${region}|${slot.primary_keyword ?? ""}`);
-    const academies = seededCandidateSample(pool, used, seed);
+    // T16 은 "다닐 수 있는 범위"가 전제라 가장 가까운 후보를 버리면 안 된다. 무작위 표본(다양성 장치)
+    // 대신 거리순 상위 used 곳을 결정적으로 쓴다(pool 이 이미 거리순). 다양성은 축이 담당한다.
+    // 그 외 유형은 기존대로 슬롯 시드 랜덤 — 같은 슬롯은 같은 조합(재현), 다른 슬롯은 다른 조합.
+    const academies = isT16 ? pool.slice(0, used) : seededCandidateSample(pool, used, seed);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
     const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
