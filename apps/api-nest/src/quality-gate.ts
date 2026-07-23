@@ -376,8 +376,13 @@ export function unlistedPhoneNumbers(markdown: string, facts: string): string[] 
   return [...new Set(used.filter((number) => !allowed.has(number)))];
 }
 
+// 리뷰 근거 존재 판정. facts 의 리뷰 라벨 형식 두 가지를 모두 인정한다:
+//  - T01/legacy 번호형: "수강생 리뷰 1"
+//  - T16/academy-review-evidence 콜론형: "수강생 리뷰: \"...\"" (academy-review-evidence.ts 가 리뷰 있을 때만 emit)
+// 콜론형이 빠져 있어, 실제 리뷰가 있는 T16 글이 unverified_review_claim 으로 오탐·격리됐다.
+// title_claims_review_without_facts(위 checks)는 이미 /수강생 리뷰:/ 를 인정한다 — 그와 정합.
 function hasReviewFacts(facts: string): boolean {
-  return /수강생 리뷰 \d+|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료/u.test(facts);
+  return /수강생 리뷰 \d+|수강생 리뷰:|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료/u.test(facts);
 }
 
 function hasSpecificReviewClaim(value: string): boolean {

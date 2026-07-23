@@ -215,6 +215,14 @@ describe("데이터 없는 단정 차단", () => {
     const md = "# 제목\n\n실제 수강생 후기에 따르면 만족도가 높습니다.";
     expect(articleQualityIssues(md, "", {})).toContain("unverified_review_claim");
   });
+
+  it("콜론형 리뷰 facts(T16/academy-review-evidence)가 있으면 후기 인용을 허용한다", () => {
+    // academy-review-evidence.ts 가 emit 하는 실제 형식. 번호형(수강생 리뷰 1)만 인정하던 탓에
+    // 실제 리뷰가 있는 T16 글이 오탐·격리됐다(2026-07-23).
+    const facts = '[1] OO학원 / 수강생 리뷰: "강사님이 친절하세요" (출처: 운전면허PLUS 실제 수강생 리뷰)';
+    const md = "# 제목\n\n> “강사님이 친절하세요” — 출처: 운전면허PLUS 실제 수강생 리뷰\n\n실제 수강생 후기에서 확인할 수 있는 점을 정리했습니다.";
+    expect(articleQualityIssues(md, facts, {})).not.toContain("unverified_review_claim");
+  });
 });
 
 describe("facts 파서", () => {
