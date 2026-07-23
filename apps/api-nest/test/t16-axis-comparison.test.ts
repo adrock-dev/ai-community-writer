@@ -38,10 +38,10 @@ describe("T16 빌트인 등록", () => {
 });
 
 describe("축 계획", () => {
-  it("modifier 가 비교표 열과 강조 섹션을, intent 가 필수 질문을 정한다", () => {
+  it("modifier 가 소개 관점·강조 섹션을, intent 가 필수 질문을 정한다", () => {
     const plan = buildT16AxisPlan({ modifier_1: "비용절약", intent: "학원유형" }, withPrice);
     expect(plan.modifier).toBe("비용절약");
-    expect(plan.columns).toEqual(T16_MODIFIERS.비용절약!.columns);
+    expect(plan.angle).toBe(T16_MODIFIERS.비용절약!.angle);
     expect(plan.focus).toBe(T16_MODIFIERS.비용절약!.focus);
     expect(plan.intent).toBe("학원유형");
     expect(plan.question).toBe(T16_INTENTS.학원유형!.question);
@@ -58,16 +58,16 @@ describe("축 계획", () => {
 
   it("축 값이 비어도 안전한 기본 계획을 만든다", () => {
     const plan = buildT16AxisPlan({}, withPrice);
-    expect(plan.columns.length).toBeGreaterThan(0);
+    expect(plan.angle.length).toBeGreaterThan(0);
     expect(plan.question.length).toBeGreaterThan(0);
   });
 
-  it("비교표 열에 실제 소재지·학원명을 넣지 않는다 — 계약문이 항상 붙여 중복되기 때문", () => {
-    // 실측: modifier=가까운 이 columns 에 "실제 소재지"를 넣어 표 열이 두 번 나왔다.
+  it("요약표 열에 실제 소재지·학원명·운영 과정을 넣지 않는다 — 계약문이 항상 붙여 중복되기 때문", () => {
     for (const modifier of Object.keys(T16_MODIFIERS)) {
       const plan = buildT16AxisPlan({ modifier_1: modifier }, withPrice);
-      expect(plan.columns).not.toContain("실제 소재지");
-      expect(plan.columns).not.toContain("학원명");
+      expect(plan.summaryColumns).not.toContain("실제 소재지");
+      expect(plan.summaryColumns).not.toContain("학원명");
+      expect(plan.summaryColumns).not.toContain("운영 과정");
     }
   });
 
@@ -138,14 +138,28 @@ describe("리뷰 출처 정규화", () => {
 });
 
 describe("프롬프트 계약문", () => {
-  it("축이 정한 열·주제·질문과 거리 표현 금지를 명시한다", () => {
+  it("소개 중심 프레이밍과 축이 정한 관점·질문, 거리 표현 금지를 명시한다", () => {
     const plan = buildT16AxisPlan({ modifier_1: "비용절약", intent: "학원유형", persona: "야간반을 찾는 직장인" }, withPrice);
-    const contract = t16PromptContract(plan, { persona: "야간반을 찾는 직장인" });
-    expect(contract).toContain("수강료");
+    const contract = t16PromptContract(plan, { persona: "야간반을 찾는 직장인" }, 5);
+    // '비교'가 아니라 '소개' 중심임을 명시한다.
+    expect(contract).toContain("소개·안내하는 것이다");
+    expect(contract).toContain("정량 비교하려 애쓰지 말고");
+    expect(contract).toContain(plan.angle);
     expect(contract).toContain(plan.question);
     expect(contract).toContain("야간반을 찾는 직장인");
     expect(contract).toContain("거리 수치");
     expect(contract).toContain("대중교통");
+  });
+
+  it("후보 4곳 이상이면 요약표를 두라고, 그 이하면 짧은 요약표로 안내한다", () => {
+    const plan = buildT16AxisPlan({ modifier_1: "비용절약" }, withPrice);
+    const many = t16PromptContract(plan, {}, 5);
+    const few = t16PromptContract(plan, {}, 2);
+    expect(many).toContain("정보가 많으므로");
+    expect(few).toContain("짧은 요약표");
+    // 어느 경우도 '우열을 매기는 비교표'가 아님을 명시한다.
+    expect(many).toContain("우열을 매기는 비교표가 아니라");
+    expect(few).toContain("우열을 매기는 비교표로 만들지 않는다");
   });
 });
 

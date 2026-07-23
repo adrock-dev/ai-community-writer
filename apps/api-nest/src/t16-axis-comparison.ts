@@ -44,27 +44,33 @@ export function hasEvidence(academies: Row[], key: EvidenceKey): boolean {
   return evidenceCount(academies, key) >= MIN_EVIDENCE_ACADEMIES;
 }
 
-// ── modifier: 무엇으로 비교하는가 ────────────────────────────────────────────
+// ── modifier: 각 학원 소개에서 무엇을 부각할까 ────────────────────────────────
+//
+// T16 은 '비교글'이 아니라 각 학원을 소개·안내하는 글이다. "비교"로 프레이밍하면 모델은
+// 학원끼리 정렬 비교가 되는 값만 찾게 되고, facts 에서 그게 되는 건 수강료(숫자)뿐이라
+// 축과 무관하게 글이 수강료로 수렴했다(실측: 비용무관 축에도 비용어 16회). 그래서 modifier 는
+// '비교표 열'이 아니라 '각 학원 소개에서 부각할 관점'을 정한다.
 
 type ModifierSpec = {
-  /** 비교표에 세울 열(학원명·실제 소재지는 항상 붙으므로 여기엔 쓰지 않는다). */
-  columns: string[];
+  /** 각 학원 소개에서 부각할 관점(그 학원의 확인된 사실 중 이 측면을 살린다). */
+  angle: string;
+  /** 학원 요약표에 더할 열. 학원명·실제 소재지·운영 과정은 항상 들어가므로 그 밖의 열만. null 이면 없음. */
+  summaryColumn: string | null;
   /** 이 축이 성립하려면 필요한 근거. */
   requires: EvidenceKey[];
-  /** 강조 섹션 주제. */
+  /** 강조 섹션 주제(각 학원의 이 측면 특징·장점). */
   focus: string;
   /** 근거가 없을 때 내려앉을 축. */
   fallback: string | null;
 };
 
 export const T16_MODIFIERS: Record<string, ModifierSpec> = {
-  비용절약: { columns: ["수강료", "운영 과정"], requires: ["price"], focus: "수강료를 비교할 때 함께 확인할 항목", fallback: "상담전확인" },
-  셔틀편리: { columns: ["셔틀 운행 지역", "운영 과정"], requires: ["shuttleArea"], focus: "셔틀 운행 지역을 확인하는 순서", fallback: "가까운" },
-  야간반: { columns: ["운영 시간", "운영 과정"], requires: ["hours"], focus: "퇴근 후 다닐 수 있는 시간대 확인", fallback: "상담전확인" },
-  주말반: { columns: ["운영 시간", "운영 과정"], requires: ["hours"], focus: "주말 운영 여부를 확인하는 방법", fallback: "상담전확인" },
-  상담전확인: { columns: ["운영 과정", "운영 형태"], requires: ["course"], focus: "상담 전에 정리해 둘 항목", fallback: null },
-  // 실제 소재지는 계약문이 항상 마지막에 붙이므로 columns 에 넣지 않는다(넣으면 표 열이 중복된다).
-  가까운: { columns: ["운영 과정", "운영 형태"], requires: ["region"], focus: "생활 동선에서 확인할 점", fallback: null },
+  비용절약: { angle: "수강료 구성과 과정이 예산에 맞는지", summaryColumn: "수강료", requires: ["price"], focus: "각 학원의 수강료 구성과 절약해 볼 만한 점", fallback: "상담전확인" },
+  셔틀편리: { angle: "셔틀 운행 지역이 내 동선과 맞는지", summaryColumn: "셔틀 운행 지역", requires: ["shuttleArea"], focus: "각 학원의 셔틀 운행 지역과 이용 방법", fallback: "가까운" },
+  야간반: { angle: "야간 시간대에 수강할 수 있는 운영 시간", summaryColumn: "운영 시간", requires: ["hours"], focus: "각 학원의 운영 시간과 퇴근 후 수강 가능성", fallback: "상담전확인" },
+  주말반: { angle: "주말에 수강할 수 있는 운영 요일", summaryColumn: "운영 시간", requires: ["hours"], focus: "각 학원의 주말 운영 여부와 수강 방법", fallback: "상담전확인" },
+  상담전확인: { angle: "상담 전에 정리해 둘 그 학원의 기본 정보", summaryColumn: null, requires: ["course"], focus: "각 학원에서 상담 때 확인할 점", fallback: null },
+  가까운: { angle: "실제 소재지와 생활 동선상의 위치", summaryColumn: null, requires: ["region"], focus: "각 학원의 위치와 생활 동선", fallback: null },
 };
 
 // ── intent: 무엇을 알려주는가 ────────────────────────────────────────────────
@@ -107,9 +113,11 @@ export function isConflictingAxisPair(modifier: unknown, intent: unknown): boole
 export type T16AxisPlan = {
   modifier: string;
   intent: string;
-  /** 비교표 열(학원명 + 아래 + 실제 소재지). */
-  columns: string[];
-  /** 강조 섹션 주제. */
+  /** 각 학원 소개에서 부각할 관점. */
+  angle: string;
+  /** 학원 요약표에 더할 열(학원명·실제 소재지·운영 과정은 항상 포함). 없으면 빈 배열. */
+  summaryColumns: string[];
+  /** 강조 섹션 주제(각 학원의 이 측면 특징·장점). */
   focus: string;
   /** 필수 응답 섹션이 답할 질문. */
   question: string;
@@ -118,6 +126,9 @@ export type T16AxisPlan = {
   /** 근거 부족으로 강등된 축(운영자 진단용). */
   demoted: string[];
 };
+
+/** 학원 요약표는 후보가 이 수 이상일 때만 둔다(3곳 이하는 각 학원 소개만으로 충분). */
+export const T16_SUMMARY_TABLE_MIN_ACADEMIES = 4;
 
 /** 근거가 있을 때까지 fallback 을 따라 내려간다(순환·미정의 방어). */
 function resolveWithFallback<T extends { requires: EvidenceKey[]; fallback: string | null }>(
@@ -145,12 +156,14 @@ export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
   const rawIntent = String(slot.intent || "").trim() || "과정선택";
   const mod = resolveWithFallback(T16_MODIFIERS, rawModifier, academies, demoted);
   const int = resolveWithFallback(T16_INTENTS, rawIntent, academies, demoted);
-  // 학원명·실제 소재지는 계약문이 항상 붙이므로 columns 에서 걸러 표 열 중복을 막는다(정의 실수 방어).
-  const columns = mod.spec.columns.filter((column) => column !== "실제 소재지" && column !== "학원명");
+  // 요약표 추가 열. 학원명·실제 소재지·운영 과정은 항상 들어가므로 걸러내 중복을 막는다.
+  const summaryColumns = [mod.spec.summaryColumn]
+    .filter((column): column is string => Boolean(column) && !["실제 소재지", "학원명", "운영 과정"].includes(column!));
   return {
     modifier: mod.key,
     intent: int.key,
-    columns,
+    angle: mod.spec.angle,
+    summaryColumns,
     focus: mod.spec.focus,
     question: int.spec.question,
     subtitle: `${modifierSubtitle(mod.key)} ${int.spec.subtitle}`.replace(/\s+/g, " ").trim(),
@@ -158,14 +171,15 @@ export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
   };
 }
 
+// 제목 부제 앞부분(modifier). "비교"라는 단어를 쓰지 않는다 — 정량 비교 프레이밍을 유발했다.
 function modifierSubtitle(modifier: string): string {
   const map: Record<string, string> = {
-    비용절약: "수강료 비교와",
-    셔틀편리: "셔틀 운행 지역과",
-    야간반: "야간 시간대와",
-    주말반: "주말 운영과",
-    상담전확인: "상담 전 체크와",
-    가까운: "생활 동선과",
+    비용절약: "수강료와 과정",
+    셔틀편리: "셔틀 운행 지역",
+    야간반: "야간 운영",
+    주말반: "주말 운영",
+    상담전확인: "상담 전 확인",
+    가까운: "위치와 동선",
   };
   return map[modifier] ?? "";
 }
@@ -173,19 +187,28 @@ function modifierSubtitle(modifier: string): string {
 // ── 프롬프트 주입 ────────────────────────────────────────────────────────────
 
 /**
- * 축이 정한 것을 프롬프트가 따르도록 명시한다. 구조 지침이 "'비교 기준'이 지정한" 이라고만
- * 써 두고 실제 값은 여기서 준다 — 아키타입은 자리를 만들고 축이 값을 채우는 분리.
+ * 축이 정한 것을 프롬프트가 따르도록 명시한다. 구조 지침이 "'각 학원 소개에서 부각할 관점'" 처럼
+ * 자리만 만들어 두고 실제 값은 여기서 준다 — 아키타입은 자리를, 축이 값을 채우는 분리.
+ *
+ * 이 글은 '비교글'이 아니라 각 학원을 소개·안내하는 글이다. 비교 프레이밍을 걷어내야
+ * 모델이 정량 비교 가능한 값(수강료)만 찾지 않고 각 학원의 고유한 특징·장점을 살린다.
  */
-export function t16PromptContract(plan: T16AxisPlan, slot: Row): string {
+export function t16PromptContract(plan: T16AxisPlan, slot: Row, academyCount: number): string {
   const persona = String(slot.persona || "").trim();
+  const summaryCols = ["학원명", "실제 소재지", "운영 과정", ...plan.summaryColumns];
   return [
-    "T16 축 지침 (이 지침의 이름이나 내부 작업 방식은 글에 쓰지 않는다):",
-    `- 비교 기준: 비교표는 학원명 · ${plan.columns.join(" · ")} · 실제 소재지 열로 만든다. 값이 없는 열은 채우지 말고 뺀다. 전체 주소·전화번호는 비교표 열로 쓰지 않는다.`,
-    `- 강조 섹션: "${plan.focus}"를 주제로 한 섹션을 하나 둔다. 확인된 자료 범위 안에서만 쓴다.`,
-    `- 필수 응답: 이 글은 "${plan.question}"에 반드시 답해야 한다. 제공된 자료로 답할 수 있는 만큼만 쓰고, 모자라면 상담에서 확인할 질문으로 남긴다.`,
-    persona ? `- 독자: 이 글의 독자는 "${persona}"다. 도입에서 그 상황을 구체적으로 그리고, 확인 질문의 순서를 그 상황에 맞추며, 마무리에서 어떤 상황이면 어느 후보를 먼저 볼지 연결한다. 연결의 근거는 확인된 사실이어야 하고, 자료로 뒷받침되지 않는 추천 대상은 만들지 않는다.` : "",
+    "T16 지침 (이 지침의 이름이나 내부 작업 방식은 글에 쓰지 않는다):",
+    "- 이 글의 중심은 각 학원을 하나씩 소개·안내하는 것이다. 학원끼리 우열을 정량 비교하려 애쓰지 말고, 각 학원의 확인된 특징과 장점을 그 학원 소개 안에서 구체적으로 살린다.",
+    `- 각 학원 소개에서 부각할 관점: ${plan.angle}. 그 학원의 확인된 사실 중 이 관점에 해당하는 내용을 이야기하되, 자료가 없는 학원은 억지로 지어내지 말고 다른 확인된 특징으로 소개한다.`,
+    `- 각 학원의 장점은 확인된 사실(운영 과정·수강료·셔틀 운행 지역·운영 시간·수강생 리뷰·운영 형태)에 근거할 때만 쓴다. 근거 없는 장점·순위·과장은 만들지 않는다.`,
+    academyCount >= T16_SUMMARY_TABLE_MIN_ACADEMIES
+      ? `- 학원 요약표: 후보가 ${academyCount}곳이라 정보가 많으므로, ${summaryCols.join(" · ")} 열로 한눈에 볼 수 있는 요약표를 하나 둔다. 이것은 우열을 매기는 비교표가 아니라 각 학원의 확인된 정보를 모아 보여주는 요약표다. 글의 중심은 여전히 각 학원 소개이고, 요약표는 그 소개를 훑어보게 돕는 보조 도구다. 값이 없는 열·칸은 비우거나 뺀다. 전체 주소·전화번호는 요약표 열로 쓰지 않는다.`
+      : `- 학원 요약표: ${summaryCols.join(" · ")} 열의 짧은 요약표를 하나 둔다. 후보가 ${academyCount}곳으로 적으니 표는 각 학원 소개를 보조하는 정보 요약일 뿐이고, 글의 중심은 각 학원 소개다. 우열을 매기는 비교표로 만들지 않는다. 값이 없는 칸은 비운다.`,
+    `- 강조 섹션: "${plan.focus}"을 주제로 한 섹션을 하나 둔다. 확인된 자료 범위 안에서만 쓴다.`,
+    `- 필수 응답: 이 글은 "${plan.question}"에 답한다. 제공된 자료로 답할 수 있는 만큼만 쓰고, 모자라면 상담에서 확인할 질문으로 남긴다.`,
+    persona ? `- 독자: 이 글의 독자는 "${persona}"다. 도입에서 그 상황을 구체적으로 그리고, 안내의 순서를 그 상황에 맞추며, 마무리에서 어떤 상황이면 어느 학원을 먼저 살펴보면 좋을지 확인된 사실에 근거해 연결한다. 자료로 뒷받침되지 않는 추천은 만들지 않는다.` : "",
     "- 후보는 이 지역을 기준으로 다닐 수 있는 범위에서 골랐다. 도입에서 그 범위를 한 문장으로만 밝히고, 이후에는 반복하지 않는다.",
-    "- 실제 소재지가 대상 지역과 다른 학원도 별도 후보군이나 섹션으로 나누지 않는다. 해당 학원 소개와 비교표에 실제 지역만 사실대로 적는다.",
+    "- 실제 소재지가 대상 지역과 다른 학원도 별도 후보군이나 섹션으로 나누지 않는다. 해당 학원 소개에 실제 지역만 사실대로 적는다.",
     "- `13.2km`, `약 Nkm` 같은 거리 수치와 직선거리·도로거리·이동시간·통학 편의·접근성 우위 단정은 쓰지 않는다.",
     "- 대중교통 노선·도보 시간·주차 여부는 확인된 자료가 없으므로 쓰지 않고, 필요하면 상담 확인 질문으로만 남긴다.",
   ].filter(Boolean).join("\n");
@@ -215,11 +238,11 @@ export function t16WritingGuide(slot: Row): string {
   ].join("\n");
 }
 
-/** 구조 지침에 축이 정한 열·주제·질문을 덧붙인다. */
+/** 구조 지침에 축이 정한 관점·주제·질문을 덧붙인다. */
 export function t16StructureGuide(baseGuide: string, plan: T16AxisPlan): string {
   return [
     baseGuide,
-    `- 비교표 열: 학원명 · ${plan.columns.join(" · ")} · 실제 소재지`,
+    `- 각 학원 소개에서 부각할 관점: ${plan.angle}`,
     `- 강조 섹션 주제: ${plan.focus}`,
     `- 필수 응답 질문: ${plan.question}`,
   ].join("\n");

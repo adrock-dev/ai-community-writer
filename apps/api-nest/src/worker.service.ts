@@ -255,7 +255,7 @@ export class WorkerService {
         } : (isT01Family ? { t01Comparison: true } : undefined);
         const effectiveDirection = t01LegacyPlusContext ? legacyPlusTemplateDirection(t01LegacyPlusContext) : templateDirection;
         const legacyPrompt = buildPrompt(domainMeta, slot, promptFactsText, designTemplateId, archetype, effectiveDirection, academyTypes.length > 0, forcedTitle, t01PromptOptions);
-        const t01Contract = t01LegacyPlusContext ? t01LegacyPlusPromptContract(t01LegacyPlusContext) : t16Plan ? t16PromptContract(t16Plan, slot) : "";
+        const t01Contract = t01LegacyPlusContext ? t01LegacyPlusPromptContract(t01LegacyPlusContext) : t16Plan ? t16PromptContract(t16Plan, slot, facts.academyCount) : "";
         const prompt = t01Contract ? `${legacyPrompt}\n\n${t01Contract}` : legacyPrompt;
         const llmOpts = { provider: payload.provider || "codex", model: payload.model || "", timeoutSec: Number(payload.timeout_sec || 600) };
         this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 본문 생성 중`, slotId: sid, processed: ok, failed: fail });
