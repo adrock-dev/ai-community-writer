@@ -210,7 +210,7 @@ export function legacyPlusArticlePatternGuide(context?: T01LegacyPlusContext): s
 }
 
 export function legacyPlusDesignGuide(): string {
-  return "정보를 기계적으로 나열하는 보고서로 만들지 않고, 독자의 고민을 이해하고 선택을 돕는 방향으로 쓴다(문체의 격식/대화체 수준은 글유형 방향성을 따른다). 광고처럼 과장하지 않는다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
+  return "정보를 기계적으로 나열하는 보고서로 만들지 않고, 독자의 고민을 이해하고 선택을 돕는 방향으로 쓴다(문체의 격식/대화체 수준은 글유형 방향성을 따른다). 대화체에서는 독자를 끌어들이는 활기찬·권유형 표현을 써도 되지만, 어느 톤이든 확인되지 않은 사실을 과장하거나 지어내지는 않는다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
 }
 
 export function dedupeLegacyPlusDecisionSupport(markdown: string): string {

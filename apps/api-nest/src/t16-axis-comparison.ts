@@ -85,11 +85,11 @@ type IntentSpec = {
 };
 
 export const T16_INTENTS: Record<string, IntentSpec> = {
-  과정선택: { question: "이 지역에서 딸 수 있는 면허 과정과 그 차이", requires: ["course"], fallback: null, subtitle: "면허 과정 고르기" },
+  과정선택: { question: "이 지역에서 딸 수 있는 면허 과정과 그 차이", requires: ["course"], fallback: null, subtitle: "내게 맞는 면허 과정까지" },
   학원유형: { question: "전문학원과 일반학원의 차이와 고르는 기준", requires: ["academyType"], fallback: "과정선택", subtitle: "전문학원 차이까지" },
-  비용구성: { question: "수강료에 무엇이 포함되고 무엇이 따로인지", requires: ["price"], fallback: "과정선택", subtitle: "수강료 구성 확인" },
-  후기확인: { question: "수강생 반응에서 확인할 수 있는 점", requires: ["review"], fallback: "과정선택", subtitle: "수강생 후기로 확인하는" },
-  일정확인: { question: "언제 다닐 수 있는지(운영 요일·시간)", requires: ["hours"], fallback: "과정선택", subtitle: "운영 시간까지" },
+  비용구성: { question: "수강료에 무엇이 포함되고 무엇이 따로인지", requires: ["price"], fallback: "과정선택", subtitle: "수강료 구성까지" },
+  후기확인: { question: "수강생 반응에서 확인할 수 있는 점", requires: ["review"], fallback: "과정선택", subtitle: "생생한 수강생 후기까지" },
+  일정확인: { question: "언제 다닐 수 있는지(운영 요일·시간)", requires: ["hours"], fallback: "과정선택", subtitle: "다닐 수 있는 시간표까지" },
 };
 
 /**
@@ -166,20 +166,22 @@ export function buildT16AxisPlan(slot: Row, academies: Row[]): T16AxisPlan {
     summaryColumns,
     focus: mod.spec.focus,
     question: int.spec.question,
-    subtitle: `${modifierSubtitle(mod.key)} ${int.spec.subtitle}`.replace(/\s+/g, " ").trim(),
+    // 유혹형 부제: "{benefit}부터 {action}까지!" — 제목 맨 끝에서도 완결되게 느낌표로 맺는다.
+    subtitle: ((s) => (s ? `${s}!` : s))(`${modifierSubtitle(mod.key)} ${int.spec.subtitle}`.replace(/\s+/g, " ").trim()),
     demoted,
   };
 }
 
-// 제목 부제 앞부분(modifier). "비교"라는 단어를 쓰지 않는다 — 정량 비교 프레이밍을 유발했다.
+// 제목 부제 앞부분(modifier) — "…부터"로 끝나 뒤 intent("…까지!")와 이어져 유혹형 카피가 된다.
+// "비교"라는 단어를 쓰지 않는다(정량 비교 프레이밍 유발). 미검증 단정(최저가 등)은 넣지 않는다.
 function modifierSubtitle(modifier: string): string {
   const map: Record<string, string> = {
-    비용절약: "수강료와 과정",
-    셔틀편리: "셔틀 운행 지역",
-    야간반: "야간 운영",
-    주말반: "주말 운영",
-    상담전확인: "상담 전 확인",
-    가까운: "위치와 동선",
+    비용절약: "수강료 아끼기부터",
+    셔틀편리: "우리 동네 셔틀부터",
+    야간반: "야간반 여부부터",
+    주말반: "주말 수업부터",
+    상담전확인: "상담 전 체크부터",
+    가까운: "가까운 학원부터",
   };
   return map[modifier] ?? "";
 }
