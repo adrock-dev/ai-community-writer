@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STUDENT_REVIEW_SOURCE, selectedStudentReviewForAcademy, studentReviewFactLines, studentReviewsForAcademy } from "../src/academy-review-evidence.js";
+import { STUDENT_REVIEW_SOURCE, selectedStudentReviewForAcademy, studentReviewFactLines, studentReviewsForAcademy, truncateReviewQuote } from "../src/academy-review-evidence.js";
 
 describe("academy student review evidence", () => {
   it("원문 리뷰를 테마로 축약하지 않고 출처·평점·작성일과 함께 보존한다", () => {
@@ -61,5 +61,36 @@ describe("리뷰는 적격한 것 중에서 고른다", () => {
   it("같은 시드면 같은 리뷰가 나온다(재현성)", () => {
     const quotes = ["강사님 설명이 자세해서 좋았습니다 정말로", "차량 상태가 깔끔하고 예약도 편했습니다 추천"];
     expect(selectedStudentReviewForAcademy(row(quotes), "a")?.quote).toBe(selectedStudentReviewForAcademy(row(quotes), "a")?.quote);
+  });
+});
+
+describe("리뷰 100자 말줄임", () => {
+  it("100자 미만은 그대로 둔다", () => {
+    const short = "가".repeat(80);
+    expect(truncateReviewQuote(short)).toBe(short);
+    expect(truncateReviewQuote(short)).not.toContain("…");
+  });
+
+  it("100자 이상이면 100자(99자+…)로 줄인다", () => {
+    const long = "가".repeat(150);
+    const out = truncateReviewQuote(long);
+    expect(Array.from(out).length).toBe(100);
+    expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("경계값 100자는 줄인다(100자 '이상' 기준)", () => {
+    const exact = "나".repeat(100);
+    const out = truncateReviewQuote(exact);
+    expect(Array.from(out).length).toBe(100);
+    expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("studentReviewFactLines 가 말줄임된 인용을 낸다", () => {
+    const row = { name: "x", external_id: "id-1", review: "다".repeat(140) };
+    const line = studentReviewFactLines(row, "seed")[0];
+    if (line) {
+      const quote = line.match(/“([^”]*)”/)?.[1] ?? "";
+      expect(Array.from(quote).length).toBeLessThanOrEqual(100);
+    }
   });
 });

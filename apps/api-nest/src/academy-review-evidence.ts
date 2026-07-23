@@ -72,9 +72,17 @@ export function isContentEligibleReviewText(text: unknown): boolean {
   return !isPromotionalOnly(normalized);
 }
 
+// 리뷰 원문이 100자 이상이면 끝을 …로 줄인다.
+// t01-legacy-plus.truncateLegacyPlusReview 와 같은 규칙(순환 의존을 피해 로컬 복제 — 규칙을 바꿀 때 함께 맞춘다).
+export function truncateReviewQuote(text: string, maximumLength = 100): string {
+  const chars = Array.from(String(text || "").trim());
+  if (chars.length < maximumLength) return chars.join("");
+  return `${chars.slice(0, Math.max(0, maximumLength - 1)).join("")}…`;
+}
+
 export function studentReviewFactLines(row: Row, seed: string): string[] {
   const review = selectedStudentReviewForAcademy(row, seed);
-  return review ? [`수강생 리뷰: “${review.quote}” (출처: ${review.source})`] : [];
+  return review ? [`수강생 리뷰: “${truncateReviewQuote(review.quote)}” (출처: ${review.source})`] : [];
 }
 
 /**
