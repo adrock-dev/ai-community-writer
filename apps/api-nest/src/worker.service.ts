@@ -5,7 +5,7 @@ import { runLlm } from "./llm-runner.js";
 import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, DRIVING_AUTHORITATIVE_SOURCES_GUIDE, TITLE_RULES, defaultDesignForTemplate, type TitleRule } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { publicBrandName } from "./brand.js";
-import { buildT16AxisPlan, normalizeT16ReviewAttribution, t16FactsForPrompt, t16PromptContract, t16StructureGuide, T16_TEMPLATE_ID, type T16AxisPlan } from "./t16-axis-comparison.js";
+import { buildT16AxisPlan, normalizeT16ReviewAttribution, t16FactsForPrompt, t16PromptContract, t16StructureGuide, t16WritingGuide, T16_TEMPLATE_ID, type T16AxisPlan } from "./t16-axis-comparison.js";
 import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
@@ -244,8 +244,10 @@ export class WorkerService {
           t01Comparison: true,
         } : t16Plan ? {
           // T16: facts 가공·글 뼈대·톤은 Legacy Plus 의 범용 헬퍼를 재사용하고(SEO 설명·키워드·좌표·리뷰 제거,
-          // 원본 패턴 블록의 도메인 이탈 노이즈 차단), 구조만 축이 정한 열·주제·질문으로 확장한다.
+          // 원본 패턴 블록의 도메인 이탈 노이즈 차단), 구조는 축이 정한 열·주제·질문으로,
+          // 문체는 T16 전용 스토리텔링·친절 톤(t16WritingGuide)으로 확장한다.
           structureGuide: t16StructureGuide(structureGuideForArchetype(archetype, structureSeed(slot)), t16Plan),
+          writingGuide: t16WritingGuide(slot),
           articlePatternGuide: legacyPlusArticlePatternGuide(),
           designGuide: legacyPlusDesignGuide(),
           readerFlow: true,

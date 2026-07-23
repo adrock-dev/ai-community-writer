@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildT16AxisPlan, isConflictingAxisPair, normalizeT16ReviewAttribution,
-  t16FactsForPrompt, t16PromptContract, T16_INTENTS, T16_MODIFIERS,
+  t16FactsForPrompt, t16PromptContract, t16WritingGuide, T16_INTENTS, T16_MODIFIERS,
 } from "../src/t16-axis-comparison.js";
 import { TEMPLATE_SPECS, TITLE_RULES, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS } from "../src/constants.js";
 import { getArchetype } from "../src/archetypes.js";
@@ -146,5 +146,27 @@ describe("프롬프트 계약문", () => {
     expect(contract).toContain("야간반을 찾는 직장인");
     expect(contract).toContain("거리 수치");
     expect(contract).toContain("대중교통");
+  });
+});
+
+describe("문체 지침", () => {
+  it("스토리텔링·친절 톤 요소와 persona 를 도입 예시에 엮는다", () => {
+    const guide = t16WritingGuide({ persona: "야간반을 찾는 직장인" });
+    expect(guide).toContain("야간반을 찾는 직장인");
+    expect(guide).toContain("궁금");
+    expect(guide).toContain("친근한 블로그 에디터");
+    expect(guide).toContain("사실만 나열하지 않는다");
+  });
+
+  it("persona 가 없어도 안전한 도입 예시를 준다", () => {
+    const guide = t16WritingGuide({});
+    expect(guide).toContain("고민되실");
+    expect(guide.length).toBeGreaterThan(100);
+  });
+
+  it("가상 경험 날조는 계속 금지한다", () => {
+    const guide = t16WritingGuide({ persona: "초보자" });
+    expect(guide).toContain("가상의 수강생");
+    expect(guide).toContain("직접 다녀온 것처럼");
   });
 });
