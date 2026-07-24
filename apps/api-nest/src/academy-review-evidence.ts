@@ -65,7 +65,9 @@ export function selectedStudentReviewForAcademy(row: Row, seed: string): Student
   // 빈약한 후기가 화면 인용으로 뽑히고, 정작 카드 바닥 분위기 문장의 근거가 된 긴 후기는 안 보였다.
   // Legacy Plus 선택(selectEligibleReviewsByAcademy)과 같은 점수 기준을 쓰고, 시드는 동점 처리로만
   // 남겨 재현성을 유지한다.
-  return [...reviews].sort((left, right) =>
+  // 다른 리뷰·평점 논평형은 후보에서 먼저 빼고(그런 후기밖에 없으면 그대로 쓴다) 점수순으로 고른다.
+  const preferred = reviews.filter((review) => !isReviewAboutOtherReviews(review.quote));
+  return [...(preferred.length ? preferred : reviews)].sort((left, right) =>
     reviewSelectionScore(right.quote) - reviewSelectionScore(left.quote)
     || stableRank(`${seed}|${left.quote}`) - stableRank(`${seed}|${right.quote}`)
     || left.quote.localeCompare(right.quote))[0] ?? null;
@@ -80,7 +82,18 @@ function reviewSelectionScore(text: string): number {
   return 30
     + Math.min(25, Math.floor(normalized.length / 8))
     + (/(?:설명|상담|수업|강사|일정|차량|연습|안내|예약)/u.test(normalized) ? 18 : 0)
-    - (/(?:추천|최고|대박|완벽|무조건|강력)/u.test(normalized) ? 8 : 0);
+    - (/(?:추천|최고|대박|완벽|무조건|강력)/u.test(normalized) ? 8 : 0)
+    // Legacy Plus 경로에서도 메타 논평 후기가 밀리도록 감점(표시 경로는 아래 하드 필터가 담당).
+    - (isReviewAboutOtherReviews(normalized) ? 30 : 0);
+}
+
+/**
+ * 다른 리뷰·평점을 논평하거나 강사 편차·불안을 말하는 후기.
+ * 내용은 사실이지만 카드를 부정적 인상으로 열게 하므로 화면 인용 후보에서 뒤로 뺀다
+ * (카드 도입부 개성 문장에 적용한 기준과 같다). 그런 후기밖에 없으면 그대로 쓴다.
+ */
+export function isReviewAboutOtherReviews(text: unknown): boolean {
+  return /(?:리뷰\s*보고|리뷰들|옛날\s*리뷰|별점|평점|믿지\s*마|운빨|겁먹)/u.test(String(text || "").replace(/\s+/g, " "));
 }
 
 /** 본문 인용 적격 조건. reviewContentCandidate 의 제외 사유와 같은 기준을 쓴다. */
