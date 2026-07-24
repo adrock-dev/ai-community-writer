@@ -65,9 +65,12 @@ export function selectedStudentReviewForAcademy(row: Row, seed: string): Student
   // 빈약한 후기가 화면 인용으로 뽑히고, 정작 카드 바닥 분위기 문장의 근거가 된 긴 후기는 안 보였다.
   // Legacy Plus 선택(selectEligibleReviewsByAcademy)과 같은 점수 기준을 쓰고, 시드는 동점 처리로만
   // 남겨 재현성을 유지한다.
-  // 다른 리뷰·평점 논평형은 후보에서 먼저 빼고(그런 후기밖에 없으면 그대로 쓴다) 점수순으로 고른다.
-  const preferred = reviews.filter((review) => !isReviewAboutOtherReviews(review.quote));
-  return [...(preferred.length ? preferred : reviews)].sort((left, right) =>
+  // 다른 리뷰·평점 논평형과 수강 전 다짐 글은 화면 인용으로 쓰지 않는다. 남는 후보가 없으면 인용을
+  // 생략한다(억지로 부적절한 후기를 '실제 수강생 리뷰'로 노출하지 않는다). 이때 studentReviewFactLines
+  // 가 빈 배열을 돌려 후기 근거가 프롬프트에 아예 들어가지 않으므로, 카드는 자료 차별점으로 열린다.
+  const preferred = reviews.filter((review) => !isReviewAboutOtherReviews(review.quote) && !isPreEnrollmentStatement(review.quote));
+  if (!preferred.length) return null;
+  return [...preferred].sort((left, right) =>
     reviewSelectionScore(right.quote) - reviewSelectionScore(left.quote)
     || stableRank(`${seed}|${left.quote}`) - stableRank(`${seed}|${right.quote}`)
     || left.quote.localeCompare(right.quote))[0] ?? null;
@@ -89,11 +92,23 @@ function reviewSelectionScore(text: string): number {
 
 /**
  * 다른 리뷰·평점을 논평하거나 강사 편차·불안을 말하는 후기.
- * 내용은 사실이지만 카드를 부정적 인상으로 열게 하므로 화면 인용 후보에서 뒤로 뺀다
- * (카드 도입부 개성 문장에 적용한 기준과 같다). 그런 후기밖에 없으면 그대로 쓴다.
+ * 내용은 사실이지만 카드를 부정적 인상으로 열게 하므로 화면 인용 후보에서 뺀다
+ * (카드 도입부 개성 문장에 적용한 기준과 같다).
  */
 export function isReviewAboutOtherReviews(text: unknown): boolean {
   return /(?:리뷰\s*보고|리뷰들|옛날\s*리뷰|별점|평점|믿지\s*마|운빨|겁먹)/u.test(String(text || "").replace(/\s+/g, " "));
+}
+
+/**
+ * 아직 다니지 않은 사람의 다짐·계획 글("다시 여기서 도전해보려합니다").
+ * 수강 경험 서술 없이 앞으로 하겠다는 말만 있으면 '실제 수강생 리뷰'로 노출하기에 부적절하다.
+ * 실제 경험을 쓴 뒤 재방문 계획을 덧붙인 후기는 과거 경험 표현이 있어 제외되지 않는다.
+ */
+export function isPreEnrollmentStatement(text: unknown): boolean {
+  const normalized = String(text || "").replace(/\s+/g, " ");
+  const futureIntent = /(?:해보려|해볼|도전하겠|다녀볼|등록하려|다니려|가보려|시작하려)/u.test(normalized);
+  const pastExperience = /(?:주셨|주십니다|주세요|하셨|했어요|했습니다|받았|배웠|다녔|합격했|알려주|가르쳐|친절하)/u.test(normalized);
+  return futureIntent && !pastExperience;
 }
 
 /** 본문 인용 적격 조건. reviewContentCandidate 의 제외 사유와 같은 기준을 쓴다. */
