@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getArchetype } from "../src/archetypes.js";
 import { shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE } from "../src/t01-legacy-plus.js";
-import { buildPrompt, readerFacingModifierLabels } from "../src/worker.service.js";
+import { buildPrompt, disambiguateAcademyNames, readerFacingModifierLabels } from "../src/worker.service.js";
 
 describe("T01 generation mode isolation", () => {
   it("Legacy Plus는 T01 계보에서만 선택되고 명시 legacy는 기존 경로를 유지한다", () => {
@@ -66,6 +66,31 @@ describe("T01 generation mode isolation", () => {
     expect(t01Prompt).toContain("| 비교 항목 | 후보 A | 후보 B |");
     expect(t01Prompt).toContain("비교표의 중심 열");
     expect(t01Prompt).not.toContain("각 학원을 행으로 두는 요약표");
+  });
+
+  it("동명 학원이 함께 뽑히면 시·군·구로 구분하고, 겹치지 않으면 원래 이름을 유지한다", () => {
+    // 겹치지 않는 일반 경우 — 기존 동작 그대로(이름 변형 없음).
+    expect(disambiguateAcademyNames([
+      { name: "영동자동차운전전문학원", region: "강원특별자치도 강릉시" },
+      { name: "강릉자동차운전전문학원", region: "강원특별자치도 강릉시" },
+    ])).toEqual(["영동자동차운전전문학원", "강릉자동차운전전문학원"]);
+
+    // 동명이 함께 뽑힌 경우 — 겹치는 이름에만 시·군·구를 붙인다.
+    expect(disambiguateAcademyNames([
+      { name: "대성자동차운전전문학원", region: "경상남도 양산시" },
+      { name: "대성자동차운전전문학원", region: "부산광역시 사상구" },
+      { name: "부산자동차운전전문학원", region: "부산광역시 사상구" },
+    ])).toEqual([
+      "대성자동차운전전문학원(양산시)",
+      "대성자동차운전전문학원(사상구)",
+      "부산자동차운전전문학원",
+    ]);
+
+    // 시·군·구가 여러 토큰이면 그대로 이어 붙인다(청주시 흥덕구).
+    expect(disambiguateAcademyNames([
+      { name: "삼성자동차운전전문학원", region: "충청북도 청주시 흥덕구" },
+      { name: "삼성자동차운전전문학원", region: "충청남도 아산시" },
+    ])).toEqual(["삼성자동차운전전문학원(청주시 흥덕구)", "삼성자동차운전전문학원(아산시)"]);
   });
 
   it("'가까운'·'근처'는 독자용 수식어 라벨에서 빼고 나머지는 유지한다", () => {

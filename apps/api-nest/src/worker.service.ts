@@ -412,6 +412,7 @@ export class WorkerService {
     // 대신 거리순 상위 used 곳을 결정적으로 쓴다(pool 이 이미 거리순). 다양성은 축이 담당한다.
     // 그 외 유형은 기존대로 슬롯 시드 랜덤 — 같은 슬롯은 같은 조합(재현), 다른 슬롯은 다른 조합.
     const academies = isT16 ? pool.slice(0, used) : seededCandidateSample(pool, used, seed);
+    const displayNames = disambiguateAcademyNames(academies);
     const maxAcademyImages = opts.maxAcademyImages ?? Infinity;
     const perAcademyImages = opts.perAcademyImages ?? 2;
     const images: Record<string, string> = {};
@@ -419,7 +420,7 @@ export class WorkerService {
       const remaining = Math.max(0, maxAcademyImages - Object.keys(images).length);
       const imageKeys = remaining > 0 ? firstImageKeys(a, i + 1, Math.min(perAcademyImages, remaining)) : [];
       for (const imageKey of imageKeys) images[imageKey.key] = imageKey.url;
-      const parts = [`[${i + 1}] ${a.name}`];
+      const parts = [`[${i + 1}] ${displayNames[i] ?? String(a.name || "").trim()}`];
       for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"]] as const) if (a[key]) parts.push(`${label}: ${a[key]}`);
       // 공개 글에 노출할 연락처는 안심번호(vphone) 하나뿐이다. 실번호(phone)는 facts 에 아예
       // 넣지 않는다. 두 번호를 다 보내면 프롬프트로 "우선"을 지시해도 모델이 둘을 병기했다
@@ -941,6 +942,32 @@ function isT16Slot(slot: Row, archetype?: Archetype): boolean {
 
 function structureSeed(slot: Row): string {
   return String(slot.slot_id ?? slot.id ?? `${slot.region ?? ""}|${slot.primary_keyword ?? ""}`);
+}
+
+/**
+ * 한 글에 함께 뽑힌 학원들의 표시 이름 — 이름이 겹칠 때만 시·군·구를 덧붙여 구분한다.
+ *
+ * 동명 학원이 선택 반경 안에 함께 뽑히는 경우가 실제로 있다(실측 50km 내 4쌍: 대성 양산↔부산사상
+ * 23km, 신세계 화순↔영암 26km, 신진 파주↔인천계양 30km, 삼성 아산↔청주 37km). 그러면 이름만으로는
+ * 독자도 게이트도 구분하지 못한다 — `### 학원명` 카드가 제목까지 똑같이 둘이 되고,
+ * candidateNamesFromFacts 가 중복을 제거하지 않는 배열이라 본문에 카드를 하나만 써도 후보 수가
+ * 둘로 집계돼 inflated_candidate_count 가 이를 잡지 못한다.
+ *
+ * 겹치는 이름에만 시·군·구를 붙이므로(겹치지 않으면 원래 이름 그대로) 기존 글의 동작은 바뀌지 않는다.
+ */
+export function disambiguateAcademyNames(academies: Row[]): string[] {
+  const counts = new Map<string, number>();
+  for (const academy of academies) {
+    const name = String(academy.name || "").trim();
+    if (name) counts.set(name, (counts.get(name) || 0) + 1);
+  }
+  return academies.map((academy) => {
+    const name = String(academy.name || "").trim();
+    if ((counts.get(name) || 0) < 2) return name;
+    // 지역에서 시·도(첫 토큰)를 뺀 시·군·구로 구분한다: "경상남도 양산시" → "양산시".
+    const city = String(academy.region || "").trim().split(/\s+/).slice(1).join(" ");
+    return city ? `${name}(${city})` : name;
+  });
 }
 
 /**
