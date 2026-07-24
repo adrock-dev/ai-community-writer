@@ -1468,6 +1468,12 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const [web, setWeb] = useState(genDefaults.web);
   const [imageGen, setImageGen] = useState(genDefaults.imageGen);
   const [imageSize, setImageSize] = useState(genDefaults.imageSize);
+  // 프로바이더별 모델 선택지(서버 카탈로그). 저장돼 있던 값이 카탈로그에 없으면 그 값도 보기로 남겨
+  // 선택이 조용히 default 로 되돌아가지 않게 한다.
+  const modelChoices = useMemo(() => {
+    const catalog = options.generation_models?.[provider] ?? [{ id: "", label: "default" }];
+    return catalog.some((m) => m.id === model) ? catalog : [...catalog, { id: model, label: `${model} (직접 지정)` }];
+  }, [options.generation_models, provider, model]);
   const [max, setMax] = useState(30); // 1단계: 선택 글유형의 후보 생성 개수(유형당 상한)
   const [remoteSlots, setRemoteSlots] = useState(slots);
   const [remoteTotal, setRemoteTotal] = useState(slots.length);
@@ -1608,7 +1614,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         </div>
         <div className="grid grid-4">
           <Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field>
-          <Field label="모델"><input className="input" value={model} onChange={(e) => setModel(e.target.value)} placeholder="비우면 기본 codex" /></Field>
+          <Field label="모델"><select className="select" value={model} onChange={(e) => setModel(e.target.value)}>{modelChoices.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select></Field>
           <Field label="제한시간(초)"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field>
           <Field label="대량 대기시간(초)"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field>
         </div>

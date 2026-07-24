@@ -4,7 +4,7 @@ import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js"
 import { publicBrandName } from "./brand.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
 import { RegionDirectoryService } from "./region-directory.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
+import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
@@ -52,6 +52,7 @@ export class AdminController {
       axis_tag_vocab: AXIS_TAG_VOCAB,
       design_templates: DESIGN_TEMPLATES,
       providers: ["codex", "claude"],
+      generation_models: GENERATION_MODEL_OPTIONS,
       preset_options: [DEFAULT_DRIVING_VERTICAL],
       indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() },
       // 전역 빌트인 노출 허용 목록(검증용 임시). null = 전체 노출. 카탈로그/커스텀 시작점/아키타입 목록에서 필터.

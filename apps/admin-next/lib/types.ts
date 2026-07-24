@@ -323,6 +323,8 @@ export interface AdminOptions {
   axis_tag_vocab: { persona: string[]; intent: string[]; modifier: string[] };
   design_templates: DesignTemplateOption[];
   providers: Provider[];
+  // 프로바이더별 글 생성 모델 선택지. id 가 빈 문자열이면 CLI 설정 기본값을 쓴다.
+  generation_models?: Record<string, { id: string; label: string }[]>;
   preset_options: string[];
   indexing: { has_key: boolean; url_template: string };
   // 전역 빌트인 노출 허용 id 목록(검증용 임시). null/undefined = 전체 노출.

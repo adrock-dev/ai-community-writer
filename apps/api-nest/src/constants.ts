@@ -4,6 +4,17 @@ export type JobKind = "generate" | "dedup" | "indexing" | "prune";
 
 export const AXES: AxisName[] = ["region", "keyword", "intent", "persona", "modifier"];
 export const DRIVING_VERTICALS = ["driving"] as const;
+
+// 글 생성에 쓸 LLM 모델 선택지(프로바이더별). id 는 CLI 의 `--model` 로 그대로 넘어가고,
+// 빈 문자열이면 옵션을 붙이지 않아 CLI 설정 기본값이 쓰인다(codex 는 ~/.codex/config.toml 의 model).
+// 그래서 'default' 는 특정 모델명을 코드에 박지 않는다 — 로컬/서버 설정이 바뀌어도 그대로 따라간다.
+export const GENERATION_MODEL_OPTIONS: Record<string, { id: string; label: string }[]> = {
+  codex: [
+    { id: "", label: "default" },
+    { id: "gpt-5.6-luna", label: "luna" },
+  ],
+  claude: [{ id: "", label: "default" }],
+};
 export const DEFAULT_DRIVING_VERTICAL = "driving";
 export const DEFAULT_DRIVING_DESIGN_TEMPLATE = "local-guide";
 // 도메인 design_template_id가 이 값이면 글마다 슬롯의 글 유형 기본 디자인(default_design)을 자동 선택한다.
