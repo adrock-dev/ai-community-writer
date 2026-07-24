@@ -61,7 +61,26 @@ export function selectedStudentReviewForAcademy(row: Row, seed: string): Student
   const all = studentReviewsForAcademy(row);
   const reviews = all.filter((review) => isContentEligibleReviewText(review.quote));
   if (!reviews.length) return null;
-  return reviews[stableIndex(`${seed}|${row.external_id ?? row.id ?? row.name ?? ""}`, reviews.length)] ?? null;
+  // 정보량이 높은 후기를 먼저 고른다. 예전에는 시드 균등 무작위라 "하하^^ 엄청 좋아요!!" 같은
+  // 빈약한 후기가 화면 인용으로 뽑히고, 정작 카드 바닥 분위기 문장의 근거가 된 긴 후기는 안 보였다.
+  // Legacy Plus 선택(selectEligibleReviewsByAcademy)과 같은 점수 기준을 쓰고, 시드는 동점 처리로만
+  // 남겨 재현성을 유지한다.
+  return [...reviews].sort((left, right) =>
+    reviewSelectionScore(right.quote) - reviewSelectionScore(left.quote)
+    || stableRank(`${seed}|${left.quote}`) - stableRank(`${seed}|${right.quote}`)
+    || left.quote.localeCompare(right.quote))[0] ?? null;
+}
+
+/**
+ * 본문 인용 값어치 점수 — 길이(정보량) + 구체 소재(설명·상담·수업 등) − 과장 상투어.
+ * Legacy Plus 경로와 facts 경로가 같은 기준으로 고르도록 한 곳에 둔다.
+ */
+function reviewSelectionScore(text: string): number {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim();
+  return 30
+    + Math.min(25, Math.floor(normalized.length / 8))
+    + (/(?:설명|상담|수업|강사|일정|차량|연습|안내|예약)/u.test(normalized) ? 18 : 0)
+    - (/(?:추천|최고|대박|완벽|무조건|강력)/u.test(normalized) ? 8 : 0);
 }
 
 /** 본문 인용 적격 조건. reviewContentCandidate 의 제외 사유와 같은 기준을 쓴다. */
@@ -124,10 +143,7 @@ function reviewContentCandidate(candidate: T01AcademyCandidate, text: string, so
   if (/\b(?:\d{2,3}-\d{3,4}-\d{4}|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,})\b/u.test(normalized)) exclusionReasons.push("personal_data");
   if (isPromotionalOnly(normalized)) exclusionReasons.push("promotional_only");
   if (!source) exclusionReasons.push("missing_source");
-  const selectionScore = 30
-    + Math.min(25, Math.floor(normalized.length / 8))
-    + (/(?:설명|상담|수업|강사|일정|차량|연습|안내|예약)/u.test(normalized) ? 18 : 0)
-    - (/(?:추천|최고|대박|완벽|무조건|강력)/u.test(normalized) ? 8 : 0);
+  const selectionScore = reviewSelectionScore(normalized);
   return {
     academyId: candidate.academyId,
     academyName: candidate.academyName,
