@@ -80,9 +80,23 @@ export function truncateReviewQuote(text: string, maximumLength = 100): string {
   return `${chars.slice(0, Math.max(0, maximumLength - 1)).join("")}…`;
 }
 
+/**
+ * 본문 인용용 1건 + 분위기 판단 근거용 나머지 적격 후기.
+ *
+ * 카드 바닥의 '학원 분위기 한 문장'은 단정형 직접 서술이라, 근거가 후기 1건뿐이면 표본이 얇다.
+ * 그래서 그 학원의 적격 후기 전체를 근거로 함께 넘긴다(예: 동해 5건이 모두 '친절'을 말하면
+ * 단정이 안전해진다). 인용은 여전히 1건만 — 나머지는 근거 전용이라 본문에 옮기지 않는다
+ * (카드 레이아웃과 Legacy Plus 인용 잠금을 그대로 유지하기 위함).
+ */
 export function studentReviewFactLines(row: Row, seed: string): string[] {
   const review = selectedStudentReviewForAcademy(row, seed);
-  return review ? [`수강생 리뷰: “${truncateReviewQuote(review.quote)}” (출처: ${review.source})`] : [];
+  if (!review) return [];
+  const lines = [`수강생 리뷰: “${truncateReviewQuote(review.quote)}” (출처: ${review.source})`];
+  const others = studentReviewsForAcademy(row)
+    .filter((item) => isContentEligibleReviewText(item.quote) && item.quote !== review.quote)
+    .map((item) => `“${truncateReviewQuote(item.quote)}”`);
+  if (others.length) lines.push(`수강생 반응 근거(분위기 판단용, 본문 인용 금지): ${others.join(" | ")}`);
+  return lines;
 }
 
 /**

@@ -31,7 +31,13 @@ describe("academy student review evidence", () => {
     ]) };
     const first = selectedStudentReviewForAcademy(row, "slot-a");
     expect(selectedStudentReviewForAcademy(row, "slot-a")).toEqual(first);
-    expect(studentReviewFactLines(row, "slot-a")).toHaveLength(1);
+    // 인용용 1건 + 나머지 적격 후기(분위기 판단 근거, 인용 금지) 1줄.
+    const lines = studentReviewFactLines(row, "slot-a");
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("수강생 리뷰: ");
+    expect(lines[1]).toContain("수강생 반응 근거(분위기 판단용, 본문 인용 금지): ");
+    // 근거 줄에는 인용으로 뽑힌 그 후기가 중복되지 않는다.
+    expect(lines[1]).not.toContain(first!.quote);
   });
 });
 
