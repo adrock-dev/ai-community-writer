@@ -88,6 +88,8 @@ export const cancelResearchRun = (runId: string) =>
   api<{ ok: boolean; run_id: string }>(`/academy-research/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
 // 백그라운드 시작만 하고 run_id 를 받는다. 진행률은 listResearchRuns 폴링으로 본다.
 export const syncRegion = () => api<{ ok: boolean; run_id?: string; error?: string }>("/academy-research/sync", { method: "POST", body: JSON.stringify({}) });
+// 블로그리뷰는 원천 조회가 학원당 10초라 별도 실행으로 분리돼 있다.
+export const syncBlogReviews = () => api<{ ok: boolean; run_id?: string; error?: string }>("/academy-research/sync/blog-reviews", { method: "POST", body: JSON.stringify({}) });
 export const syncOneAcademy = (externalId: string) => api<{ external_id: string; found: boolean; reviews: number }>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });
 export const researchOneAcademy = (externalId: string, provider: ResearchProvider = "auto") => api<{ ok: boolean; external_id: string; provider?: string; error?: string; no_sources?: boolean; sources?: number }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST", body: JSON.stringify({ provider }) });
 export const researchRegion = (provider: ResearchProvider = "auto") => api<{ ok: boolean; run_id?: string; count?: number; error?: string }>("/academy-research/research/region", { method: "POST", body: JSON.stringify({ provider }) });

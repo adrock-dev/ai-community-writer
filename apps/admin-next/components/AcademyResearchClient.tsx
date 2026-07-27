@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
-  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncRegion,
+  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncBlogReviews, syncRegion,
 } from "@/lib/academy-research";
 import { formatDateTime, formatShortDate } from "@/lib/date";
 
@@ -106,6 +106,24 @@ export default function AcademyResearchClient() {
     }
   }
 
+  async function onSyncBlog() {
+    if (!confirm("블로그리뷰를 동기화합니다. 원천 조회가 학원당 10초라 전체에 8~15분 걸립니다(백그라운드). 진행할까요?")) return;
+    setBusy("blog");
+    setError("");
+    setNotice("");
+    try {
+      const res = await syncBlogReviews();
+      if (!res.ok) throw new Error(res.error || "시작 실패");
+      if (res.run_id) watchedRunRef.current = res.run_id;
+      setNotice("블로그리뷰 동기화를 백그라운드에서 시작했습니다. 창을 닫아도 계속 진행됩니다.");
+      await loadRuns();
+    } catch (e: any) {
+      setError(e?.message || "블로그리뷰 동기화 시작 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function onCancel(run: ResearchRun) {
     if (!confirm(`${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.`)) return;
     setError("");
@@ -119,16 +137,20 @@ export default function AcademyResearchClient() {
   }
 
   const activeSyncRun = runs.find((r) => r.status === "running" && r.scope === "sync");
-  const activeResearchRun = runs.find((r) => r.status === "running" && r.scope !== "sync");
+  const activeBlogRun = runs.find((r) => r.status === "running" && r.scope === "sync_blog");
+  const activeResearchRun = runs.find((r) => r.status === "running" && r.scope !== "sync" && r.scope !== "sync_blog");
   // 끝난 동기화 중 가장 최근 것 — 진행 중이 아닐 때도 "언제 받아온 자료인지" 알 수 있어야 한다.
   const lastSyncRun = runs.find((r) => r.scope === "sync" && r.status !== "running");
+  const lastBlogRun = runs.find((r) => r.scope === "sync_blog" && r.status !== "running");
+  // 두 동기화는 같은 원천을 두드려 서버가 동시 실행을 막는다. 버튼도 같이 잠근다.
+  const syncBusy = Boolean(activeSyncRun || activeBlogRun);
 
   return (
     <div className="card-pad">
       <div className="page-head">
         <div>
           <p className="eyebrow">자료 관리</p>
-          <h1>학원 조사 DB</h1>
+          <h1>학원·시험장 조사 DB</h1>
         </div>
       </div>
 
@@ -152,10 +174,17 @@ export default function AcademyResearchClient() {
         <div style={{ display: "grid", gap: 12 }}>
           <div className="row" style={{ alignItems: "center" }}>
             <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>학원정보</span>
-            <button className="btn" onClick={onSync} disabled={busy === "sync" || Boolean(activeSyncRun)}>
+            <button className="btn" onClick={onSync} disabled={busy === "sync" || syncBusy}>
               {activeSyncRun ? "동기화 진행 중…" : busy === "sync" ? "시작하는 중…" : "학원정보 동기화"}
             </button>
             <span className="muted small">{lastSyncLabel(lastSyncRun, Boolean(activeSyncRun))}</span>
+          </div>
+          <div className="row" style={{ alignItems: "center" }}>
+            <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>블로그리뷰</span>
+            <button className="btn" onClick={onSyncBlog} disabled={busy === "blog" || syncBusy}>
+              {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
+            </button>
+            <span className="muted small">{lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))}</span>
           </div>
           <div className="row" style={{ alignItems: "center" }}>
             <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>
@@ -176,7 +205,7 @@ export default function AcademyResearchClient() {
       {notice && <div className="card card-pad" style={{ borderColor: "#1a9c5b", color: "#1a9c5b", margin: "8px 0" }}>{notice}</div>}
       {error && <div className="card card-pad" style={{ borderColor: "#d64545", color: "#d64545", margin: "8px 0" }}>{error}</div>}
 
-      {[activeSyncRun, activeResearchRun].filter(Boolean).map((run) => (
+      {[activeSyncRun, activeBlogRun, activeResearchRun].filter(Boolean).map((run) => (
         <div key={run!.id} className="card card-pad" style={{ margin: "8px 0" }}>
           <div className="row" style={{ alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <b>{runLabel(run!)} 진행</b>
@@ -252,17 +281,21 @@ function lastSyncLabel(run: ResearchRun | undefined, running: boolean): string {
   return `마지막 동기화 ${when} · 학원 ${result?.matched ?? run.count_done}곳${reviews}`;
 }
 function runLabel(run: ResearchRun): string {
-  return run.scope === "sync" ? "학원정보 동기화" : "전체 AI 조사";
+  if (run.scope === "sync") return "학원정보 동기화";
+  if (run.scope === "sync_blog") return "블로그리뷰 동기화";
+  return "전체 AI 조사";
 }
 function runDetail(run: ResearchRun): string {
-  if (run.scope === "sync") return "DrivingPlus 원본 + 후기";
+  if (run.scope === "sync") return "DrivingPlus 기본정보 + 후기";
+  if (run.scope === "sync_blog") return "DrivingPlus 블로그리뷰";
   return `${run.region || "전체"} · ${run.engine || "auto"}`;
 }
 function runSummary(run: ResearchRun): string {
   const result = parseResult(run.result);
-  if (run.scope === "sync") {
+  if (run.scope === "sync" || run.scope === "sync_blog") {
     const reviews = result?.reviews;
-    return `학원 ${result?.matched ?? run.count_done}곳${typeof reviews === "number" ? ` · 후기 원문 ${reviews}건` : ""}`;
+    const unit = run.scope === "sync_blog" ? "블로그리뷰" : "후기 원문";
+    return `학원 ${result?.matched ?? run.count_done}곳${typeof reviews === "number" ? ` · ${unit} ${reviews.toLocaleString()}건` : ""}`;
   }
   return `${run.count_done}/${run.count_total}곳`;
 }

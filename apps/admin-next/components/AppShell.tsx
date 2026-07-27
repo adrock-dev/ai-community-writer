@@ -129,7 +129,7 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           <SidebarLink href="/jobs" active={pathname === "/jobs"} tabIndex={sidebarOpen ? 0 : -1}>작업 큐</SidebarLink>
           <p style={{ marginTop: 12 }}>자료 관리</p>
           <SidebarLink href="/academies" active={pathname.startsWith("/academies")} tabIndex={sidebarOpen ? 0 : -1}>
-            <span>학원 조사 DB</span>
+            <span>학원·시험장 DB</span>
             <span className="side-beta">베타</span>
           </SidebarLink>
           <p style={{ marginTop: 12 }}>설정</p>

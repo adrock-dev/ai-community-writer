@@ -61,60 +61,96 @@ export class AcademyResearchService {
     @Inject(DrivingplusApiService) private readonly drivingplus: DrivingplusApiService,
   ) {}
 
-  // DrivingPlus 전체 학원을 동기화. 리뷰/블로그리뷰 원문 포함(A안).
+  // 학원 기본정보 + 자체 후기. 블로그리뷰는 뺐다 — 원천의 블로그리뷰 조회가 학원당 10초라
+  // (자체 후기는 0.06초) 같이 돌리면 급한 기본정보 갱신까지 그 속도에 묶인다. syncBlogReviews 로 분리.
   async syncAll(opts: SyncOptions = {}): Promise<SyncResult> {
     const all = await this.drivingplus.fetchAcademies();
     opts.onTotal?.(all.length);
+    return this.runSyncPool(all, opts, async (academy) => {
+      const externalId = this.upsertBaseRow(academy);
+      const page = await this.pullReviews(academy.id, opts.reviewLimit ?? 5);
+      return this.storeReviewPlatform(externalId, page);
+    });
+  }
+
+  // 블로그리뷰만. 이미 동기화된 학원을 대상으로 하므로 4MB 짜리 학원 목록을 다시 받지 않는다.
+  async syncBlogReviews(opts: SyncOptions = {}): Promise<SyncResult> {
+    const targets = this.db.listBase({ limit: 5000 })
+      .map((row) => ({ external_id: String(row.external_id), academy_id: Number(row.external_id) }))
+      .filter((row) => Number.isFinite(row.academy_id));
+    opts.onTotal?.(targets.length);
+    return this.runSyncPool(targets, opts, async (target) => {
+      const page = await this.pullBlogReviews(target.academy_id, opts.blogReviewLimit ?? 5);
+      return this.storeBlogPlatform(target.external_id, page);
+    });
+  }
+
+  // 동시 처리 + 취소 확인 + 진행률 보고를 한 곳에 모은다(두 동기화가 같은 규칙을 따르도록).
+  private async runSyncPool<T>(items: T[], opts: SyncOptions, work: (item: T) => Promise<number>): Promise<SyncResult> {
     let reviewCount = 0;
     let done = 0;
     let cancelled = false;
-    await runPool(all, syncConcurrency(opts.concurrency), async (academy) => {
+    await runPool(items, syncConcurrency(opts.concurrency), async (item) => {
       // 이미 처리 중이던 학원은 끝까지 마친다 — 후기 교체가 트랜잭션 중간에 끊기지 않게.
       if (cancelled) return;
       if (opts.shouldCancel?.()) { cancelled = true; return; }
       // `x += await f()` 는 좌변을 await 전에 읽어 동시 실행 시 증가분이 서로 덮인다.
       // 반드시 await 를 끝낸 뒤 읽고-더하고-쓴다.
-      const stored = await this.upsertWithReviews(academy, opts);
+      const stored = await work(item);
       reviewCount += stored;
       done += 1;
       opts.onProgress?.(done, reviewCount);
     });
-    return { matched: done, total: all.length, reviews: reviewCount, cancelled };
+    return { matched: done, total: items.length, reviews: reviewCount, cancelled };
   }
 
   // 동기화를 백그라운드로 시작하고 run_id 를 즉시 반환한다.
-  // 학원 수백 곳 × 리뷰 2회를 한 HTTP 응답 안에서 기다리면, 그 사이 API 가 재시작하거나
+  // 학원 수백 곳을 한 HTTP 응답 안에서 기다리면, 그 사이 API 가 재시작하거나
   // 브라우저를 닫는 순간 요청이 끊겨 "fetch failed" 로만 보인다(작업 자체는 서버에서 계속 돌았다).
-  startSync(opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): { ok: boolean; run_id?: string; error?: string } {
-    const running = this.db.findRunningRun("sync");
-    if (running) return { ok: false, error: "이미 진행 중인 동기화가 있습니다." };
+  startSync(opts: { reviewLimit?: number; concurrency?: number } = {}): { ok: boolean; run_id?: string; error?: string } {
+    return this.startSyncRun("sync", "drivingplus_sync", (runOpts) => this.syncAll({ ...opts, ...runOpts }));
+  }
 
-    const runId = this.db.createRun({ scope: "sync", method: "drivingplus_sync" });
-    void this.syncAll({
-      ...opts,
+  startBlogSync(opts: { blogReviewLimit?: number; concurrency?: number } = {}): { ok: boolean; run_id?: string; error?: string } {
+    if (!this.db.countBase()) return { ok: false, error: "동기화된 학원이 없습니다. 학원정보 동기화를 먼저 실행하세요." };
+    return this.startSyncRun("sync_blog", "drivingplus_blog_sync", (runOpts) => this.syncBlogReviews({ ...opts, ...runOpts }));
+  }
+
+  // 두 동기화는 같은 원천을 두드리므로 동시에 돌리지 않는다.
+  private startSyncRun(scope: string, method: string, work: (runOpts: SyncOptions) => Promise<SyncResult>): { ok: boolean; run_id?: string; error?: string } {
+    const running = this.db.findRunningRun("sync") ?? this.db.findRunningRun("sync_blog");
+    if (running) {
+      return { ok: false, error: running.scope === "sync_blog" ? "이미 진행 중인 블로그리뷰 동기화가 있습니다." : "이미 진행 중인 학원정보 동기화가 있습니다." };
+    }
+    const runId = this.db.createRun({ scope, method });
+    void work({
       onTotal: (total) => this.db.updateRun(runId, { count_total: total }),
       onProgress: (done, reviews) => this.db.updateRun(runId, { count_done: done, result: { reviews } }),
       shouldCancel: () => this.db.isCancelRequested(runId),
     })
       .then((res) => this.db.updateRun(runId, { status: res.cancelled ? "cancelled" : "done", count_done: res.matched, result: res, finished: true }))
       .catch((error) => {
-        this.logger.error(`sync failed: ${error?.message || error}`);
+        this.logger.error(`${method} failed: ${error?.message || error}`);
         this.db.updateRun(runId, { status: "error", error: String(error?.message || error), finished: true });
       });
     return { ok: true, run_id: runId };
   }
 
-  // 단건(외부 id) 동기화 — 기본정보/리뷰 새로고침.
+  // 단건(외부 id) 동기화 — 기본정보/리뷰/블로그리뷰 전부 새로고침. 한 곳뿐이라 블로그 10초를 감수한다.
   async syncOne(externalId: string, opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): Promise<{ external_id: string; found: boolean; reviews: number }> {
     const all = await this.drivingplus.fetchAcademies();
     const academy = all.find((a) => String(a.id) === String(externalId));
     if (!academy) return { external_id: externalId, found: false, reviews: 0 };
-    const reviews = await this.upsertWithReviews(academy, opts);
+    const id = this.upsertBaseRow(academy);
+    const [reviewPage, blogPage] = await Promise.all([
+      this.pullReviews(academy.id, opts.reviewLimit ?? 5),
+      this.pullBlogReviews(academy.id, opts.blogReviewLimit ?? 5),
+    ]);
+    const reviews = this.storeReviewPlatform(id, reviewPage) + this.storeBlogPlatform(id, blogPage);
     return { external_id: externalId, found: true, reviews };
   }
 
-  // base upsert + 해당 학원의 리뷰/블로그리뷰만 개별 호출해 저장.
-  private async upsertWithReviews(academy: DrivingplusAcademy, opts: { reviewLimit?: number; blogReviewLimit?: number }): Promise<number> {
+  private upsertBaseRow(academy: DrivingplusAcademy): string {
     const externalId = String(academy.id);
     this.db.upsertBase({
       external_id: externalId,
@@ -132,17 +168,21 @@ export class AcademyResearchService {
       seo_description: academy.seoDescription ?? null,
       raw_json: academy,
     });
-    // 후기는 원천이 준 목록으로 통째 교체하므로(아래 storeReviews), 조회 성공 여부를 반드시 구분해야 한다.
-    // 실패를 빈 목록으로 폴백하면 일시적인 원천 장애가 그대로 후기 전멸이 된다.
-    const [reviewPage, blogReviewPage] = await Promise.all([
-      this.drivingplus.fetchReviews(academy.id, opts.reviewLimit ?? 5)
-        .then((page) => ({ ok: true, reviews: page.reviews }))
-        .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["reviews"] })),
-      this.drivingplus.fetchBlogReviews(academy.id, opts.blogReviewLimit ?? 5)
-        .then((page) => ({ ok: true, reviews: page.reviews }))
-        .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["blogReviews"] })),
-    ]);
-    return this.storeReviews(externalId, reviewPage, blogReviewPage);
+    return externalId;
+  }
+
+  // 후기는 원천이 준 목록으로 통째 교체하므로 조회 성공 여부를 반드시 구분해야 한다.
+  // 실패를 빈 목록으로 폴백하면 일시적인 원천 장애가 그대로 후기 전멸이 된다.
+  private pullReviews(academyId: number, limit: number) {
+    return this.drivingplus.fetchReviews(academyId, limit)
+      .then((page) => ({ ok: true, reviews: page.reviews }))
+      .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["reviews"] }));
+  }
+
+  private pullBlogReviews(academyId: number, limit: number) {
+    return this.drivingplus.fetchBlogReviews(academyId, limit)
+      .then((page) => ({ ok: true, reviews: page.reviews }))
+      .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["blogReviews"] }));
   }
 
   // ---- AI 심층조사 ----
@@ -253,51 +293,46 @@ export class AcademyResearchService {
   }
 
   // 후기는 플랫폼 단위로 통째 교체한다 — 원천에서 내려간(삭제·비공개 처리된) 후기가
-  // 근거로 남지 않게 하기 위함. 조회에 실패한 플랫폼은 손대지 않고 기존 행을 그대로 둔다.
-  private storeReviews(
-    externalId: string,
-    review: { ok: boolean; reviews: DrivingplusAcademy["reviews"] },
-    blog: { ok: boolean; reviews: DrivingplusAcademy["blogReviews"] },
-  ): number {
-    let count = 0;
-    if (review.ok) {
-      const rows = (review.reviews ?? []).flatMap((item, i) => {
-        const content = String(item.content ?? "").trim();
-        if (!content) return [];
-        return [{
-          external_id: externalId,
-          platform: "drivingplus_review",
-          source_key: item.id != null ? String(item.id) : `r${i}`,
-          rating: item.point ?? null,
-          quote_text: content,
-          author_masked: maskAuthor(item.author),
-          posted_at: item.date ?? null,
-          collect_method: "drivingplus_api",
-        }];
-      });
-      this.db.replaceReviews(externalId, "drivingplus_review", rows);
-      count += rows.length;
-    }
-    if (blog.ok) {
-      const rows = (blog.reviews ?? []).flatMap((item, i) => {
-        const content = String(item.content ?? item.title ?? "").trim();
-        if (!content) return [];
-        return [{
-          external_id: externalId,
-          platform: "drivingplus_blog",
-          source_key: item.link ? item.link : `b${i}`,
-          title: item.title ?? null,
-          quote_text: content,
-          source_url: item.link ?? null,
-          posted_at: item.postdate ?? null,
-          images: item.images ?? null,
-          collect_method: "drivingplus_api",
-        }];
-      });
-      this.db.replaceReviews(externalId, "drivingplus_blog", rows);
-      count += rows.length;
-    }
-    return count;
+  // 근거로 남지 않게 하기 위함. 조회에 실패했으면 손대지 않고 기존 행을 그대로 둔다.
+  private storeReviewPlatform(externalId: string, page: { ok: boolean; reviews: DrivingplusAcademy["reviews"] }): number {
+    if (!page.ok) return 0;
+    const rows = (page.reviews ?? []).flatMap((item, i) => {
+      const content = String(item.content ?? "").trim();
+      if (!content) return [];
+      return [{
+        external_id: externalId,
+        platform: "drivingplus_review",
+        source_key: item.id != null ? String(item.id) : `r${i}`,
+        rating: item.point ?? null,
+        quote_text: content,
+        author_masked: maskAuthor(item.author),
+        posted_at: item.date ?? null,
+        collect_method: "drivingplus_api",
+      }];
+    });
+    this.db.replaceReviews(externalId, "drivingplus_review", rows);
+    return rows.length;
+  }
+
+  private storeBlogPlatform(externalId: string, page: { ok: boolean; reviews: DrivingplusAcademy["blogReviews"] }): number {
+    if (!page.ok) return 0;
+    const rows = (page.reviews ?? []).flatMap((item, i) => {
+      const content = String(item.content ?? item.title ?? "").trim();
+      if (!content) return [];
+      return [{
+        external_id: externalId,
+        platform: "drivingplus_blog",
+        source_key: item.link ? item.link : `b${i}`,
+        title: item.title ?? null,
+        quote_text: content,
+        source_url: item.link ?? null,
+        posted_at: item.postdate ?? null,
+        images: item.images ?? null,
+        collect_method: "drivingplus_api",
+      }];
+    });
+    this.db.replaceReviews(externalId, "drivingplus_blog", rows);
+    return rows.length;
   }
 }
 

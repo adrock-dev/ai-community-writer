@@ -61,7 +61,17 @@ export class AcademyResearchController {
   @Post("sync")
   sync(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
     checkAuth(req, headers);
-    const result = this.service.startSync({ reviewLimit: Number(body?.review_limit) || 5, blogReviewLimit: Number(body?.blog_review_limit) || 5 });
+    const result = this.service.startSync({ reviewLimit: Number(body?.review_limit) || 5 });
+    if (!result.ok) throw new HttpException(result.error || "failed", 409);
+    return result;
+  }
+
+  // 블로그리뷰만 별도 실행. 원천의 블로그리뷰 조회가 학원당 10초라 기본정보 갱신과 묶으면
+  // 급한 갱신까지 그 속도에 끌려간다.
+  @Post("sync/blog-reviews")
+  syncBlogReviews(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const result = this.service.startBlogSync({ blogReviewLimit: Number(body?.blog_review_limit) || 5 });
     if (!result.ok) throw new HttpException(result.error || "failed", 409);
     return result;
   }
