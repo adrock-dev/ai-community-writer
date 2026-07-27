@@ -6,7 +6,10 @@ import type { ResearchBaseRef } from "./academy-research-llm.js";
 export interface WebSource { url: string; title: string; text: string }
 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 const MAX_SOURCES = 4;
+// 플레이스는 사실 밀도가 압도적이라 우선 확보한다. 다만 동명 학원이 섞일 수 있어 개수는 제한한다.
+const MAX_PLACE_SOURCES = 2;
 const MAX_CHARS_PER_SOURCE = 3500;
 const NEEDLE_FIELDS = ["셔틀", "노선", "운행", "시간", "가격", "수강료", "교육비", "주말", "야간"];
 
@@ -24,17 +27,32 @@ export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: 
     base.address ? `${name} ${firstAddrToken(base.address)}` : "",
   ].filter(Boolean));
 
-  // 1) 검색으로 후보 URL 수집
+  // 1) 검색으로 후보 수집. 네이버 플레이스 id 와 일반 URL 을 함께 얻는다.
+  const placeIds: string[] = [];
   const urls: string[] = [];
   for (const q of queries) {
-    if (urls.length >= maxSources * 3) break;
-    try { urls.push(...await ddgSearch(q, timeoutMs)); } catch { /* 무시 */ }
+    if (urls.length >= maxSources * 3 && placeIds.length) break;
+    try {
+      const found = await naverSearch(q, timeoutMs);
+      placeIds.push(...found.placeIds);
+      urls.push(...found.urls);
+    } catch { /* 무시 */ }
   }
-  const candidates = rankCandidates(dedupe(urls)).slice(0, maxSources);
 
-  // 2) 각 후보 페이지 본문 수집. 정적 HTML이 부족하면 Playwright 렌더링으로 보강.
   const sources: WebSource[] = [];
+
+  // 2) 플레이스 먼저. 영업시간·전화·주소·편의시설이 구조화돼 있어 사실 밀도가 가장 높다.
+  for (const placeId of dedupe(placeIds).slice(0, MAX_PLACE_SOURCES)) {
+    try {
+      const place = await fetchPlaceSource(placeId, timeoutMs, base.address);
+      if (place && sourceMatchesTarget(base, place)) sources.push(place);
+    } catch { /* 무시 */ }
+  }
+
+  // 3) 남는 자리에 일반 페이지. 정적 HTML이 부족하면 Playwright 렌더링으로 보강.
+  const candidates = rankCandidates(dedupe(urls)).slice(0, maxSources);
   for (const url of candidates) {
+    if (sources.length >= maxSources) break;
     try {
       let page = await fetchReadable(url, timeoutMs);
       if (shouldTryRenderedFetch(page)) {
@@ -42,38 +60,202 @@ export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: 
       }
       if (page && page.text.length >= 200 && sourceMatchesTarget(base, page)) sources.push(page);
     } catch { /* 무시 */ }
-    if (sources.length >= maxSources) break;
   }
   return sources;
 }
 
-// DuckDuckGo HTML(정적) 엔드포인트로 검색 → 결과 링크 추출(JS 불필요, 키 불필요).
-async function ddgSearch(query: string, timeoutMs: number): Promise<string[]> {
-  const res = await timedFetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, timeoutMs, {
-    headers: { "user-agent": UA, "accept": "text/html", "accept-language": "ko,en;q=0.8" },
+// 네이버 모바일 검색으로 후보 수집. DuckDuckGo(html·lite 모두)는 봇 차단으로
+// HTTP 202 + 결과 0건을 반환해 조사가 전건 실패했다(2026-07-27 확인). 키가 필요 없고
+// 국내 학원 정보가 가장 잘 잡히는 경로로 교체했다.
+const NAVER_SKIP = /naver\.net|pstatic|nstatic|ader\.naver|naver\.com\/(v1|adcr|adcr\.naver)|googleads|doubleclick|youtube\.com\/(watch|embed)|facebook|instagram|kakao\.com\/adfit/i;
+// 업체가 아닌 지물 POI 분류(정류장·교차로 등). 학원 앞 정류장이 학원으로 잡히는 걸 막는다.
+const NON_BUSINESS_CATEGORY = /방면정보|정류장|정류소|버스|지하철|역$|교차로|나들목|IC$|도로|고속도로|주차장/;
+
+async function naverSearch(query: string, timeoutMs: number): Promise<{ placeIds: string[]; urls: string[] }> {
+  const res = await timedFetch(`https://m.search.naver.com/search.naver?query=${encodeURIComponent(query)}`, timeoutMs, {
+    headers: { "user-agent": UA, "accept": "text/html", "accept-language": "ko" },
   });
-  if (!res.ok) return [];
+  if (!res.ok) return { placeIds: [], urls: [] };
   const html = await res.text();
-  const out: string[] = [];
-  // <a class="result__a" href="...">  또는 리다이렉트 uddg 파라미터
-  const re = /<a[^>]+class="result__a"[^>]+href="([^"]+)"/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) && out.length < 20) {
-    const real = decodeDdgHref(m[1] ?? "");
-    if (real) out.push(real);
+
+  // 지역 결과의 플레이스 id. 같은 id 가 여러 번 나오므로 빈도순으로 정렬해 대표를 앞세운다.
+  const freq = new Map<string, number>();
+  for (const m of html.matchAll(/place\.naver\.com\/(?:place|restaurant|hairshop)\/(\d{5,})/g)) {
+    const id = m[1];
+    if (id) freq.set(id, (freq.get(id) ?? 0) + 1);
   }
-  return out;
+  const placeIds = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
+
+  const urls: string[] = [];
+  for (const m of html.matchAll(/https?:\/\/[a-z0-9.-]+\.(?:co\.kr|kr|com|net|org)(?:\/[^"'\s<>&\\]*)?/gi)) {
+    const url = m[0];
+    // 플레이스는 placeIds 경로로 이미 다룬다. 여기서 또 담으면 같은 곳을 두 번 수집하는데,
+    // 일반 페이지 경로로 읽으면 스크립트가 걷혀 품질만 나빠진다.
+    if (NAVER_SKIP.test(url) || url.includes("search.naver") || url.includes("place.naver.com")) continue;
+    urls.push(url);
+    if (urls.length >= 40) break;
+  }
+  return { placeIds, urls };
 }
 
-function decodeDdgHref(href: string): string | null {
-  try {
-    const raw = href.startsWith("//") ? `https:${href}` : href;
-    const u = new URL(raw);
-    const uddg = u.searchParams.get("uddg");
-    if (uddg) return uddg; // 이미 디코드됨(URLSearchParams)
-    if (u.protocol === "http:" || u.protocol === "https:") return u.toString();
+// 네이버 플레이스는 화면이 스크립트로 그려져 태그를 걷어내면 700자쯤만 남는다.
+// 대신 페이지에 박힌 JSON 에 영업시간·전화·주소·편의시설이 구조화돼 있어 그쪽을 읽는다.
+async function fetchPlaceSource(placeId: string, timeoutMs: number, baseAddress?: string | null): Promise<WebSource | null> {
+  const res = await timedFetch(`https://m.place.naver.com/place/${placeId}/home`, timeoutMs, {
+    headers: { "user-agent": MOBILE_UA, "accept": "text/html", "accept-language": "ko" },
+  });
+  if (!res.ok) return null;
+  const html = await res.text();
+  const text = buildPlaceFactText(html, baseAddress);
+  if (!text) return null;
+  const name = (text.match(/^이름: (.+)$/m) ?? [])[1] ?? "";
+  return { url: `https://m.place.naver.com/place/${placeId}`, title: `네이버 플레이스 ${name}`.trim(), text };
+}
+
+// 페이지 JSON 에서 사실만 뽑아 사람이 읽는 형태로 정리한다.
+// 원문 HTML 을 통째로 넘기면 60만 자라 프롬프트에 넣을 수 없다.
+export function buildPlaceFactText(html: string, baseAddress?: string | null): string {
+  // 한 페이지에 같은 키가 수십 번 나온다(사진 작성자, 주변 시설, 광고…).
+  // roadAddress 는 대상 업체 객체에만 있으므로 이걸 앵커로 삼아 "가장 가까운" 값을 고른다.
+  // 첫 번째 값을 집으면 엉뚱한 이름(예: 사진 작성자 'RELA')이 학원명으로 잡힌다.
+  const anchor = html.indexOf('"roadAddress":');
+  if (anchor === -1) return "";
+
+  // 검색에는 정류장·교차로 같은 지물 POI 도 같은 형태로 섞여 나온다
+  // (예: '목포자동차운전전문학원입구 · 방면정보'). 업체가 아니므로 소스로 쓰지 않는다.
+  const category = jsonStringNear(html, "category", anchor);
+  if (category && NON_BUSINESS_CATEGORY.test(category)) return "";
+
+  const lines: string[] = [];
+  const push = (label: string, value: string | null | undefined) => {
+    if (value && value.trim()) lines.push(`${label}: ${value.trim()}`);
+  };
+  push("이름", jsonStringNear(html, "name", anchor));
+  push("분류", jsonStringNear(html, "category", anchor));
+  push("전화", jsonStringNear(html, "phone", anchor));
+  push("안내전화", jsonStringNear(html, "virtualPhone", anchor));
+  push("도로명주소", normalizeRegionPrefix(jsonStringNear(html, "roadAddress", anchor), baseAddress));
+  push("지번주소", normalizeRegionPrefix(jsonStringNear(html, "address", anchor), baseAddress));
+  push("소개", jsonStringNear(html, "description", anchor));
+
+  const hours = jsonValueNear<Array<Record<string, any>>>(html, "businessHours", anchor);
+  if (Array.isArray(hours) && hours.length) {
+    const parts = hours.map((entry) => {
+      const day = String(entry?.day ?? "").trim();
+      const open = entry?.businessHours;
+      const span = open?.start && open?.end ? `${open.start}~${open.end}` : "";
+      const breaks = Array.isArray(entry?.breakHours)
+        ? entry.breakHours.filter((b: any) => b?.start && b?.end).map((b: any) => `휴게 ${b.start}~${b.end}`).join(" ")
+        : "";
+      return [day, span, breaks].filter(Boolean).join(" ");
+    }).filter(Boolean);
+    push("영업시간", parts.join(" / "));
+  }
+
+  const conveniences = jsonValueNear<string[]>(html, "conveniences", anchor);
+  if (Array.isArray(conveniences) && conveniences.length) push("편의시설", conveniences.join(", "));
+
+  const homepages = jsonValueNear<Record<string, any>>(html, "homepages", anchor);
+  const homepageUrls = collectUrls(homepages).slice(0, 3);
+  if (homepageUrls.length) push("홈페이지", homepageUrls.join(", "));
+
+  return lines.join("\n");
+}
+
+function collectUrls(value: unknown, acc: string[] = []): string[] {
+  if (!value) return acc;
+  if (typeof value === "string") {
+    if (/^https?:\/\//.test(value)) acc.push(value);
+    return acc;
+  }
+  if (Array.isArray(value)) { for (const item of value) collectUrls(item, acc); return acc; }
+  if (typeof value === "object") { for (const item of Object.values(value as Record<string, unknown>)) collectUrls(item, acc); }
+  return acc;
+}
+
+// 네이버는 '전남광주' 처럼 두 시·도를 붙인 자체 표기를 쓴다. 그대로 두면 조사 결과에
+// 실재하지 않는 지명이 박히므로, 원천 주소의 시·도로 첫 토큰을 바로잡는다.
+export function normalizeRegionPrefix(address: string | null, baseAddress?: string | null): string | null {
+  if (!address) return address;
+  const parts = address.trim().split(/\s+/);
+  const head = parts[0];
+  const baseHead = String(baseAddress ?? "").trim().split(/\s+/)[0];
+  if (!head || !baseHead || head === baseHead) return address;
+  const proper = /(특별시|광역시|특별자치시|특별자치도|도)$/;
+  // 원천 쪽이 정식 시·도 표기이고 플레이스 쪽이 아니면 갈아끼운다(반대 방향은 건드리지 않는다).
+  if (proper.test(baseHead) && !proper.test(head)) return [baseHead, ...parts.slice(1)].join(" ");
+  return address;
+}
+
+function jsonStringNear(html: string, key: string, anchor: number): string | null {
+  const value = jsonValueNear<unknown>(html, key, anchor);
+  return typeof value === "string" ? value : null;
+}
+
+// "key": 뒤에 오는 값 하나를 괄호 짝을 세어 잘라낸 뒤 JSON 으로 파싱한다.
+// 정규식만으로는 중첩 구조(영업시간 배열)를 못 자르고, / 같은 이스케이프도 복원해야 한다.
+// 후보가 여럿이면 앵커(대상 업체 객체)에서 가장 가까운 것을 고른다.
+function jsonValueNear<T>(html: string, key: string, anchor: number): T | null {
+  const marker = `"${key}":`;
+  const candidates: Array<{ at: number; value: T }> = [];
+  let from = 0;
+  while (candidates.length < 60) {
+    const at = html.indexOf(marker, from);
+    if (at === -1) break;
+    from = at + marker.length;
+    // 앵커에서 너무 먼 값은 다른 업체·다른 섹션의 것이다.
+    if (Math.abs(at - anchor) > 40_000) continue;
+    const slice = sliceJsonValue(html, at + marker.length);
+    if (!slice) continue;
+    try {
+      const parsed = JSON.parse(slice) as T;
+      if (typeof parsed === "string" && !parsed.trim()) continue;
+      if (Array.isArray(parsed) && !parsed.length) continue;
+      candidates.push({ at, value: parsed });
+    } catch { /* 다음 후보 */ }
+  }
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => Math.abs(a.at - anchor) - Math.abs(b.at - anchor));
+  return candidates[0]!.value;
+}
+
+function sliceJsonValue(html: string, start: number): string | null {
+  let i = start;
+  while (i < html.length && /\s/.test(html[i] ?? "")) i++;
+  const first = html[i];
+  if (first === undefined) return null;
+  if (first === '"') {
+    let j = i + 1;
+    while (j < html.length) {
+      const ch = html[j];
+      if (ch === "\\") { j += 2; continue; }
+      if (ch === '"') return html.slice(i, j + 1);
+      j++;
+    }
     return null;
-  } catch { return null; }
+  }
+  if (first === "{" || first === "[") {
+    const close = first === "{" ? "}" : "]";
+    let depth = 0;
+    let inString = false;
+    let j = i;
+    while (j < html.length) {
+      const ch = html[j];
+      if (inString) {
+        if (ch === "\\") j++;
+        else if (ch === '"') inString = false;
+      } else if (ch === '"') inString = true;
+      else if (ch === first) depth++;
+      else if (ch === close) {
+        depth--;
+        if (depth === 0) return html.slice(i, j + 1);
+      }
+      j++;
+      if (j - i > 200_000) return null; // 안전장치
+    }
+    return null;
+  }
+  return null;
 }
 
 // 공식/지도 도메인을 우선, 잡링크를 뒤로.
