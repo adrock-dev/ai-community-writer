@@ -255,7 +255,24 @@ export class AcademyResearchDbService implements OnModuleInit {
     mkdirSync(dirname(this.path), { recursive: true });
     this.db = new sqlite.DatabaseSync(this.path);
     this.db.exec(SCHEMA);
+    this.migrate();
     this.seedStatusDefs();
+    this.recoverStaleRuns();
+  }
+
+  private migrate(): void {
+    const runCols = new Set(this.all("PRAGMA table_info(research_runs)").map((r) => r.name));
+    // 실행 결과 요약(JSON). 동기화는 학원 수 외에 리뷰 건수도 남겨야 해서 진행률 컬럼만으로는 부족하다.
+    if (!runCols.has("result")) this.db.exec("ALTER TABLE research_runs ADD COLUMN result TEXT");
+  }
+
+  // 실행은 전부 API 프로세스 메모리 안에서만 돈다. 기동 시점에 'running' 인 행은
+  // 이전 프로세스가 죽으며 남긴 유령이므로 정리한다(안 하면 UI 버튼이 영원히 잠긴다).
+  private recoverStaleRuns(): void {
+    this.run(
+      "UPDATE research_runs SET status='error', error=COALESCE(error, ?), finished_at=? WHERE status='running'",
+      ["API 재시작으로 중단됨", nowIso()],
+    );
   }
 
   private seedStatusDefs(): void {
@@ -333,6 +350,21 @@ export class AcademyResearchDbService implements OnModuleInit {
         input.posted_at ?? null, jsonOrNull(input.images), nowIso(), input.collect_method ?? "drivingplus_api",
       ],
     );
+  }
+
+  // 해당 학원·플랫폼의 후기를 원천이 준 목록으로 통째 교체한다.
+  // 누적하면 원천에서 내려간 후기가 영구히 근거로 남으므로(작성자가 지운 후기 인용 위험) 교체가 기본이다.
+  // 삭제 직후 프로세스가 죽어도 후기가 비지 않도록 트랜잭션으로 묶는다.
+  replaceReviews(externalId: string, platform: string, reviews: ReviewInput[]): void {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.run("DELETE FROM academy_reviews WHERE external_id = ? AND platform = ?", [externalId, platform]);
+      for (const review of reviews) this.upsertReview(review);
+      this.db.exec("COMMIT");
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   listReviews(externalId: string): Row[] {
@@ -448,13 +480,14 @@ export class AcademyResearchDbService implements OnModuleInit {
     return id;
   }
 
-  updateRun(id: string, patch: { status?: string; count_done?: number; count_total?: number; error?: string; finished?: boolean }): void {
+  updateRun(id: string, patch: { status?: string; count_done?: number; count_total?: number; error?: string; result?: unknown; finished?: boolean }): void {
     const sets: string[] = [];
     const params: any[] = [];
     if (patch.status !== undefined) { sets.push("status=?"); params.push(patch.status); }
     if (patch.count_done !== undefined) { sets.push("count_done=?"); params.push(patch.count_done); }
     if (patch.count_total !== undefined) { sets.push("count_total=?"); params.push(patch.count_total); }
     if (patch.error !== undefined) { sets.push("error=?"); params.push(patch.error); }
+    if (patch.result !== undefined) { sets.push("result=?"); params.push(jsonOrNull(patch.result)); }
     if (patch.finished) { sets.push("finished_at=?"); params.push(nowIso()); }
     if (!sets.length) return;
     params.push(id);
@@ -462,6 +495,13 @@ export class AcademyResearchDbService implements OnModuleInit {
   }
 
   listRuns(limit = 30): Row[] { return this.all("SELECT * FROM research_runs ORDER BY started_at DESC LIMIT ?", [Math.max(1, Math.min(200, limit))]); }
+
+  // 진행 중인 실행(스코프별). 재시작 유령은 init 에서 정리되므로 여기 걸리면 실제로 도는 중이다.
+  findRunningRun(scope?: string): Row | undefined {
+    return scope
+      ? this.get("SELECT * FROM research_runs WHERE status='running' AND scope=? ORDER BY started_at DESC", [scope])
+      : this.get("SELECT * FROM research_runs WHERE status='running' ORDER BY started_at DESC");
+  }
   getRun(id: string): Row | undefined { return this.get("SELECT * FROM research_runs WHERE id = ?", [id]); }
 
   // ---- 상세(집계) ----

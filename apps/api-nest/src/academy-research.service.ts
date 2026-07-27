@@ -15,12 +15,21 @@ const SCALAR_KEYS: Array<keyof ResearchResult> = [
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
 ];
 
+export interface SyncResult { matched: number; total: number; reviews: number }
+export interface SyncOptions {
+  reviewLimit?: number;
+  blogReviewLimit?: number;
+  /** 전체 학원 수를 알게 된 시점(목록 조회 직후) 1회 호출. */
+  onTotal?: (total: number) => void;
+  /** 학원 1곳 처리마다 호출. */
+  onProgress?: (done: number, reviews: number) => void;
+}
+
 // DrivingPlus 동기화 + AI 심층조사 오케스트레이터.
 // 동기화: 원본을 academy_base/academy_reviews 에 미러링(덮어쓰기 아님, 조사값과 병존).
 @Injectable()
 export class AcademyResearchService {
   private readonly logger = new Logger(AcademyResearchService.name);
-  private activeRegionRun = false;
 
   constructor(
     @Inject(AcademyResearchDbService) private readonly db: AcademyResearchDbService,
@@ -28,13 +37,38 @@ export class AcademyResearchService {
   ) {}
 
   // DrivingPlus 전체 학원을 동기화. 리뷰/블로그리뷰 원문 포함(A안).
-  async syncAll(opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): Promise<{ matched: number; total: number; reviews: number }> {
+  async syncAll(opts: SyncOptions = {}): Promise<SyncResult> {
     const all = await this.drivingplus.fetchAcademies();
+    opts.onTotal?.(all.length);
     let reviewCount = 0;
+    let done = 0;
     for (const academy of all) {
       reviewCount += await this.upsertWithReviews(academy, opts);
+      done += 1;
+      opts.onProgress?.(done, reviewCount);
     }
     return { matched: all.length, total: all.length, reviews: reviewCount };
+  }
+
+  // 동기화를 백그라운드로 시작하고 run_id 를 즉시 반환한다.
+  // 학원 수백 곳 × 리뷰 2회를 한 HTTP 응답 안에서 기다리면, 그 사이 API 가 재시작하거나
+  // 브라우저를 닫는 순간 요청이 끊겨 "fetch failed" 로만 보인다(작업 자체는 서버에서 계속 돌았다).
+  startSync(opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): { ok: boolean; run_id?: string; error?: string } {
+    const running = this.db.findRunningRun("sync");
+    if (running) return { ok: false, error: "이미 진행 중인 동기화가 있습니다." };
+
+    const runId = this.db.createRun({ scope: "sync", method: "drivingplus_sync" });
+    void this.syncAll({
+      ...opts,
+      onTotal: (total) => this.db.updateRun(runId, { count_total: total }),
+      onProgress: (done, reviews) => this.db.updateRun(runId, { count_done: done, result: { reviews } }),
+    })
+      .then((res) => this.db.updateRun(runId, { status: "done", count_done: res.matched, result: res, finished: true }))
+      .catch((error) => {
+        this.logger.error(`sync failed: ${error?.message || error}`);
+        this.db.updateRun(runId, { status: "error", error: String(error?.message || error), finished: true });
+      });
+    return { ok: true, run_id: runId };
   }
 
   // 단건(외부 id) 동기화 — 기본정보/리뷰 새로고침.
@@ -65,11 +99,17 @@ export class AcademyResearchService {
       seo_description: academy.seoDescription ?? null,
       raw_json: academy,
     });
+    // 후기는 원천이 준 목록으로 통째 교체하므로(아래 storeReviews), 조회 성공 여부를 반드시 구분해야 한다.
+    // 실패를 빈 목록으로 폴백하면 일시적인 원천 장애가 그대로 후기 전멸이 된다.
     const [reviewPage, blogReviewPage] = await Promise.all([
-      this.drivingplus.fetchReviews(academy.id, opts.reviewLimit ?? 5).then((page) => page.reviews).catch(() => academy.reviews ?? []),
-      this.drivingplus.fetchBlogReviews(academy.id, opts.blogReviewLimit ?? 5).then((page) => page.reviews).catch(() => academy.blogReviews ?? []),
+      this.drivingplus.fetchReviews(academy.id, opts.reviewLimit ?? 5)
+        .then((page) => ({ ok: true, reviews: page.reviews }))
+        .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["reviews"] })),
+      this.drivingplus.fetchBlogReviews(academy.id, opts.blogReviewLimit ?? 5)
+        .then((page) => ({ ok: true, reviews: page.reviews }))
+        .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["blogReviews"] })),
     ]);
-    return this.storeReviews(externalId, { ...academy, reviews: reviewPage, blogReviews: blogReviewPage });
+    return this.storeReviews(externalId, reviewPage, blogReviewPage);
   }
 
   // ---- AI 심층조사 ----
@@ -116,18 +156,16 @@ export class AcademyResearchService {
 
   // a: 전체 배치 조사. 백그라운드로 실행하고 runId 를 즉시 반환.
   async startRegionResearch(region?: string, opts: { provider?: ResearchProviderPreference } = {}): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
-    if (this.activeRegionRun) return { ok: false, error: "이미 진행 중인 전체 조사가 있습니다." };
+    if (this.db.findRunningRun("all")) return { ok: false, error: "이미 진행 중인 전체 조사가 있습니다." };
     const providers = await this.resolveProviders(opts.provider);
     if (!providers.length) return { ok: false, error: "claude/codex CLI를 찾을 수 없습니다." };
     const targets = this.db.listBase({ region, limit: 5000 });
     if (!targets.length) return { ok: false, error: "동기화된 학원이 없습니다. 먼저 동기화하세요." };
 
     const runId = this.db.createRun({ scope: "all", region, engine: opts.provider && opts.provider !== "auto" ? opts.provider : "auto", method: "a_batch", count_total: targets.length });
-    this.activeRegionRun = true;
     // 백그라운드 실행(HTTP 응답을 막지 않음). 진행 상황은 research_runs 로 추적.
     void this.runRegionBatch(runId, targets.map((t) => String(t.external_id)), opts.provider ?? "auto")
-      .catch((error) => { this.logger.error(`batch research failed: ${error?.message || error}`); this.db.updateRun(runId, { status: "error", error: String(error?.message || error), finished: true }); })
-      .finally(() => { this.activeRegionRun = false; });
+      .catch((error) => { this.logger.error(`batch research failed: ${error?.message || error}`); this.db.updateRun(runId, { status: "error", error: String(error?.message || error), finished: true }); });
     return { ok: true, run_id: runId, count: targets.length };
   }
 
@@ -177,38 +215,50 @@ export class AcademyResearchService {
     return detectResearchProviders();
   }
 
-  private storeReviews(externalId: string, academy: DrivingplusAcademy): number {
+  // 후기는 플랫폼 단위로 통째 교체한다 — 원천에서 내려간(삭제·비공개 처리된) 후기가
+  // 근거로 남지 않게 하기 위함. 조회에 실패한 플랫폼은 손대지 않고 기존 행을 그대로 둔다.
+  private storeReviews(
+    externalId: string,
+    review: { ok: boolean; reviews: DrivingplusAcademy["reviews"] },
+    blog: { ok: boolean; reviews: DrivingplusAcademy["blogReviews"] },
+  ): number {
     let count = 0;
-    for (const [i, review] of (academy.reviews ?? []).entries()) {
-      const content = String(review.content ?? "").trim();
-      if (!content) continue;
-      this.db.upsertReview({
-        external_id: externalId,
-        platform: "drivingplus_review",
-        source_key: review.id != null ? String(review.id) : `r${i}`,
-        rating: review.point ?? null,
-        quote_text: content,
-        author_masked: maskAuthor(review.author),
-        posted_at: review.date ?? null,
-        collect_method: "drivingplus_api",
+    if (review.ok) {
+      const rows = (review.reviews ?? []).flatMap((item, i) => {
+        const content = String(item.content ?? "").trim();
+        if (!content) return [];
+        return [{
+          external_id: externalId,
+          platform: "drivingplus_review",
+          source_key: item.id != null ? String(item.id) : `r${i}`,
+          rating: item.point ?? null,
+          quote_text: content,
+          author_masked: maskAuthor(item.author),
+          posted_at: item.date ?? null,
+          collect_method: "drivingplus_api",
+        }];
       });
-      count++;
+      this.db.replaceReviews(externalId, "drivingplus_review", rows);
+      count += rows.length;
     }
-    for (const [i, blog] of (academy.blogReviews ?? []).entries()) {
-      const content = String(blog.content ?? blog.title ?? "").trim();
-      if (!content) continue;
-      this.db.upsertReview({
-        external_id: externalId,
-        platform: "drivingplus_blog",
-        source_key: blog.link ? blog.link : `b${i}`,
-        title: blog.title ?? null,
-        quote_text: content,
-        source_url: blog.link ?? null,
-        posted_at: blog.postdate ?? null,
-        images: blog.images ?? null,
-        collect_method: "drivingplus_api",
+    if (blog.ok) {
+      const rows = (blog.reviews ?? []).flatMap((item, i) => {
+        const content = String(item.content ?? item.title ?? "").trim();
+        if (!content) return [];
+        return [{
+          external_id: externalId,
+          platform: "drivingplus_blog",
+          source_key: item.link ? item.link : `b${i}`,
+          title: item.title ?? null,
+          quote_text: content,
+          source_url: item.link ?? null,
+          posted_at: item.postdate ?? null,
+          images: item.images ?? null,
+          collect_method: "drivingplus_api",
+        }];
       });
-      count++;
+      this.db.replaceReviews(externalId, "drivingplus_blog", rows);
+      count += rows.length;
     }
     return count;
   }

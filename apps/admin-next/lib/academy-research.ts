@@ -36,6 +36,8 @@ export interface ResearchRun {
   count_total: number;
   count_done: number;
   error?: string | null;
+  /** 실행 결과 요약 JSON 문자열. 동기화는 {matched,total,reviews}. */
+  result?: string | null;
   started_at: string;
   finished_at?: string | null;
 }
@@ -79,7 +81,8 @@ export const listAcademyResearch = (region?: string, q?: string) => {
 export const getAcademyResearch = (externalId: string) => api<AcademyFull>(`/academy-research/${encodeURIComponent(externalId)}`);
 export const listStatusDefs = () => api<{ items: StatusDef[] }>("/academy-research/status-defs");
 export const listResearchRuns = () => api<{ items: ResearchRun[] }>("/academy-research/runs");
-export const syncRegion = () => api<{ matched: number; total: number; reviews: number }>("/academy-research/sync", { method: "POST", body: JSON.stringify({}) });
+// 백그라운드 시작만 하고 run_id 를 받는다. 진행률은 listResearchRuns 폴링으로 본다.
+export const syncRegion = () => api<{ ok: boolean; run_id?: string; error?: string }>("/academy-research/sync", { method: "POST", body: JSON.stringify({}) });
 export const syncOneAcademy = (externalId: string) => api<{ external_id: string; found: boolean; reviews: number }>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });
 export const researchOneAcademy = (externalId: string, provider: ResearchProvider = "auto") => api<{ ok: boolean; external_id: string; provider?: string; error?: string; no_sources?: boolean; sources?: number }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST", body: JSON.stringify({ provider }) });
 export const researchRegion = (provider: ResearchProvider = "auto") => api<{ ok: boolean; run_id?: string; count?: number; error?: string }>("/academy-research/research/region", { method: "POST", body: JSON.stringify({ provider }) });

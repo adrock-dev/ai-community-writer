@@ -45,11 +45,14 @@ export class AcademyResearchController {
     return run;
   }
 
-  // DrivingPlus 지역 동기화(base + 리뷰 원문)
+  // DrivingPlus 전체 동기화(base + 리뷰 원문). 백그라운드로 돌고 run_id 를 즉시 반환한다 —
+  // 응답을 끝까지 기다리면 그 사이 API 재시작·창 닫기만으로 요청이 끊긴다.
   @Post("sync")
-  async sync(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+  sync(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
     checkAuth(req, headers);
-    return this.service.syncAll({ reviewLimit: Number(body?.review_limit) || 5, blogReviewLimit: Number(body?.blog_review_limit) || 5 });
+    const result = this.service.startSync({ reviewLimit: Number(body?.review_limit) || 5, blogReviewLimit: Number(body?.blog_review_limit) || 5 });
+    if (!result.ok) throw new HttpException(result.error || "failed", 409);
+    return result;
   }
 
   // 전체 AI 조사 시작(a, 백그라운드) — run_id 반환
