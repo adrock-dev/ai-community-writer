@@ -146,11 +146,11 @@ export const getResearchSummary = (domain: string) =>
   api<ResearchSummary>(`/domains/${encodeURIComponent(domain)}/research-summary`);
 
 /**
- * 학원 동기화 시작. 결과가 아니라 run_id 를 돌려준다 — 블로그리뷰 포함 시 12분 넘게 걸려
- * 응답을 기다리는 방식으로는 완주할 수 없다(Node fetch 가 300초에 끊는다).
+ * 학원 동기화 시작. 결과가 아니라 run_id 를 돌려준다. 지금은 자체 후기만 받아 1~2분이지만,
+ * 블로그리뷰 수집을 켜면 12분이 넘어 응답을 기다리는 방식으로는 완주할 수 없다(Node fetch 가 300초에 끊는다).
  * 진행 상황은 getSyncRun 으로 폴링한다.
  */
-export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; include_blog_reviews?: boolean; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 }) =>
+export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; include_blog_reviews?: boolean; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: false }) =>
   api<{ ok: true; run_id: string }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
 
 export type SyncRunResult = { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] };

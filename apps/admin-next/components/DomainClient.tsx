@@ -1382,7 +1382,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   }
   /**
    * 학원 동기화. 서버가 백그라운드로 돌리고 run_id 만 주므로 여기서 진행률을 폴링한다.
-   * 블로그리뷰가 학원 1곳당 2.6초라 380곳이면 12분 넘게 걸린다 — 창을 닫아도 서버는 계속 돈다.
+   * 지금은 자체 후기만 받아 1~2분이면 끝나지만, 백그라운드 구조는 그대로 둔다 — 블로그리뷰
+   * 수집을 다시 켜면 학원 1곳당 2.6초라 380곳에 12분이 넘고, 창을 닫아도 서버는 계속 돈다.
    */
   async function syncAcademies() {
     setSyncBusy("academies");
@@ -1433,7 +1434,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       // 블로그리뷰를 못 가져온 학원이 있으면 성공 문구에 묻지 않고 따로 경고로 세운다.
       // 이 값이 조용히 넘어가면 원천이 다시 느려져도 아무도 모른 채 후기가 낡아간다.
       setSyncWarning(syncWarningText(res));
-      setLastSync(recordSync(domain.domain, "academies", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개 · 리뷰 ${res.review_count}/블로그 ${res.blog_review_count}` }));
+      setLastSync(recordSync(domain.domain, "academies", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개 · 수강생 후기 ${res.review_count}개` }));
       await onRefresh();
       await loadAcademies();
       return;
@@ -1497,8 +1498,12 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         {runtimeApis && <span>지역: <code>{runtimeApis.drivingplus_endpoints.seo_regions}</code></span>}
         {runtimeApis && <span>학원: <code>{runtimeApis.drivingplus_endpoints.academies}</code></span>}
         {runtimeApis && <span>일반 리뷰: <code>{runtimeApis.drivingplus_endpoints.reviews}</code></span>}
-        {runtimeApis && <span>블로그 리뷰: <code>{runtimeApis.drivingplus_endpoints.blog_reviews}</code></span>}
-        {runtimeApis && <span>동기화 기본값: 일반 리뷰 {runtimeApis.sync_defaults.review_limit}개({runtimeApis.sync_defaults.review_sort}), 블로그 리뷰 {runtimeApis.sync_defaults.blog_review_limit}개</span>}
+        {/* 블로그 리뷰 엔드포인트는 스위치가 켜졌을 때만 의미가 있다. 꺼진 상태로 주소만 보이면
+            "받고 있다" 로 읽힌다. 서버가 알려주는 실제 기본값(sync_defaults)을 그대로 반영한다. */}
+        {runtimeApis && (runtimeApis.sync_defaults.include_blog_reviews
+          ? <span>블로그 리뷰: <code>{runtimeApis.drivingplus_endpoints.blog_reviews}</code></span>
+          : <span>블로그 리뷰: <b>수집 안 함</b></span>)}
+        {runtimeApis && <span>동기화 기본값: 일반 리뷰 {runtimeApis.sync_defaults.review_limit}개({runtimeApis.sync_defaults.review_sort}){runtimeApis.sync_defaults.include_blog_reviews ? `, 블로그 리뷰 ${runtimeApis.sync_defaults.blog_review_limit}개` : ""}</span>}
         {runtimeApis && <span className="muted small">{runtimeApis.sync_defaults.review_source_note}</span>}
       </div>
     </div>
@@ -1536,7 +1541,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     {/* 묶음 3 — 학원자료 동기화 */}
     <div className="card card-pad grid">
       <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
-      <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
+      <p className="muted small">각 지역의 학원 상세(사진·별점리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다. 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다.</p>
       <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title="학원 목록과 수강생 후기를 원천에서 받아옵니다(1~2분). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다.">{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
