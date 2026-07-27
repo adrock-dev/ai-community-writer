@@ -2054,9 +2054,21 @@ function parseJsonCount(value: unknown): number {
 // 번호를 붙이지 않는다. 번호를 달면 "새 도메인마다 해야 하는 일"로 읽히는데, 실제로는
 // 도메인 생성 시 자동으로 준비되고 행정구역 개편 때만 갱신하면 된다.
 const RESEARCH_USAGE_CHOICES = [
-  { value: "off", label: "사용 안 함" },
-  { value: "verified", label: "검증완료만" },
-  { value: "draft", label: "AI 초안까지" },
+  {
+    value: "off",
+    label: "사용 안 함",
+    help: "조사값을 글에 전혀 쓰지 않습니다. 글은 원천 자료(수강료·셔틀·운영시간·면허 종별)와 후기만 근거로 씁니다.",
+  },
+  {
+    value: "verified",
+    label: "검증완료만",
+    help: "사람이 학원 상세 화면에서 「검증완료」로 직접 올린 값만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다.",
+  },
+  {
+    value: "draft",
+    label: "AI 초안까지",
+    help: "사람이 확인하지 않은 AI 조사값도 글에 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다.",
+  },
 ] as const;
 
 // 심층조사 현황(읽기 전용). 조사는 학원 자체의 속성이라 도메인마다 돌리면 같은 학원을
@@ -2124,7 +2136,11 @@ function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; 
           ))}
         </div>
         <p className="muted small" style={{ margin: 0 }}>
-          「검토 필요」·「웹조사 차단」 값은 어느 설정에서도 쓰이지 않습니다. 관리자가 검증완료로 올린 값만 「검증완료만」에 포함됩니다.
+          {RESEARCH_USAGE_CHOICES.find((c) => c.value === usage)?.help}
+        </p>
+        <p className="muted small" style={{ margin: 0 }}>
+          어느 설정에서도 <b>「검토 필요」</b>(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와
+          <b> 「웹조사 차단」</b> 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다.
         </p>
         <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
           ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.

@@ -1,4 +1,5 @@
 import type { ResearchBaseRef } from "./academy-research-llm.js";
+import { emptyKnownFacts, type KnownFacts } from "./academy-research-known-facts.js";
 
 // B안: CLI 웹툴에 의존하지 않고, 서버(Node)가 직접 검색·페이지를 fetch 해서
 // 그 본문을 LLM에 넘겨 "소스에 있는 사실만" 추출한다. 근거 URL을 함께 확보한다.
@@ -522,7 +523,40 @@ function digits(value: string): string {
 }
 
 // 수집한 소스 본문으로 추출 프롬프트 구성. "소스에 있는 것만" 강제.
-export function buildExtractionPrompt(base: ResearchBaseRef, sources: WebSource[]): string {
+// 조사 스키마. 프롬프트에 그대로 박아 넣지 않고 **필드 하나씩** 조립한다.
+// 여러 필드를 한 줄에 묶으면 그중 하나만 빠져도 줄 전체가 남아, 이미 아는 값을 계속 요구하게 된다
+// (원천이 홈페이지 URL 을 주기 시작하는 순간 바로 겪을 문제였다).
+const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
+  { key: "name_researched", text: `"name_researched": string|null` },
+  { key: "address_researched", text: `"address_researched": string|null` },
+  { key: "phone_researched", text: `"phone_researched": string|null` },
+  { key: "gu", text: `"gu": string|null` },
+  { key: "dong", text: `"dong": string|null` },
+  { key: "jibun_address", text: `"jibun_address": string|null` },
+  { key: "hours", text: `"hours": string|null` },
+  { key: "night_class", text: `"night_class": string|null` },
+  { key: "weekend", text: `"weekend": string|null` },
+  { key: "closed_days", text: `"closed_days": string|null` },
+  { key: "shuttle_available", text: `"shuttle_available": "yes"|"no"|"unknown"|null` },
+  { key: "shuttle_summary", text: `"shuttle_summary": string|null` },
+  { key: "licenses", text: `"licenses": string|null` },
+  { key: "self_test", text: `"self_test": string|null` },
+  { key: "facilities", text: `"facilities": string|null` },
+  { key: "fee_summary", text: `"fee_summary": string|null` },
+  { key: "price_disclosed", text: `"price_disclosed": "yes"|"no"|null` },
+  { key: "pass_rate", text: `"pass_rate": string|null` },
+  { key: "pass_rate_scope", text: `"pass_rate_scope": "official"|"self_claim"|null` },
+  { key: "established_year", text: `"established_year": string|null` },
+  { key: "scale", text: `"scale": string|null` },
+  { key: "homepage_url", text: `"homepage_url": string|null` },
+  { key: "naver_place_url", text: `"naver_place_url": string|null` },
+  { key: "kakao_url", text: `"kakao_url": string|null` },
+];
+
+const COURSES_LINE = `"courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}]`;
+const SHUTTLE_ROUTES_LINE = `"shuttle_routes": [{"route_name": string, "waypoints": string|null, "coverage": string|null, "interval_text": string|null, "source_url": string|null}]`;
+
+export function buildExtractionPrompt(base: ResearchBaseRef, sources: WebSource[], known: KnownFacts = emptyKnownFacts()): string {
   const ref = [
     base.name ? `- 이름: ${base.name}` : null,
     base.address ? `- 주소(참고): ${base.address}` : null,
@@ -532,12 +566,25 @@ export function buildExtractionPrompt(base: ResearchBaseRef, sources: WebSource[
 
   const sourceBlocks = sources.map((s, i) => `[소스 ${i + 1}] ${s.url}\n제목: ${s.title}\n본문:\n${s.text}`).join("\n\n---\n\n");
 
+  const schema = SCHEMA_FIELDS
+    .filter((field) => !known.skipFields.has(field.key))
+    .map((field) => `  ${field.text}`);
+  if (!known.skipCourses) schema.push(`  ${COURSES_LINE}`);
+  if (!known.skipShuttleRoutes) schema.push(`  ${SHUTTLE_ROUTES_LINE}`);
+  schema.push(`  "sources": { "<field_key>": "<근거 소스 URL>" }`);
+
+  // 이미 아는 사실은 "찾지 말라"가 아니라 "이미 확정됐다"로 준다. 모델이 같은 값을 다시
+  // 찾느라 소스를 낭비하지 않고, 소스에 다른 값이 보여도 모순되는 답을 내놓지 않는다.
+  const knownBlock = known.lines.length
+    ? `\n[이미 확정된 사실 — 다시 조사하지 마세요]\n원천 자료로 확인된 값입니다. 아래 항목은 출력 스키마에서 빠져 있으니 채우려 하지 마세요.\n소스에 다른 값이 보이더라도 이 값을 뒤집는 서술을 하지 마세요.\n${known.lines.join("\n")}\n`
+    : "";
+
   return `당신은 자동차운전전문학원 정보를 추출하는 정확성 최우선 분석가입니다.
 아래 [대상]과 [소스]가 주어집니다. 웹 검색을 하지 말고, **오직 아래 [소스] 본문에 실제로 적힌 내용만** 사용해 JSON을 만드세요.
 
 [대상]
 ${ref}
-
+${knownBlock}
 [중요]
 - 동명 학원이 많습니다. 위 주소·전화와 **일치하는 학원**의 정보만 사용하세요. 소스가 다른 지점/동명 학원이면 그 값은 쓰지 마세요.
 - 소스에 없는 값은 반드시 null. 추측·일반지식·날조 금지.
@@ -548,18 +595,7 @@ ${sourceBlocks || "(수집된 소스 없음)"}
 
 [출력 — 순수 JSON 하나만, 설명·코드펜스 없이]
 {
-  "name_researched": string|null, "address_researched": string|null, "phone_researched": string|null,
-  "gu": string|null, "dong": string|null, "jibun_address": string|null,
-  "hours": string|null, "night_class": string|null, "weekend": string|null, "closed_days": string|null,
-  "shuttle_available": "yes"|"no"|"unknown"|null, "shuttle_summary": string|null,
-  "licenses": string|null, "self_test": string|null, "facilities": string|null,
-  "fee_summary": string|null, "price_disclosed": "yes"|"no"|null,
-  "pass_rate": string|null, "pass_rate_scope": "official"|"self_claim"|null,
-  "established_year": string|null, "scale": string|null,
-  "homepage_url": string|null, "naver_place_url": string|null, "kakao_url": string|null,
-  "courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}],
-  "shuttle_routes": [{"route_name": string, "waypoints": string|null, "coverage": string|null, "interval_text": string|null, "source_url": string|null}],
-  "sources": { "<field_key>": "<근거 소스 URL>" }
+${schema.join(",\n")}
 }`;
 }
 

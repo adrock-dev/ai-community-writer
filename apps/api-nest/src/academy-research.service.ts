@@ -6,6 +6,7 @@ import {
   type ResearchProvider, type ResearchProviderPreference, type ResearchResult,
 } from "./academy-research-llm.js";
 import { buildExtractionPrompt, gatherSources, structuredFactsFromSources, type WebSource } from "./academy-research-web.js";
+import { emptyKnownFacts, knownFactsFromSource, type KnownFacts } from "./academy-research-known-facts.js";
 import { findingNote, hasFinding, inspectResearchValue, sourceHaystack } from "./academy-research-grounding.js";
 
 // academy_research 스칼라 필드(courses/shuttle_routes/sources 제외)
@@ -15,6 +16,7 @@ const SCALAR_KEYS: Array<keyof ResearchResult> = [
   "licenses", "self_test", "facilities", "fee_summary", "price_disclosed", "pass_rate",
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
 ];
+const SCALAR_KEY_SET = new Set<string>(SCALAR_KEYS as string[]);
 
 // 학원 1곳의 처리 결과. 수집 저조의 원인을 화면에서 구분하려면 이 세 갈래가 필요하다.
 // "빈 응답"(200 OK + 0건)과 "조회 실패"(예외)는 대응이 완전히 다르다 —
@@ -236,8 +238,12 @@ export class AcademyResearchService {
       return { ok: false, external_id: externalId, provider: providers[0], no_sources: true, error: "공개 소스를 찾지 못했습니다(검색/페치 실패). 값은 저장하지 않았습니다." };
     }
 
-    // 2) 소스 본문에서만 추출(웹툴 불필요 → Opus 지정)
-    const prompt = buildExtractionPrompt(ref, sources);
+    // 2) 소스 본문에서만 추출(웹툴 불필요 → Opus 지정).
+    // 원천이 이미 준 필드는 스키마에서 빼고 [이미 확정된 사실]로 넘긴다 — 겹치는 영역에서는
+    // 웹 조사가 원천을 이기지 못하는데(파일럿 실측: 수강료 23% vs 87%), 그걸 다시 캐느라
+    // 학원당 1분을 쓰고 있었다.
+    const known = knownFactsFromSource(safeJsonParse(base.raw_json));
+    const prompt = buildExtractionPrompt(ref, sources, known);
     let lastError = "";
     for (const provider of providers) {
       const out = await runResearchCli(prompt, { provider, model: provider === "claude" ? "opus" : undefined });
@@ -250,7 +256,7 @@ export class AcademyResearchService {
       this.applyStructuredFacts(parsed, sources);
 
       // 근거 URL이 비어있는 필드는 수집 소스 첫 URL로 보완(추적성 확보)
-      const grounding = this.persistResearch(externalId, parsed, { engine: provider, method }, sources);
+      const grounding = this.persistResearch(externalId, parsed, { engine: provider, method }, sources, known);
       this.bumpRun(opts.runId);
       return { ok: true, external_id: externalId, provider, sources: sources.length, ...grounding };
     }
@@ -346,12 +352,17 @@ export class AcademyResearchService {
     parsed: ResearchResult,
     meta: { engine: ResearchProvider; method: string },
     collected: WebSource[] = [],
+    known: KnownFacts = emptyKnownFacts(),
   ): { checked: number; flagged: number } {
     const scalar: Record<string, unknown> = {};
     for (const key of SCALAR_KEYS) {
       const value = parsed[key];
       if (value !== undefined) scalar[key as string] = value ?? null;
     }
+    // 원천이 답을 가진 필드는 비운다. 스키마에서 뺐으니 모델은 값을 보내지 않고,
+    // upsertResearch 는 안 보낸 키를 건드리지 않아 예전 조사값이 그대로 남는다.
+    // 그러면 원천값과 모순되는 낡은 값이 DB 에 남아 어느 쪽이 쓰일지 알 수 없게 된다.
+    for (const key of known.skipFields) if (SCALAR_KEY_SET.has(key)) scalar[key] = null;
     this.db.upsertResearch(externalId, scalar, { engine: meta.engine, method: meta.method });
     this.db.clearWebBlocked(externalId); // 이전 CLI-웹 조사의 web_blocked 흔적 정리
 
@@ -359,8 +370,11 @@ export class AcademyResearchService {
     // 저장하지 않고, 나중에 다시 수집하면 다른 페이지가 나온다(실측: 3건 → 0건).
     const haystack = sourceHaystack(collected);
 
-    if (Array.isArray(parsed.courses)) this.db.replaceCourses(externalId, gradeCoursePrices(parsed.courses, haystack));
-    if (Array.isArray(parsed.shuttle_routes)) this.db.replaceShuttleRoutes(externalId, parsed.shuttle_routes as Array<Record<string, unknown>>);
+    // 원천이 수강료·노선을 가진 학원은 배열도 비운다(요구하지 않았으므로 예전 행이 남는다).
+    if (known.skipCourses) this.db.replaceCourses(externalId, []);
+    else if (Array.isArray(parsed.courses)) this.db.replaceCourses(externalId, gradeCoursePrices(parsed.courses, haystack));
+    if (known.skipShuttleRoutes) this.db.replaceShuttleRoutes(externalId, []);
+    else if (Array.isArray(parsed.shuttle_routes)) this.db.replaceShuttleRoutes(externalId, parsed.shuttle_routes as Array<Record<string, unknown>>);
 
     // 값이 채워진 스칼라 필드는 출처 URL 기록(모델 sources → 없으면 수집소스 첫 URL) + 그라운딩 검사.
     // 걸린 값도 버리지 않고 needs_review 로 낮춰 사유를 남긴다. 표기 차이로 인한 오탈락이
@@ -369,7 +383,12 @@ export class AcademyResearchService {
     const fallbackUrl = collected[0]?.url;
     let checked = 0;
     let flagged = 0;
+    for (const key of known.skipFields) {
+      // 조사 대상이 아니었음을 남긴다 — 값이 빈 것과 "원천이 답을 가졌다"는 다르다.
+      if (SCALAR_KEY_SET.has(key)) this.db.setFieldMeta(externalId, key, { status: "unverified", note: "원천 자료가 있어 조사하지 않음" });
+    }
     for (const key of SCALAR_KEYS) {
+      if (known.skipFields.has(key as string)) continue;
       const value = parsed[key];
       if (value == null || value === "") continue;
       const sourceUrl = sources[key as string] ?? fallbackUrl;
@@ -446,6 +465,13 @@ function gradeCoursePrices(courses: ResearchResult["courses"], haystack: string)
     const report = inspectResearchValue("fee_summary", price, haystack);
     return hasFinding(report) ? { ...row, verified_status: "needs_review" } : row;
   });
+}
+
+// academy_base.raw_json 은 TEXT 컬럼이라 문자열로 돌아온다. 손상된 값은 조사를 막지 않고 무시한다.
+function safeJsonParse(value: unknown): unknown {
+  if (value == null) return null;
+  if (typeof value === "object") return value;
+  try { return JSON.parse(String(value)); } catch { return null; }
 }
 
 // 작성자 식별정보 최소화: 첫 글자만 남기고 마스킹.
