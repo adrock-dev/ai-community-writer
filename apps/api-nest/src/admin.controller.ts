@@ -1,9 +1,10 @@
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Param, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { DbService, domainOut, jobOut, nowSql, safeJson } from "./db.service.js";
+import { DbService, domainOut, jobOut, nowSql, safeJson, syncRunOut } from "./db.service.js";
 import { publicBrandName } from "./brand.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
 import { RegionDirectoryService } from "./region-directory.service.js";
+import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
 import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
@@ -33,6 +34,7 @@ export class AdminController {
     @Inject(SlotService) private readonly slots: SlotService,
     @Inject(DrivingplusApiService) private readonly drivingplus: DrivingplusApiService,
     @Inject(RegionDirectoryService) private readonly regionDirectory: RegionDirectoryService,
+    @Inject(DrivingplusSyncService) private readonly drivingplusSync: DrivingplusSyncService,
   ) {}
 
   @Get("options")
@@ -614,20 +616,45 @@ export class AdminController {
     return { ok: true, upserted: this.db.upsertAcademies(domain, rows) };
   }
 
+  /**
+   * 학원 동기화를 백그라운드로 시작하고 run_id 를 즉시 반환한다(결과를 기다리지 않는다).
+   * 블로그리뷰를 포함하면 12분 넘게 걸리는데 Node fetch 가 300초에 끊어버려, 응답을 기다리는
+   * 구조로는 관리자 UI 에서 절대 완주할 수 없다. 진행 상황은 sync/runs/:runId 로 조회한다.
+   */
   @Post("domains/:domain/sync/drivingplus/academies")
-  async syncDrivingplusAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row = {}) {
+  syncDrivingplusAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row = {}) {
     checkAuth(req, headers); this.requireDomain(domain);
-    // 셔틀 운행 지역은 학원 동기화 시점에 계산해 저장한다. 사전이 없으면 지역이 비므로 먼저 확보한다
-    // (이미 최신이면 원천을 호출하지 않는다). 실패해도 학원 동기화는 계속 진행한다.
-    await this.regionDirectory.ensure().catch(() => null);
-    const rows = await this.drivingplus.fetchAcademies({
+    const result = this.drivingplusSync.startAcademySync(domain, {
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
       reviewSort: body.review_sort === "new" ? "new" : "point",
       includeBlogReviews: body.include_blog_reviews !== false,
       blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
     });
-    return { ok: true, ...this.db.upsertDrivingplusAcademies(domain, rows) };
+    if (!result.ok) throw new HttpException(result.error, 409);
+    return result;
+  }
+
+  @Get("domains/:domain/sync/runs")
+  listSyncRuns(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query("limit") limit?: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return { items: this.db.listSyncRuns(domain, clampInt(limit, 20, 1, 200)).map(syncRunOut) };
+  }
+
+  @Get("domains/:domain/sync/runs/:runId")
+  getSyncRun(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("runId") runId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const run = this.db.getSyncRun(runId);
+    if (!run || run.domain !== domain) throw new HttpException("실행 이력을 찾을 수 없습니다.", 404);
+    return syncRunOut(run);
+  }
+
+  @Post("domains/:domain/sync/runs/:runId/cancel")
+  cancelSyncRun(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("runId") runId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const run = this.db.getSyncRun(runId);
+    if (!run || run.domain !== domain) throw new HttpException("실행 이력을 찾을 수 없습니다.", 404);
+    return { ok: this.db.requestSyncCancel(runId) };
   }
 
   @Post("domains/:domain/sync/drivingplus/regions")
@@ -647,6 +674,10 @@ export class AdminController {
     return { ok: true, level, axis_replaced, ...summary };
   }
 
+  /**
+   * 지역 + 학원 통합 동기화. 지역은 원천 왕복 1회라 응답 안에서 끝내고,
+   * 학원은 백그라운드 run 으로 넘긴다(위 syncDrivingplusAcademies 와 같은 이유).
+   */
   @Post("domains/:domain/sync/drivingplus")
   async syncDrivingplusAll(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
@@ -654,18 +685,15 @@ export class AdminController {
     const regions = await this.drivingplus.fetchSeoRegions(level);
     const regionSummary = this.db.upsertSeoRegions(domain, regions);
     if (body.replace_axis) this.db.bulkReplaceAxis(domain, "region", regions.map((r) => ({ value: r.region, weight: r.level === 2 ? 5 : 3, monthly_search_volume: null, competition_kd: null })));
-    // 셔틀 운행 지역은 학원 동기화 시점에 계산해 저장한다. 사전이 없으면 지역이 비므로 먼저 확보한다
-    // (이미 최신이면 원천을 호출하지 않는다). 실패해도 학원 동기화는 계속 진행한다.
-    await this.regionDirectory.ensure().catch(() => null);
-    const academies = await this.drivingplus.fetchAcademies({
+    const started = this.drivingplusSync.startAcademySync(domain, {
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
       reviewSort: body.review_sort === "new" ? "new" : "point",
       includeBlogReviews: body.include_blog_reviews !== false,
       blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
     });
-    const academySummary = this.db.upsertDrivingplusAcademies(domain, academies);
-    return { ok: true, regions: regionSummary, academies: academySummary, axis_replaced: Boolean(body.replace_axis), level };
+    if (!started.ok) throw new HttpException(started.error, 409);
+    return { ok: true, regions: regionSummary, run_id: started.run_id, axis_replaced: Boolean(body.replace_axis), level };
   }
 
   @Delete("domains/:domain/academies/:academyId")

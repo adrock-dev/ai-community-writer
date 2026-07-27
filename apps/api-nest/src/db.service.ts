@@ -250,6 +250,24 @@ CREATE TABLE IF NOT EXISTS draft_posts (
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE,
   FOREIGN KEY (slot_id) REFERENCES slots(slot_id) ON DELETE SET NULL
 );
+-- 원천 동기화 실행 이력. jobs 와 분리한 이유: jobs 는 워커가 하나씩 claim 하는 큐라
+-- 12분짜리 동기화를 넣으면 그동안 글 생성이 통째로 밀린다. 동기화는 워커와 무관하게
+-- API 프로세스 안에서 돌고, 이 표는 진행률·취소·결과만 들고 있다.
+CREATE TABLE IF NOT EXISTS sync_runs (
+  id TEXT PRIMARY KEY,
+  domain TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','done','cancelled','error')),
+  cancel_requested INTEGER NOT NULL DEFAULT 0,
+  step TEXT,
+  count_total INTEGER NOT NULL DEFAULT 0,
+  count_done INTEGER NOT NULL DEFAULT 0,
+  result TEXT,
+  error TEXT,
+  started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  finished_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_sync_runs_started ON sync_runs(started_at DESC);
 	`;
 
 @Injectable()
@@ -271,6 +289,19 @@ export class DbService implements OnModuleInit {
     this.db.exec("PRAGMA foreign_keys = ON");
     this.db.exec(SCHEMA);
     this.migrate();
+    this.clearStaleSyncRuns();
+  }
+
+  /**
+   * 이전 프로세스가 죽으며 남긴 "running" 동기화를 정리한다.
+   * 안 하면 findRunningSyncRun 이 영원히 걸려 동기화 버튼이 잠긴 채 풀리지 않는다.
+   * 동기화는 API 프로세스 메모리에서 도는 작업이라, 프로세스가 죽었으면 그 실행도 죽은 것이다.
+   */
+  private clearStaleSyncRuns(): void {
+    this.run(
+      "UPDATE sync_runs SET status='error', error=COALESCE(error, ?), finished_at=? WHERE status='running'",
+      ["API 프로세스가 재시작되어 중단됐습니다.", nowSql()],
+    );
   }
 
   private ensureDomainsTable(): void {
@@ -956,9 +987,57 @@ export class DbService implements OnModuleInit {
     }
     return n;
   }
-  upsertDrivingplusAcademies(domain: string, rows: Row[]): { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; warnings: string[] } {
+  // ---- 원천 동기화 실행 이력 ----
+  createSyncRun(domain: string, scope: string): string {
+    const id = randomUUID();
+    this.run("INSERT INTO sync_runs (id, domain, scope, status) VALUES (?,?,?,'running')", [id, domain, scope]);
+    return id;
+  }
+
+  updateSyncRun(id: string, patch: { status?: string; step?: string; count_total?: number; count_done?: number; result?: unknown; error?: string; finished?: boolean }): void {
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (patch.status !== undefined) { sets.push("status=?"); params.push(patch.status); }
+    if (patch.step !== undefined) { sets.push("step=?"); params.push(patch.step); }
+    if (patch.count_total !== undefined) { sets.push("count_total=?"); params.push(patch.count_total); }
+    if (patch.count_done !== undefined) { sets.push("count_done=?"); params.push(patch.count_done); }
+    if (patch.result !== undefined) { sets.push("result=?"); params.push(patch.result === null ? null : JSON.stringify(patch.result)); }
+    if (patch.error !== undefined) { sets.push("error=?"); params.push(patch.error); }
+    if (patch.finished) { sets.push("finished_at=?"); params.push(nowSql()); }
+    if (!sets.length) return;
+    params.push(id);
+    this.run(`UPDATE sync_runs SET ${sets.join(", ")} WHERE id=?`, params);
+  }
+
+  getSyncRun(id: string): Row | undefined { return this.get("SELECT * FROM sync_runs WHERE id=?", [id]); }
+
+  listSyncRuns(domain: string, limit = 20): Row[] {
+    return this.all("SELECT * FROM sync_runs WHERE domain=? ORDER BY started_at DESC LIMIT ?", [domain, Math.max(1, Math.min(200, limit))]);
+  }
+
+  // 진행 중인 동기화. 같은 원천을 두드리므로 도메인을 가리지 않고 하나만 허용한다.
+  findRunningSyncRun(scope?: string): Row | undefined {
+    return scope
+      ? this.get("SELECT * FROM sync_runs WHERE status='running' AND scope=? ORDER BY started_at DESC", [scope])
+      : this.get("SELECT * FROM sync_runs WHERE status='running' ORDER BY started_at DESC");
+  }
+
+  // 취소 요청. 실행 중인 것만 대상으로 한다(이미 끝난 실행에 표시해 봐야 의미가 없다).
+  requestSyncCancel(id: string): boolean {
+    const run = this.getSyncRun(id);
+    if (!run || run.status !== "running") return false;
+    this.run("UPDATE sync_runs SET cancel_requested=1 WHERE id=?", [id]);
+    return true;
+  }
+
+  isSyncCancelRequested(id: string): boolean {
+    return Number(this.get("SELECT cancel_requested FROM sync_runs WHERE id=?", [id])?.cancel_requested ?? 0) === 1;
+  }
+
+  upsertDrivingplusAcademies(domain: string, rows: Row[]): { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] } {
     let upserted = 0, skipped = 0;
     let reviewCount = 0, blogReviewCount = 0;
+    let blogReviewPreserved = 0;
     const warnings: string[] = [];
     const regions = this.listSeoRegions(domain);
     // 셔틀 운행 지역 판별용 전역 사전. 동기화 1회당 한 번만 읽고 학원별로 반경 안만 추린다.
@@ -974,7 +1053,16 @@ export class DbService implements OnModuleInit {
         if (!region) warnings.push(`${name}: 주소에서 지역을 추정하지 못했습니다.`);
         const photos = Array.isArray(row.photos) ? row.photos.map((v) => String(v || "").trim()).filter(Boolean) : [];
         const reviews = normalizeDrivingplusReviews(row.reviews);
-        const blogReviews = normalizeDrivingplusBlogReviews(row.blogReviews);
+        // 원천이 블로그리뷰를 못 내려준 학원은 blogReviews 가 undefined 로 온다(빈 배열이 아니다).
+        // 이때 덮어쓰면 전량교체 정책상 기존 후기가 삭제되므로, 기존 값을 그대로 이어받는다.
+        // 원천이 진짜 0건을 확인해준 경우(빈 배열)는 의도대로 삭제된다.
+        const existing = this.get("SELECT id, blog_reviews, extra FROM academies WHERE domain=? AND external_id=?", [domain, externalId]);
+        const blogReviewsFetched = row.blogReviews !== undefined;
+        const existingExtra = blogReviewsFetched ? null : decodeJsonObject(existing?.extra);
+        const blogReviews = blogReviewsFetched
+          ? normalizeDrivingplusBlogReviews(row.blogReviews)
+          : normalizeDrivingplusBlogReviews(decodeJsonArray(existing?.blog_reviews));
+        if (!blogReviewsFetched) blogReviewPreserved++;
         reviewCount += reviews.length;
         blogReviewCount += blogReviews.length;
         const reviewText = reviewSummaryText(reviews);
@@ -996,9 +1084,12 @@ export class DbService implements OnModuleInit {
           blog_review_count: blogReviews.length,
           // 동기화 레이어로 들어온 개수(API 레이어 긍정 필터 통과분). 원천 총량은 review_stats 를 본다.
           fetched_review_count: Array.isArray(row.reviews) ? row.reviews.length : 0,
-          fetched_blog_review_count: Array.isArray(row.blogReviews) ? row.blogReviews.length : 0,
+          fetched_blog_review_count: blogReviewsFetched
+            ? (Array.isArray(row.blogReviews) ? row.blogReviews.length : 0)
+            : (existingExtra?.fetched_blog_review_count ?? 0),
           review_stats: row.reviewStats ?? null,
-          blog_review_stats: row.blogReviewStats ?? null,
+          // 조회를 못 한 경우 통계도 기존 값을 유지한다. 안 그러면 후기는 남았는데 통계만 0이 된다.
+          blog_review_stats: blogReviewsFetched ? (row.blogReviewStats ?? null) : (existingExtra?.blog_review_stats ?? null),
           license_types: row.licenseTypes ?? [],
           education_performance: performance,
           price_observations: row.priceObservations ?? [],
@@ -1009,21 +1100,24 @@ export class DbService implements OnModuleInit {
           operate_hour: row.operateHour ?? null,
           road_courses: row.roadCourses ?? [],
         });
-        const existing = this.get("SELECT id FROM academies WHERE domain=? AND external_id=?", [domain, externalId]);
         if (existing) {
           this.run(`UPDATE academies SET region=?, name=?, address=?, price=?, shuttle=?, hours=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, seo_content=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND domain=?`,
             [region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt, existing.id, domain]);
         } else {
           this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, price, shuttle, hours, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, seo_content, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=excluded.blog_reviews, seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, seo_content=excluded.seo_content, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
+            -- blog_reviews 를 NULL 로 넣으면 위 COALESCE 가 (domain, region, name) 충돌 시 기존 값을 지킨다
+            ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=COALESCE(excluded.blog_reviews, academies.blog_reviews), seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, seo_content=excluded.seo_content, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
             WHERE academies.external_id IS NULL OR academies.external_id=excluded.external_id`,
-            [randomUUID(), domain, externalId, region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt]);
+            [randomUUID(), domain, externalId, region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), blogReviewsFetched ? JSON.stringify(blogReviews) : null, nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt]);
         }
         upserted++;
       }
     });
-    return { fetched: rows.length, upserted, skipped, review_count: reviewCount, blog_review_count: blogReviewCount, warnings: warnings.slice(0, 50) };
+    if (blogReviewPreserved > 0) {
+      warnings.unshift(`블로그리뷰를 가져오지 못한 학원 ${blogReviewPreserved}곳은 기존 후기를 유지했습니다(삭제하지 않음).`);
+    }
+    return { fetched: rows.length, upserted, skipped, review_count: reviewCount, blog_review_count: blogReviewCount, blog_review_preserved: blogReviewPreserved, warnings: warnings.slice(0, 50) };
   }
   listAcademies(domain: string, opts: { region?: string; academy_type?: string; academy_types?: string[]; q?: string; has_photos?: boolean; limit?: number } = {}): Row[] {
     let sql = "SELECT * FROM academies WHERE domain=?"; const args: any[] = [domain];
@@ -1346,6 +1440,9 @@ export function customTemplateOut(row: Row): Row {
   };
 }
 export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
+export function syncRunOut(row: Row): Row {
+  return { ...row, cancel_requested: Number(row.cancel_requested ?? 0) === 1, result_obj: safeJson(row.result, null) };
+}
 export function nowSql(): string { return new Date().toISOString().replace("T", " ").slice(0, 19); }
 
 function encodeJson(value: unknown): string | null {
@@ -1383,6 +1480,29 @@ function normalizeDrivingplusReviews(value: unknown): Row[] {
       num_like: nullableNumber(row.numLike),
     };
   }).filter(Boolean).slice(0, 10) as Row[];
+}
+
+// DB 에 저장된 JSON 텍스트를 되읽는다. 깨진 값은 조용히 빈 값으로 떨어뜨린다(동기화를 막지 않는다).
+function decodeJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function decodeJsonObject(value: unknown): Row | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Row;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Row : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeDrivingplusBlogReviews(value: unknown): Row[] {

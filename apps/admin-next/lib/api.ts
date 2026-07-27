@@ -139,8 +139,35 @@ export async function downloadPostExport(domain: string, body: { post_ids: strin
   }
   return res.blob();
 }
+/**
+ * 학원 동기화 시작. 결과가 아니라 run_id 를 돌려준다 — 블로그리뷰 포함 시 12분 넘게 걸려
+ * 응답을 기다리는 방식으로는 완주할 수 없다(Node fetch 가 300초에 끊는다).
+ * 진행 상황은 getSyncRun 으로 폴링한다.
+ */
 export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; include_blog_reviews?: boolean; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 }) =>
-  api<{ ok: true; fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; warnings?: string[] }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
+  api<{ ok: true; run_id: string }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
+
+export type SyncRunResult = { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] };
+export type SyncRun = {
+  id: string;
+  domain: string;
+  scope: string;
+  status: "running" | "done" | "cancelled" | "error";
+  cancel_requested: boolean;
+  step: string | null;
+  count_total: number;
+  count_done: number;
+  result_obj: SyncRunResult | null;
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+};
+export const getSyncRun = (domain: string, runId: string) =>
+  api<SyncRun>(`/domains/${encodeURIComponent(domain)}/sync/runs/${encodeURIComponent(runId)}`);
+export const listSyncRuns = (domain: string, limit = 20) =>
+  api<{ items: SyncRun[] }>(`/domains/${encodeURIComponent(domain)}/sync/runs?limit=${limit}`);
+export const cancelSyncRun = (domain: string, runId: string) =>
+  api<{ ok: boolean }>(`/domains/${encodeURIComponent(domain)}/sync/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
 // 전역 행정구역 사전(region_directory). 도메인별이 아니라 모든 도메인이 같은 표를 본다.
 // domain 을 넘기면 그 도메인에서 사전이 실제로 얼마나 쓰이는지(셔틀 운행 지역 매칭) 함께 받는다.
 export type RegionDirectoryStatus = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
@@ -1269,6 +1269,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     await replaceAxis(domain.domain, "region", values); await onRefresh();
   }
   const [syncBusy, setSyncBusy] = useState("");
+  // 진행 중인 학원 동기화의 run_id. 12분짜리 작업이라 화면을 떠났다 돌아와도 이어봐야 한다.
+  const [syncRunId, setSyncRunId] = useState("");
   const [regionLevel, setRegionLevel] = useState<"2" | "3" | "all">("2");
   const [replaceRegionAxis, setReplaceRegionAxis] = useState(true);
   const [regionMsg, setRegionMsg] = useState("");
@@ -1352,17 +1354,77 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
+  /**
+   * 학원 동기화. 서버가 백그라운드로 돌리고 run_id 만 주므로 여기서 진행률을 폴링한다.
+   * 블로그리뷰가 학원 1곳당 2.6초라 380곳이면 12분 넘게 걸린다 — 창을 닫아도 서버는 계속 돈다.
+   */
   async function syncAcademies() {
     setSyncBusy("academies");
     try {
-      const res = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 });
-      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
+      const started = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 });
+      setSyncRunId(started.run_id);
+      setAcademyMsg("동기화를 시작했습니다. 블로그리뷰까지 받으므로 10분 이상 걸립니다.");
+      await pollSyncRun(started.run_id);
+    } catch (e) {
+      alert((e as Error).message);
+      setSyncBusy("");
+    }
+  }
+
+  async function pollSyncRun(runId: string) {
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      let run: SyncRun;
+      try {
+        run = await getSyncRun(domain.domain, runId);
+      } catch {
+        // 일시적인 통신 오류로 진행 중인 동기화를 실패로 단정하지 않는다. 다음 폴링에서 다시 본다.
+        continue;
+      }
+      const pct = run.count_total ? Math.floor((run.count_done / run.count_total) * 100) : 0;
+      if (run.status === "running") {
+        setAcademyMsg(`${run.step ?? "진행 중"} · ${run.count_done}/${run.count_total || "?"}${run.count_total ? ` (${pct}%)` : ""}${run.cancel_requested ? " · 취소 요청됨" : ""}`);
+        continue;
+      }
+      setSyncRunId("");
+      setSyncBusy("");
+      if (run.status === "cancelled") { setAcademyMsg("동기화를 취소했습니다. 저장 전에 멈췄으므로 기존 자료는 그대로입니다."); return; }
+      if (run.status === "error") { setAcademyMsg(`동기화 실패: ${run.error ?? "원인 미상"}`); return; }
+      const res = run.result_obj;
+      if (!res) { setAcademyMsg("동기화가 끝났습니다."); await onRefresh(); await loadAcademies(); return; }
+      const preserved = res.blog_review_preserved ? ` · 블로그리뷰 미조회 ${res.blog_review_preserved}곳은 기존값 유지` : "";
+      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외${preserved}${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
       setLastSync(recordSync(domain.domain, "academies", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개 · 리뷰 ${res.review_count}/블로그 ${res.blog_review_count}` }));
       await onRefresh();
       await loadAcademies();
-    } catch (e) { alert((e as Error).message); }
-    finally { setSyncBusy(""); }
+      return;
+    }
   }
+
+  async function cancelAcademySync() {
+    if (!syncRunId) return;
+    try { await cancelSyncRun(domain.domain, syncRunId); } catch (e) { alert((e as Error).message); }
+  }
+
+  // 동기화는 서버에서 도는 작업이라 화면을 새로 열어도 계속된다. 진행 중이면 다시 붙어 진행률을 보여준다
+  // (안 하면 버튼이 눌리는 것처럼 보이는데 서버는 409 로 거절한다).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { items } = await listSyncRuns(domain.domain, 5);
+        const running = items.find((run) => run.status === "running");
+        if (!running || cancelled) return;
+        setSyncBusy("academies");
+        setSyncRunId(running.id);
+        await pollSyncRun(running.id);
+      } catch {
+        // 이어붙이기 실패는 조용히 넘긴다. 동기화 자체와 무관하다.
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain.domain]);
   async function syncRegions() {
     setSyncBusy("regions");
     try {
@@ -1436,7 +1498,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     <div className="card card-pad grid">
       <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
       <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
-      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button><button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title="학원 목록·자체 후기·블로그리뷰를 원천에서 받아옵니다. 블로그리뷰는 원천이 동시 요청을 못 견뎌 한 곳씩 받으므로 10분 이상 걸립니다.">{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>
       {academyAttemptUnapplied && (

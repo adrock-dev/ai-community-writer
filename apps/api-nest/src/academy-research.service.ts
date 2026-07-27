@@ -36,10 +36,23 @@ export interface SyncOptions {
 }
 
 // 원천 서버를 몰아치지 않으면서 순차 대기를 없애는 선. 환경변수로 조절 가능.
+// 자체 후기(/v1/review/list) 기준이다 — 2026-07-27 운영 실측으로 동시 8에 80건 1.0초, 실패 0.
 const DEFAULT_SYNC_CONCURRENCY = 8;
 function syncConcurrency(requested?: number): number {
   const raw = requested ?? Number(process.env.ACADEMY_SYNC_CONCURRENCY ?? DEFAULT_SYNC_CONCURRENCY);
   return Math.max(1, Math.min(16, Number.isFinite(raw) ? Math.trunc(raw) : DEFAULT_SYNC_CONCURRENCY));
+}
+
+/**
+ * 블로그리뷰는 같은 서버인데도 감당 능력이 전혀 다르다(2026-07-27 운영 실측).
+ * 동시 1이면 60건 전건 성공(건당 2.6초), 동시 2에서 절반, 동시 4에서 5/24 만 성공.
+ * 초과분은 예외가 아니라 10초 뒤 code:200 + 빈 배열로 오고, 후기는 전량교체라 그대로 삭제가 된다.
+ * 그래서 자체 후기와 기본값을 분리한다. 380곳 기준 동시 1은 약 12분(백그라운드 run 이라 문제없다).
+ */
+const DEFAULT_BLOG_SYNC_CONCURRENCY = 1;
+function blogSyncConcurrency(): number {
+  const raw = Number(process.env.ACADEMY_BLOG_SYNC_CONCURRENCY ?? DEFAULT_BLOG_SYNC_CONCURRENCY);
+  return Math.max(1, Math.min(16, Number.isFinite(raw) ? Math.trunc(raw) : DEFAULT_BLOG_SYNC_CONCURRENCY));
 }
 
 // 고정 개수의 작업자가 목록을 나눠 가져가는 단순 풀. 순서는 보장하지 않는다(동기화에 순서는 의미가 없다).
@@ -89,7 +102,9 @@ export class AcademyResearchService {
       .map((row) => ({ external_id: String(row.external_id), academy_id: Number(row.external_id) }))
       .filter((row) => Number.isFinite(row.academy_id));
     opts.onTotal?.(targets.length);
-    return this.runSyncPool(targets, opts, async (target) => {
+    // 자체 후기 기본값(8)을 그대로 쓰면 안 된다. 블로그리뷰 엔드포인트는 동시요청에 무너져
+    // 대부분이 빈 응답으로 돌아오고, 전량교체 정책과 겹쳐 멀쩡한 후기가 삭제된다(blogSyncConcurrency 주석).
+    return this.runSyncPool(targets, { ...opts, concurrency: opts.concurrency ?? blogSyncConcurrency() }, async (target) => {
       const page = await this.pullBlogReviews(target.academy_id, opts.blogReviewLimit ?? 5);
       return this.storeBlogPlatform(target.external_id, page);
     });
@@ -191,9 +206,14 @@ export class AcademyResearchService {
       .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["reviews"] }));
   }
 
+  // 블로그리뷰는 예외로 실패하지 않는다. 원천이 처리 한계를 넘으면 10초 뒤 code:200 + 빈 배열을
+  // 돌려주기 때문에, catch 만으로는 "후기 없는 학원"과 구분되지 않아 그대로 전량교체 → 삭제가 된다.
+  // fetchBlogReviewsResilient 가 재시도와 "느린 0건" 판정까지 마친 뒤 null(=못 가져옴)로 알려준다.
   private pullBlogReviews(academyId: number, limit: number) {
-    return this.drivingplus.fetchBlogReviews(academyId, limit)
-      .then((page) => ({ ok: true, reviews: page.reviews }))
+    return this.drivingplus.fetchBlogReviewsResilient(academyId, limit)
+      .then((page) => page
+        ? { ok: true, reviews: page.reviews }
+        : { ok: false, reviews: [] as DrivingplusAcademy["blogReviews"] })
       .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["blogReviews"] }));
   }
 

@@ -630,10 +630,22 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 
 ### `POST /api/admin/domains/{domain}/sync/drivingplus/academies`
 
+동기화를 **백그라운드로 시작하고 `run_id` 를 즉시 반환한다.** 결과를 기다리지 않는다.
+
+블로그리뷰(`include_blog_reviews`)를 포함하면 학원 380곳 기준 12분 넘게 걸린다. 원천의
+`/v1/blog-review/list` 가 동시 요청을 못 견뎌 한 곳씩 받아야 하기 때문이다(동시 1이면 전건 성공,
+동시 4면 24곳 중 5곳만 성공). 그런데 Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로
+(`UND_ERR_HEADERS_TIMEOUT`, 실측 301초), 응답을 기다리는 구조로는 관리자 UI 에서 완주할 수 없다.
+
+이미 진행 중인 동기화가 있으면 `409` 를 반환한다(도메인이 달라도 같은 원천을 두드리므로 하나만 허용).
+
 요청:
 
 ```json
 {
+  "include_reviews": true,
+  "review_limit": 5,
+  "review_sort": "point",
   "include_blog_reviews": true,
   "blog_review_limit": 3
 }
@@ -644,11 +656,54 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 ```json
 {
   "ok": true,
-  "fetched": 100,
-  "upserted": 95,
-  "skipped": 5,
-  "warnings": []
+  "run_id": "1b0c…"
 }
+```
+
+### `GET /api/admin/domains/{domain}/sync/runs`
+
+동기화 실행 이력. `?limit=` (기본 20, 최대 200).
+
+```json
+{ "items": [ { "id": "1b0c…", "status": "running", "step": "블로그리뷰 조회 중", "count_done": 42, "count_total": 380 } ] }
+```
+
+### `GET /api/admin/domains/{domain}/sync/runs/{runId}`
+
+진행 상황 폴링용. `status` 는 `running` / `done` / `cancelled` / `error`.
+완료 시 `result_obj` 에 저장 요약이 담긴다.
+
+```json
+{
+  "id": "1b0c…",
+  "status": "done",
+  "step": "완료",
+  "count_done": 380,
+  "count_total": 380,
+  "result_obj": {
+    "fetched": 380,
+    "upserted": 380,
+    "skipped": 0,
+    "review_count": 1223,
+    "blog_review_count": 588,
+    "blog_review_preserved": 3,
+    "warnings": []
+  },
+  "error": null
+}
+```
+
+`blog_review_preserved` 는 **블로그리뷰를 못 가져와 기존 값을 유지한 학원 수**다. 원천은 처리
+한계를 넘으면 예외가 아니라 `code:200` + 빈 배열로 응답하므로, 이를 0건으로 받아들이면 전량교체
+정책상 멀쩡한 후기가 삭제된다. 이 값이 크면 원천 상태를 의심해야 한다.
+
+### `POST /api/admin/domains/{domain}/sync/runs/{runId}/cancel`
+
+진행 중인 동기화에 취소를 요청한다. 취소되면 **저장 단계로 넘어가지 않으므로 기존 자료는 그대로**다
+(절반만 조회한 목록으로 저장하면 아직 조회하지 않은 학원의 후기가 0건으로 지워진다).
+
+```json
+{ "ok": true }
 ```
 
 ### `POST /api/admin/domains/{domain}/sync/drivingplus/regions`
@@ -693,13 +748,15 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 }
 ```
 
+지역은 원천 왕복 1회라 응답 안에서 끝내고, 학원은 위와 같은 백그라운드 run 으로 넘긴다.
+
 응답:
 
 ```json
 {
   "ok": true,
   "regions": {},
-  "academies": {},
+  "run_id": "1b0c…",
   "axis_replaced": true,
   "level": "2"
 }

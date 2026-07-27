@@ -105,6 +105,9 @@ describe("upsertDrivingplusAcademies 저장 범위", () => {
     db.upsertDrivingplusAcademies(domain, [{
       ...normalized,
       reviewStats: { totalCount: 261, averagePoint: 4.6, sourceCount: 5 },
+      // blogReviews 와 blogReviewStats 는 항상 함께 온다. blogReviews 가 undefined 면
+      // "원천에서 못 가져옴"으로 해석돼 기존 값이 보존되고 통계도 갱신되지 않는다.
+      blogReviews: [{ title: "○○운전전문학원 후기", content: "장내기능 코스가 넓어서 연습하기 좋았습니다.", link: "https://blog.example.test/1", postdate: "20260102", images: [] }],
       blogReviewStats: { searchTotalCount: 1297, sourceCount: 5 },
     }] as never);
     const row = db.get("SELECT * FROM academies WHERE domain=? AND external_id=?", [domain, "4242"])!;

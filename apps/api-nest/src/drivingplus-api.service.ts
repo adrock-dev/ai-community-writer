@@ -4,6 +4,39 @@ import { drivingplusApiBaseUrl } from "./runtime-config.js";
 export type SeoRegionLevel = "all" | "2" | "3";
 export type DrivingplusReviewSort = "new" | "point";
 
+/** 사용자가 동기화를 멈춘 경우. 실패(원천 장애)와 구분해야 실행 이력이 오해를 안 만든다. */
+export class CancelledError extends Error {
+  constructor() {
+    super("사용자가 동기화를 취소했습니다.");
+    this.name = "CancelledError";
+  }
+}
+
+/**
+ * 원천 조회 노브. 엔드포인트별 감당 능력이 전혀 다르다(2026-07-27 운영 실측).
+ * - `/v1/review/list`      : 동시 8로 80건 1.0초, 실패 0.
+ * - `/v1/blog-review/list` : 동시 1이면 60건 전건 성공(건당 2.6초, 최대 4.2초).
+ *   동시 2에서 절반, 동시 4에서 5/24 만 성공. 외부 블로그 검색을 경유하는 탓으로 보인다.
+ *
+ * 까다로운 점은 초과분이 **예외가 아니라 10초 뒤 `code:200` + 빈 배열**로 온다는 것이다.
+ * 그래서 "느린 0건"을 실패로 판정한다 — 정상 응답 최대치(4.2초)와 타임아웃(10초) 사이가
+ * 넉넉히 벌어져 있어 구분이 선다. 이 간격이 좁아지면 판정을 다시 봐야 한다.
+ *
+ * 값은 실행 시점에 읽는다(모듈 로드 시점이 아니라). 테스트가 덮어쓸 수 있어야 하고,
+ * 원천이 개선되면 재배포 없이 조정해 재측정하기 위해서다. 380곳 기준 동시 1은 약 12분.
+ */
+function blogReviewKnobs() {
+  return {
+    concurrency: intEnv("DRIVINGPLUS_BLOG_REVIEW_CONCURRENCY", 1, 1, 16),
+    attempts: intEnv("DRIVINGPLUS_BLOG_REVIEW_ATTEMPTS", 3, 1, 5),
+    retryDelayMs: intEnv("DRIVINGPLUS_BLOG_REVIEW_RETRY_DELAY_MS", 700, 0, 10_000),
+    slowEmptyMs: intEnv("DRIVINGPLUS_BLOG_REVIEW_SLOW_EMPTY_MS", 8_000, 0, 60_000),
+    // 실패가 이 정도로 번지면 부분 반영 없이 동기화를 통째로 중단한다.
+    abortMinFailures: intEnv("DRIVINGPLUS_BLOG_REVIEW_ABORT_MIN_FAILURES", 10, 1, 10_000),
+    abortRatio: 0.2,
+  };
+}
+
 export interface DrivingplusAcademy {
   id: number;
   title: string;
@@ -182,7 +215,25 @@ export class DrivingplusApiService {
   readonly baseUrl = drivingplusApiBaseUrl();
   private readonly timeoutMs = Number(process.env.DRIVINGPLUS_API_TIMEOUT_MS || 30000);
 
-  async fetchAcademies(opts: { includeReviews?: boolean; reviewLimit?: number; reviewSort?: DrivingplusReviewSort; includeBlogReviews?: boolean; blogReviewLimit?: number } = {}): Promise<DrivingplusAcademy[]> {
+  /**
+   * 학원 목록 + (선택) 자체 후기 + (선택) 블로그리뷰.
+   *
+   * 블로그리뷰를 포함하면 학원 380곳 기준 12분 넘게 걸린다(순차 조회). 그래서 호출부가
+   * 진행 상황을 보여주고 중간에 멈출 수 있도록 onStep/onProgress/shouldCancel 을 받는다.
+   * 취소되면 그때까지 모은 결과를 반환하지 않고 CancelledError 를 던진다 — 절반만 받은
+   * 목록으로 upsert 하면 나머지 학원의 후기가 "0건"으로 지워지기 때문이다.
+   */
+  async fetchAcademies(opts: {
+    includeReviews?: boolean;
+    reviewLimit?: number;
+    reviewSort?: DrivingplusReviewSort;
+    includeBlogReviews?: boolean;
+    blogReviewLimit?: number;
+    onStep?: (step: string, total?: number) => void;
+    onProgress?: (done: number, total: number) => void;
+    shouldCancel?: () => boolean;
+  } = {}): Promise<DrivingplusAcademy[]> {
+    opts.onStep?.("학원 목록 조회 중");
     const payload = await this.get<{ code?: number; message?: string; data?: unknown }>("/v1/academy/get-all-academy");
     const rows = requireArray(payload, "academy data");
     const academies = rows.map(normalizeAcademy).filter((row): row is DrivingplusAcademy => Boolean(row));
@@ -190,9 +241,16 @@ export class DrivingplusApiService {
     const reviewLimit = Math.max(1, Math.min(10, Math.trunc(Number(opts.reviewLimit ?? 5))));
     const reviewSort = opts.reviewSort === "new" ? "new" : "point";
     const blogReviewLimit = Math.max(1, Math.min(10, Math.trunc(Number(opts.blogReviewLimit ?? 3))));
-    return mapLimit(academies, 8, async (academy) => {
-      const next: DrivingplusAcademy = { ...academy };
-      if (opts.includeReviews) {
+
+    // 1단계: 자체 후기. 이 엔드포인트는 동시 요청에 강하다(2026-07-27 운영 실측: 동시 8로 80건을
+    // 1.0초, 실패 0). 블로그리뷰와 같은 루프에 두면 블로그리뷰 속도에 발이 묶이므로 분리한다.
+    let enriched: DrivingplusAcademy[] = academies;
+    if (opts.includeReviews) {
+      opts.onStep?.("자체 후기 조회 중", academies.length);
+      let reviewDone = 0;
+      enriched = await mapLimit(enriched, intEnv("DRIVINGPLUS_REVIEW_CONCURRENCY", 8, 1, 16), async (academy) => {
+        if (opts.shouldCancel?.()) throw new CancelledError();
+        const next: DrivingplusAcademy = { ...academy };
         try {
           const page = await this.fetchReviews(academy.id, reviewLimit, reviewSort);
           next.reviews = page.reviews.length ? page.reviews : academy.reviews;
@@ -200,19 +258,77 @@ export class DrivingplusApiService {
         } catch {
           next.reviews = academy.reviews;
         }
-      }
-      if (!opts.includeBlogReviews) return next;
-      try {
-        const page = await this.fetchBlogReviews(academy.id, blogReviewLimit);
-        return {
-          ...next,
-          blogReviews: page.reviews,
-          blogReviewStats: { searchTotalCount: page.searchTotalCount, sourceCount: page.sourceCount },
-        };
-      } catch {
+        opts.onProgress?.(++reviewDone, academies.length);
         return next;
+      });
+    }
+    if (!opts.includeBlogReviews) return enriched;
+
+    // 2단계: 블로그리뷰. 원천이 지속 동시요청을 못 버티므로 기본 순차다(위 blogReviewKnobs 주석).
+    const knobs = blogReviewKnobs();
+    opts.onStep?.("블로그리뷰 조회 중", enriched.length);
+    let missing = 0;
+    let blogDone = 0;
+    const withBlogReviews = await mapLimit(enriched, knobs.concurrency, async (academy) => {
+      if (opts.shouldCancel?.()) throw new CancelledError();
+      const page = await this.fetchBlogReviewsResilient(academy.id, blogReviewLimit, knobs);
+      opts.onProgress?.(++blogDone, enriched.length);
+      // 못 가져온 경우 blogReviews 를 undefined 로 남긴다. upsertDrivingplusAcademies 가 이때
+      // 기존 blog_reviews 컬럼을 보존한다(빈 배열로 덮으면 전량교체 정책상 삭제가 된다).
+      if (!page) {
+        missing++;
+        return academy;
       }
+      return {
+        ...academy,
+        blogReviews: page.reviews,
+        blogReviewStats: { searchTotalCount: page.searchTotalCount, sourceCount: page.sourceCount },
+      };
     });
+
+    // 개별 보존만으로는 부족하다. 원천이 통째로 흔들리는 날에는 "정상 0건"이 대량으로 섞여 들어와
+    // 후기가 대규모 삭제된다(실제로 453 → 342건으로 줄어든 적이 있다). 실패가 임계를 넘으면
+    // 부분 동기화로 진행하지 않고 통째로 중단해, 호출부가 DB 를 건드리지 못하게 한다.
+    const failureRatio = withBlogReviews.length ? missing / withBlogReviews.length : 0;
+    if (missing >= knobs.abortMinFailures && failureRatio >= knobs.abortRatio) {
+      throw new Error(
+        `DrivingPlus 블로그리뷰 조회가 ${withBlogReviews.length}곳 중 ${missing}곳에서 실패했습니다(${Math.round(failureRatio * 100)}%). ` +
+        `기존 후기가 대량 삭제되는 것을 막기 위해 동기화를 중단했습니다. 원천 상태 확인 후 다시 실행하세요.`,
+      );
+    }
+    return withBlogReviews;
+  }
+
+  /**
+   * 블로그리뷰 1건 조회.
+   *
+   * 반환값의 의미가 호출부 계약이다:
+   * - 페이지  → 원천이 확인해준 결과. 0건이면 정말 0건이므로 기존 후기를 지워도 된다.
+   * - `null`  → 못 가져왔다. 기존 후기를 유지해야 한다.
+   *
+   * 원천이 실패를 `code:200` + 빈 배열로 감추므로 0건은 그 자체로는 판단 근거가 못 된다.
+   * 두 가지를 함께 본다. (1) 0건이면 일단 재시도한다. (2) **느린 0건은 실패로 본다** —
+   * 과부하 응답은 10초 타임아웃 뒤 오고 정상 응답은 최대 4.2초였다(실측). 빠른 0건만
+   * 진짜 0건으로 인정한다.
+   */
+  async fetchBlogReviewsResilient(
+    academyId: number,
+    limit: number,
+    knobs: { attempts: number; retryDelayMs: number; slowEmptyMs: number } = blogReviewKnobs(),
+  ): Promise<DrivingplusBlogReviewPage | null> {
+    let confirmedEmpty: DrivingplusBlogReviewPage | null = null;
+    for (let attempt = 0; attempt < knobs.attempts; attempt++) {
+      if (attempt > 0 && knobs.retryDelayMs > 0) await sleep(knobs.retryDelayMs * attempt);
+      const startedAt = Date.now();
+      try {
+        const page = await this.fetchBlogReviews(academyId, limit);
+        if (page.sourceCount > 0) return page;
+        if (Date.now() - startedAt < knobs.slowEmptyMs) confirmedEmpty = page;
+      } catch {
+        // 다음 시도로
+      }
+    }
+    return confirmedEmpty;
   }
 
   async fetchReviews(academyId: number, limit = 5, sort: "new" | "point" = "point"): Promise<DrivingplusReviewPage> {
@@ -497,6 +613,18 @@ function num(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function intEnv(name: string, fallback: number, min: number, max: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+  const parsed = Math.trunc(Number(raw));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
