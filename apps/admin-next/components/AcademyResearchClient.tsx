@@ -237,7 +237,8 @@ export default function AcademyResearchClient() {
                   <span className="badge warn">수집 꺼짐</span>
                   <span className="muted small">
                     원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞입니다. 글 생성에도 쓰지 않습니다.
-                    필요하면 설정 화면에서 켤 수 있습니다.
+                    블로그 글이 실제 그 학원의 글인지 가려내는 검증 기능이 있으면, 검증을 통과한 것만 골라 쓸 수 있을 것입니다.
+                    수집 자체는 필요하면 설정 화면에서 켤 수 있습니다.
                     {lastBlogDone ? " 이미 받아 둔 자료는 학원 상세에 그대로 남아 있습니다." : ""}
                   </span>
                 </>
