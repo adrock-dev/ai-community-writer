@@ -45,6 +45,17 @@ export class AcademyResearchController {
     return run;
   }
 
+  // 실행 취소 요청. 즉시 끊지 않고 플래그만 세운다 —
+  // 실행 루프가 학원 사이에서 확인하므로 처리 중이던 학원은 온전히 끝난다.
+  @Post("runs/:runId/cancel")
+  cancelRun(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("runId") runId: string) {
+    checkAuth(req, headers);
+    if (!this.db.getRun(runId)) throw new HttpException("run not found", 404);
+    const requested = this.db.requestCancel(runId);
+    if (!requested) throw new HttpException("이미 종료된 실행입니다.", 409);
+    return { ok: true, run_id: runId };
+  }
+
   // DrivingPlus 전체 동기화(base + 리뷰 원문). 백그라운드로 돌고 run_id 를 즉시 반환한다 —
   // 응답을 끝까지 기다리면 그 사이 API 재시작·창 닫기만으로 요청이 끊긴다.
   @Post("sync")

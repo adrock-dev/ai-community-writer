@@ -36,8 +36,10 @@ export interface ResearchRun {
   count_total: number;
   count_done: number;
   error?: string | null;
-  /** 실행 결과 요약 JSON 문자열. 동기화는 {matched,total,reviews}. */
+  /** 실행 결과 요약 JSON 문자열. 동기화는 {matched,total,reviews,cancelled}. */
   result?: string | null;
+  /** 1 이면 취소 요청됨. 아직 running 이면 "취소 중"이다. */
+  cancel_requested?: number | null;
   started_at: string;
   finished_at?: string | null;
 }
@@ -81,6 +83,9 @@ export const listAcademyResearch = (region?: string, q?: string) => {
 export const getAcademyResearch = (externalId: string) => api<AcademyFull>(`/academy-research/${encodeURIComponent(externalId)}`);
 export const listStatusDefs = () => api<{ items: StatusDef[] }>("/academy-research/status-defs");
 export const listResearchRuns = () => api<{ items: ResearchRun[] }>("/academy-research/runs");
+// 취소 "요청". 처리 중이던 학원은 마치고 멈추므로 즉시 반영되지는 않는다.
+export const cancelResearchRun = (runId: string) =>
+  api<{ ok: boolean; run_id: string }>(`/academy-research/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
 // 백그라운드 시작만 하고 run_id 를 받는다. 진행률은 listResearchRuns 폴링으로 본다.
 export const syncRegion = () => api<{ ok: boolean; run_id?: string; error?: string }>("/academy-research/sync", { method: "POST", body: JSON.stringify({}) });
 export const syncOneAcademy = (externalId: string) => api<{ external_id: string; found: boolean; reviews: number }>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });

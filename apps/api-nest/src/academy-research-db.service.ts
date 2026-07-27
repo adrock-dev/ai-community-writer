@@ -264,6 +264,8 @@ export class AcademyResearchDbService implements OnModuleInit {
     const runCols = new Set(this.all("PRAGMA table_info(research_runs)").map((r) => r.name));
     // 실행 결과 요약(JSON). 동기화는 학원 수 외에 리뷰 건수도 남겨야 해서 진행률 컬럼만으로는 부족하다.
     if (!runCols.has("result")) this.db.exec("ALTER TABLE research_runs ADD COLUMN result TEXT");
+    // 취소 요청 플래그. 실행 루프가 매 항목마다 읽어 스스로 멈춘다(중간에 끊지 않으므로 데이터가 깨지지 않는다).
+    if (!runCols.has("cancel_requested")) this.db.exec("ALTER TABLE research_runs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0");
   }
 
   // 실행은 전부 API 프로세스 메모리 안에서만 돈다. 기동 시점에 'running' 인 행은
@@ -495,6 +497,18 @@ export class AcademyResearchDbService implements OnModuleInit {
   }
 
   listRuns(limit = 30): Row[] { return this.all("SELECT * FROM research_runs ORDER BY started_at DESC LIMIT ?", [Math.max(1, Math.min(200, limit))]); }
+
+  // 취소 요청. 실행 중인 것만 대상으로 한다(이미 끝난 실행에 표시해 봐야 의미가 없다).
+  requestCancel(id: string): boolean {
+    const run = this.getRun(id);
+    if (!run || run.status !== "running") return false;
+    this.run("UPDATE research_runs SET cancel_requested=1 WHERE id=?", [id]);
+    return true;
+  }
+
+  isCancelRequested(id: string): boolean {
+    return Number(this.get("SELECT cancel_requested FROM research_runs WHERE id=?", [id])?.cancel_requested ?? 0) === 1;
+  }
 
   // 진행 중인 실행(스코프별). 재시작 유령은 init 에서 정리되므로 여기 걸리면 실제로 도는 중이다.
   findRunningRun(scope?: string): Row | undefined {

@@ -15,14 +15,39 @@ const SCALAR_KEYS: Array<keyof ResearchResult> = [
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
 ];
 
-export interface SyncResult { matched: number; total: number; reviews: number }
+export interface SyncResult { matched: number; total: number; reviews: number; cancelled: boolean }
 export interface SyncOptions {
   reviewLimit?: number;
   blogReviewLimit?: number;
+  /** 학원 간 동시 처리 수. 학원 1곳당 원천 왕복이 2회라 순차로 돌면 곳수에 비례해 느려진다. */
+  concurrency?: number;
   /** 전체 학원 수를 알게 된 시점(목록 조회 직후) 1회 호출. */
   onTotal?: (total: number) => void;
   /** 학원 1곳 처리마다 호출. */
   onProgress?: (done: number, reviews: number) => void;
+  /** 매 학원 직전에 확인. true 면 남은 학원을 처리하지 않고 멈춘다. */
+  shouldCancel?: () => boolean;
+}
+
+// 원천 서버를 몰아치지 않으면서 순차 대기를 없애는 선. 환경변수로 조절 가능.
+const DEFAULT_SYNC_CONCURRENCY = 8;
+function syncConcurrency(requested?: number): number {
+  const raw = requested ?? Number(process.env.ACADEMY_SYNC_CONCURRENCY ?? DEFAULT_SYNC_CONCURRENCY);
+  return Math.max(1, Math.min(16, Number.isFinite(raw) ? Math.trunc(raw) : DEFAULT_SYNC_CONCURRENCY));
+}
+
+// 고정 개수의 작업자가 목록을 나눠 가져가는 단순 풀. 순서는 보장하지 않는다(동기화에 순서는 의미가 없다).
+async function runPool<T>(items: T[], limit: number, worker: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next++;
+      const item = items[index];
+      if (item === undefined) return;
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
 }
 
 // DrivingPlus 동기화 + AI 심층조사 오케스트레이터.
@@ -42,12 +67,19 @@ export class AcademyResearchService {
     opts.onTotal?.(all.length);
     let reviewCount = 0;
     let done = 0;
-    for (const academy of all) {
-      reviewCount += await this.upsertWithReviews(academy, opts);
+    let cancelled = false;
+    await runPool(all, syncConcurrency(opts.concurrency), async (academy) => {
+      // 이미 처리 중이던 학원은 끝까지 마친다 — 후기 교체가 트랜잭션 중간에 끊기지 않게.
+      if (cancelled) return;
+      if (opts.shouldCancel?.()) { cancelled = true; return; }
+      // `x += await f()` 는 좌변을 await 전에 읽어 동시 실행 시 증가분이 서로 덮인다.
+      // 반드시 await 를 끝낸 뒤 읽고-더하고-쓴다.
+      const stored = await this.upsertWithReviews(academy, opts);
+      reviewCount += stored;
       done += 1;
       opts.onProgress?.(done, reviewCount);
-    }
-    return { matched: all.length, total: all.length, reviews: reviewCount };
+    });
+    return { matched: done, total: all.length, reviews: reviewCount, cancelled };
   }
 
   // 동기화를 백그라운드로 시작하고 run_id 를 즉시 반환한다.
@@ -62,8 +94,9 @@ export class AcademyResearchService {
       ...opts,
       onTotal: (total) => this.db.updateRun(runId, { count_total: total }),
       onProgress: (done, reviews) => this.db.updateRun(runId, { count_done: done, result: { reviews } }),
+      shouldCancel: () => this.db.isCancelRequested(runId),
     })
-      .then((res) => this.db.updateRun(runId, { status: "done", count_done: res.matched, result: res, finished: true }))
+      .then((res) => this.db.updateRun(runId, { status: res.cancelled ? "cancelled" : "done", count_done: res.matched, result: res, finished: true }))
       .catch((error) => {
         this.logger.error(`sync failed: ${error?.message || error}`);
         this.db.updateRun(runId, { status: "error", error: String(error?.message || error), finished: true });
@@ -169,9 +202,13 @@ export class AcademyResearchService {
     return { ok: true, run_id: runId, count: targets.length };
   }
 
+  // 조사는 학원 1곳당 웹 수집 + LLM 호출이라 동시 실행하지 않는다(CLI 서브프로세스가 곱절로 뜬다).
+  // 취소는 학원 사이에서만 확인하므로, 진행 중이던 1곳은 마치고 멈춘다.
   private async runRegionBatch(runId: string, externalIds: string[], provider: ResearchProviderPreference): Promise<void> {
     let done = 0;
+    let cancelled = false;
     for (const externalId of externalIds) {
+      if (this.db.isCancelRequested(runId)) { cancelled = true; break; }
       try {
         await this.researchOne(externalId, { method: "a_batch", provider });
       } catch (error: any) {
@@ -180,7 +217,7 @@ export class AcademyResearchService {
       done += 1;
       this.db.updateRun(runId, { count_done: done });
     }
-    this.db.updateRun(runId, { status: "done", finished: true });
+    this.db.updateRun(runId, { status: cancelled ? "cancelled" : "done", finished: true });
   }
 
   private persistResearch(externalId: string, parsed: ResearchResult, meta: { engine: ResearchProvider; method: string }, fallbackSourceUrls: string[] = []): void {

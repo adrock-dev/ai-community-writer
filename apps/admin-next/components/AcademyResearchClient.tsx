@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
-  listAcademyResearch, listResearchRuns, researchRegion, syncRegion,
+  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncRegion,
 } from "@/lib/academy-research";
 import { formatDateTime, formatShortDate } from "@/lib/date";
 
@@ -65,6 +65,7 @@ export default function AcademyResearchClient() {
     if (!run || run.status === "running") return;
     watchedRunRef.current = null;
     if (run.status === "error") setError(`${runLabel(run)} 실패 — ${run.error || "원인 미상"}`);
+    else if (run.status === "cancelled") setNotice(`${runLabel(run)} 중단됨 — ${runSummary(run)}까지 저장했습니다.`);
     else setNotice(`${runLabel(run)} 완료 — ${runSummary(run)}`);
     load();
   }, [runs, load]);
@@ -102,6 +103,18 @@ export default function AcademyResearchClient() {
       setError(e?.message || "조사 시작 실패");
     } finally {
       setBusy("");
+    }
+  }
+
+  async function onCancel(run: ResearchRun) {
+    if (!confirm(`${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.`)) return;
+    setError("");
+    try {
+      await cancelResearchRun(run.id);
+      setNotice("중단을 요청했습니다. 곧 멈춥니다.");
+      await loadRuns();
+    } catch (e: any) {
+      setError(e?.message || "중단 요청 실패");
     }
   }
 
@@ -165,12 +178,20 @@ export default function AcademyResearchClient() {
 
       {[activeSyncRun, activeResearchRun].filter(Boolean).map((run) => (
         <div key={run!.id} className="card card-pad" style={{ margin: "8px 0" }}>
-          <b>{runLabel(run!)} 진행</b> — {runDetail(run!)} · {run!.count_done}/{run!.count_total || "?"}
+          <div className="row" style={{ alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <b>{runLabel(run!)} 진행</b>
+            <button className="btn" onClick={() => onCancel(run!)} disabled={Boolean(run!.cancel_requested)} style={{ whiteSpace: "nowrap" }}>
+              {run!.cancel_requested ? "중단하는 중…" : "중단"}
+            </button>
+          </div>
+          <div className="muted small" style={{ marginTop: 4 }}>{runDetail(run!)} · {run!.count_done}/{run!.count_total || "?"}</div>
           <div style={{ height: 8, background: "var(--surface-2, #eee)", borderRadius: 999, marginTop: 8, overflow: "hidden" }}>
-            <div style={{ height: "100%", width: `${pct(run!)}%`, background: "#1f6feb", transition: "width .4s" }} />
+            <div style={{ height: "100%", width: `${pct(run!)}%`, background: run!.cancel_requested ? "#b0851f" : "#1f6feb", transition: "width .4s" }} />
           </div>
           <p className="muted small" style={{ margin: "8px 0 0" }}>
-            서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다.
+            {run!.cancel_requested
+              ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다."
+              : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."}
           </p>
         </div>
       ))}
@@ -223,7 +244,9 @@ function lastSyncLabel(run: ResearchRun | undefined, running: boolean): string {
   if (running) return "진행 중";
   if (!run) return "동기화 기록 없음";
   const when = formatDateTime(run.finished_at || run.started_at);
-  if (run.status !== "done") return `마지막 시도 ${when} · 중단됨(${run.count_done}/${run.count_total || "?"}곳만 갱신)`;
+  const partial = `${run.count_done}/${run.count_total || "?"}곳만 갱신`;
+  if (run.status === "cancelled") return `마지막 시도 ${when} · 사용자 중단(${partial})`;
+  if (run.status !== "done") return `마지막 시도 ${when} · 중단됨(${partial})`;
   const result = parseResult(run.result);
   const reviews = typeof result?.reviews === "number" ? ` · 후기 ${result.reviews.toLocaleString()}건` : "";
   return `마지막 동기화 ${when} · 학원 ${result?.matched ?? run.count_done}곳${reviews}`;
