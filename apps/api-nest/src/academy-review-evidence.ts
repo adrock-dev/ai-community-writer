@@ -142,7 +142,7 @@ export function studentReviewFactLines(row: Row, seed: string): string[] {
   const others = studentReviewsForAcademy(row)
     .filter((item) => isContentEligibleReviewText(item.quote) && item.quote !== review.quote)
     .map((item) => `“${truncateReviewQuote(item.quote)}”`);
-  if (others.length) lines.push(`수강생 반응 근거(분위기 판단용, 본문 인용 금지): ${others.join(" | ")}`);
+  if (others.length) lines.push(`추가 후기(내부 판단용 · 본문에 인용·언급 금지): ${others.join(" | ")}`);
   return lines;
 }
 

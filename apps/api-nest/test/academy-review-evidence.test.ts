@@ -35,7 +35,7 @@ describe("academy student review evidence", () => {
     const lines = studentReviewFactLines(row, "slot-a");
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("수강생 리뷰: ");
-    expect(lines[1]).toContain("수강생 반응 근거(분위기 판단용, 본문 인용 금지): ");
+    expect(lines[1]).toContain("추가 후기(내부 판단용 · 본문에 인용·언급 금지): ");
     // 근거 줄에는 인용으로 뽑힌 그 후기가 중복되지 않는다.
     expect(lines[1]).not.toContain(first!.quote);
   });
