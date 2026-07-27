@@ -4,20 +4,32 @@ DrivingPlus 원천 API가 주는 필드가 **어디에 저장되고, 실제로 �
 
 저장돼 있지만 안 쓰이는 값이 여럿이고, 그중 상당수는 **의도적으로 안 쓰는 것**이다. 근거를 남겨두지 않으면 다음 사람이 "이건 왜 안 쓰지?" 하며 같은 조사를 반복하게 되므로 판단 근거까지 적는다.
 
-확인 시점: 2026-07-22 / 방법: dev endpoint 386건, prod endpoint 336건 전수 조회 후 코드 참조 추적.
+확인 시점: 2026-07-27(endpoint 차이) / 2026-07-22(필드별 사용 추적) / 방법: dev·prod endpoint 전수 조회 후 코드 참조 추적.
 
-## 1. 원천 endpoint 차이
+## 1. 원천 endpoint 차이 — 2026-07-27 기준 **차이 없음**
 
 | endpoint | 학원 수 | 비고 |
 | --- | --- | --- |
-| dev `api-dev.drivingplus.me:18104` | 386 | 전 필드 제공 |
-| prod `api.drivingplus.me` | 336 | 아래 필드가 **키 자체로 없음** |
+| dev `api-dev.drivingplus.me:18104` | 386 | 운영에 없는 6곳은 테스트 데이터로 보인다 |
+| prod `api.drivingplus.me` | 380 | **전 필드 제공**(키 존재 380/380) |
 
-prod 에 **없는** 필드: `seoContent`, `shuttleBuses`, `operateHour`, `shuttleBusUrl`, `shuttleBusDetail`, `shuttleBusImageUrl`.
+2026-07-27 실측 결과 **prod 도 전 필드를 내려준다.** 값이 있는 학원 수(prod / dev):
 
-prod 에도 **있는** 필드(과거 "dev 전용"으로 알려졌던 것 정정): `licenseTypes`(336건), `educationPerformance`(329건), `roadCourses`(233건). `priceObservations` 는 키는 있으나 prod 는 전 건 빈 배열이다.
+| 필드 | prod | dev |
+| --- | --- | --- |
+| `seoContent` | 380 | 386 |
+| `shuttleBuses` | 212 | 212 |
+| `operateHour` | 256 | 262 |
+| `licenseTypes` | 336 | 336 |
+| `educationPerformance` | 331 | 331 |
+| `roadCourses` | 275 | 274 |
+| `priceObservations` | 208 | 208 |
+| `reviews` | 342 | 340 |
+| `shuttleBusUrl` / `Detail` / `ImageUrl` | 4 / 5 / 1 | 4 / 5 / 1 |
 
-즉 prod 로 전환하면 셔틀 노선표·영업시간·소개문이 사라진다. 수강료(`educationPerformance.fees`)와 면허 종별은 유지된다.
+**이 문서에는 2026-07-22까지 "prod 에는 `seoContent`·`shuttleBuses`·`operateHour`·`shuttleBus*` 키 자체가 없다"고 적혀 있었는데 지금은 사실이 아니다.** 그 서술 때문에 운영 전환이 오래 보류됐고(`.env`·`.env.example`·`db.service.ts` 주석에도 같은 내용이 퍼져 있었다), 실제로 전환해 보니 손실이 없었다. 원천 필드 가정은 **바꾸기 전에 반드시 실측**한다.
+
+예외 하나 — **블로그 리뷰(`/v1/blog-review/list/:id`)는 운영이 대부분 0건을 반환한다**(보유 학원 70곳 → 8곳). 동기화는 받아온 값으로 무조건 덮어쓰므로 기존 블로그 리뷰가 지워진다. 이는 원천이 정상화될 때까지 감수하기로 한 동작이며(2026-07-27 합의), 블로그 리뷰는 본문에서 이미 제외돼 있어 글 품질에는 영향이 없다.
 
 ## 2. 필드 → 저장 위치 → 사용 여부
 
