@@ -348,7 +348,13 @@ function DiagnosisLine({ run }: { run?: ResearchRun }) {
 function collectBreakdown(run: ResearchRun): string {
   const r = parseResult(run.result);
   if (!r || typeof r.with_data !== "number") return "";
-  return `수집 ${r.with_data}곳 · 빈 응답 ${r.empty ?? 0}곳 · 조회 실패 ${r.failed ?? 0}곳`;
+  // 이 셋은 후기 조회 결과만 센다. 학원 기본정보는 목록 API 한 번으로 전부 받아오므로
+  // 학원별로 성패가 갈리지 않는다 — 그래서 "수집"이라고만 쓰면 기본정보로 오해된다.
+  const unit = reviewUnit(run);
+  return `${unit} 있음 ${r.with_data}곳 · ${unit} 0건 ${r.empty ?? 0}곳 · 조회 실패 ${r.failed ?? 0}곳`;
+}
+function reviewUnit(run: ResearchRun): string {
+  return run.scope === "sync_blog" ? "블로그리뷰" : "후기";
 }
 
 // 저조의 원인을 문장으로. 표본이 너무 적으면 단정하지 않는다.
@@ -359,11 +365,12 @@ function collectDiagnosis(run: ResearchRun): string {
   if (done < 10) return "";
   const empty = Number(r.empty ?? 0);
   const failed = Number(r.failed ?? 0);
+  const unit = reviewUnit(run);
   if (failed >= done * 0.3) {
-    return "조회 실패가 많습니다. 원천 장애로 보이며, 실패한 학원의 기존 후기는 지우지 않고 그대로 두었습니다.";
+    return `${unit} 조회 실패가 많습니다. 원천 장애로 보이며, 실패한 학원의 기존 ${unit}는 지우지 않고 그대로 두었습니다.`;
   }
   if (empty >= done * 0.5) {
-    return "대부분이 빈 응답입니다. 원천이 목록을 주지 않는 상태로 보입니다. 교체 정책상 해당 학원의 기존 후기는 지워집니다.";
+    return `대부분의 학원에서 ${unit}가 0건으로 내려왔습니다. 원천이 목록을 주지 않는 상태로 보이며, 교체 정책상 해당 학원의 기존 ${unit}는 지워집니다. (학원 기본정보는 정상 갱신됐습니다)`;
   }
   return "";
 }
