@@ -50,15 +50,36 @@ export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: 
   }
 
   // 3) 남는 자리에 일반 페이지. 정적 HTML이 부족하면 Playwright 렌더링으로 보강.
-  const candidates = rankCandidates(dedupe(urls)).slice(0, maxSources);
+  //
+  // 플레이스가 알려준 공식 홈페이지를 최우선 후보로 얹는다. 플레이스에는 영업시간·전화·
+  // 주소·편의시설만 있고 수강료·셔틀·합격률이 없는데, 그 셋이 학원별 차별화의 재료다.
+  // 검색 결과 파싱에 기대지 않고 확보할 수 있는 가장 확실한 경로다.
+  const homepages = new Set(sources.flatMap((s) => homepageUrlsFromPlaceText(s.text)));
+  const candidates = limitPerHost(dedupe([...homepages, ...rankCandidates(dedupe(urls))])).slice(0, maxSources);
   for (const url of candidates) {
     if (sources.length >= maxSources) break;
     try {
-      let page = await fetchReadable(url, timeoutMs);
+      const fetched = await fetchReadable(url, timeoutMs);
+      let page: WebSource | null = fetched;
       if (shouldTryRenderedFetch(page)) {
         page = await fetchRenderedReadable(url, timeoutMs).catch(() => page);
       }
-      if (page && page.text.length >= 200 && sourceMatchesTarget(base, page)) sources.push(page);
+      if (!page || page.text.length < 200) continue;
+      // 플레이스가 그 업체의 홈페이지로 지목한 주소는 신원이 이미 확인된 것이다
+      // (플레이스 자체를 sourceMatchesTarget 으로 대조한 뒤에만 여기 온다).
+      // 공식 홈페이지는 주소·전화를 이미지로만 싣는 경우가 많아, 다시 대조하면
+      // 정작 수강료가 있는 진짜 근거가 탈락한다(목포: 홈페이지 확보 실패 확인).
+      const trusted = homepages.has(url);
+      if (!trusted && !sourceMatchesTarget(base, page)) continue;
+      sources.push({ url: page.url, title: page.title, text: page.text });
+
+      // 신원이 확인된 사이트라면 수강료·셔틀 서브페이지까지 따라간다.
+      if (!fetched?.html) continue;
+      for (const subUrl of feeSubpageUrls(fetched.html, url, maxSources - sources.length)) {
+        if (sources.length >= maxSources) break;
+        const sub = await fetchReadable(subUrl, timeoutMs).catch(() => null);
+        if (sub && sub.text.length >= 200) sources.push({ url: sub.url, title: sub.title, text: sub.text });
+      }
     } catch { /* 무시 */ }
   }
   return sources;
@@ -67,7 +88,13 @@ export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: 
 // 네이버 모바일 검색으로 후보 수집. DuckDuckGo(html·lite 모두)는 봇 차단으로
 // HTTP 202 + 결과 0건을 반환해 조사가 전건 실패했다(2026-07-27 확인). 키가 필요 없고
 // 국내 학원 정보가 가장 잘 잡히는 경로로 교체했다.
-const NAVER_SKIP = /naver\.net|pstatic|nstatic|ader\.naver|naver\.com\/(v1|adcr|adcr\.naver)|googleads|doubleclick|youtube\.com\/(watch|embed)|facebook|instagram|kakao\.com\/adfit/i;
+const NAVER_SKIP = /naver\.net|pstatic|nstatic|ader\.naver|naver\.com\/(v1|adcr|adcr\.naver)|googleads|doubleclick|youtube\.com|facebook|instagram|kakao\.com\/adfit/i;
+// 검색 페이지 스크립트에 박힌 네이버 내부 인프라. 검색 결과가 아니라 화면 동작용 엔드포인트라
+// 받아봐야 HTTP 500·캡차 이미지다. 이것들이 후보 한도를 먼저 채워 실제 근거 페이지를
+// 밀어내고 있었다(구포 북부: 후보 31개 전부 인프라, 공식 홈페이지 0개).
+const NAVER_INFRA = /^(?:apis|gw\.in|cr|nid|captcha\.nid|soundcaptcha\.nid|help|policy|about|siape|ssl|ocr|dict|shopping|order|pay|search)\.naver\.com$|^(?:m|www)\.naver\.com$|^gw\.in\.naver\.com$/i;
+// 검색 결과에 섞이지만 학원 사실 근거가 될 수 없는 곳.
+const NON_EVIDENCE_HOST = /^(?:www\.)?(?:google\.[a-z.]+|maps\.google\.[a-z.]+|youtu\.be|bing\.com|daum\.net)$/i;
 // 업체가 아닌 지물 POI 분류(정류장·교차로 등). 학원 앞 정류장이 학원으로 잡히는 걸 막는다.
 const NON_BUSINESS_CATEGORY = /방면정보|정류장|정류소|버스|지하철|역$|교차로|나들목|IC$|도로|고속도로|주차장/;
 
@@ -86,16 +113,44 @@ async function naverSearch(query: string, timeoutMs: number): Promise<{ placeIds
   }
   const placeIds = [...freq.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 
+  return { placeIds, urls: extractSearchCandidates(html) };
+}
+
+// 검색 HTML 에서 근거가 될 만한 외부 링크만 뽑는다.
+//
+// HTML 전체를 정규식으로 훑으면 안 된다. 검색 페이지는 80만 자가 넘고 상단 스크립트에
+// 네이버 내부 API URL 이 잔뜩 박혀 있어, 실제 결과 링크(<a href>)에 닿기 전에 후보 한도가
+// 인프라 URL 로 다 차버린다. 링크는 href 속성에서만 읽는다.
+export function extractSearchCandidates(html: string, limit = 40): string[] {
   const urls: string[] = [];
-  for (const m of html.matchAll(/https?:\/\/[a-z0-9.-]+\.(?:co\.kr|kr|com|net|org)(?:\/[^"'\s<>&\\]*)?/gi)) {
-    const url = m[0];
-    // 플레이스는 placeIds 경로로 이미 다룬다. 여기서 또 담으면 같은 곳을 두 번 수집하는데,
-    // 일반 페이지 경로로 읽으면 스크립트가 걷혀 품질만 나빠진다.
-    if (NAVER_SKIP.test(url) || url.includes("search.naver") || url.includes("place.naver.com")) continue;
+  for (const m of html.matchAll(/href=["'](https?:\/\/[^"'\s<>]+)["']/gi)) {
+    const url = decodeHtmlEntities(m[1] ?? "");
+    if (!isEvidenceCandidate(url)) continue;
     urls.push(url);
-    if (urls.length >= 40) break;
+    if (urls.length >= limit) break;
   }
-  return { placeIds, urls };
+  return urls;
+}
+
+function isEvidenceCandidate(url: string): boolean {
+  let host: string;
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    host = parsed.host;
+  } catch { return false; }
+  if (NAVER_INFRA.test(host) || NON_EVIDENCE_HOST.test(host)) return false;
+  if (NAVER_SKIP.test(url)) return false;
+  // 플레이스는 placeIds 경로로 이미 다룬다. 여기서 또 담으면 같은 곳을 두 번 수집하는데,
+  // 일반 페이지 경로로 읽으면 스크립트가 걷혀 품질만 나빠진다.
+  if (url.includes("search.naver") || url.includes("place.naver.com") || url.includes("map.naver.com")) return false;
+  return true;
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 
 // 네이버 플레이스는 화면이 스크립트로 그려져 태그를 걷어내면 700자쯤만 남는다.
@@ -160,6 +215,40 @@ export function buildPlaceFactText(html: string, baseAddress?: string | null): s
   if (homepageUrls.length) push("홈페이지", homepageUrls.join(", "));
 
   return lines.join("\n");
+}
+
+// 플레이스 사실 텍스트의 "홈페이지:" 줄에서 URL 을 되읽는다.
+export function homepageUrlsFromPlaceText(text: string): string[] {
+  const line = String(text ?? "").split(/\r?\n/).find((l) => l.startsWith("홈페이지: "));
+  if (!line) return [];
+  return line
+    .slice("홈페이지: ".length)
+    .split(",")
+    .map((u) => u.trim())
+    .filter((u) => /^https?:\/\//.test(u) && isEvidenceCandidate(u));
+}
+
+// 한 사이트의 하위 페이지가 후보 자리를 독식하지 않게 호스트당 개수를 제한한다.
+// 공식 홈페이지 게시판이 8개 잡히면 블로그·기관 페이지가 한 자리도 못 들어온다.
+export function limitPerHost(urls: string[], perHost = 2): string[] {
+  const seen = new Map<string, number>();
+  const paths = new Set<string>();
+  const out: string[] = [];
+  for (const url of urls) {
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { continue; }
+    // www 유무는 같은 사이트다. 나눠 세면 bbdrive.co.kr 와 www.bbdrive.co.kr 가
+    // 두 자리를 차지하고 같은 본문이 프롬프트에 두 번 들어간다(실측 확인).
+    const host = parsed.host.replace(/^www\./i, "").toLowerCase();
+    const key = `${host}${parsed.pathname.replace(/\/$/, "")}${parsed.search}`;
+    if (paths.has(key)) continue;
+    const count = seen.get(host) ?? 0;
+    if (count >= perHost) continue;
+    paths.add(key);
+    seen.set(host, count + 1);
+    out.push(url);
+  }
+  return out;
 }
 
 function collectUrls(value: unknown, acc: string[] = []): string[] {
@@ -275,7 +364,8 @@ function isPortal(s: string): boolean {
 }
 
 // 페이지를 가져와 읽을 수 있는 텍스트로 정리.
-async function fetchReadable(url: string, timeoutMs: number): Promise<WebSource | null> {
+// html 은 하위 링크 추출용으로만 쓴다(프롬프트에는 text 만 들어간다).
+async function fetchReadable(url: string, timeoutMs: number): Promise<(WebSource & { html: string }) | null> {
   const res = await timedFetch(url, timeoutMs, { headers: { "user-agent": UA, "accept": "text/html", "accept-language": "ko,en;q=0.8" } });
   if (!res.ok) return null;
   const ct = res.headers.get("content-type") ?? "";
@@ -283,7 +373,34 @@ async function fetchReadable(url: string, timeoutMs: number): Promise<WebSource 
   const html = await res.text();
   const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? "").replace(/\s+/g, " ").trim();
   const text = htmlToText(html).slice(0, MAX_CHARS_PER_SOURCE);
-  return { url, title, text };
+  return { url, title, text, html };
+}
+
+// 학원 공식 홈페이지 첫 화면은 메뉴만 있는 경우가 흔하다
+// (실측: bbdrive.co.kr 본문 937자에 '수강료안내' 라는 메뉴 글자만 있고 금액은 0건).
+// 수강료·셔틀은 서브페이지에 있으므로, 같은 사이트 안에서 그 링크만 따라간다.
+const FEE_LINK_TEXT = /수강료|교육비|요금|비용|가격|셔틀|교육과정|과정안내|교육시간/;
+
+export function feeSubpageUrls(html: string, pageUrl: string, limit = 2): string[] {
+  let origin: URL;
+  try { origin = new URL(pageUrl); } catch { return []; }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of String(html ?? "").matchAll(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const label = htmlToText(m[2] ?? "");
+    if (!FEE_LINK_TEXT.test(label)) continue;
+    let resolved: URL;
+    try { resolved = new URL(decodeHtmlEntities(m[1] ?? ""), origin); } catch { continue; }
+    if (resolved.protocol !== "http:" && resolved.protocol !== "https:") continue;
+    // 같은 사이트만. 외부로 나가면 신원 확인이 다시 필요해진다.
+    if (resolved.host.replace(/^www\./i, "") !== origin.host.replace(/^www\./i, "")) continue;
+    const key = `${resolved.pathname}${resolved.search}`;
+    if (key === `${origin.pathname}${origin.search}` || seen.has(key)) continue;
+    seen.add(key);
+    out.push(resolved.toString());
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 function htmlToText(html: string): string {
