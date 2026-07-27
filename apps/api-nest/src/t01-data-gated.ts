@@ -314,7 +314,13 @@ function normalizeCandidate(row: Row, trace: AcademySelectionTraceCandidate | un
     operatingSchedule,
     passRate,
     phone,
-    reviewEvidencePresent: studentReviews.length > 0 || Boolean(value("blog_reviews")),
+    // 블로그리뷰는 근거로 세지 않는다. 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해
+    // 다른 학원 글이 섞이기 때문이다(2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도
+    // 없고, 같은 글 18건이 이름이 비슷한 학원 2~3곳에 중복 배정). 오배정된 글 한 건 때문에
+    // "후기 근거 있음" 이 되면 아래 unverified_review_claim 게이트가 근거 없는 후기 서술을
+    // 통과시킨다. 프롬프트에서 뺀 것(389ce0d)과 짝을 이루는 조치다.
+    // 검증된 블로그리뷰만 쓰는 방법이 생기면 그때는 레코드별 검증 상태를 보고 되살린다.
+    reviewEvidencePresent: studentReviews.length > 0,
     studentReviews,
     missingFields,
   };

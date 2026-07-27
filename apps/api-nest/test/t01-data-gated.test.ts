@@ -145,3 +145,37 @@ describe("T01 shared fact validation", () => {
   });
 
 });
+
+/**
+ * 블로그리뷰를 "후기 근거" 로 세지 않는지 잠근다.
+ *
+ * 원천은 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞인다(2026-07-27 실측
+ * 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이 비슷한 학원 2~3곳에
+ * 중복 배정). 오배정된 글 한 건이 근거로 계산되면 unverified_review_claim 게이트가 근거 없는
+ * 후기 서술을 통과시킨다. 프롬프트에서 뺀 것과 짝을 이루는 조치다.
+ */
+describe("후기 근거 판정", () => {
+  const reviewClaimMarkdown = "# 제목\n\n## 비교\n|항목|가온|나루|\n|---|---|---|\n|주소|테스트시|테스트시|\n\n### 가온\n실제 수강생 후기에서는 강사가 친절하다고 합니다.\n\n### 나루\n설명";
+
+  function contextWith(fields: Record<string, unknown>) {
+    const rows = [candidate("가온", "ga", fields), candidate("나루", "na")];
+    return buildT01DataGatedContext(target, rows, trace([
+      traceCandidate("가온", "ga", "stored_region_like"),
+      traceCandidate("나루", "na", "stored_region_like", { retrievalRank: 2 }),
+    ]), "slot", []);
+  }
+
+  it("블로그리뷰만 있으면 근거로 세지 않는다", () => {
+    const context = contextWith({ blog_reviews: JSON.stringify([{ title: "후기", content: "친절합니다", link: "https://blog.example.test/1" }]) });
+    expect(context.candidates.some((c) => c.reviewEvidencePresent)).toBe(false);
+    const codes = t01QualityIssues(reviewClaimMarkdown, context).map((issue) => issue.code);
+    expect(codes, "블로그리뷰는 후기 단정의 근거가 되지 못한다").toContain("unverified_review_claim");
+  });
+
+  it("자체 수강생 리뷰가 있으면 근거로 센다", () => {
+    const context = contextWith({ review_json: JSON.stringify([{ point: 5, content: "강사님이 친절하게 알려주셨습니다.", author: "익명", date: "2026-01-02" }]) });
+    expect(context.candidates.some((c) => c.reviewEvidencePresent)).toBe(true);
+    const codes = t01QualityIssues(reviewClaimMarkdown, context).map((issue) => issue.code);
+    expect(codes).not.toContain("unverified_review_claim");
+  });
+});
