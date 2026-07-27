@@ -15,6 +15,30 @@ import { useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+// 동기화 상태 폴링이 연속으로 이만큼 실패하면 화면 갱신을 포기한다(동기화 자체는 서버에서 계속된다).
+const POLL_MAX_ERRORS_IN_A_ROW = 10;
+
+/**
+ * 동기화가 "성공"으로 끝났어도 운영자가 알아야 하는 것을 문장으로 만든다.
+ *
+ * 특히 blog_review_preserved 가 핵심이다. 원천의 블로그리뷰 조회는 처리 한계를 넘으면 예외가
+ * 아니라 빈 배열로 응답해서, 예전에는 그게 "후기 0건"으로 저장돼 멀쩡한 후기가 삭제됐다.
+ * 지금은 보존하지만, 보존했다는 사실이 성공 문구에 묻히면 원천이 계속 느려져도 아무도 모른 채
+ * 후기가 낡아간다. 그래서 0이 아니면 반드시 눈에 띄게 세운다.
+ */
+function syncWarningText(res: { blog_review_preserved?: number; warnings?: string[] }): string {
+  const parts: string[] = [];
+  if (res.blog_review_preserved) {
+    parts.push(`블로그리뷰를 가져오지 못한 학원이 ${res.blog_review_preserved}곳 있습니다. 기존 후기는 지우지 않고 유지했지만, 그만큼 자료가 낡은 상태입니다. 원천 상태를 확인한 뒤 다시 동기화하세요.`);
+  }
+  for (const warning of res.warnings ?? []) {
+    // 서버가 같은 취지로 넣은 요약은 중복이므로 뺀다.
+    if (warning.includes("기존 후기를 유지")) continue;
+    parts.push(warning);
+  }
+  return parts.join(" ");
+}
+
 const AXIS_LABEL: Record<Axis, string> = {
   region: "어느 지역 글인가요?",
   keyword: "어떤 검색어를 노릴까요?",
@@ -1271,6 +1295,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   const [syncBusy, setSyncBusy] = useState("");
   // 진행 중인 학원 동기화의 run_id. 12분짜리 작업이라 화면을 떠났다 돌아와도 이어봐야 한다.
   const [syncRunId, setSyncRunId] = useState("");
+  // 동기화가 "성공"으로 끝났어도 짚어야 할 것(블로그리뷰 미조회 등). 성공 문구와 분리해 세운다.
+  const [syncWarning, setSyncWarning] = useState("");
   const [regionLevel, setRegionLevel] = useState<"2" | "3" | "all">("2");
   const [replaceRegionAxis, setReplaceRegionAxis] = useState(true);
   const [regionMsg, setRegionMsg] = useState("");
@@ -1360,6 +1386,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
    */
   async function syncAcademies() {
     setSyncBusy("academies");
+    setSyncWarning("");
     try {
       const started = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 });
       setSyncRunId(started.run_id);
@@ -1372,14 +1399,23 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   }
 
   async function pollSyncRun(runId: string) {
+    // 연속 조회 실패 상한. 일시적인 통신 오류로 진행 중인 동기화를 실패로 단정하면 안 되지만,
+    // 상한이 없으면 API 가 영영 안 돌아와도 3초마다 무한히 폴링한다.
+    let errorsInARow = 0;
     while (true) {
       await new Promise((resolve) => setTimeout(resolve, 3000));
       let run: SyncRun;
       try {
         run = await getSyncRun(domain.domain, runId);
-      } catch {
-        // 일시적인 통신 오류로 진행 중인 동기화를 실패로 단정하지 않는다. 다음 폴링에서 다시 본다.
-        continue;
+        errorsInARow = 0;
+      } catch (e) {
+        if (++errorsInARow < POLL_MAX_ERRORS_IN_A_ROW) continue;
+        // 여기서 포기하는 건 화면 갱신뿐이다. 동기화는 서버에서 계속 돌고 있을 수 있으므로
+        // "실패했다" 가 아니라 "상태를 못 본다" 로 안내한다.
+        setSyncRunId("");
+        setSyncBusy("");
+        setAcademyMsg(`동기화 상태를 ${POLL_MAX_ERRORS_IN_A_ROW}회 연속 확인하지 못했습니다(${(e as Error).message}). 동기화 자체는 서버에서 계속 진행 중일 수 있습니다. 화면을 새로 고치면 다시 붙습니다.`);
+        return;
       }
       const pct = run.count_total ? Math.floor((run.count_done / run.count_total) * 100) : 0;
       if (run.status === "running") {
@@ -1392,8 +1428,10 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       if (run.status === "error") { setAcademyMsg(`동기화 실패: ${run.error ?? "원인 미상"}`); return; }
       const res = run.result_obj;
       if (!res) { setAcademyMsg("동기화가 끝났습니다."); await onRefresh(); await loadAcademies(); return; }
-      const preserved = res.blog_review_preserved ? ` · 블로그리뷰 미조회 ${res.blog_review_preserved}곳은 기존값 유지` : "";
-      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외${preserved}${res.warnings?.length ? ` · 경고 ${res.warnings.length}개` : ""}`);
+      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외`);
+      // 블로그리뷰를 못 가져온 학원이 있으면 성공 문구에 묻지 않고 따로 경고로 세운다.
+      // 이 값이 조용히 넘어가면 원천이 다시 느려져도 아무도 모른 채 후기가 낡아간다.
+      setSyncWarning(syncWarningText(res));
       setLastSync(recordSync(domain.domain, "academies", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개 · 리뷰 ${res.review_count}/블로그 ${res.blog_review_count}` }));
       await onRefresh();
       await loadAcademies();
@@ -1500,6 +1538,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
       <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title="학원 목록·자체 후기·블로그리뷰를 원천에서 받아옵니다. 블로그리뷰는 원천이 동시 요청을 못 견뎌 한 곳씩 받으므로 10분 이상 걸립니다.">{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
+      {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
       <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>
       {academyAttemptUnapplied && (
         <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
