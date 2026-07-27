@@ -78,7 +78,8 @@ export const listAcademyResearch = (region?: string, q?: string) => {
   const search = new URLSearchParams();
   if (region) search.set("region", region);
   if (q) search.set("q", q);
-  return api<{ count: number; region: string | null; items: AcademyBaseRow[] }>(`/academy-research/list?${search.toString()}`);
+  // hidden: 최신 동기화 목록에 없어 제외된 학원 수(보관은 하되 노출하지 않는다).
+  return api<{ count: number; region: string | null; items: AcademyBaseRow[]; hidden?: number }>(`/academy-research/list?${search.toString()}`);
 };
 export const getAcademyResearch = (externalId: string) => api<AcademyFull>(`/academy-research/${encodeURIComponent(externalId)}`);
 export const listStatusDefs = () => api<{ items: StatusDef[] }>("/academy-research/status-defs");

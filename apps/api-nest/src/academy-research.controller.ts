@@ -20,7 +20,8 @@ export class AcademyResearchController {
   list(@Req() req: Request, @Headers() headers: Record<string, string>, @Query("region") region?: string, @Query("q") q?: string) {
     checkAuth(req, headers);
     const items = this.db.listBase({ region: region || undefined, q: q || undefined, limit: 5000 });
-    return { count: items.length, region: region || null, items };
+    // hidden = 최신 동기화 목록에 없어 제외된 학원 수(삭제하지 않고 보관만 한다).
+    return { count: items.length, region: region || null, items, hidden: this.db.countInactive() };
   }
 
   // 검증상태 정의(확장 가능)

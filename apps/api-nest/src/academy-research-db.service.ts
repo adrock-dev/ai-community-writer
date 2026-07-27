@@ -261,6 +261,11 @@ export class AcademyResearchDbService implements OnModuleInit {
   }
 
   private migrate(): void {
+    const baseCols = new Set(this.all("PRAGMA table_info(academy_base)").map((r) => r.name));
+    // 원천 목록에 아직 있는지. 삭제하지 않는 이유는 FK CASCADE 로 조사·검증상태까지 함께 날아가기 때문이다.
+    // 대신 목록·동기화 대상에서 빼서 노출과 헛수고를 막는다.
+    if (!baseCols.has("active")) this.db.exec("ALTER TABLE academy_base ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
+
     const runCols = new Set(this.all("PRAGMA table_info(research_runs)").map((r) => r.name));
     // 실행 결과 요약(JSON). 동기화는 학원 수 외에 리뷰 건수도 남겨야 해서 진행률 컬럼만으로는 부족하다.
     if (!runCols.has("result")) this.db.exec("ALTER TABLE research_runs ADD COLUMN result TEXT");
@@ -315,9 +320,27 @@ export class AcademyResearchDbService implements OnModuleInit {
     );
   }
 
-  listBase(opts: { region?: string; q?: string; limit?: number } = {}): Row[] {
+  // 이번 동기화가 받아온 목록만 활성으로 남긴다. 취소로 중간에 끊겨도 결과가 어긋나지 않도록
+  // 목록을 확보한 직후 한 문장으로 처리한다(학원별 upsert 에 맡기면 미처리분이 비활성으로 남는다).
+  setActiveByExternalIds(externalIds: string[]): { active: number; inactive: number } {
+    if (!externalIds.length) return { active: 0, inactive: this.countBase({ includeInactive: true }) };
+    const placeholders = externalIds.map(() => "?").join(",");
+    this.run(`UPDATE academy_base SET active = CASE WHEN external_id IN (${placeholders}) THEN 1 ELSE 0 END`, externalIds);
+    return {
+      active: Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE active = 1")?.n ?? 0),
+      inactive: Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE active = 0")?.n ?? 0),
+    };
+  }
+
+  countInactive(): number {
+    return Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE active = 0")?.n ?? 0);
+  }
+
+  listBase(opts: { region?: string; q?: string; limit?: number; includeInactive?: boolean } = {}): Row[] {
     const where: string[] = [];
     const params: any[] = [];
+    // 기본은 최신 동기화에 포함된 학원만. 원천에서 내려간 행은 보관만 하고 쓰지 않는다.
+    if (!opts.includeInactive) where.push("b.active = 1");
     if (opts.region) { where.push("(region = ? OR address LIKE ?)"); params.push(opts.region, `%${opts.region}%`); }
     if (opts.q) { where.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${opts.q}%`, `%${opts.q}%`); }
     const limit = Math.max(1, Math.min(5000, Math.trunc(opts.limit ?? 1000)));
@@ -329,10 +352,12 @@ export class AcademyResearchDbService implements OnModuleInit {
   }
 
   getBase(externalId: string): Row | undefined { return this.get("SELECT * FROM academy_base WHERE external_id = ?", [externalId]); }
-  countBase(region?: string): number {
-    const row = region
-      ? this.get("SELECT COUNT(*) AS n FROM academy_base WHERE region = ? OR address LIKE ?", [region, `%${region}%`])
-      : this.get("SELECT COUNT(*) AS n FROM academy_base");
+  countBase(opts: { region?: string; includeInactive?: boolean } = {}): number {
+    const where: string[] = [];
+    const params: any[] = [];
+    if (!opts.includeInactive) where.push("active = 1");
+    if (opts.region) { where.push("(region = ? OR address LIKE ?)"); params.push(opts.region, `%${opts.region}%`); }
+    const row = this.get(`SELECT COUNT(*) AS n FROM academy_base${where.length ? " WHERE " + where.join(" AND ") : ""}`, params);
     return Number(row?.n ?? 0);
   }
 

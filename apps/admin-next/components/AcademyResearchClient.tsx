@@ -6,11 +6,12 @@ import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
   cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncBlogReviews, syncRegion,
 } from "@/lib/academy-research";
-import { formatDateTime, formatShortDate } from "@/lib/date";
+import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
 
 export default function AcademyResearchClient() {
   const [q, setQ] = useState("");
   const [items, setItems] = useState<AcademyBaseRow[]>([]);
+  const [hiddenCount, setHiddenCount] = useState(0);
   const [runs, setRuns] = useState<ResearchRun[]>([]);
   const [researchProvider, setResearchProvider] = useState<ResearchProvider>("auto");
   const [loading, setLoading] = useState(false);
@@ -27,6 +28,7 @@ export default function AcademyResearchClient() {
     try {
       const res = await listAcademyResearch(undefined, q.trim() || undefined);
       setItems(res.items);
+      setHiddenCount(res.hidden ?? 0);
     } catch (e: any) {
       setError(e?.message || "목록을 불러오지 못했습니다.");
     } finally {
@@ -144,6 +146,12 @@ export default function AcademyResearchClient() {
   const lastBlogRun = runs.find((r) => r.scope === "sync_blog" && r.status !== "running");
   // 두 동기화는 같은 원천을 두드려 서버가 동시 실행을 막는다. 버튼도 같이 잠근다.
   const syncBusy = Boolean(activeSyncRun || activeBlogRun);
+  // 학원정보만 갱신되고 블로그리뷰가 뒤처진 상태를 알린다. 중단된 실행은 일부만 돌았으므로
+  // 완주(done)한 것끼리만 비교한다 — runs 는 최신순이라 첫 항목이 가장 최근이다.
+  const lastSyncDone = runs.find((r) => r.scope === "sync" && r.status === "done");
+  const lastBlogDone = runs.find((r) => r.scope === "sync_blog" && r.status === "done");
+  const blogOutdated = Boolean(lastSyncDone) && !activeBlogRun
+    && (!lastBlogDone || runTime(lastBlogDone) < runTime(lastSyncDone!));
 
   return (
     <div className="card-pad">
@@ -172,19 +180,32 @@ export default function AcademyResearchClient() {
 
       <div className="card card-pad grid" style={{ gap: 14, margin: "16px 0" }}>
         <div style={{ display: "grid", gap: 12 }}>
-          <div className="row" style={{ alignItems: "center" }}>
-            <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>학원정보</span>
-            <button className="btn" onClick={onSync} disabled={busy === "sync" || syncBusy}>
-              {activeSyncRun ? "동기화 진행 중…" : busy === "sync" ? "시작하는 중…" : "학원정보 동기화"}
-            </button>
-            <span className="muted small">{lastSyncLabel(lastSyncRun, Boolean(activeSyncRun))}</span>
+          <div style={{ display: "grid", gap: 4 }}>
+            <div className="row" style={{ alignItems: "center" }}>
+              <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>학원정보</span>
+              <button className="btn" onClick={onSync} disabled={busy === "sync" || syncBusy}>
+                {activeSyncRun ? "동기화 진행 중…" : busy === "sync" ? "시작하는 중…" : "학원정보 동기화"}
+              </button>
+              <span className="muted small">{lastSyncLabel(lastSyncRun, Boolean(activeSyncRun))}</span>
+            </div>
+            <DiagnosisLine run={activeSyncRun ? undefined : lastSyncRun} />
           </div>
-          <div className="row" style={{ alignItems: "center" }}>
-            <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>블로그리뷰</span>
-            <button className="btn" onClick={onSyncBlog} disabled={busy === "blog" || syncBusy}>
-              {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
-            </button>
-            <span className="muted small">{lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))}</span>
+          <div style={{ display: "grid", gap: 4 }}>
+            <div className="row" style={{ alignItems: "center" }}>
+              <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>블로그리뷰</span>
+              <button className="btn" onClick={onSyncBlog} disabled={busy === "blog" || syncBusy}>
+                {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
+              </button>
+              <span className="muted small">
+                {lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))}
+                {blogOutdated && (
+                  <span className="badge warn" style={{ marginLeft: 8 }}>
+                    {lastBlogDone ? "학원정보보다 오래됨" : "아직 실행 안 됨"}
+                  </span>
+                )}
+              </span>
+            </div>
+            <DiagnosisLine run={activeBlogRun ? undefined : lastBlogRun} />
           </div>
           <div className="row" style={{ alignItems: "center" }}>
             <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>
@@ -217,6 +238,10 @@ export default function AcademyResearchClient() {
           <div style={{ height: 8, background: "var(--surface-2, #eee)", borderRadius: 999, marginTop: 8, overflow: "hidden" }}>
             <div style={{ height: "100%", width: `${pct(run!)}%`, background: run!.cancel_requested ? "#b0851f" : "#1f6feb", transition: "width .4s" }} />
           </div>
+          {collectBreakdown(run!) && <div className="muted small" style={{ marginTop: 8 }}>{collectBreakdown(run!)}</div>}
+          {collectDiagnosis(run!) && (
+            <p style={{ margin: "6px 0 0", color: "#b0851f", fontSize: 13 }}>⚠ {collectDiagnosis(run!)}</p>
+          )}
           <p className="muted small" style={{ margin: "8px 0 0" }}>
             {run!.cancel_requested
               ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다."
@@ -231,7 +256,14 @@ export default function AcademyResearchClient() {
           <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
         </label>
         <button className="btn" onClick={load} disabled={loading}>새로고침</button>
-        <span className="muted small" style={{ paddingBottom: 10 }}>{loading ? "불러오는 중…" : `${items.length}곳`}</span>
+        <span className="muted small" style={{ paddingBottom: 10 }}>
+          {loading ? "불러오는 중…" : `${items.length}곳`}
+          {!loading && hiddenCount > 0 && (
+            <span title="원천 목록에서 내려간 항목입니다. 자료는 보관하되 목록·동기화 대상에서 제외합니다.">
+              {" "}(원천 목록에 없는 {hiddenCount}곳 제외)
+            </span>
+          )}
+        </span>
       </div>
       <div style={{ overflowX: "auto" }}>
         <table className="table">
@@ -278,7 +310,8 @@ function lastSyncLabel(run: ResearchRun | undefined, running: boolean): string {
   if (run.status !== "done") return `마지막 시도 ${when} · 중단됨(${partial})`;
   const result = parseResult(run.result);
   const reviews = typeof result?.reviews === "number" ? ` · 후기 ${result.reviews.toLocaleString()}건` : "";
-  return `마지막 동기화 ${when} · 학원 ${result?.matched ?? run.count_done}곳${reviews}`;
+  const breakdown = collectBreakdown(run);
+  return `마지막 동기화 ${when} · 학원 ${result?.matched ?? run.count_done}곳${reviews}${breakdown ? ` (${breakdown})` : ""}`;
 }
 function runLabel(run: ResearchRun): string {
   if (run.scope === "sync") return "학원정보 동기화";
@@ -298,6 +331,46 @@ function runSummary(run: ResearchRun): string {
     return `학원 ${result?.matched ?? run.count_done}곳${typeof reviews === "number" ? ` · ${unit} ${reviews.toLocaleString()}건` : ""}`;
   }
   return `${run.count_done}/${run.count_total}곳`;
+}
+// 끝난 실행의 원인 진단을 버튼 바로 아래에 문장으로 남긴다.
+// 배지만으로는 "왜 저조한지"가 전달되지 않는다(툴팁은 사실상 안 읽힌다).
+function DiagnosisLine({ run }: { run?: ResearchRun }) {
+  const diagnosis = run ? collectDiagnosis(run) : "";
+  if (!run || !diagnosis) return null;
+  return (
+    <p style={{ margin: 0, marginLeft: 96, color: "#b0851f", fontSize: 13, lineHeight: 1.5 }}>
+      ⚠ {diagnosis}
+    </p>
+  );
+}
+
+// 수집 내역. "빈 응답"(원천이 200 으로 0건을 줌)과 "조회 실패"(예외)는 대응이 달라 나눠 보여준다.
+function collectBreakdown(run: ResearchRun): string {
+  const r = parseResult(run.result);
+  if (!r || typeof r.with_data !== "number") return "";
+  return `수집 ${r.with_data}곳 · 빈 응답 ${r.empty ?? 0}곳 · 조회 실패 ${r.failed ?? 0}곳`;
+}
+
+// 저조의 원인을 문장으로. 표본이 너무 적으면 단정하지 않는다.
+function collectDiagnosis(run: ResearchRun): string {
+  const r = parseResult(run.result);
+  if (!r || typeof r.with_data !== "number") return "";
+  const done = Number(r.done ?? run.count_done ?? 0);
+  if (done < 10) return "";
+  const empty = Number(r.empty ?? 0);
+  const failed = Number(r.failed ?? 0);
+  if (failed >= done * 0.3) {
+    return "조회 실패가 많습니다. 원천 장애로 보이며, 실패한 학원의 기존 후기는 지우지 않고 그대로 두었습니다.";
+  }
+  if (empty >= done * 0.5) {
+    return "대부분이 빈 응답입니다. 원천이 목록을 주지 않는 상태로 보입니다. 교체 정책상 해당 학원의 기존 후기는 지워집니다.";
+  }
+  return "";
+}
+
+// 완주 시각(없으면 시작 시각) 기준 비교값. 저장값은 UTC 라 문자열 비교는 위험하다.
+function runTime(run: ResearchRun): number {
+  return parseUtcTimestamp(run.finished_at || run.started_at)?.getTime() ?? 0;
 }
 function parseResult(value?: string | null): Record<string, any> | null {
   if (!value) return null;

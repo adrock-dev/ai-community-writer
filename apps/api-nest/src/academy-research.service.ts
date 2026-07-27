@@ -15,16 +15,22 @@ const SCALAR_KEYS: Array<keyof ResearchResult> = [
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
 ];
 
-export interface SyncResult { matched: number; total: number; reviews: number; cancelled: boolean }
+// 학원 1곳의 처리 결과. 수집 저조의 원인을 화면에서 구분하려면 이 세 갈래가 필요하다.
+// "빈 응답"(200 OK + 0건)과 "조회 실패"(예외)는 대응이 완전히 다르다 —
+// 전자는 교체 정책상 기존 후기를 지우고, 후자는 손대지 않고 보존한다.
+export type SyncOutcome = "data" | "empty" | "failed";
+export interface SyncTally { done: number; reviews: number; with_data: number; empty: number; failed: number }
+export interface SyncResult extends SyncTally { matched: number; total: number; cancelled: boolean }
+
 export interface SyncOptions {
   reviewLimit?: number;
   blogReviewLimit?: number;
-  /** 학원 간 동시 처리 수. 학원 1곳당 원천 왕복이 2회라 순차로 돌면 곳수에 비례해 느려진다. */
+  /** 학원 간 동시 처리 수. 학원 1곳당 원천 왕복이 있어 순차로 돌면 곳수에 비례해 느려진다. */
   concurrency?: number;
   /** 전체 학원 수를 알게 된 시점(목록 조회 직후) 1회 호출. */
   onTotal?: (total: number) => void;
   /** 학원 1곳 처리마다 호출. */
-  onProgress?: (done: number, reviews: number) => void;
+  onProgress?: (tally: SyncTally) => void;
   /** 매 학원 직전에 확인. true 면 남은 학원을 처리하지 않고 멈춘다. */
   shouldCancel?: () => boolean;
 }
@@ -65,6 +71,10 @@ export class AcademyResearchService {
   // (자체 후기는 0.06초) 같이 돌리면 급한 기본정보 갱신까지 그 속도에 묶인다. syncBlogReviews 로 분리.
   async syncAll(opts: SyncOptions = {}): Promise<SyncResult> {
     const all = await this.drivingplus.fetchAcademies();
+    // 이번 목록이 곧 최신 기준이다. 여기서 빠진 학원은 비활성으로 내려 목록·후속 동기화·조사 대상에서 뺀다.
+    // 취소로 중간에 끊겨도 어긋나지 않도록 학원별 처리 전에 한 번에 반영한다.
+    const activity = this.db.setActiveByExternalIds(all.map((academy) => String(academy.id)));
+    if (activity.inactive) this.logger.log(`원천 목록에 없는 학원 ${activity.inactive}곳을 비활성 처리했습니다.`);
     opts.onTotal?.(all.length);
     return this.runSyncPool(all, opts, async (academy) => {
       const externalId = this.upsertBaseRow(academy);
@@ -86,9 +96,8 @@ export class AcademyResearchService {
   }
 
   // 동시 처리 + 취소 확인 + 진행률 보고를 한 곳에 모은다(두 동기화가 같은 규칙을 따르도록).
-  private async runSyncPool<T>(items: T[], opts: SyncOptions, work: (item: T) => Promise<number>): Promise<SyncResult> {
-    let reviewCount = 0;
-    let done = 0;
+  private async runSyncPool<T>(items: T[], opts: SyncOptions, work: (item: T) => Promise<{ stored: number; outcome: SyncOutcome }>): Promise<SyncResult> {
+    const tally: SyncTally = { done: 0, reviews: 0, with_data: 0, empty: 0, failed: 0 };
     let cancelled = false;
     await runPool(items, syncConcurrency(opts.concurrency), async (item) => {
       // 이미 처리 중이던 학원은 끝까지 마친다 — 후기 교체가 트랜잭션 중간에 끊기지 않게.
@@ -96,12 +105,15 @@ export class AcademyResearchService {
       if (opts.shouldCancel?.()) { cancelled = true; return; }
       // `x += await f()` 는 좌변을 await 전에 읽어 동시 실행 시 증가분이 서로 덮인다.
       // 반드시 await 를 끝낸 뒤 읽고-더하고-쓴다.
-      const stored = await work(item);
-      reviewCount += stored;
-      done += 1;
-      opts.onProgress?.(done, reviewCount);
+      const res = await work(item);
+      tally.reviews += res.stored;
+      tally.done += 1;
+      if (res.outcome === "data") tally.with_data += 1;
+      else if (res.outcome === "empty") tally.empty += 1;
+      else tally.failed += 1;
+      opts.onProgress?.({ ...tally });
     });
-    return { matched: done, total: items.length, reviews: reviewCount, cancelled };
+    return { ...tally, matched: tally.done, total: items.length, cancelled };
   }
 
   // 동기화를 백그라운드로 시작하고 run_id 를 즉시 반환한다.
@@ -125,7 +137,7 @@ export class AcademyResearchService {
     const runId = this.db.createRun({ scope, method });
     void work({
       onTotal: (total) => this.db.updateRun(runId, { count_total: total }),
-      onProgress: (done, reviews) => this.db.updateRun(runId, { count_done: done, result: { reviews } }),
+      onProgress: (tally) => this.db.updateRun(runId, { count_done: tally.done, result: tally }),
       shouldCancel: () => this.db.isCancelRequested(runId),
     })
       .then((res) => this.db.updateRun(runId, { status: res.cancelled ? "cancelled" : "done", count_done: res.matched, result: res, finished: true }))
@@ -146,7 +158,7 @@ export class AcademyResearchService {
       this.pullReviews(academy.id, opts.reviewLimit ?? 5),
       this.pullBlogReviews(academy.id, opts.blogReviewLimit ?? 5),
     ]);
-    const reviews = this.storeReviewPlatform(id, reviewPage) + this.storeBlogPlatform(id, blogPage);
+    const reviews = this.storeReviewPlatform(id, reviewPage).stored + this.storeBlogPlatform(id, blogPage).stored;
     return { external_id: externalId, found: true, reviews };
   }
 
@@ -294,8 +306,8 @@ export class AcademyResearchService {
 
   // 후기는 플랫폼 단위로 통째 교체한다 — 원천에서 내려간(삭제·비공개 처리된) 후기가
   // 근거로 남지 않게 하기 위함. 조회에 실패했으면 손대지 않고 기존 행을 그대로 둔다.
-  private storeReviewPlatform(externalId: string, page: { ok: boolean; reviews: DrivingplusAcademy["reviews"] }): number {
-    if (!page.ok) return 0;
+  private storeReviewPlatform(externalId: string, page: { ok: boolean; reviews: DrivingplusAcademy["reviews"] }): { stored: number; outcome: SyncOutcome } {
+    if (!page.ok) return { stored: 0, outcome: "failed" };
     const rows = (page.reviews ?? []).flatMap((item, i) => {
       const content = String(item.content ?? "").trim();
       if (!content) return [];
@@ -311,11 +323,11 @@ export class AcademyResearchService {
       }];
     });
     this.db.replaceReviews(externalId, "drivingplus_review", rows);
-    return rows.length;
+    return { stored: rows.length, outcome: rows.length ? "data" : "empty" };
   }
 
-  private storeBlogPlatform(externalId: string, page: { ok: boolean; reviews: DrivingplusAcademy["blogReviews"] }): number {
-    if (!page.ok) return 0;
+  private storeBlogPlatform(externalId: string, page: { ok: boolean; reviews: DrivingplusAcademy["blogReviews"] }): { stored: number; outcome: SyncOutcome } {
+    if (!page.ok) return { stored: 0, outcome: "failed" };
     const rows = (page.reviews ?? []).flatMap((item, i) => {
       const content = String(item.content ?? item.title ?? "").trim();
       if (!content) return [];
@@ -332,7 +344,7 @@ export class AcademyResearchService {
       }];
     });
     this.db.replaceReviews(externalId, "drivingplus_blog", rows);
-    return rows.length;
+    return { stored: rows.length, outcome: rows.length ? "data" : "empty" };
   }
 }
 
