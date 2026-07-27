@@ -110,6 +110,20 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
         </details>
       </div>
 
+      {/* 원천이 답을 가진 항목. 이 값들은 조사에서 빠지므로 조사 필드가 비어 있는데,
+          함께 보여주지 않으면 "조사가 실패했다" 로 읽힌다. */}
+      {data.source_facts?.length ? (
+        <div className="card card-pad" style={{ marginTop: 24, background: "#f8fafc" }}>
+          <b className="small">원천 자료로 확정된 항목</b>
+          <p className="muted small" style={{ margin: "4px 0 8px" }}>
+            아래 항목은 원천 동기화로 이미 확인돼 조사 대상에서 빠집니다. 글 생성도 이 값을 씁니다.
+          </p>
+          <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
+            {data.source_facts.map((line, i) => <li key={i}>{line.replace(/^- /, "")}</li>)}
+          </ul>
+        </div>
+      ) : null}
+
       {/* AI 심층조사 필드 (값 편집 + 검증상태 토글) */}
       <h2 style={{ marginTop: 28 }}>심층조사 필드 <span className="muted" style={{ fontSize: 13, fontWeight: 400 }}>
         {data.research?.researched_at ? `· ${data.research.research_engine || "AI"} · ${fmt(data.research.researched_at)}` : "· 미조사"}
@@ -123,7 +137,15 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
               return (
                 <tr key={f.key}>
                   <td>{f.label}</td>
-                  <td><input className="input" style={{ width: "100%" }} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} /></td>
+                  <td>
+                    <input className="input" style={{ width: "100%" }} value={values[f.key] ?? ""} onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))} />
+                    {/* 사유가 없으면 왜 「검토 필요」인지, 왜 값이 비었는지 화면에서 알 수 없다. */}
+                    {meta?.note ? (
+                      <p className="small" style={{ margin: "4px 0 0", color: statuses[f.key] === "needs_review" ? "#b45309" : "var(--muted, #64748b)" }}>
+                        {statuses[f.key] === "needs_review" ? "⚠️ " : ""}{meta.note}
+                      </p>
+                    ) : null}
+                  </td>
                   <td>
                     <select className="select" value={statuses[f.key] ?? "unverified"} onChange={(e) => changeStatus(f.key, e.target.value)}>
                       {defs.map((d) => <option key={d.code} value={d.code}>{d.label}</option>)}

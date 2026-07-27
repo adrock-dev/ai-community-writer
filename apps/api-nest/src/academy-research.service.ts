@@ -6,7 +6,7 @@ import {
   type ResearchProvider, type ResearchProviderPreference, type ResearchResult,
 } from "./academy-research-llm.js";
 import { buildExtractionPrompt, gatherSources, structuredFactsFromSources, type WebSource } from "./academy-research-web.js";
-import { emptyKnownFacts, knownFactsFromSource, type KnownFacts } from "./academy-research-known-facts.js";
+import { baseKnownFacts, knownFactsFromSource, type KnownFacts } from "./academy-research-known-facts.js";
 import { findingNote, hasFinding, inspectResearchValue, sourceHaystack } from "./academy-research-grounding.js";
 import { blogReviewSyncEnabled } from "./runtime-config.js";
 
@@ -357,7 +357,7 @@ export class AcademyResearchService {
     parsed: ResearchResult,
     meta: { engine: ResearchProvider; method: string },
     collected: WebSource[] = [],
-    known: KnownFacts = emptyKnownFacts(),
+    known: KnownFacts = baseKnownFacts(),
   ): { checked: number; flagged: number } {
     const scalar: Record<string, unknown> = {};
     for (const key of SCALAR_KEYS) {
@@ -390,7 +390,9 @@ export class AcademyResearchService {
     let flagged = 0;
     for (const key of known.skipFields) {
       // 조사 대상이 아니었음을 남긴다 — 값이 빈 것과 "원천이 답을 가졌다"는 다르다.
-      if (SCALAR_KEY_SET.has(key)) this.db.setFieldMeta(externalId, key, { status: "unverified", note: "원천 자료가 있어 조사하지 않음" });
+      if (SCALAR_KEY_SET.has(key)) {
+        this.db.setFieldMeta(externalId, key, { status: "unverified", note: known.skipReasons.get(key) ?? "조사 대상이 아님" });
+      }
     }
     for (const key of SCALAR_KEYS) {
       if (known.skipFields.has(key as string)) continue;
@@ -404,7 +406,9 @@ export class AcademyResearchService {
         status: hasFinding(report) ? "needs_review" : "ai_draft",
         source_url: sourceUrl,
         source_name: sourceUrl ? undefined : `${meta.engine} 조사`,
-        note: findingNote(report),
+        // 빈 문자열로 덮는다. setFieldMeta 가 note 를 COALESCE 로 유지하므로 undefined 를 넘기면
+        // 지난 실행의 지적 사유가 그대로 남아, 이제 깨끗해진 값 옆에 옛 사유가 붙는다.
+        note: findingNote(report) ?? "",
       });
     }
     return { checked, flagged };

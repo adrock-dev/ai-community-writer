@@ -1,5 +1,5 @@
 import type { ResearchBaseRef } from "./academy-research-llm.js";
-import { emptyKnownFacts, type KnownFacts } from "./academy-research-known-facts.js";
+import { baseKnownFacts, type KnownFacts } from "./academy-research-known-facts.js";
 
 // B안: CLI 웹툴에 의존하지 않고, 서버(Node)가 직접 검색·페이지를 fetch 해서
 // 그 본문을 LLM에 넘겨 "소스에 있는 사실만" 추출한다. 근거 URL을 함께 확보한다.
@@ -556,7 +556,7 @@ const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
 const COURSES_LINE = `"courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}]`;
 const SHUTTLE_ROUTES_LINE = `"shuttle_routes": [{"route_name": string, "waypoints": string|null, "coverage": string|null, "interval_text": string|null, "source_url": string|null}]`;
 
-export function buildExtractionPrompt(base: ResearchBaseRef, sources: WebSource[], known: KnownFacts = emptyKnownFacts()): string {
+export function buildExtractionPrompt(base: ResearchBaseRef, sources: WebSource[], known: KnownFacts = baseKnownFacts()): string {
   const ref = [
     base.name ? `- 이름: ${base.name}` : null,
     base.address ? `- 주소(참고): ${base.address}` : null,

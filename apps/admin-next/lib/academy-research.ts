@@ -61,6 +61,8 @@ export interface FieldMetaRow {
   status: string;
   source_url?: string | null;
   source_name?: string | null;
+  /** 조사 결과에 대한 사유(검사 지적·조사 제외 사유). 화면에 그대로 보여준다. */
+  note?: string | null;
   verified_at?: string | null;
   updated_at?: string | null;
 }
@@ -72,6 +74,8 @@ export interface AcademyFull {
   shuttle_routes: Array<Record<string, any>>;
   reviews: ReviewRow[];
   field_meta: FieldMetaRow[];
+  /** 원천이 이미 답을 가진 항목(조사에서 뺀 값). 생성 프롬프트에 들어가는 문장과 같다. */
+  source_facts?: string[];
 }
 
 export const listAcademyResearch = (region?: string, q?: string) => {

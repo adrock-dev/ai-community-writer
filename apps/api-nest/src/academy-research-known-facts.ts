@@ -16,15 +16,42 @@ export interface KnownFacts {
   lines: string[];
   /** 조사 스키마에서 뺄 필드 키. */
   skipFields: Set<string>;
+  /** 왜 뺐는지. 화면에 사유로 남긴다 — 값이 비어 있는 것과 조사 대상이 아닌 것은 다르다. */
+  skipReasons: Map<string, string>;
   /** 과정별 가격 배열을 요구하지 않는다(원천 수강료가 있을 때). */
   skipCourses: boolean;
   /** 셔틀 노선 배열을 요구하지 않는다(원천 노선표가 있을 때). */
   skipShuttleRoutes: boolean;
 }
 
-export function emptyKnownFacts(): KnownFacts {
-  return { lines: [], skipFields: new Set(), skipCourses: false, skipShuttleRoutes: false };
+/**
+ * 원천에도 없고 웹으로도 못 얻는 필드. 조사시키면 광고 문구나 빈 값만 들어온다.
+ *
+ * - pass_rate / pass_rate_scope: 합격률 원천이 어디에도 없다(academies.pass_rate 380곳 전부 빈 값).
+ *   웹에서 긁으면 학원 홍보 문구가 그대로 들어온다 — 실측 34곳 중 채워진 단 1건이
+ *   "타사보다 더 높은 합격률, 수도권 최고 합격률" 이었다. 원천이 합격률을 주기 시작하면
+ *   이 목록에서 빼고 원천값을 쓴다.
+ * - kakao_url: 수집 경로가 네이버 플레이스라 카카오 주소가 나올 자리가 없다(34곳 전부 0건).
+ */
+const NEVER_RESEARCHED: Array<{ key: string; reason: string }> = [
+  { key: "pass_rate", reason: "조사 대상 제외 — 공개 자료에는 학원 홍보 문구만 있어 근거가 되지 않음" },
+  { key: "pass_rate_scope", reason: "조사 대상 제외 — 합격률을 조사하지 않으므로 근거 구분도 두지 않음" },
+  { key: "kakao_url", reason: "조사 대상 제외 — 수집 경로(네이버 플레이스)에 카카오 주소가 없음" },
+];
+
+/**
+ * 원천 정보가 없을 때의 기본값. "비어 있음"이 아니라 **항상 제외하는 필드는 이미 빠진** 상태다.
+ * 기본 인자로 쓰이는 자리(buildExtractionPrompt·persistResearch)에서도 제외가 걸려야 하기 때문이다.
+ */
+export function baseKnownFacts(): KnownFacts {
+  const out: KnownFacts = { lines: [], skipFields: new Set(), skipReasons: new Map(), skipCourses: false, skipShuttleRoutes: false };
+  for (const { key, reason } of NEVER_RESEARCHED) {
+    out.skipFields.add(key);
+    out.skipReasons.set(key, reason);
+  }
+  return out;
 }
+
 
 /**
  * academy_base.raw_json(정규화된 원천 응답)에서 이미 확정된 사실을 뽑는다.
@@ -33,7 +60,7 @@ export function emptyKnownFacts(): KnownFacts {
  * 몰라야 하는데 `academies` 는 도메인 스코프라 참조하면 결합이 생긴다.
  */
 export function knownFactsFromSource(raw: unknown): KnownFacts {
-  const out = emptyKnownFacts();
+  const out = baseKnownFacts();
   if (!raw || typeof raw !== "object") return out;
   const academy = raw as Partial<DrivingplusAcademy>;
 
@@ -41,7 +68,7 @@ export function knownFactsFromSource(raw: unknown): KnownFacts {
   if (tuition) {
     out.lines.push(`- 수강료: ${tuition}`);
     // price_disclosed 도 함께 확정된다 — 원천이 금액을 준다는 것 자체가 공개된 가격이라는 뜻이다.
-    out.skipFields.add("fee_summary").add("price_disclosed");
+    markSourceKnown(out, ["fee_summary", "price_disclosed"], "수강료");
     out.skipCourses = true;
   }
 
@@ -50,7 +77,7 @@ export function knownFactsFromSource(raw: unknown): KnownFacts {
   const shuttle = formatShuttleFact(academy.shuttleBuses ?? null);
   if (shuttle) {
     out.lines.push(`- 셔틀: ${shuttle}`);
-    out.skipFields.add("shuttle_available").add("shuttle_summary");
+    markSourceKnown(out, ["shuttle_available", "shuttle_summary"], "셔틀");
     out.skipShuttleRoutes = true;
   }
 
@@ -58,16 +85,23 @@ export function knownFactsFromSource(raw: unknown): KnownFacts {
   if (hours) {
     out.lines.push(`- 운영시간: ${hours}`);
     // 요일별 개·폐점과 휴무가 모두 들어 있어 주말·휴무일도 함께 확정된다.
-    out.skipFields.add("hours").add("weekend").add("closed_days");
+    markSourceKnown(out, ["hours", "weekend", "closed_days"], "운영시간");
   }
 
   const licenses = (academy.licenseTypes ?? []).map((type) => String(type?.label ?? "").trim()).filter(Boolean);
   if (licenses.length) {
     out.lines.push(`- 취득 가능 면허: ${licenses.join(", ")}`);
-    out.skipFields.add("licenses");
+    markSourceKnown(out, ["licenses"], "면허 종별");
   }
 
   return out;
+}
+
+function markSourceKnown(out: KnownFacts, keys: string[], label: string): void {
+  for (const key of keys) {
+    out.skipFields.add(key);
+    out.skipReasons.set(key, `원천 자료(${label})가 있어 조사하지 않음`);
+  }
 }
 
 // 야간반은 일부러 제외하지 않는다. 운영시간이 늦게까지라고 해서 야간반을 운영한다는 뜻은

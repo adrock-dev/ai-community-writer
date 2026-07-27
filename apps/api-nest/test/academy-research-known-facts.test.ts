@@ -54,13 +54,29 @@ describe("knownFactsFromSource — 원천이 준 값은 조사에서 뺀다", ()
     expect(knownFactsFromSource(source).skipFields.has("night_class")).toBe(false);
   });
 
-  it("원천에 값이 없으면 아무것도 빼지 않는다", () => {
+  it("원천에 값이 없으면 원천 기반 항목은 빼지 않는다(항상 제외 필드만 남는다)", () => {
     for (const empty of [null, undefined, {}, "", { educationPerformance: null, shuttleBuses: [], licenseTypes: [] }]) {
       const known = knownFactsFromSource(empty);
-      expect(known.skipFields.size).toBe(0);
+      expect([...known.skipFields].sort()).toEqual(["kakao_url", "pass_rate", "pass_rate_scope"]);
       expect(known.skipCourses).toBe(false);
       expect(known.lines).toEqual([]);
     }
+  });
+
+  it("합격률·카카오맵은 원천과 무관하게 항상 조사에서 뺀다", () => {
+    // 합격률 원천이 없어 웹에서 긁으면 홍보 문구가 들어온다(실측 1건이 "수도권 최고 합격률").
+    // 카카오맵은 수집 경로가 네이버 플레이스라 나올 자리가 없다(34곳 전부 0건).
+    for (const key of ["pass_rate", "pass_rate_scope", "kakao_url"]) {
+      expect(knownFactsFromSource(source).skipFields.has(key)).toBe(true);
+      expect(knownFactsFromSource(source).skipReasons.get(key)).toContain("조사 대상 제외");
+    }
+  });
+
+  it("왜 뺐는지 사유를 남긴다 — 값이 빈 것과 조사 대상이 아닌 것은 다르다", () => {
+    const known = knownFactsFromSource(source);
+    expect(known.skipReasons.get("fee_summary")).toBe("원천 자료(수강료)가 있어 조사하지 않음");
+    expect(known.skipReasons.get("hours")).toBe("원천 자료(운영시간)가 있어 조사하지 않음");
+    expect(known.skipReasons.get("licenses")).toBe("원천 자료(면허 종별)가 있어 조사하지 않음");
   });
 });
 
@@ -70,6 +86,8 @@ describe("buildExtractionPrompt — 뺀 필드는 스키마에서 사라진다",
     for (const key of ["fee_summary", "hours", "licenses", "shuttle_summary", "courses", "shuttle_routes", "night_class"]) {
       expect(prompt).toContain(`"${key}"`);
     }
+    // 합격률·카카오맵은 원천이 없어도 조사하지 않는다.
+    for (const gone of ['"pass_rate"', '"kakao_url"']) expect(prompt).not.toContain(gone);
     expect(prompt).not.toContain("이미 확정된 사실");
   });
 
@@ -79,7 +97,7 @@ describe("buildExtractionPrompt — 뺀 필드는 스키마에서 사라진다",
       expect(prompt).not.toContain(gone);
     }
     // 원천에 없는 항목은 그대로 남는다
-    for (const kept of ['"night_class"', '"self_test"', '"facilities"', '"established_year"', '"pass_rate"', '"homepage_url"']) {
+    for (const kept of ['"night_class"', '"self_test"', '"facilities"', '"established_year"', '"homepage_url"']) {
       expect(prompt).toContain(kept);
     }
     expect(prompt).toContain("이미 확정된 사실");
@@ -94,15 +112,14 @@ describe("buildExtractionPrompt — 뺀 필드는 스키마에서 사라진다",
     const prompt = buildExtractionPrompt(ref, webSources, known);
     expect(prompt).not.toContain('"homepage_url"');
     expect(prompt).toContain('"naver_place_url"');
-    expect(prompt).toContain('"kakao_url"');
   });
 
   it("모든 필드가 빠져도 sources 맵은 남아 JSON 형태가 깨지지 않는다", () => {
     const everything = knownFactsFromSource(source);
     for (const key of [
       "name_researched", "address_researched", "phone_researched", "gu", "dong", "jibun_address",
-      "night_class", "self_test", "facilities", "pass_rate", "pass_rate_scope",
-      "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
+      "night_class", "self_test", "facilities",
+      "established_year", "scale", "homepage_url", "naver_place_url",
     ]) {
       everything.skipFields.add(key);
     }

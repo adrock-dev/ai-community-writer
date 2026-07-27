@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { checkAuth } from "./admin.controller.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyResearchService } from "./academy-research.service.js";
+import { knownFactsFromSource } from "./academy-research-known-facts.js";
 import type { ResearchProviderPreference } from "./academy-research-llm.js";
 
 type Row = Record<string, any>;
@@ -97,7 +98,10 @@ export class AcademyResearchController {
     checkAuth(req, headers);
     const full = this.db.getFull(externalId);
     if (!full) throw new HttpException("academy not found", 404);
-    return full;
+    // 원천이 답을 가진 항목은 조사에서 빠져 조사값이 빈다. 화면에 원천 사실을 함께 내려주지 않으면
+    // "조사가 실패했다" 로 읽힌다. 생성 프롬프트에 들어가는 것과 같은 문장을 쓴다(표현 어긋남 방지).
+    const known = knownFactsFromSource(parseRawJson(full.base?.raw_json));
+    return { ...full, source_facts: known.lines };
   }
 
   // 단건 동기화(기본정보/리뷰 새로고침)
@@ -160,4 +164,11 @@ function parseLimit(value: unknown): number | undefined {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 1) throw new HttpException("limit must be a positive number", 400);
   return Math.min(5000, Math.trunc(n));
+}
+
+// raw_json 은 TEXT 라 문자열로 온다. 손상된 값이 상세 조회를 막지 않게 한다.
+function parseRawJson(value: unknown): unknown {
+  if (value == null) return null;
+  if (typeof value === "object") return value;
+  try { return JSON.parse(String(value)); } catch { return null; }
 }
