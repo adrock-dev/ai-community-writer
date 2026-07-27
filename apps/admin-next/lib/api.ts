@@ -35,6 +35,15 @@ function safeJson(text: string): any {
   try { return JSON.parse(text); } catch { return text; }
 }
 
+/**
+ * 블로그리뷰 "수집" 스위치. `used_in_generation` 은 항상 false 다 — 켜도 글 생성에는 쓰이지 않는다.
+ * 화면이 그 사실을 서버 응답으로 확인해 문구를 쓰도록 필드로 내려받는다(주석에만 적어두면 어긋난다).
+ */
+export type BlogReviewSyncSetting = { enabled: boolean; configured: boolean; used_in_generation: boolean };
+export const getBlogReviewSync = () => api<BlogReviewSyncSetting>("/settings/blog-review-sync");
+export const saveBlogReviewSync = (enabled: boolean) =>
+  api<{ ok: true } & BlogReviewSyncSetting>("/settings/blog-review-sync", { method: "PUT", body: JSON.stringify({ enabled }) });
+
 export const getOptions = () => api<AdminOptions>("/options");
 // 전역 빌트인 노출 목록 저장(검증용 임시). null = 전체 노출로 초기화.
 export const setBuiltinVisibility = (exposed: string[] | null) =>

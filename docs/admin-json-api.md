@@ -628,12 +628,33 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 { "ok": true, "upserted": 3 }
 ```
 
+### `GET /api/admin/settings/blog-review-sync`
+
+블로그리뷰 **수집** 스위치. `used_in_generation` 은 항상 `false` 다 — 켜도 생성 프롬프트
+(`389ce0d`)와 T01 품질 게이트(`bfe5881`)에는 닿지 않는다. 화면이 이 사실을 서버 응답으로 확인해
+안내 문구를 쓰도록 필드로 내려준다.
+
+```json
+{ "enabled": false, "configured": true, "used_in_generation": false }
+```
+
+- `configured` — 관리자 설정에 저장된 값이 있는지. `false` 면 환경변수 기본값을 따르는 중이다.
+
+### `PUT /api/admin/settings/blog-review-sync`
+
+`{ "enabled": true }` 를 보낸다. 저장 즉시 반영되며 API 재시작이 필요 없다 — 기동 중인 프로세스는
+시작 시점의 `.env` 를 들고 있어서, 환경변수만으로는 재시작해야 하고 그러면 진행 중인 글 생성이 죽는다.
+
+켜면 학원 동기화가 1~2분에서 14분으로 늘어난다(원천이 동시 요청을 못 견뎌 한 곳씩 받는다).
+끄더라도 이미 저장된 `blog_reviews` 는 지워지지 않는다.
+
 ### `POST /api/admin/domains/{domain}/sync/drivingplus/academies`
 
 동기화를 **백그라운드로 시작하고 `run_id` 를 즉시 반환한다.** 결과를 기다리지 않는다.
 
-**`include_blog_reviews` 는 기본 무시된다.** 블로그리뷰 수집은 서버 스위치
-(`DRIVINGPLUS_BLOG_REVIEW_SYNC`)로 통제하며 기본이 꺼짐이라, 요청이 `true` 를 보내도 켜지지 않는다.
+**`include_blog_reviews` 는 수집 스위치가 꺼져 있으면 무시된다.** 스위치는 관리자 설정
+(`PUT /api/admin/settings/blog-review-sync`) → 환경변수 `DRIVINGPLUS_BLOG_REVIEW_SYNC` → 꺼짐
+순으로 판단하며 기본이 꺼짐이라, 꺼진 상태에서는 요청이 `true` 를 보내도 켜지지 않는다.
 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이다
 (2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이 비슷한
 학원 2~3곳에 중복 배정). 글 생성에도 쓰지 않는다. 이미 저장된 블로그리뷰는 지워지지 않는다.

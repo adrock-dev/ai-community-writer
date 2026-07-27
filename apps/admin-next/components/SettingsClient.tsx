@@ -1,6 +1,6 @@
 "use client";
 
-import { addVertical, deleteVertical, getOptions, listVerticals } from "@/lib/api";
+import { addVertical, deleteVertical, getBlogReviewSync, getOptions, listVerticals, saveBlogReviewSync } from "@/lib/api";
 import { DEFAULT_GENERATION_DEFAULTS, useGenerationDefaults } from "@/lib/generation-defaults";
 import { useTourEnabled } from "@/lib/tour";
 import type { Provider, Vertical } from "@/lib/types";
@@ -23,6 +23,10 @@ export default function SettingsClient() {
   const [vLabel, setVLabel] = useState("");
   const [vErr, setVErr] = useState("");
   const [vBusy, setVBusy] = useState(false);
+  // 블로그리뷰 "수집" 스위치. null 이면 아직 못 읽은 상태(토글을 섣불리 꺼진 것처럼 보이지 않게 한다).
+  const [blogSync, setBlogSync] = useState<boolean | null>(null);
+  const [blogSyncBusy, setBlogSyncBusy] = useState(false);
+  const [blogSyncErr, setBlogSyncErr] = useState("");
 
   async function loadOptions() {
     const opts = await getOptions();
@@ -53,6 +57,27 @@ export default function SettingsClient() {
   useEffect(() => {
     setGenDraft(savedGen);
   }, [savedGen]);
+
+  useEffect(() => {
+    let alive = true;
+    void getBlogReviewSync()
+      .then((res) => { if (alive) setBlogSync(res.enabled); })
+      .catch((e) => { if (alive) setBlogSyncErr((e as Error).message); });
+    return () => { alive = false; };
+  }, []);
+
+  async function onToggleBlogSync(next: boolean) {
+    setBlogSyncBusy(true);
+    setBlogSyncErr("");
+    try {
+      const res = await saveBlogReviewSync(next);
+      setBlogSync(res.enabled);
+    } catch (e) {
+      setBlogSyncErr((e as Error).message);
+    } finally {
+      setBlogSyncBusy(false);
+    }
+  }
 
   function saveLocalSettings() {
     setSavedGen(genDraft);
@@ -189,6 +214,39 @@ export default function SettingsClient() {
         </div>
         {vErr && <p className="toast-warn small">{vErr}</p>}
         <div className="row"><button className="btn primary" disabled={vBusy || !vKey.trim() || !vLabel.trim()} onClick={onAddVertical}>{vBusy ? "추가 중..." : "업종 추가"}</button></div>
+      </section>
+
+      <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
+        <div>
+          <div className="row" style={{ gap: 8 }}>
+            <h2 style={{ margin: 0 }}>블로그 리뷰 수집</h2>
+            <span className={`badge ${blogSync ? "success" : "warn"}`}>{blogSync === null ? "확인 중" : blogSync ? "켜짐" : "꺼짐"}</span>
+          </div>
+          <p className="muted small" style={{ marginTop: 6 }}>
+            <b>수집만 켜고 끕니다. 글 생성에는 어느 쪽이든 쓰지 않습니다.</b> 생성 프롬프트와 품질 게이트에서 이미 빠져 있어,
+            켜도 글 내용이 달라지지 않습니다. 검증된 블로그 글만 쓰는 방법이 정해지면 그때 건별 검증 상태를 관문으로 두고 되살립니다.
+          </p>
+          <p className="muted small">
+            끈 이유: 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 <b>다른 학원 글이 섞입니다</b>.
+            2026-07-27 실측 539건 중 55건(10%)은 학원 고유명이 글 어디에도 없었고, 같은 글 18건이 이름이 비슷한 학원 2~3곳에
+            중복 배정됐습니다(중앙/천안중앙/북부중앙 등). 10%는 하한선입니다 — 고유명이 지역명인 학원은 그 지역 아무 글이나 통과합니다.
+          </p>
+          <p className="muted small">
+            켜면 학원 동기화가 <b>1~2분에서 14분으로</b> 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다).
+            이미 수집된 자료는 끄더라도 지워지지 않고 학원 상세에 남습니다.
+          </p>
+        </div>
+        {blogSyncErr && <p className="toast-warn small">{blogSyncErr}</p>}
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className={`btn ${blogSync ? "" : "primary"}`}
+            disabled={blogSync === null || blogSyncBusy}
+            onClick={() => void onToggleBlogSync(!blogSync)}
+          >
+            {blogSyncBusy ? "저장 중..." : blogSync ? "수집 끄기" : "수집 켜기"}
+          </button>
+          <span className="muted small">서버에 저장되어 즉시 반영됩니다(재시작 불필요).</span>
+        </div>
       </section>
     </div>
   );

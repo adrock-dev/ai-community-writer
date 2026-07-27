@@ -15,7 +15,7 @@ import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
 import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./archetypes.js";
 import { runLlm } from "./llm-runner.js";
-import { adminApiBaseUrl, blogReviewSyncEnabled, drivingplusApiBaseUrl } from "./runtime-config.js";
+import { adminApiBaseUrl, blogReviewSyncEnabled, BLOG_REVIEW_SYNC_SETTING_KEY, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 import { isT01TemplateFamily, T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
 
@@ -840,6 +840,29 @@ export class AdminController {
   @Post("jobs/:id/prioritize")
   prioritizeJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
     checkAuth(req, headers); return { ok: this.db.prioritizeJob(id) };
+  }
+
+  /**
+   * 블로그리뷰 "수집" 스위치. 켜고 끄는 것은 수집뿐이며, 글 생성에는 어느 쪽이든 쓰지 않는다
+   * (프롬프트 389ce0d · T01 품질 게이트 bfe5881 에서 각각 제거됨).
+   */
+  @Get("settings/blog-review-sync")
+  getBlogReviewSync(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers);
+    return {
+      enabled: blogReviewSyncEnabled(),
+      // 저장값이 없으면 환경변수 기본값을 따르고 있다는 뜻이라, 화면이 "설정된 적 없음" 을 구분할 수 있어야 한다.
+      configured: this.db.getSetting(BLOG_REVIEW_SYNC_SETTING_KEY) !== null,
+      used_in_generation: false,
+    };
+  }
+
+  @Put("settings/blog-review-sync")
+  saveBlogReviewSync(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    if (typeof body.enabled !== "boolean") throw new HttpException("enabled(boolean)가 필요합니다.", 400);
+    this.db.setSetting(BLOG_REVIEW_SYNC_SETTING_KEY, body.enabled ? "1" : "0");
+    return { ok: true, enabled: blogReviewSyncEnabled(), configured: true, used_in_generation: false };
   }
 
   @Get("settings/indexing")

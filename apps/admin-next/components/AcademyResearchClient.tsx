@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
-  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncRegion,
+  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncBlogReviews, syncRegion,
 } from "@/lib/academy-research";
+import { getBlogReviewSync } from "@/lib/api";
 import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
 
 export default function AcademyResearchClient() {
@@ -20,6 +21,8 @@ export default function AcademyResearchClient() {
   const [refreshAll, setRefreshAll] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
+  // 수집 스위치 상태. 서버가 최종 판단하므로 화면은 받아서 표시만 한다.
+  const [blogSyncOn, setBlogSyncOn] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -49,6 +52,10 @@ export default function AcademyResearchClient() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadRuns(); }, [loadRuns]);
+  useEffect(() => {
+    // 수집 스위치는 설정 화면에서 바뀐다. 여기서는 읽기만 하고, 실패하면 꺼짐으로 본다(안전한 쪽).
+    void getBlogReviewSync().then((res) => setBlogSyncOn(res.enabled)).catch(() => setBlogSyncOn(false));
+  }, []);
 
   // 진행 중인 실행이 있으면 폴링.
   useEffect(() => {
@@ -137,11 +144,30 @@ export default function AcademyResearchClient() {
     }
   }
 
+  async function onSyncBlog() {
+    if (!confirm("블로그리뷰를 동기화합니다. 한 곳씩 받아야 해 전체에 8~15분 걸립니다(백그라운드). 수집만 하며 글 생성에는 쓰이지 않습니다. 진행할까요?")) return;
+    setBusy("blog");
+    setError("");
+    setNotice("");
+    try {
+      const res = await syncBlogReviews();
+      if (!res.ok) throw new Error(res.error || "시작 실패");
+      if (res.run_id) watchedRunRef.current = res.run_id;
+      setNotice("블로그리뷰 동기화를 백그라운드에서 시작했습니다. 창을 닫아도 계속 진행됩니다.");
+      await loadRuns();
+    } catch (e: any) {
+      setError(e?.message || "블로그리뷰 동기화 시작 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
   const activeSyncRun = runs.find((r) => r.status === "running" && r.scope === "sync");
   const activeBlogRun = runs.find((r) => r.status === "running" && r.scope === "sync_blog");
   const activeResearchRun = runs.find((r) => r.status === "running" && r.scope !== "sync" && r.scope !== "sync_blog");
   // 끝난 동기화 중 가장 최근 것 — 진행 중이 아닐 때도 "언제 받아온 자료인지" 알 수 있어야 한다.
   const lastSyncRun = runs.find((r) => r.scope === "sync" && r.status !== "running");
+  const lastBlogRun = runs.find((r) => r.scope === "sync_blog" && r.status !== "running");
   // 두 동기화는 같은 원천을 두드려 서버가 동시 실행을 막는다. 버튼도 같이 잠근다.
   const syncBusy = Boolean(activeSyncRun || activeBlogRun);
   // 이미 받아 둔 블로그리뷰가 있는지만 본다(수집은 중단했고, 뒤처짐 비교는 의미가 없어졌다).
@@ -185,22 +211,36 @@ export default function AcademyResearchClient() {
             <DiagnosisLine run={activeSyncRun ? undefined : lastSyncRun} />
           </div>
           {/*
-            블로그리뷰 수집은 중단했다. 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해
-            다른 학원 글이 섞인다(2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도 없고,
-            같은 글 18건이 이름이 비슷한 학원 2~3곳에 중복 배정). 글 생성에서도 뺐다.
-            버튼을 지우지 않고 안내로 바꾼 이유: 블로그 글 자체를 검증하는 방법이 정해지면 다시 켠다.
-            서버도 같은 판단을 하므로(runtime-config blogReviewSyncEnabled) 직접 호출해도 거부된다.
+            블로그리뷰 수집은 설정(설정 화면 → 블로그 리뷰 수집)으로 켜고 끈다. 기본은 꺼짐이다.
+            원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이다
+            (2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이
+            비슷한 학원 2~3곳에 중복 배정). 켜도 수집만 하며 글 생성·품질 게이트에는 닿지 않는다.
+            여기서 상태를 자체 판단하지 않고 서버가 준 값을 쓴다 — 화면과 서버가 어긋나면 안내가 거짓말이 된다.
           */}
           <div style={{ display: "grid", gap: 4 }}>
             <div className="row" style={{ alignItems: "center" }}>
               <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>블로그리뷰</span>
-              <span className="badge warn">수집 중단</span>
-              <span className="muted small">
-                원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞입니다. 글 생성에도 쓰지 않습니다.
-                블로그 글을 검증해 올바른 것만 쓰는 방법이 정해지면 다시 켭니다.
-                {lastBlogDone ? " 이미 받아 둔 자료는 학원 상세에 그대로 남아 있습니다." : ""}
-              </span>
+              {blogSyncOn ? (
+                <>
+                  <button className="btn" onClick={onSyncBlog} disabled={busy === "blog" || syncBusy}>
+                    {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
+                  </button>
+                  <span className="muted small">
+                    {lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))} · 한 곳씩 받아 8~15분 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="badge warn">수집 꺼짐</span>
+                  <span className="muted small">
+                    원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞입니다. 글 생성에도 쓰지 않습니다.
+                    필요하면 설정 화면에서 켤 수 있습니다.
+                    {lastBlogDone ? " 이미 받아 둔 자료는 학원 상세에 그대로 남아 있습니다." : ""}
+                  </span>
+                </>
+              )}
             </div>
+            {blogSyncOn && <DiagnosisLine run={activeBlogRun ? undefined : lastBlogRun} />}
           </div>
           <div className="row" style={{ alignItems: "center" }}>
             <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>

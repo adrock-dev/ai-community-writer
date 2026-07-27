@@ -38,6 +38,21 @@ describe("블로그리뷰 수집 스위치", () => {
     expect(blogReviewSyncEnabled()).toBe(false);
   });
 
+  it("관리자 설정이 환경변수를 이긴다(재시작 없이 켜고 끄기 위한 순서)", () => {
+    // DbService.init 이 설정 읽기 통로를 열어 두므로, 저장값이 있으면 그것이 최종 판단이다.
+    process.env.DRIVINGPLUS_BLOG_REVIEW_SYNC = "1";
+    db.setSetting("blog_review_sync", "0");
+    expect(blogReviewSyncEnabled(), "설정 꺼짐이 환경변수 켜짐을 이긴다").toBe(false);
+
+    delete process.env.DRIVINGPLUS_BLOG_REVIEW_SYNC;
+    db.setSetting("blog_review_sync", "1");
+    expect(blogReviewSyncEnabled(), "설정 켜짐은 환경변수가 없어도 켜진다").toBe(true);
+
+    // 저장값을 지우면 환경변수로 되돌아간다.
+    db.setSetting("blog_review_sync", null);
+    expect(blogReviewSyncEnabled()).toBe(false);
+  });
+
   it("DRIVINGPLUS_BLOG_REVIEW_SYNC 로만 켜진다", () => {
     for (const on of ["1", "true", "on"]) {
       process.env.DRIVINGPLUS_BLOG_REVIEW_SYNC = on;

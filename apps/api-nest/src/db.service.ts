@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
 import { parseResearchUsage } from "./academy-research-usage.js";
+import { registerSettingsReader } from "./runtime-config.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -291,6 +292,9 @@ export class DbService implements OnModuleInit {
     this.db.exec(SCHEMA);
     this.migrate();
     this.clearStaleSyncRuns();
+    // 저장된 설정을 읽는 통로를 열어 둔다. runtime-config 의 스위치들이 DB 를 직접 몰라도
+    // 관리자 설정을 반영할 수 있게 하는 장치다(자세한 이유는 registerSettingsReader 주석).
+    registerSettingsReader((key) => this.getSetting(key));
   }
 
   /**
