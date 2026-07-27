@@ -66,10 +66,20 @@ export default function AcademyResearchClient() {
     const run = runs.find((r) => r.id === watched);
     if (!run || run.status === "running") return;
     watchedRunRef.current = null;
-    if (run.status === "error") setError(`${runLabel(run)} 실패 — ${run.error || "원인 미상"}`);
-    else if (run.status === "cancelled") setNotice(`${runLabel(run)} 중단됨 — ${runSummary(run)}까지 저장했습니다.`);
-    else setNotice(`${runLabel(run)} 완료 — ${runSummary(run)}`);
-    load();
+    // 결과 문구는 목록 새로고침이 끝난 뒤에 세운다. load() 가 시작할 때 setError("") 로
+    // 에러를 비우기 때문에, 먼저 세우면 실패 메시지가 곧바로 지워진다.
+    // 반대쪽 메시지도 반드시 비운다 — 안 그러면 "백그라운드에서 계속 진행됩니다" 안내가
+    // 이미 끝난(중단된) 실행 옆에 그대로 남아 서로 모순된 화면이 된다.
+    void load().finally(() => {
+      if (run.status === "error") {
+        setNotice("");
+        setError(`${runLabel(run)} 중단됨 — ${run.error || "원인 미상"} (${run.count_done}/${run.count_total || "?"}곳까지 저장)`);
+        return;
+      }
+      setError("");
+      if (run.status === "cancelled") setNotice(`${runLabel(run)} 중단됨 — ${runSummary(run)}까지 저장했습니다.`);
+      else setNotice(`${runLabel(run)} 완료 — ${runSummary(run)}`);
+    });
   }, [runs, load]);
 
   async function onSync() {
@@ -200,7 +210,7 @@ export default function AcademyResearchClient() {
                 {lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))}
                 {blogOutdated && (
                   <span className="badge warn" style={{ marginLeft: 8 }}>
-                    {lastBlogDone ? "학원정보보다 오래됨" : "아직 실행 안 됨"}
+                    {lastBlogDone ? "학원정보보다 오래됨" : "완료된 적 없음"}
                   </span>
                 )}
               </span>
