@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { extractSearchCandidates, feeSubpageUrls, homepageUrlsFromPlaceText, limitPerHost } from "../src/academy-research-web.js";
+import {
+  extractSearchCandidates, feeSubpageUrls, homepageUrlsFromPlaceText, limitPerHost, structuredFactsFromSources,
+} from "../src/academy-research-web.js";
 
 // 검색 HTML 에서 후보 URL 을 뽑을 때, 화면 동작용 네이버 인프라 URL 이 한도를 먼저
 // 채워 실제 근거 페이지를 밀어내는 문제가 있었다(실측: 후보 31개 전부 인프라, 공식 홈페이지 0개).
@@ -112,6 +114,41 @@ describe("feeSubpageUrls — 공식 홈페이지 첫 화면은 메뉴뿐이라 �
   it("한도를 지키고 자기 자신은 다시 담지 않는다", () => {
     expect(feeSubpageUrls(HOME, "http://www.bbdrive.co.kr/", 1)).toHaveLength(1);
     expect(feeSubpageUrls('<a href="/">수강료</a>', "http://www.bbdrive.co.kr/")).toEqual([]);
+  });
+});
+
+describe("structuredFactsFromSources — 모델에 맡기지 않고 기계적으로 확정하는 값", () => {
+  // 홈페이지·플레이스 URL 은 플레이스 JSON 에 구조화돼 있는데도 모델에 맡겼더니
+  // 채움률이 58% 였다(파일럿 26곳). 원천 API 가 홈페이지를 주기 전까지 이 경로를 쓴다.
+  const place = (homepageLine: string) => ({
+    url: "https://m.place.naver.com/place/123456",
+    text: ["이름: 목포자동차운전전문학원", "분류: 운전학원", homepageLine].join("\n"),
+  });
+
+  it("플레이스 URL 과 홈페이지를 함께 확정한다", () => {
+    expect(structuredFactsFromSources([place("홈페이지: https://www.mpdrive.co.kr")])).toEqual({
+      homepage_url: "https://www.mpdrive.co.kr",
+      naver_place_url: "https://m.place.naver.com/place/123456",
+    });
+  });
+
+  it("블로그보다 공식 홈페이지를 앞세운다", () => {
+    const facts = structuredFactsFromSources([place("홈페이지: https://blog.naver.com/mpa0554, https://www.mpdrive.co.kr")]);
+    expect(facts.homepage_url).toBe("https://www.mpdrive.co.kr");
+  });
+
+  it("블로그밖에 없으면 그거라도 쓴다(소규모 학원은 블로그가 홈페이지다)", () => {
+    const facts = structuredFactsFromSources([place("홈페이지: https://blog.naver.com/mpa0554")]);
+    expect(facts.homepage_url).toBe("https://blog.naver.com/mpa0554");
+  });
+
+  it("홈페이지 줄이 없으면 플레이스 URL 만 확정한다", () => {
+    const facts = structuredFactsFromSources([{ url: "https://m.place.naver.com/place/9", text: "이름: 구룡" }]);
+    expect(facts).toEqual({ homepage_url: undefined, naver_place_url: "https://m.place.naver.com/place/9" });
+  });
+
+  it("플레이스 소스가 없으면 아무것도 확정하지 않는다", () => {
+    expect(structuredFactsFromSources([{ url: "http://bbdrive.co.kr/", text: "수강료 680,010원" }])).toEqual({});
   });
 });
 

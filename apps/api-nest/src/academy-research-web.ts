@@ -167,6 +167,27 @@ async function fetchPlaceSource(placeId: string, timeoutMs: number, baseAddress?
   return { url: `https://m.place.naver.com/place/${placeId}`, title: `네이버 플레이스 ${name}`.trim(), text };
 }
 
+// 블로그·SNS 는 학원이 홈페이지 대신 쓰는 경우도 있어 후보로는 남기되 뒤로 미룬다.
+const BLOG_OR_SNS = /blog\.naver\.com|cafe\.naver\.com|tistory|instagram|facebook|youtube|talk\.naver\.com|pf\.kakao/i;
+
+/**
+ * 수집한 소스에서 기계적으로 확정되는 값만 뽑는다.
+ *
+ * 홈페이지·플레이스 URL 은 네이버 플레이스 JSON 에 구조화돼 있어, LLM 이 본문을 읽고
+ * 추론할 이유가 없다. 실제로 조사에 맡겼을 때 채움률이 58% 에 그쳤다(파일럿 26곳).
+ * 원천 API 가 홈페이지를 주기 시작하면 이 값은 원천 것으로 대체된다.
+ */
+export function structuredFactsFromSources(
+  sources: Array<Pick<WebSource, "url" | "text">>,
+): { homepage_url?: string; naver_place_url?: string } {
+  const place = sources.find((s) => s.url.includes("place.naver.com"));
+  if (!place) return {};
+  const homepages = homepageUrlsFromPlaceText(place.text);
+  // 공식 홈페이지를 우선하되, 블로그뿐이면 그거라도 쓴다(소규모 학원은 블로그가 홈페이지다).
+  const homepage = homepages.find((u) => !BLOG_OR_SNS.test(u)) ?? homepages[0];
+  return { homepage_url: homepage, naver_place_url: place.url };
+}
+
 // 페이지 JSON 에서 사실만 뽑아 사람이 읽는 형태로 정리한다.
 // 원문 HTML 을 통째로 넘기면 60만 자라 프롬프트에 넣을 수 없다.
 export function buildPlaceFactText(html: string, baseAddress?: string | null): string {

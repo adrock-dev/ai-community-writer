@@ -5,7 +5,7 @@ import {
   detectResearchProviders, parseResearchJson, runResearchCli,
   type ResearchProvider, type ResearchProviderPreference, type ResearchResult,
 } from "./academy-research-llm.js";
-import { buildExtractionPrompt, gatherSources } from "./academy-research-web.js";
+import { buildExtractionPrompt, gatherSources, structuredFactsFromSources } from "./academy-research-web.js";
 
 // academy_research 스칼라 필드(courses/shuttle_routes/sources 제외)
 const SCALAR_KEYS: Array<keyof ResearchResult> = [
@@ -224,6 +224,10 @@ export class AcademyResearchService {
       const parsed = parseResearchJson(out.text);
       if (!parsed) { lastError = `${provider}: JSON 파싱 실패(응답이 스키마와 다름)`; continue; }
 
+      // 기계적으로 확정되는 값은 모델 답을 덮는다. 홈페이지·플레이스 URL 은 플레이스 JSON 에
+      // 구조화돼 있어 추론할 이유가 없는데, 모델에 맡겼더니 채움률이 58% 였다(파일럿 26곳).
+      this.applyStructuredFacts(parsed, sources);
+
       // 근거 URL이 비어있는 필드는 수집 소스 첫 URL로 보완(추적성 확보)
       this.persistResearch(externalId, parsed, { engine: provider, method }, sources.map((s) => s.url));
       this.bumpRun(opts.runId);
@@ -231,6 +235,18 @@ export class AcademyResearchService {
     }
 
     return { ok: false, external_id: externalId, provider: providers[providers.length - 1], error: lastError || "CLI 실행 실패" };
+  }
+
+  // 소스에서 기계적으로 확정되는 값을 모델 답 위에 덮고, 근거 URL 도 그 소스로 맞춘다.
+  private applyStructuredFacts(parsed: ResearchResult, sources: Array<{ url: string; text: string }>): void {
+    const facts = structuredFactsFromSources(sources);
+    const placeUrl = facts.naver_place_url;
+    if (!placeUrl) return;
+    const sourceMap: Record<string, string> = { ...(parsed.sources ?? {}) };
+    if (facts.homepage_url) { parsed.homepage_url = facts.homepage_url; sourceMap.homepage_url = placeUrl; }
+    parsed.naver_place_url = placeUrl;
+    sourceMap.naver_place_url = placeUrl;
+    parsed.sources = sourceMap;
   }
 
   private bumpRun(runId?: string): void {
