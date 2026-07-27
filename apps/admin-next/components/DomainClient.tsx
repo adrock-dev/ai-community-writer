@@ -1547,7 +1547,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           <code>npm run sync:academies -- {domain.domain}</code> 로 다시 실행하면 서버 재시작과 무관하게 반영됩니다.
         </p>
       )}
-      <ResearchSummaryCard domain={domain.domain} />
+      <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={onSave} />
       <div className="card card-pad grid compact-pad" style={{ background: "#f8fafc" }}>
         <div className="spread"><div><h3 style={{ margin: 0 }}>선택 · 수동 자료 보완</h3><p className="muted small">DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
         {manualToolsOpen && <>
@@ -2053,9 +2053,15 @@ function parseJsonCount(value: unknown): number {
 // 전역 행정구역 사전(읍·면·동). 1·2단계와 달리 도메인별 운영 선택이 아니라 전역 사실 참조라
 // 번호를 붙이지 않는다. 번호를 달면 "새 도메인마다 해야 하는 일"로 읽히는데, 실제로는
 // 도메인 생성 시 자동으로 준비되고 행정구역 개편 때만 갱신하면 된다.
+const RESEARCH_USAGE_CHOICES = [
+  { value: "off", label: "사용 안 함" },
+  { value: "verified", label: "검증완료만" },
+  { value: "draft", label: "AI 초안까지" },
+] as const;
+
 // 심층조사 현황(읽기 전용). 조사는 학원 자체의 속성이라 도메인마다 돌리면 같은 학원을
 // 도메인 수만큼 다시 조사하게 된다. 그래서 실행은 자료관리에서 전역으로 하고 여기선 현황만 본다.
-function ResearchSummaryCard({ domain }: { domain: string }) {
+function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; usage: "off" | "verified" | "draft"; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
   const [summary, setSummary] = useState<ResearchSummary | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -2099,6 +2105,31 @@ function ResearchSummaryCard({ domain }: { domain: string }) {
                 {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).toLocaleString()}곳(자료관리에서 동기화 필요)` : ""}
               </p>
             </>}
+      {/* 사용 여부는 이 도메인이 정한다(자료는 업종 자산, 사용 결정은 도메인).
+          승인 도구를 새로 만들지 않고 필드 검증상태를 그대로 관문으로 쓴다. */}
+      <div className="grid" style={{ gap: 6, borderTop: "1px solid var(--line, #e5e7eb)", paddingTop: 10 }}>
+        <b className="small">글 생성에 사용</b>
+        <div className="row" style={{ gap: 14, flexWrap: "wrap" }}>
+          {RESEARCH_USAGE_CHOICES.map((choice) => (
+            <label key={choice.value} className="row small" style={{ gap: 4, alignItems: "center" }}>
+              <input
+                type="radio"
+                name={`research-usage-${domain}`}
+                checked={usage === choice.value}
+                disabled={busy}
+                onChange={() => onSave({ research_usage: choice.value })}
+              />
+              {choice.label}
+            </label>
+          ))}
+        </div>
+        <p className="muted small" style={{ margin: 0 }}>
+          「검토 필요」·「웹조사 차단」 값은 어느 설정에서도 쓰이지 않습니다. 관리자가 검증완료로 올린 값만 「검증완료만」에 포함됩니다.
+        </p>
+        <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
+          ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.
+        </p>
+      </div>
     </div>
   );
 }

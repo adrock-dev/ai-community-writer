@@ -120,6 +120,8 @@ export interface DomainConfig {
   common_principles?: string | null;
   excluded_keywords?: string | null;
   monitored_phrases?: string | null;
+  /** 조사값을 글 생성 근거로 쓸지: off(기본) / verified(검증완료만) / draft(AI 초안까지). */
+  research_usage?: "off" | "verified" | "draft";
   daily_limit: number;
   created_at: string;
   slot_count?: number;

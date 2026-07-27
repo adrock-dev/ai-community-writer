@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
+import { parseResearchUsage } from "./academy-research-usage.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -369,6 +370,9 @@ export class DbService implements OnModuleInit {
     if (!domainCols.has("design_template_overrides")) this.db.exec("ALTER TABLE domains ADD COLUMN design_template_overrides TEXT");
     if (!domainCols.has("custom_design_templates")) this.db.exec("ALTER TABLE domains ADD COLUMN custom_design_templates TEXT");
     if (!domainCols.has("template_overrides")) this.db.exec("ALTER TABLE domains ADD COLUMN template_overrides TEXT");
+    // 조사값을 글 생성의 근거로 쓸지(off/verified/draft). 기본은 쓰지 않음 —
+    // 조사값은 공개 웹에서 모은 미검증 자료라 관리자가 명시적으로 열어야 한다.
+    if (!domainCols.has("research_usage")) this.db.exec("ALTER TABLE domains ADD COLUMN research_usage TEXT NOT NULL DEFAULT 'off'");
     if (!domainCols.has("content_brief")) this.db.exec("ALTER TABLE domains ADD COLUMN content_brief TEXT");
     if (!domainCols.has("common_principles")) {
       this.db.exec("ALTER TABLE domains ADD COLUMN common_principles TEXT");
@@ -545,8 +549,12 @@ export class DbService implements OnModuleInit {
       [input.domain, input.display_name, input.brand_name || null, input.vertical, input.theme || "clean", input.brand_color || "#0066ff", input.daily_limit ?? 0, input.templates_enabled || JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS)]);
   }
   updateDomain(domain: string, fields: Row): void {
-    const allowed = new Set(["display_name", "brand_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords", "monitored_phrases"]);
-    const entries = Object.entries(fields).filter(([k, v]) => allowed.has(k) && v !== undefined);
+    const allowed = new Set(["display_name", "brand_name", "vertical", "theme", "brand_color", "daily_limit", "templates_enabled", "logo_url", "design_template_id", "design_template_overrides", "template_overrides", "custom_design_templates", "content_brief", "common_principles", "excluded_keywords", "monitored_phrases", "research_usage"]);
+    const entries = Object.entries(fields)
+      .filter(([k, v]) => allowed.has(k) && v !== undefined)
+      // 읽을 때만 정규화하면 DB 에는 알 수 없는 값이 그대로 남고, domainOut 을 거치지 않는
+      // 소비자가 그걸 본다. 쓰는 자리에서 막는다.
+      .map(([k, v]) => (k === "research_usage" ? [k, parseResearchUsage(v)] as const : [k, v] as const));
     if (!entries.length) return;
     this.run(`UPDATE domains SET ${entries.map(([k]) => `${k}=?`).join(", ")} WHERE domain=?`, [...entries.map(([, v]) => v), domain]);
   }
@@ -1333,6 +1341,7 @@ export function domainOut(row: Row): Row {
     templates_enabled: safeJson(row.templates_enabled, []),
     design_template_overrides: safeJson(row.design_template_overrides, {}),
     template_overrides: safeJson(row.template_overrides, {}),
+    research_usage: parseResearchUsage(row.research_usage),
   };
 }
 // 커스텀 글유형 axis_tags 는 {persona?,intent?,modifier?: string[]} 만 허용해 정규화한다.
