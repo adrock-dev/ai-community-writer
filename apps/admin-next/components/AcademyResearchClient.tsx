@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
-  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncBlogReviews, syncRegion,
+  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncRegion,
 } from "@/lib/academy-research";
 import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
 
@@ -124,23 +124,6 @@ export default function AcademyResearchClient() {
     }
   }
 
-  async function onSyncBlog() {
-    if (!confirm("블로그리뷰를 동기화합니다. 원천 조회가 학원당 10초라 전체에 8~15분 걸립니다(백그라운드). 진행할까요?")) return;
-    setBusy("blog");
-    setError("");
-    setNotice("");
-    try {
-      const res = await syncBlogReviews();
-      if (!res.ok) throw new Error(res.error || "시작 실패");
-      if (res.run_id) watchedRunRef.current = res.run_id;
-      setNotice("블로그리뷰 동기화를 백그라운드에서 시작했습니다. 창을 닫아도 계속 진행됩니다.");
-      await loadRuns();
-    } catch (e: any) {
-      setError(e?.message || "블로그리뷰 동기화 시작 실패");
-    } finally {
-      setBusy("");
-    }
-  }
 
   async function onCancel(run: ResearchRun) {
     if (!confirm(`${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.`)) return;
@@ -159,15 +142,10 @@ export default function AcademyResearchClient() {
   const activeResearchRun = runs.find((r) => r.status === "running" && r.scope !== "sync" && r.scope !== "sync_blog");
   // 끝난 동기화 중 가장 최근 것 — 진행 중이 아닐 때도 "언제 받아온 자료인지" 알 수 있어야 한다.
   const lastSyncRun = runs.find((r) => r.scope === "sync" && r.status !== "running");
-  const lastBlogRun = runs.find((r) => r.scope === "sync_blog" && r.status !== "running");
   // 두 동기화는 같은 원천을 두드려 서버가 동시 실행을 막는다. 버튼도 같이 잠근다.
   const syncBusy = Boolean(activeSyncRun || activeBlogRun);
-  // 학원정보만 갱신되고 블로그리뷰가 뒤처진 상태를 알린다. 중단된 실행은 일부만 돌았으므로
-  // 완주(done)한 것끼리만 비교한다 — runs 는 최신순이라 첫 항목이 가장 최근이다.
-  const lastSyncDone = runs.find((r) => r.scope === "sync" && r.status === "done");
+  // 이미 받아 둔 블로그리뷰가 있는지만 본다(수집은 중단했고, 뒤처짐 비교는 의미가 없어졌다).
   const lastBlogDone = runs.find((r) => r.scope === "sync_blog" && r.status === "done");
-  const blogOutdated = Boolean(lastSyncDone) && !activeBlogRun
-    && (!lastBlogDone || runTime(lastBlogDone) < runTime(lastSyncDone!));
 
   return (
     <div className="card-pad">
@@ -206,22 +184,23 @@ export default function AcademyResearchClient() {
             </div>
             <DiagnosisLine run={activeSyncRun ? undefined : lastSyncRun} />
           </div>
+          {/*
+            블로그리뷰 수집은 중단했다. 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해
+            다른 학원 글이 섞인다(2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도 없고,
+            같은 글 18건이 이름이 비슷한 학원 2~3곳에 중복 배정). 글 생성에서도 뺐다.
+            버튼을 지우지 않고 안내로 바꾼 이유: 블로그 글 자체를 검증하는 방법이 정해지면 다시 켠다.
+            서버도 같은 판단을 하므로(runtime-config blogReviewSyncEnabled) 직접 호출해도 거부된다.
+          */}
           <div style={{ display: "grid", gap: 4 }}>
             <div className="row" style={{ alignItems: "center" }}>
               <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>블로그리뷰</span>
-              <button className="btn" onClick={onSyncBlog} disabled={busy === "blog" || syncBusy}>
-                {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
-              </button>
+              <span className="badge warn">수집 중단</span>
               <span className="muted small">
-                {lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))}
-                {blogOutdated && (
-                  <span className="badge warn" style={{ marginLeft: 8 }}>
-                    {lastBlogDone ? "학원정보보다 오래됨" : "완료된 적 없음"}
-                  </span>
-                )}
+                원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞입니다. 글 생성에도 쓰지 않습니다.
+                블로그 글을 검증해 올바른 것만 쓰는 방법이 정해지면 다시 켭니다.
+                {lastBlogDone ? " 이미 받아 둔 자료는 학원 상세에 그대로 남아 있습니다." : ""}
               </span>
             </div>
-            <DiagnosisLine run={activeBlogRun ? undefined : lastBlogRun} />
           </div>
           <div className="row" style={{ alignItems: "center" }}>
             <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>
@@ -417,10 +396,6 @@ function collectDiagnosis(run: ResearchRun): string {
   return "";
 }
 
-// 완주 시각(없으면 시작 시각) 기준 비교값. 저장값은 UTC 라 문자열 비교는 위험하다.
-function runTime(run: ResearchRun): number {
-  return parseUtcTimestamp(run.finished_at || run.started_at)?.getTime() ?? 0;
-}
 function parseResult(value?: string | null): Record<string, any> | null {
   if (!value) return null;
   try { return JSON.parse(value); } catch { return null; }

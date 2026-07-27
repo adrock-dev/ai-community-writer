@@ -2,6 +2,7 @@ import "reflect-metadata";
 import { DbService } from "./db.service.js";
 import { DrivingplusApiService } from "./drivingplus-api.service.js";
 import { RegionDirectoryService } from "./region-directory.service.js";
+import { blogReviewSyncEnabled } from "./runtime-config.js";
 
 /**
  * 학원 동기화 1회 실행(worker-once 와 같은 CLI 진입점 패턴).
@@ -32,7 +33,8 @@ async function main(): Promise<void> {
     includeReviews: true,
     reviewLimit: 5,
     reviewSort: "point",
-    includeBlogReviews: true,
+    // 관리자 화면과 같은 스위치를 본다(기본 꺼짐). runtime-config blogReviewSyncEnabled 주석 참고.
+    includeBlogReviews: blogReviewSyncEnabled(),
     blogReviewLimit: 3,
   });
   const withField = (key: keyof (typeof rows)[number]) =>
@@ -42,7 +44,9 @@ async function main(): Promise<void> {
     }).length;
   console.log(`[sync] fetched=${rows.length} educationPerformance=${withField("educationPerformance")} shuttleBuses=${withField("shuttleBuses")} operateHour=${withField("operateHour")} licenseTypes=${withField("licenseTypes")}`);
 
-  const result = db.upsertDrivingplusAcademies(domain, rows as unknown as Parameters<DbService["upsertDrivingplusAcademies"]>[1]);
+  const result = db.upsertDrivingplusAcademies(domain, rows as unknown as Parameters<DbService["upsertDrivingplusAcademies"]>[1], {
+    blogReviewsAttempted: blogReviewSyncEnabled(),
+  });
   console.log(`[sync] upserted=${result.upserted} skipped=${result.skipped} reviews=${result.review_count} blogReviews=${result.blog_review_count} warnings=${result.warnings.length}`);
   for (const warning of result.warnings.slice(0, 10)) console.log(`  ! ${warning}`);
 }

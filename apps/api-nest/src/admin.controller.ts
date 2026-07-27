@@ -15,7 +15,7 @@ import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
 import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./archetypes.js";
 import { runLlm } from "./llm-runner.js";
-import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
+import { adminApiBaseUrl, blogReviewSyncEnabled, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 import { isT01TemplateFamily, T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
 
@@ -82,9 +82,9 @@ export class AdminController {
         include_reviews: true,
         review_limit: 5,
         review_sort: "point",
-        include_blog_reviews: true,
+        include_blog_reviews: blogReviewSyncEnabled(),
         blog_review_limit: 3,
-        review_source_note: "학원 기본 정보는 get-all-academy에서 가져오고, 일반 리뷰와 블로그 리뷰는 학원별 review/blog-review API를 추가 호출해 글 생성 보충자료로 저장합니다.",
+        review_source_note: "학원 기본 정보는 get-all-academy에서 가져오고, 일반 리뷰는 학원별 review API를 추가 호출해 저장합니다. 블로그 리뷰 수집은 기본 꺼져 있습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다.",
       },
     };
   }
@@ -647,7 +647,10 @@ export class AdminController {
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
       reviewSort: body.review_sort === "new" ? "new" : "point",
-      includeBlogReviews: body.include_blog_reviews !== false,
+      // 블로그리뷰는 기본 수집하지 않는다(runtime-config blogReviewSyncEnabled 주석 참고).
+      // 스위치가 꺼져 있으면 요청이 true 를 보내도 켜지지 않는다 — 오래된 클라이언트나
+      // 직접 호출로 낡은 자료가 다시 쌓이는 것을 막는다.
+      includeBlogReviews: blogReviewSyncEnabled() && body.include_blog_reviews !== false,
       blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
     });
     if (!result.ok) throw new HttpException(result.error, 409);
@@ -708,7 +711,10 @@ export class AdminController {
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
       reviewSort: body.review_sort === "new" ? "new" : "point",
-      includeBlogReviews: body.include_blog_reviews !== false,
+      // 블로그리뷰는 기본 수집하지 않는다(runtime-config blogReviewSyncEnabled 주석 참고).
+      // 스위치가 꺼져 있으면 요청이 true 를 보내도 켜지지 않는다 — 오래된 클라이언트나
+      // 직접 호출로 낡은 자료가 다시 쌓이는 것을 막는다.
+      includeBlogReviews: blogReviewSyncEnabled() && body.include_blog_reviews !== false,
       blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
     });
     if (!started.ok) throw new HttpException(started.error, 409);

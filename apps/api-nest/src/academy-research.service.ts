@@ -8,6 +8,7 @@ import {
 import { buildExtractionPrompt, gatherSources, structuredFactsFromSources, type WebSource } from "./academy-research-web.js";
 import { emptyKnownFacts, knownFactsFromSource, type KnownFacts } from "./academy-research-known-facts.js";
 import { findingNote, hasFinding, inspectResearchValue, sourceHaystack } from "./academy-research-grounding.js";
+import { blogReviewSyncEnabled } from "./runtime-config.js";
 
 // academy_research 스칼라 필드(courses/shuttle_routes/sources 제외)
 const SCALAR_KEYS: Array<keyof ResearchResult> = [
@@ -142,6 +143,10 @@ export class AcademyResearchService {
   }
 
   startBlogSync(opts: { blogReviewLimit?: number; concurrency?: number } = {}): { ok: boolean; run_id?: string; error?: string } {
+    // 수집 스위치는 서버가 최종 판단한다. 화면에서 버튼을 감춰도 직접 호출은 막지 못한다.
+    if (!blogReviewSyncEnabled()) {
+      return { ok: false, error: "블로그리뷰 수집은 현재 꺼져 있습니다. 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다. 블로그 글 검증 방식이 정해지면 다시 켭니다." };
+    }
     if (!this.db.countBase()) return { ok: false, error: "동기화된 학원이 없습니다. 학원정보 동기화를 먼저 실행하세요." };
     return this.startSyncRun("sync_blog", "drivingplus_blog_sync", (runOpts) => this.syncBlogReviews({ ...opts, ...runOpts }));
   }

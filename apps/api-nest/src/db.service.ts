@@ -1042,7 +1042,13 @@ export class DbService implements OnModuleInit {
     return Number(this.get("SELECT cancel_requested FROM sync_runs WHERE id=?", [id])?.cancel_requested ?? 0) === 1;
   }
 
-  upsertDrivingplusAcademies(domain: string, rows: Row[]): { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] } {
+  /**
+   * @param opts.blogReviewsAttempted 이번 동기화가 블로그리뷰를 조회했는지. 기본 true.
+   *   false 면(수집 스위치가 꺼진 평소 상태) 기존 값을 그대로 이어받되 "못 가져왔다" 로 세지 않는다.
+   *   안 그러면 의도적으로 안 받은 것이 전 학원 미조회 경고로 뜬다.
+   */
+  upsertDrivingplusAcademies(domain: string, rows: Row[], opts: { blogReviewsAttempted?: boolean } = {}): { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] } {
+    const blogReviewsAttempted = opts.blogReviewsAttempted !== false;
     let upserted = 0, skipped = 0;
     let reviewCount = 0, blogReviewCount = 0;
     let blogReviewPreserved = 0;
@@ -1070,7 +1076,7 @@ export class DbService implements OnModuleInit {
         const blogReviews = blogReviewsFetched
           ? normalizeDrivingplusBlogReviews(row.blogReviews)
           : normalizeDrivingplusBlogReviews(decodeJsonArray(existing?.blog_reviews));
-        if (!blogReviewsFetched) blogReviewPreserved++;
+        if (!blogReviewsFetched && blogReviewsAttempted) blogReviewPreserved++;
         reviewCount += reviews.length;
         blogReviewCount += blogReviews.length;
         const reviewText = reviewSummaryText(reviews);

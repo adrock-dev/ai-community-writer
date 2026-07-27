@@ -67,7 +67,9 @@ export class DrivingplusSyncService {
 
       // 여기까지 왔으면 전 학원의 조회가 끝났다. 저장은 한 트랜잭션이라 중간 취소가 없다.
       this.db.updateSyncRun(runId, { step: "저장 중" });
-      const result = this.db.upsertDrivingplusAcademies(domain, rows as unknown as Parameters<DbService["upsertDrivingplusAcademies"]>[1]);
+      const result = this.db.upsertDrivingplusAcademies(domain, rows as unknown as Parameters<DbService["upsertDrivingplusAcademies"]>[1], {
+        blogReviewsAttempted: Boolean(opts.includeBlogReviews),
+      });
       this.db.updateSyncRun(runId, { status: "done", step: "완료", count_done: result.upserted, result, finished: true });
       this.logger.log(`학원 동기화 완료(${domain}): upserted=${result.upserted} reviews=${result.review_count} blogReviews=${result.blog_review_count} preserved=${result.blog_review_preserved}`);
     } catch (error) {

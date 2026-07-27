@@ -172,9 +172,9 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | --- | --- | --- |
 | `review` | 짧게 합쳐 둔 요약 리뷰 텍스트 | `review_json`이 없을 때 보조 근거로 사용 |
 | `review_json` | 수강생 리뷰 배열을 JSON 문자열로 저장한 값. 보통 `point`, `content` 중심 | 평점/문구에서 긍정 근거를 요약해 글 생성 facts에 포함 |
-| `blog_reviews` | 블로그 리뷰 배열을 JSON 문자열로 저장한 값. 보통 `title`, `content`, `link` 중심 | 블로그 리뷰 주제와 링크를 보조 근거로 포함 |
+| `blog_reviews` | 블로그 리뷰 배열을 JSON 문자열로 저장한 값. 보통 `title`, `content`, `link` 중심 | **사용하지 않는다.** 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞여, 생성 프롬프트에서 뺐고 수집도 기본 꺼짐이다. 이미 저장된 값은 학원 상세 화면 참고용으로 남는다 |
 
-직접 upsert할 때는 `review_json` 또는 `reviews` 입력이 `review_json`에 저장되고, `blog_reviews` 입력은 JSON 문자열로 저장된다. 외부 학원 동기화는 일반 리뷰와 블로그 리뷰를 각각 정규화해 이 필드에 넣는다.
+직접 upsert할 때는 `review_json` 또는 `reviews` 입력이 `review_json`에 저장되고, `blog_reviews` 입력은 JSON 문자열로 저장된다. 외부 학원 동기화는 일반 리뷰만 정규화해 넣는다 — 블로그 리뷰 수집은 `DRIVINGPLUS_BLOG_REVIEW_SYNC` 스위치로 통제하며 기본이 꺼짐이다. 꺼져 있어도 이미 저장된 `blog_reviews` 는 지워지지 않는다.
 
 ### Job
 
@@ -632,10 +632,16 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 
 동기화를 **백그라운드로 시작하고 `run_id` 를 즉시 반환한다.** 결과를 기다리지 않는다.
 
-블로그리뷰(`include_blog_reviews`)를 포함하면 학원 380곳 기준 12분 넘게 걸린다. 원천의
-`/v1/blog-review/list` 가 동시 요청을 못 견뎌 한 곳씩 받아야 하기 때문이다(동시 1이면 전건 성공,
-동시 4면 24곳 중 5곳만 성공). 그런데 Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로
-(`UND_ERR_HEADERS_TIMEOUT`, 실측 301초), 응답을 기다리는 구조로는 관리자 UI 에서 완주할 수 없다.
+**`include_blog_reviews` 는 기본 무시된다.** 블로그리뷰 수집은 서버 스위치
+(`DRIVINGPLUS_BLOG_REVIEW_SYNC`)로 통제하며 기본이 꺼짐이라, 요청이 `true` 를 보내도 켜지지 않는다.
+원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이다
+(2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이 비슷한
+학원 2~3곳에 중복 배정). 글 생성에도 쓰지 않는다. 이미 저장된 블로그리뷰는 지워지지 않는다.
+
+스위치를 켜면 학원 380곳 기준 12분 넘게 걸린다. 원천의 `/v1/blog-review/list` 가 동시 요청을 못
+견뎌 한 곳씩 받아야 하기 때문이다(동시 1이면 전건 성공, 동시 4면 24곳 중 5곳만 성공). 그런데
+Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로(`UND_ERR_HEADERS_TIMEOUT`, 실측 301초),
+응답을 기다리는 구조로는 관리자 UI 에서 완주할 수 없다 — 그래서 이 엔드포인트는 백그라운드다.
 
 이미 진행 중인 동기화가 있으면 `409` 를 반환한다(도메인이 달라도 같은 원천을 두드리므로 하나만 허용).
 
@@ -646,7 +652,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
   "include_reviews": true,
   "review_limit": 5,
   "review_sort": "point",
-  "include_blog_reviews": true,
+  "include_blog_reviews": false,
   "blog_review_limit": 3
 }
 ```
@@ -693,7 +699,8 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 }
 ```
 
-`blog_review_preserved` 는 **블로그리뷰를 못 가져와 기존 값을 유지한 학원 수**다. 원천은 처리
+`blog_review_preserved` 는 **블로그리뷰를 조회했는데 못 가져와 기존 값을 유지한 학원 수**다.
+수집 스위치가 꺼져 있으면(기본) 애초에 조회하지 않으므로 항상 0 이다. 원천은 처리
 한계를 넘으면 예외가 아니라 `code:200` + 빈 배열로 응답하므로, 이를 0건으로 받아들이면 전량교체
 정책상 멀쩡한 후기가 삭제된다. 이 값이 크면 원천 상태를 의심해야 한다.
 
@@ -743,7 +750,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 {
   "level": "2",
   "replace_axis": true,
-  "include_blog_reviews": true,
+  "include_blog_reviews": false,
   "blog_review_limit": 3
 }
 ```
