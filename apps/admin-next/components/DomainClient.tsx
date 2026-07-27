@@ -1388,9 +1388,10 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     setSyncBusy("academies");
     setSyncWarning("");
     try {
-      const started = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: true, blog_review_limit: 3 });
+      // 블로그리뷰는 받지 않는다(서버도 기본으로 끈다). 자체 후기만 받으므로 1~2분이면 끝난다.
+      const started = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: false });
       setSyncRunId(started.run_id);
-      setAcademyMsg("동기화를 시작했습니다. 블로그리뷰까지 받으므로 10분 이상 걸립니다.");
+      setAcademyMsg("동기화를 시작했습니다. 학원 기본 정보와 수강생 후기를 받습니다.");
       await pollSyncRun(started.run_id);
     } catch (e) {
       alert((e as Error).message);
@@ -1428,7 +1429,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       if (run.status === "error") { setAcademyMsg(`동기화 실패: ${run.error ?? "원인 미상"}`); return; }
       const res = run.result_obj;
       if (!res) { setAcademyMsg("동기화가 끝났습니다."); await onRefresh(); await loadAcademies(); return; }
-      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 일반 리뷰 ${res.review_count}개 · 블로그 리뷰 ${res.blog_review_count}개 · ${res.skipped}개 제외`);
+      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 수강생 후기 ${res.review_count}개 · ${res.skipped}개 제외`);
       // 블로그리뷰를 못 가져온 학원이 있으면 성공 문구에 묻지 않고 따로 경고로 세운다.
       // 이 값이 조용히 넘어가면 원천이 다시 느려져도 아무도 모른 채 후기가 낡아간다.
       setSyncWarning(syncWarningText(res));
@@ -1536,7 +1537,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     <div className="card card-pad grid">
       <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
       <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
-      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title="학원 목록·자체 후기·블로그리뷰를 원천에서 받아옵니다. 블로그리뷰는 원천이 동시 요청을 못 견뎌 한 곳씩 받으므로 10분 이상 걸립니다.">{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title="학원 목록과 수강생 후기를 원천에서 받아옵니다(1~2분). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다.">{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
       <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>
@@ -2057,17 +2058,17 @@ const RESEARCH_USAGE_CHOICES = [
   {
     value: "off",
     label: "사용 안 함",
-    help: "조사값을 글에 전혀 쓰지 않습니다. 글은 원천 자료(수강료·셔틀·운영시간·면허 종별)와 후기만 근거로 씁니다.",
+    help: "조사값을 글에 전혀 쓰지 않습니다. 글은 원천 동기화로 받은 학원 자료(주소·전화·수강료·셔틀·영업시간·운영 과정·운영 형태·사진 등)와 자체 수강생 후기만 근거로 씁니다.",
   },
   {
     value: "verified",
     label: "검증완료만",
-    help: "사람이 학원 상세 화면에서 「검증완료」로 직접 올린 값만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다.",
+    help: "위 원천 자료·후기에 더해, 조사값 중에서는 사람이 학원 상세 화면에서 「검증완료」로 올린 것만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다.",
   },
   {
     value: "draft",
     label: "AI 초안까지",
-    help: "사람이 확인하지 않은 AI 조사값도 글에 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다.",
+    help: "위 원천 자료·후기에 더해, 사람이 확인하지 않은 AI 조사값까지 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다.",
   },
 ] as const;
 
