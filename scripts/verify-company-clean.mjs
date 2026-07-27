@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 
 const join = (...parts) => parts.join("");
 const forbidden = [
@@ -53,6 +53,10 @@ const files = execFileSync("git", ["ls-files", "--others", "--exclude-standard"]
 const hits = [];
 for (const file of files) {
   if (!existsSync(file)) continue;
+  // git ls-files --others 는 중첩 저장소(예: .claude/worktrees/*)를 디렉터리 한 줄로 내놓는다.
+  // 그대로 읽으면 EISDIR 로 죽어 pre-commit 훅이 통째로 막힌다. 그 안은 별도 체크아웃이라
+  // 이 검사의 대상도 아니므로 건너뛴다.
+  if (statSync(file).isDirectory()) continue;
   const text = readFileSync(file, "utf8");
   for (const term of forbidden) {
     if (text.includes(term)) hits.push(`${file}: contains ${term}`);
