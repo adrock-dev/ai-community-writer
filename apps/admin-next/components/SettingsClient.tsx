@@ -220,7 +220,8 @@ export default function SettingsClient() {
         <div>
           <div className="row" style={{ gap: 8 }}>
             <h2 style={{ margin: 0 }}>블로그 리뷰 수집</h2>
-            <span className={`badge ${blogSync ? "success" : "warn"}`}>{blogSync === null ? "확인 중" : blogSync ? "켜짐" : "꺼짐"}</span>
+            {/* 못 읽은 상태를 꺼짐과 같은 색(warn)으로 칠하면 "확인 중" 이라고 써도 꺼진 것처럼 읽힌다. */}
+            <span className={`badge ${blogSync === null ? "" : blogSync ? "success" : "warn"}`}>{blogSync === null ? "확인 중" : blogSync ? "켜짐" : "꺼짐"}</span>
           </div>
           <p className="muted small" style={{ marginTop: 6 }}>
             <b>수집만 켜고 끕니다. 글 생성에는 어느 쪽이든 쓰지 않습니다.</b> 생성 프롬프트와 품질 게이트에서 이미 빠져 있어,
@@ -240,11 +241,11 @@ export default function SettingsClient() {
         {blogSyncErr && <p className="toast-warn small">{blogSyncErr}</p>}
         <div className="row" style={{ gap: 8 }}>
           <button
-            className={`btn ${blogSync ? "" : "primary"}`}
+            className={`btn ${blogSync === false ? "primary" : ""}`}
             disabled={blogSync === null || blogSyncBusy}
             onClick={() => void onToggleBlogSync(!blogSync)}
           >
-            {blogSyncBusy ? "저장 중..." : blogSync ? "수집 끄기" : "수집 켜기"}
+            {blogSync === null ? "확인 중..." : blogSyncBusy ? "저장 중..." : blogSync ? "수집 끄기" : "수집 켜기"}
           </button>
           <span className="muted small">서버에 저장되어 즉시 반영됩니다(재시작 불필요).</span>
         </div>

@@ -159,7 +159,13 @@ export const getResearchSummary = (domain: string) =>
  * 블로그리뷰 수집을 켜면 12분이 넘어 응답을 기다리는 방식으로는 완주할 수 없다(Node fetch 가 300초에 끊는다).
  * 진행 상황은 getSyncRun 으로 폴링한다.
  */
-export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; include_blog_reviews?: boolean; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: false }) =>
+/**
+ * 블로그리뷰 수집 여부(`include_blog_reviews`)는 **의도적으로 받지 않는다.**
+ * 서버가 스위치로 판단하므로(설정 → 환경변수 → 꺼짐) 화면이 중계할 이유가 없고, 중계하면 화면이
+ * 아직 상태를 못 읽은 시점에 false 가 나가 스위치가 켜져 있어도 수집을 건너뛴다(239f4a1 회귀).
+ * 타입에서 빼 두면 되살리려는 순간 컴파일이 막는다.
+ */
+export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point" }) =>
   api<{ ok: true; run_id: string }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
 
 export type SyncRunResult = { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] };
