@@ -5,7 +5,8 @@ import {
   detectResearchProviders, parseResearchJson, runResearchCli,
   type ResearchProvider, type ResearchProviderPreference, type ResearchResult,
 } from "./academy-research-llm.js";
-import { buildExtractionPrompt, gatherSources, structuredFactsFromSources } from "./academy-research-web.js";
+import { buildExtractionPrompt, gatherSources, structuredFactsFromSources, type WebSource } from "./academy-research-web.js";
+import { findingNote, hasFinding, inspectResearchValue, sourceHaystack } from "./academy-research-grounding.js";
 
 // academy_research 스칼라 필드(courses/shuttle_routes/sources 제외)
 const SCALAR_KEYS: Array<keyof ResearchResult> = [
@@ -249,9 +250,9 @@ export class AcademyResearchService {
       this.applyStructuredFacts(parsed, sources);
 
       // 근거 URL이 비어있는 필드는 수집 소스 첫 URL로 보완(추적성 확보)
-      this.persistResearch(externalId, parsed, { engine: provider, method }, sources.map((s) => s.url));
+      const grounding = this.persistResearch(externalId, parsed, { engine: provider, method }, sources);
       this.bumpRun(opts.runId);
-      return { ok: true, external_id: externalId, provider, sources: sources.length };
+      return { ok: true, external_id: externalId, provider, sources: sources.length, ...grounding };
     }
 
     return { ok: false, external_id: externalId, provider: providers[providers.length - 1], error: lastError || "CLI 실행 실패" };
@@ -340,7 +341,12 @@ export class AcademyResearchService {
     });
   }
 
-  private persistResearch(externalId: string, parsed: ResearchResult, meta: { engine: ResearchProvider; method: string }, fallbackSourceUrls: string[] = []): void {
+  private persistResearch(
+    externalId: string,
+    parsed: ResearchResult,
+    meta: { engine: ResearchProvider; method: string },
+    collected: WebSource[] = [],
+  ): { checked: number; flagged: number } {
     const scalar: Record<string, unknown> = {};
     for (const key of SCALAR_KEYS) {
       const value = parsed[key];
@@ -349,22 +355,35 @@ export class AcademyResearchService {
     this.db.upsertResearch(externalId, scalar, { engine: meta.engine, method: meta.method });
     this.db.clearWebBlocked(externalId); // 이전 CLI-웹 조사의 web_blocked 흔적 정리
 
-    if (Array.isArray(parsed.courses)) this.db.replaceCourses(externalId, parsed.courses as Array<Record<string, unknown>>);
+    // 그라운딩 대조용 소스 본문. 지금 이 자리에서만 원문을 볼 수 있다 — 수집 결과는
+    // 저장하지 않고, 나중에 다시 수집하면 다른 페이지가 나온다(실측: 3건 → 0건).
+    const haystack = sourceHaystack(collected);
+
+    if (Array.isArray(parsed.courses)) this.db.replaceCourses(externalId, gradeCoursePrices(parsed.courses, haystack));
     if (Array.isArray(parsed.shuttle_routes)) this.db.replaceShuttleRoutes(externalId, parsed.shuttle_routes as Array<Record<string, unknown>>);
 
-    // 값이 채워진 스칼라 필드는 검증상태 ai_draft + 출처 URL 기록(모델 sources → 없으면 수집소스 첫 URL).
+    // 값이 채워진 스칼라 필드는 출처 URL 기록(모델 sources → 없으면 수집소스 첫 URL) + 그라운딩 검사.
+    // 걸린 값도 버리지 않고 needs_review 로 낮춰 사유를 남긴다. 표기 차이로 인한 오탈락이
+    // 얼마나 나는지 관측한 뒤에 게이트로 조일지 정한다.
     const sources = parsed.sources && typeof parsed.sources === "object" ? parsed.sources : {};
-    const fallbackUrl = fallbackSourceUrls[0];
+    const fallbackUrl = collected[0]?.url;
+    let checked = 0;
+    let flagged = 0;
     for (const key of SCALAR_KEYS) {
       const value = parsed[key];
       if (value == null || value === "") continue;
       const sourceUrl = sources[key as string] ?? fallbackUrl;
+      const report = inspectResearchValue(key as string, String(value), haystack);
+      checked += 1;
+      if (hasFinding(report)) flagged += 1;
       this.db.setFieldMeta(externalId, key as string, {
-        status: "ai_draft",
+        status: hasFinding(report) ? "needs_review" : "ai_draft",
         source_url: sourceUrl,
         source_name: sourceUrl ? undefined : `${meta.engine} 조사`,
+        note: findingNote(report),
       });
     }
+    return { checked, flagged };
   }
 
   private async resolveProviders(preference: ResearchProviderPreference | undefined): Promise<ResearchProvider[]> {
@@ -414,6 +433,19 @@ export class AcademyResearchService {
     this.db.replaceReviews(externalId, "drivingplus_blog", rows);
     return { stored: rows.length, outcome: rows.length ? "data" : "empty" };
   }
+}
+
+// 과정별 가격은 날조 시 피해가 가장 큰 값이라 소스 대조 결과를 행에 남긴다.
+// 가격이 비어 있는 과정(이번 파일럿에선 44건 중 39건)은 검사 대상이 아니다.
+function gradeCoursePrices(courses: ResearchResult["courses"], haystack: string): Array<Record<string, unknown>> {
+  return (courses ?? []).map((course) => {
+    const row = course as Record<string, unknown>;
+    const price = row.price == null ? "" : String(row.price);
+    if (!price.trim()) return row;
+    // 필드 타입 규칙은 요금과 같으므로 fee_summary 규칙을 빌려 쓴다(개인거래 가격 등).
+    const report = inspectResearchValue("fee_summary", price, haystack);
+    return hasFinding(report) ? { ...row, verified_status: "needs_review" } : row;
+  });
 }
 
 // 작성자 식별정보 최소화: 첫 글자만 남기고 마스킹.

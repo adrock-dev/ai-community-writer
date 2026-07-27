@@ -21,6 +21,9 @@ const DEFAULT_STATUS_DEFS: Array<{ code: string; label: string; rank: number }> 
   { code: "verified", label: "검증완료", rank: 2 },
   // 웹 조사 도구가 차단돼 실제 웹검증을 못 한 상태(값을 신뢰할 수 없어 저장하지 않음). 웹 활성화 후 재조사 필요.
   { code: "web_blocked", label: "웹조사 차단", rank: 3 },
+  // 저장은 했지만 그라운딩 검사에 걸린 값 — 수집 소스에서 근거를 못 찾았거나, 그 필드에
+  // 담기면 안 되는 값(광고 문구·개인거래 가격)이다. 사유는 academy_field_meta.note 에 남는다.
+  { code: "needs_review", label: "검토 필요", rank: 4 },
 ];
 
 const SCHEMA = `
