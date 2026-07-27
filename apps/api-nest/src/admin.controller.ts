@@ -5,6 +5,7 @@ import { publicBrandName } from "./brand.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
 import { RegionDirectoryService } from "./region-directory.service.js";
 import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
+import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
@@ -35,6 +36,7 @@ export class AdminController {
     @Inject(DrivingplusApiService) private readonly drivingplus: DrivingplusApiService,
     @Inject(RegionDirectoryService) private readonly regionDirectory: RegionDirectoryService,
     @Inject(DrivingplusSyncService) private readonly drivingplusSync: DrivingplusSyncService,
+    @Inject(AcademyResearchDbService) private readonly researchDb: AcademyResearchDbService,
   ) {}
 
   @Get("options")
@@ -614,6 +616,23 @@ export class AdminController {
     if (rows && !Array.isArray(rows)) rows = [rows];
     if (!Array.isArray(rows)) throw new HttpException("expected a JSON academy object, array, or {items:[...]}", 400);
     return { ok: true, upserted: this.db.upsertAcademies(domain, rows) };
+  }
+
+  /**
+   * 이 도메인 학원들의 심층조사 현황(읽기 전용).
+   *
+   * 조사는 도메인이 아니라 학원 자체의 속성이라 실행은 자료관리에서 전역으로 한다
+   * (도메인마다 돌리면 같은 학원을 도메인 수만큼 다시 조사하게 된다).
+   * 도메인 화면에는 "내 학원들이 얼마나 조사됐나"만 보여주고 실행 버튼은 두지 않는다.
+   */
+  @Get("domains/:domain/research-summary")
+  researchSummary(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const externalIds = this.db.listAcademies(domain, { limit: 5000 })
+      .map((row) => String(row.external_id ?? ""))
+      .filter(Boolean);
+    const summary = this.researchDb.summarizeByExternalIds(externalIds);
+    return { domain, total: externalIds.length, ...summary };
   }
 
   /**

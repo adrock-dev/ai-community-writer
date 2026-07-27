@@ -128,8 +128,9 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           <SidebarLink href={reviewHref} active={onReview || (onNeedDomainPage && menuFrom === "review")} tabIndex={sidebarOpen ? 0 : -1}>검수·보내기</SidebarLink>
           <SidebarLink href="/jobs" active={pathname === "/jobs"} tabIndex={sidebarOpen ? 0 : -1}>작업 큐</SidebarLink>
           <p style={{ marginTop: 12 }}>자료 관리</p>
+          {/* 자료는 도메인이 아니라 업종에 딸린다. 업종이 늘면 여기 업종 선택이 붙는다. */}
           <SidebarLink href="/academies" active={pathname.startsWith("/academies")} tabIndex={sidebarOpen ? 0 : -1}>
-            <span>학원·시험장 DB</span>
+            <span>운전학원 자료</span>
             <span className="side-beta">베타</span>
           </SidebarLink>
           <p style={{ marginTop: 12 }}>설정</p>

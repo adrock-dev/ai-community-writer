@@ -139,6 +139,12 @@ export async function downloadPostExport(domain: string, body: { post_ids: strin
   }
   return res.blob();
 }
+export interface ResearchSummary { domain: string; total: number; matched: number; researched: number; needs_review: number; last_researched_at: string | null }
+// 심층조사는 도메인이 아니라 학원 자체의 속성이라 실행은 자료관리(전역)에서 한다.
+// 도메인 화면에는 현황만 보여주고 실행 버튼은 두지 않는다.
+export const getResearchSummary = (domain: string) =>
+  api<ResearchSummary>(`/domains/${encodeURIComponent(domain)}/research-summary`);
+
 /**
  * 학원 동기화 시작. 결과가 아니라 run_id 를 돌려준다 — 블로그리뷰 포함 시 12분 넘게 걸려
  * 응답을 기다리는 방식으로는 완주할 수 없다(Node fetch 가 300초에 끊는다).

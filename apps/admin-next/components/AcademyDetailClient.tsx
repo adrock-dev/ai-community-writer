@@ -66,7 +66,7 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
 
   return (
     <div className="card-pad">
-      <p><Link href="/academies" className="muted">← 학원·시험장 조사 목록</Link></p>
+      <p><Link href="/academies" className="muted">← 운전학원 자료 목록</Link></p>
       <h1 style={{ marginTop: 0 }}>{b.name || "(이름없음)"}</h1>
       <p className="muted">external_id: {b.external_id} · {b.region || "-"} · {b.academy_type || "-"}</p>
 

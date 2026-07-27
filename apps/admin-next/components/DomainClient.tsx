@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
@@ -1508,6 +1508,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           <code>npm run sync:academies -- {domain.domain}</code> 로 다시 실행하면 서버 재시작과 무관하게 반영됩니다.
         </p>
       )}
+      <ResearchSummaryCard domain={domain.domain} />
       <div className="card card-pad grid compact-pad" style={{ background: "#f8fafc" }}>
         <div className="spread"><div><h3 style={{ margin: 0 }}>선택 · 수동 자료 보완</h3><p className="muted small">DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
         {manualToolsOpen && <>
@@ -2013,6 +2014,56 @@ function parseJsonCount(value: unknown): number {
 // 전역 행정구역 사전(읍·면·동). 1·2단계와 달리 도메인별 운영 선택이 아니라 전역 사실 참조라
 // 번호를 붙이지 않는다. 번호를 달면 "새 도메인마다 해야 하는 일"로 읽히는데, 실제로는
 // 도메인 생성 시 자동으로 준비되고 행정구역 개편 때만 갱신하면 된다.
+// 심층조사 현황(읽기 전용). 조사는 학원 자체의 속성이라 도메인마다 돌리면 같은 학원을
+// 도메인 수만큼 다시 조사하게 된다. 그래서 실행은 자료관리에서 전역으로 하고 여기선 현황만 본다.
+function ResearchSummaryCard({ domain }: { domain: string }) {
+  const [summary, setSummary] = useState<ResearchSummary | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    getResearchSummary(domain)
+      .then((s) => { if (alive) setSummary(s); })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [domain]);
+
+  const total = summary?.total ?? 0;
+  const researched = summary?.researched ?? 0;
+  const percent = total ? Math.round((researched / total) * 100) : 0;
+
+  return (
+    <div className="card card-pad grid compact-pad" style={{ background: "#f8fafc" }}>
+      <div className="spread">
+        <div>
+          <h3 style={{ margin: 0 }}>심층조사 현황</h3>
+          <p className="muted small">
+            원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다.
+            조사는 학원 단위라 도메인마다 따로 돌리지 않습니다 — 실행은 자료관리에서 합니다.
+          </p>
+        </div>
+        <Link className="btn" href="/academies">자료관리로 이동</Link>
+      </div>
+      {failed
+        ? <p className="muted small">조사 현황을 불러오지 못했습니다.</p>
+        : !summary
+          ? <p className="muted small">불러오는 중...</p>
+          : <>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <span className="badge info">이 도메인 학원 {total.toLocaleString()}곳</span>
+                <span className="badge">조사 완료 {researched.toLocaleString()}곳 ({percent}%)</span>
+                <span className="badge">미조사 {(total - researched).toLocaleString()}곳</span>
+                {summary.needs_review > 0 && <span className="badge warn">검토 필요 {summary.needs_review.toLocaleString()}건</span>}
+              </div>
+              <p className="muted small">
+                {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."}
+                {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).toLocaleString()}곳(자료관리에서 동기화 필요)` : ""}
+              </p>
+            </>}
+    </div>
+  );
+}
+
 function RegionDirectoryCard({ domain }: { domain: string }) {
   const [status, setStatus] = useState<RegionDirectoryStatus | null>(null);
   const [busy, setBusy] = useState(false);

@@ -358,6 +358,41 @@ export class AcademyResearchDbService implements OnModuleInit {
   }
 
   getBase(externalId: string): Row | undefined { return this.get("SELECT * FROM academy_base WHERE external_id = ?", [externalId]); }
+
+  /**
+   * 주어진 학원들의 조사 현황 요약.
+   *
+   * 조사 DB 는 도메인 개념이 없다(학원 하나 = 한 행). 도메인 화면에서 "내 학원들이 얼마나
+   * 조사됐나"를 보려면 도메인 쪽 external_id 목록을 받아 대조하는 수밖에 없다.
+   * 두 DB 가 파일로 분리돼 있어 조인이 불가능하기 때문이다.
+   */
+  summarizeByExternalIds(externalIds: string[]): { matched: number; researched: number; needs_review: number; last_researched_at: string | null } {
+    const ids = [...new Set(externalIds.map((id) => String(id)).filter(Boolean))];
+    if (!ids.length) return { matched: 0, researched: 0, needs_review: 0, last_researched_at: null };
+    // SQLite 변수 상한(기본 999)을 넘기지 않도록 나눠 센다.
+    const chunkSize = 500;
+    let matched = 0;
+    let researched = 0;
+    let needsReview = 0;
+    let last: string | null = null;
+    for (let i = 0; i < ids.length; i += chunkSize) {
+      const chunk = ids.slice(i, i + chunkSize);
+      const marks = chunk.map(() => "?").join(",");
+      matched += Number(this.get(`SELECT COUNT(*) AS n FROM academy_base WHERE external_id IN (${marks})`, chunk)?.n ?? 0);
+      const done = this.get(
+        `SELECT COUNT(*) AS n, MAX(researched_at) AS last FROM academy_research WHERE researched_at IS NOT NULL AND external_id IN (${marks})`,
+        chunk,
+      );
+      researched += Number(done?.n ?? 0);
+      if (done?.last && (!last || String(done.last) > last)) last = String(done.last);
+      // 검토 필요는 필드 단위로 센다 — 한 학원에 여러 건이 걸릴 수 있다.
+      needsReview += Number(this.get(
+        `SELECT COUNT(*) AS n FROM academy_field_meta WHERE status = 'needs_review' AND external_id IN (${marks})`,
+        chunk,
+      )?.n ?? 0);
+    }
+    return { matched, researched, needs_review: needsReview, last_researched_at: last };
+  }
   countBase(opts: { region?: string; includeInactive?: boolean } = {}): number {
     const where: string[] = [];
     const params: any[] = [];

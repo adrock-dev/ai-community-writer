@@ -174,7 +174,7 @@ export default function AcademyResearchClient() {
       <div className="page-head">
         <div>
           <p className="eyebrow">자료 관리</p>
-          <h1>학원·시험장 조사 DB</h1>
+          <h1>운전학원 자료 · DrivingPlus 원천</h1>
         </div>
       </div>
 
