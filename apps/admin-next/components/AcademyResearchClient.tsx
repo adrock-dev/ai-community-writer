@@ -22,7 +22,8 @@ export default function AcademyResearchClient() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   // 수집 스위치 상태. 서버가 최종 판단하므로 화면은 받아서 표시만 한다.
-  const [blogSyncOn, setBlogSyncOn] = useState(false);
+  // null = 아직 못 읽음. false 로 뭉개면 켜져 있는데도 첫 화면에 "수집 꺼짐" 이라고 적힌다.
+  const [blogSyncOn, setBlogSyncOn] = useState<boolean | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -220,7 +221,9 @@ export default function AcademyResearchClient() {
           <div style={{ display: "grid", gap: 4 }}>
             <div className="row" style={{ alignItems: "center" }}>
               <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>블로그리뷰</span>
-              {blogSyncOn ? (
+              {blogSyncOn === null ? (
+                <span className="muted small">수집 설정 확인 중…</span>
+              ) : blogSyncOn ? (
                 <>
                   <button className="btn" onClick={onSyncBlog} disabled={busy === "blog" || syncBusy}>
                     {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
@@ -240,7 +243,7 @@ export default function AcademyResearchClient() {
                 </>
               )}
             </div>
-            {blogSyncOn && <DiagnosisLine run={activeBlogRun ? undefined : lastBlogRun} />}
+            {blogSyncOn === true && <DiagnosisLine run={activeBlogRun ? undefined : lastBlogRun} />}
           </div>
           <div className="row" style={{ alignItems: "center" }}>
             <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>

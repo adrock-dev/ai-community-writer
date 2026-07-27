@@ -1312,7 +1312,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   const [runtimeApis, setRuntimeApis] = useState<RuntimeApis | null>(null);
   // 블로그리뷰 수집이 켜져 있는지. 서버가 sync_defaults 로 실제 판단 결과를 내려주므로
   // 화면이 환경변수나 설정을 따로 해석하지 않는다(두 곳이 어긋나면 안내가 사실과 달라진다).
-  const blogSyncOn = Boolean(runtimeApis?.sync_defaults.include_blog_reviews);
+  // 아직 못 읽었으면 null 이다 — false 로 뭉개면 켜져 있는데도 첫 화면에 "꺼짐" 이라고 적힌다.
+  const blogSyncOn: boolean | null = runtimeApis ? runtimeApis.sync_defaults.include_blog_reviews : null;
   const [loading, setLoading] = useState(false);
   const [filterError, setFilterError] = useState("");
   const [lastSync, setLastSync] = useState<SyncSummary>({});
@@ -1392,10 +1393,11 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     setSyncBusy("academies");
     setSyncWarning("");
     try {
-      // 수집 여부의 최종 판단은 서버가 한다(설정 → 환경변수 → 꺼짐). 화면은 현재 설정을 그대로 전달만 한다.
-      const started = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", include_blog_reviews: blogSyncOn, blog_review_limit: 3 });
+      // 블로그 수집 여부는 보내지 않는다. 서버가 스위치로 판단하므로(설정 → 환경변수 → 꺼짐),
+      // 화면이 아직 상태를 못 읽은 시점에 false 를 보내면 켜져 있는데도 수집을 건너뛰게 된다.
+      const started = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", blog_review_limit: 3 });
       setSyncRunId(started.run_id);
-      setAcademyMsg(blogSyncOn
+      setAcademyMsg(blogSyncOn === true
         ? "동기화를 시작했습니다. 블로그 리뷰까지 받으므로 10분 이상 걸립니다."
         : "동기화를 시작했습니다. 학원 기본 정보와 수강생 후기를 받습니다.");
       await pollSyncRun(started.run_id);
@@ -1435,7 +1437,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       if (run.status === "error") { setAcademyMsg(`동기화 실패: ${run.error ?? "원인 미상"}`); return; }
       const res = run.result_obj;
       if (!res) { setAcademyMsg("동기화가 끝났습니다."); await onRefresh(); await loadAcademies(); return; }
-      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 수강생 후기 ${res.review_count}개${blogSyncOn ? ` · 블로그 리뷰 ${res.blog_review_count}개` : ""} · ${res.skipped}개 제외`);
+      setAcademyMsg(`학원 ${res.fetched}개 조회 · ${res.upserted}개 반영 · 수강생 후기 ${res.review_count}개${blogSyncOn === true ? ` · 블로그 리뷰 ${res.blog_review_count}개` : ""} · ${res.skipped}개 제외`);
       // 블로그리뷰를 못 가져온 학원이 있으면 성공 문구에 묻지 않고 따로 경고로 세운다.
       // 이 값이 조용히 넘어가면 원천이 다시 느려져도 아무도 모른 채 후기가 낡아간다.
       setSyncWarning(syncWarningText(res));
@@ -1502,10 +1504,12 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           여기서 찾지 못하면 토글이 있다는 사실 자체를 모르게 된다. 그래서 현재 상태와 위치를 같이 알린다.
         */}
         <p className="muted small">
-          블로그 리뷰 수집: <b>{blogSyncOn ? "켜짐" : "꺼짐"}</b>
-          {blogSyncOn
-            ? " — 학원 동기화가 10분 이상 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다."
-            : " — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다. 글 생성에도 쓰지 않습니다."}
+          블로그 리뷰 수집: <b>{blogSyncOn === null ? "확인 중" : blogSyncOn ? "켜짐" : "꺼짐"}</b>
+          {blogSyncOn === null
+            ? ""
+            : blogSyncOn
+              ? " — 학원 동기화가 10분 이상 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다."
+              : " — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다. 글 생성에도 쓰지 않습니다."}
           {" "}켜고 끄는 것은 <Link href="/settings">설정 → 블로그 리뷰 수집</Link>에서 합니다.
         </p>
       </div>
@@ -1566,7 +1570,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           ? " 블로그 리뷰도 받도록 설정돼 있어 10분 이상 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다(설정에서 끌 수 있습니다)."
           : " 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다."}
       </p>
-      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title={blogSyncOn ? "학원 목록·수강생 후기·블로그 리뷰를 받아옵니다. 블로그 리뷰는 한 곳씩 받아야 해 10분 이상 걸립니다." : "학원 목록과 수강생 후기를 원천에서 받아옵니다(1~2분). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다."}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title={blogSyncOn === true ? "학원 목록·수강생 후기·블로그 리뷰를 받아옵니다. 블로그 리뷰는 한 곳씩 받아야 해 10분 이상 걸립니다." : "학원 목록과 수강생 후기를 원천에서 받아옵니다(1~2분). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다."}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
       <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>
