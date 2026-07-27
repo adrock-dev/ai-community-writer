@@ -240,12 +240,26 @@ export class AcademyResearchService {
   }
 
   // a: 전체 배치 조사. 백그라운드로 실행하고 runId 를 즉시 반환.
-  async startRegionResearch(region?: string, opts: { provider?: ResearchProviderPreference } = {}): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
+  //
+  // 기본은 아직 조사되지 않은 학원만 대상으로 한다. 배치는 API 프로세스 안의 루프라
+  // 파일 저장 한 번에 사라지는데, 그때 다시 실행하면 이어서 진행되게 하려는 것이다.
+  // 이미 조사한 곳을 갱신하려면 refreshAll 을 켠다.
+  async startRegionResearch(
+    region?: string,
+    opts: { provider?: ResearchProviderPreference; refreshAll?: boolean; limit?: number } = {},
+  ): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
     if (this.db.findRunningRun("all")) return { ok: false, error: "이미 진행 중인 전체 조사가 있습니다." };
     const providers = await this.resolveProviders(opts.provider);
     if (!providers.length) return { ok: false, error: "claude/codex CLI를 찾을 수 없습니다." };
-    const targets = this.db.listBase({ region, limit: 5000 });
-    if (!targets.length) return { ok: false, error: "동기화된 학원이 없습니다. 먼저 동기화하세요." };
+    const targets = this.db.listBase({ region, limit: opts.limit ?? 5000, onlyUnresearched: !opts.refreshAll });
+    if (!targets.length) {
+      return {
+        ok: false,
+        error: opts.refreshAll
+          ? "동기화된 학원이 없습니다. 먼저 동기화하세요."
+          : "조사할 학원이 없습니다(대상이 모두 조사됨). 이미 조사한 곳을 다시 조사하려면 '조사한 곳도 다시'를 켜세요.",
+      };
+    }
 
     const runId = this.db.createRun({ scope: "all", region, engine: opts.provider && opts.provider !== "auto" ? opts.provider : "auto", method: "a_batch", count_total: targets.length });
     // 백그라운드 실행(HTTP 응답을 막지 않음). 진행 상황은 research_runs 로 추적.

@@ -82,7 +82,11 @@ export class AcademyResearchController {
   async researchRegion(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
     checkAuth(req, headers);
     const provider = parseResearchProvider(body?.provider);
-    const result = await this.service.startRegionResearch(undefined, { provider });
+    const result = await this.service.startRegionResearch(undefined, {
+      provider,
+      refreshAll: body?.refresh_all === true,
+      limit: parseLimit(body?.limit),
+    });
     if (!result.ok) throw new HttpException(result.error || "failed", 409);
     return result;
   }
@@ -147,4 +151,13 @@ function parseResearchProvider(value: unknown): ResearchProviderPreference {
   if (value == null || value === "") return "auto";
   if (value === "auto" || value === "codex" || value === "claude") return value;
   throw new HttpException("provider must be auto, codex or claude", 400);
+}
+
+// 이번 실행에서 조사할 학원 수 상한. 학원 1곳이 수집+LLM 으로 1분 안팎이라
+// 전체를 한 번에 돌리면 몇 시간이 걸린다. 나눠 돌릴 수 있게 받는다.
+function parseLimit(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) throw new HttpException("limit must be a positive number", 400);
+  return Math.min(5000, Math.trunc(n));
 }

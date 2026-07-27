@@ -14,6 +14,10 @@ export default function AcademyResearchClient() {
   const [hiddenCount, setHiddenCount] = useState(0);
   const [runs, setRuns] = useState<ResearchRun[]>([]);
   const [researchProvider, setResearchProvider] = useState<ResearchProvider>("auto");
+  // 조사는 학원 1곳당 1분 안팎이라 나눠 돌린다. 0이면 전체.
+  const [researchLimit, setResearchLimit] = useState(30);
+  // 기본은 아직 조사하지 않은 곳만. 중단돼도 다시 눌러 이어서 진행하기 위함이다.
+  const [refreshAll, setRefreshAll] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -101,15 +105,17 @@ export default function AcademyResearchClient() {
   }
 
   async function onResearchAll() {
-    if (!confirm(`동기화된 전체 학원을 ${researchProvider}로 심층조사합니다(백그라운드). 진행할까요?`)) return;
+    const scope = refreshAll ? "이미 조사한 곳까지 다시" : "아직 조사하지 않은 곳만";
+    const size = researchLimit ? `최대 ${researchLimit}곳` : "전체";
+    if (!confirm(`${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요?`)) return;
     setBusy("research");
     setError("");
     setNotice("");
     try {
-      const res = await researchRegion(researchProvider);
+      const res = await researchRegion(researchProvider, { refreshAll, limit: researchLimit || undefined });
       if (!res.ok) throw new Error(res.error || "시작 실패");
       if (res.run_id) watchedRunRef.current = res.run_id;
-      setNotice(`전체 조사 시작 — 대상 ${res.count}곳. 창을 닫아도 계속 진행됩니다.`);
+      setNotice(`조사 시작 — 대상 ${res.count}곳. 창을 닫아도 계속 진행됩니다. 중단되면 다시 눌러 이어서 진행할 수 있습니다.`);
       await loadRuns();
     } catch (e: any) {
       setError(e?.message || "조사 시작 실패");
@@ -225,10 +231,36 @@ export default function AcademyResearchClient() {
                 <option value="codex">Codex</option>
                 <option value="claude">Claude</option>
               </select>
+              <select
+                className="select"
+                value={String(researchLimit)}
+                onChange={(e) => setResearchLimit(Number(e.target.value))}
+                disabled={busy === "research" || Boolean(activeResearchRun)}
+                aria-label="이번 실행에서 조사할 학원 수"
+                style={{ width: "auto", minWidth: 96 }}
+              >
+                <option value="10">10곳</option>
+                <option value="30">30곳</option>
+                <option value="100">100곳</option>
+                <option value="0">전체</option>
+              </select>
+              <label className="muted small" style={{ display: "inline-flex", gap: 4, alignItems: "center", whiteSpace: "nowrap" }}>
+                <input
+                  type="checkbox"
+                  checked={refreshAll}
+                  onChange={(e) => setRefreshAll(e.target.checked)}
+                  disabled={busy === "research" || Boolean(activeResearchRun)}
+                />
+                조사한 곳도 다시
+              </label>
               <button className="btn" onClick={onResearchAll} disabled={busy === "research" || Boolean(activeResearchRun)} style={{ whiteSpace: "nowrap" }}>
-                {activeResearchRun ? "조사 진행 중…" : "전체 AI 조사"}
+                {activeResearchRun ? "조사 진행 중…" : "AI 조사 실행"}
               </button>
             </div>
+          </div>
+          {/* 배치는 API 프로세스 안의 루프라 재시작되면 사라진다. 다시 눌러 이어서 진행한다. */}
+          <div className="muted small" style={{ paddingLeft: 96 }}>
+            기본은 아직 조사하지 않은 곳만 대상입니다. 중단되면 다시 눌러 이어서 진행할 수 있습니다.
           </div>
         </div>
       </div>

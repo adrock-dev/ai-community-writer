@@ -336,11 +336,14 @@ export class AcademyResearchDbService implements OnModuleInit {
     return Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE active = 0")?.n ?? 0);
   }
 
-  listBase(opts: { region?: string; q?: string; limit?: number; includeInactive?: boolean } = {}): Row[] {
+  listBase(opts: { region?: string; q?: string; limit?: number; includeInactive?: boolean; onlyUnresearched?: boolean } = {}): Row[] {
     const where: string[] = [];
     const params: any[] = [];
     // 기본은 최신 동기화에 포함된 학원만. 원천에서 내려간 행은 보관만 하고 쓰지 않는다.
     if (!opts.includeInactive) where.push("b.active = 1");
+    // 아직 조사되지 않은 학원만. 조사 배치는 API 프로세스 안의 루프라 파일 저장 한 번에
+    // 사라지는데, 이 필터가 있으면 "다시 실행 = 이어서 진행" 이 된다(재개 기능 대용).
+    if (opts.onlyUnresearched) where.push("r.researched_at IS NULL");
     if (opts.region) { where.push("(region = ? OR address LIKE ?)"); params.push(opts.region, `%${opts.region}%`); }
     if (opts.q) { where.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${opts.q}%`, `%${opts.q}%`); }
     const limit = Math.max(1, Math.min(5000, Math.trunc(opts.limit ?? 1000)));
