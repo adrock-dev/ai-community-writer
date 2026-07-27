@@ -2,7 +2,7 @@
 
 import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
-import { formatDateTime } from "@/lib/date";
+import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
@@ -1293,6 +1293,18 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   useEffect(() => { setRegionDraft(regionAxisText); }, [regionAxisText]);
   // 학원 행에 남은 synced_at 중 가장 최근 값(다른 브라우저에서 동기화된 경우의 폴백).
   const academySyncedAt = useMemo(() => remoteAcademies.reduce<string | null>((max, a) => (a.synced_at && (!max || a.synced_at > max) ? a.synced_at : max), null), [remoteAcademies]);
+  // 「최근 동기화」의 진실 원본은 DB(academies.synced_at)다. 브라우저 기록(localStorage)만 보여주면
+  // 동기화가 실패해도 옛 성공 기록이 그대로 남아 "386개 반영"인데 목록은 0개인 모순이 표시된다.
+  // (2026-07-27 실제 사고: 60초 걸리는 학원 동기화 도중 tsx watch 가 API 를 재시작해 전량 유실됐는데,
+  //  화면은 나흘 전 성공 기록을 계속 보여줘 원인 파악이 늦어졌다.)
+  // 브라우저 기록이 DB 반영 시각보다 뒤면 그 시도는 반영되지 않은 것이다. 성공 직후에도 응답 처리
+  // 시간만큼 브라우저 기록이 뒤서므로 1분 여유를 둔다.
+  const academyAttemptUnapplied = useMemo(() => {
+    const attempt = parseUtcTimestamp(lastSync.academies?.at)?.getTime();
+    if (!attempt) return false;
+    const applied = parseUtcTimestamp(academySyncedAt)?.getTime();
+    return !applied || attempt > applied + 60_000;
+  }, [lastSync.academies?.at, academySyncedAt]);
   useEffect(() => { setRemoteAcademies(academies); setRemoteTotal(academies.length); }, [academies]);
   useEffect(() => {
     let cancelled = false;
@@ -1401,7 +1413,9 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       </div>
       <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button><button className="btn" type="button" onClick={resetRegions} disabled={Boolean(syncBusy)} title="지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline)">기본값으로 초기화</button></div>
       {regionMsg && <p className="small badge success" style={{ width: "fit-content" }}>{regionMsg}</p>}
-      <p className="muted small">최근 지역 동기화: {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
+      {/* 지역은 화면에 DB 기준 개수가 없어 브라우저 기록만 남긴다. 학원 쪽처럼 DB 와 대조할 수 없으므로
+          '이 브라우저 기록'임을 문구로 밝혀, 실패한 시도를 서버 상태로 오해하지 않게 한다. */}
+      <p className="muted small">최근 지역 동기화(이 브라우저 기록): {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
       <div className="spread"><div><h3 style={{ margin: 0 }}>현재 지역 축</h3><p className="muted small">글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 <b>가중치·월검색량·KD</b>는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다.</p></div><span className="badge info">{regionAxis.length}개</span></div>
       <p className="uploaded-notice" style={{ padding: "8px 12px", margin: "-8px 0" }}>⚠️ <b>월검색량·KD</b>는 실측이 아닌 추정 시드값으로 슬롯 <b>우선순위</b>에만 쓰이며 글 내용은 바꾸지 않습니다(추후 <b>네이버 검색광고 API</b> 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다.</p>
       {regionAxis.length > 0
@@ -1424,7 +1438,14 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       <p className="muted small">각 지역의 학원 상세(사진·별점리뷰·블로그 리뷰 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.</p>
       <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button><button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
-      <p className="muted small">최근 동기화: {lastSync.academies ? `${formatDateTime(lastSync.academies.at)} · ${lastSync.academies.count.toLocaleString()}개 반영${lastSync.academies.detail ? ` (${lastSync.academies.detail})` : ""}` : academySyncedAt ? formatDateTime(academySyncedAt) : "아직 기록 없음"}</p>
+      <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>
+      {academyAttemptUnapplied && (
+        <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
+          ⚠️ 이 브라우저의 마지막 동기화 시도({formatDateTime(lastSync.academies?.at)})는 DB에 반영되지 않았습니다.
+          학원 동기화는 1분 안팎이 걸리는데 그사이 개발 서버가 재시작되면 전량 유실됩니다.
+          <code>npm run sync:academies -- {domain.domain}</code> 로 다시 실행하면 서버 재시작과 무관하게 반영됩니다.
+        </p>
+      )}
       <div className="card card-pad grid compact-pad" style={{ background: "#f8fafc" }}>
         <div className="spread"><div><h3 style={{ margin: 0 }}>선택 · 수동 자료 보완</h3><p className="muted small">DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
         {manualToolsOpen && <>
