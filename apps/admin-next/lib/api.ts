@@ -15,11 +15,20 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
   const text = await res.text();
   const data = text ? safeJson(text) : null;
-  if (!res.ok) {
-    const message = typeof data?.detail === "string" ? data.detail : typeof data?.message === "string" ? data.message : `${res.status} ${res.statusText}`;
-    throw new Error(message);
-  }
+  if (!res.ok) throw new Error(errorMessage(data, res));
   return data as T;
+}
+
+// 사람이 읽을 수 있는 message 를 우선하고, 원문(detail)은 괄호로 덧붙인다.
+// detail 을 먼저 쓰면 프록시가 만든 "콘텐츠 API에 연결할 수 없습니다" 안내가 undici 의 "fetch failed" 에 가려진다.
+export function errorMessage(data: any, res: { status: number; statusText: string }): string {
+  const message = typeof data?.message === "string" && data.message.trim() ? data.message.trim() : "";
+  const detail = typeof data?.detail === "string" && data.detail.trim() ? data.detail.trim() : "";
+  if (message && detail && detail !== message) return `${message} (${detail})`;
+  if (message) return message;
+  if (detail) return detail;
+  if (typeof data === "string" && data.trim()) return data.trim();
+  return `${res.status} ${res.statusText}`;
 }
 
 function safeJson(text: string): any {
@@ -126,9 +135,7 @@ export async function downloadPostExport(domain: string, body: { post_ids: strin
   });
   if (!res.ok) {
     const text = await res.text();
-    const data = text ? safeJson(text) : null;
-    const message = typeof data?.message === "string" ? data.message : text || `${res.status} ${res.statusText}`;
-    throw new Error(message);
+    throw new Error(errorMessage(text ? safeJson(text) : null, res));
   }
   return res.blob();
 }
