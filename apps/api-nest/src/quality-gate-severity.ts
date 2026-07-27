@@ -44,6 +44,9 @@ export const B_ISSUE_STEMS: readonly string[] = [
   "contains_pseudo_slot",
   "risky_duration_or_pass_guarantee_claim",
   "unverified_specific_price_claim",
+  // facts 에 가격이 있는데 그 값이 아닌 금액을 쓴 경우(다른 과정 금액 전용 등). 독자가 그대로
+  // 믿고 상담·등록에 쓰는 숫자라 비차단으로 둘 수 없다.
+  "fabricated_price_amount",
   "unverified_review_claim",
   // T16 — 후보를 거리로 뽑더라도 본문에서 거리를 주장하면 독자를 오도한다(직선거리 ≠ 실제 이동).
   "distance_number_claim",

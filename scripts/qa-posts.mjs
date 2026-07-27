@@ -168,6 +168,14 @@ function distanceClaimIssues(markdown) {
   return issues;
 }
 
+// [미러 없음] quality-gate.ts 의 fabricatedPriceAmounts(본문 금액 ↔ facts 대조)는 여기 미러하지
+// 않는다. 그 검사는 **그 글이 생성될 때 받은 facts** 를 기준으로 삼아야 성립하는데, 발행 후 감사인
+// 이 스크립트에는 facts 가 없다. 학원명으로 DB 를 조회해 대신 쓰면 두 가지 오탐이 생긴다:
+//  (1) 동명 학원(현재 16개 이름이 2~4곳씩 중복) 때문에 다른 지역 가격표와 대조하게 된다.
+//  (2) 생성 이후 원천 수강료가 바뀌면 정상 글이 날조로 잡힌다.
+// 금액 검증은 생성 시점 게이트(+repair)가 담당하고, 사후 확인이 필요하면 슬롯으로 facts 를 다시
+// 만들어 대조하는 src/scripts/audit-post-prices.ts 를 쓴다.
+
 // 제목 부제가 주장하는 축을 facts 가 뒷받침하는지 — quality-gate.ts 의 titleAxisEvidenceIssues 미러.
 function titleAxisEvidenceIssues(title, facts) {
   const t = String(title || '');

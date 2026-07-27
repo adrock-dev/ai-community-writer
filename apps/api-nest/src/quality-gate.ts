@@ -275,6 +275,8 @@ export function articleQualityIssues(markdown: string, facts: string, images: Re
   if (/(검증된 자료|확인된 콘텐츠 재료|작성 범위|소개 가능한 후보 수|API 자료|제공된 자료|후기 필드|긍정 수강생 리뷰 보충자료|긍정 블로그 리뷰글 보충자료|직접 매칭 후보 수|사용 가능한 이미지 슬롯|본문에 사용할 수 있는 후보|본문에 사용할 수 있는 사진 슬롯|작성자 주의|내부자료ID|내부 데이터|내부 API|DrivingPlus|api-dev\.drivingplus\.me|get-all-academy|firebasestorage\.googleapis\.com|storage\.googleapis\.com)/i.test(stripOwnSiteRefs(markdown, siteHost))) issues.push("exposes_internal_fact_language");
   if (hasRiskyDurationClaim(markdown)) issues.push("risky_duration_or_pass_guarantee_claim");
   if (!hasVerifiedPriceFacts(facts) && hasSpecificMoneyClaim(markdown)) issues.push("unverified_specific_price_claim");
+  const fabricatedPrices = fabricatedPriceAmounts(markdown, facts);
+  if (fabricatedPrices.length) issues.push(`fabricated_price_amount_${fabricatedPrices.map((amount) => amount.toLocaleString("en-US")).join("·")}`);
   if (!hasReviewFacts(facts) && hasSpecificReviewClaim(markdown)) issues.push("unverified_review_claim");
   const unlistedPhones = unlistedPhoneNumbers(markdown, facts);
   if (unlistedPhones.length) issues.push(`unlisted_phone_number_${unlistedPhones.join("·")}`);
@@ -431,6 +433,66 @@ function hasSpecificMoneyClaim(value: string): boolean {
 
 function hasVerifiedPriceFacts(facts: string): boolean {
   return /(?:수강료|가격|비용):\s*[^/\n]+/u.test(facts);
+}
+
+/**
+ * 본문의 금액을 facts 와 대조한다 — "facts 에 가격이 있는가"(unverified_specific_price_claim)만
+ * 보던 기존 검사가 못 잡던 유형을 잡는다: **가격은 있는데 그 학원·그 과정의 값이 아닌 금액**.
+ * 실측(2026-07-27) 예: 1종 보통 자동 수강료가 자료에 없는 학원에 다른 과정 금액을 갖다 붙여
+ * "1종 보통 자동도 같은 금액"이라고 쓴 사례. 프롬프트 문구로만 막고 있어 게이트로 내린다.
+ *
+ * facts 를 기준으로 삼는 것이 핵심이다. 학원명으로 DB 를 조회해 대조하면 **동명 학원**(현재 16개
+ * 이름이 2~4곳씩 중복) 때문에 다른 지역 가격표와 비교하게 돼 오탐이 난다. facts 에는 그 글의
+ * 후보만 들어 있어 그 문제가 원천적으로 없고, 후기 인용 속 금액도 facts 원문에 있으니 통과한다.
+ *
+ * 오탐을 줄이는 규칙:
+ *  - '원'/'만원' 접미사가 붙은 값만 본다(연도 2026·개수 15곳·시각 08:00·전화번호 제외).
+ *  - 표기를 정수로 정규화한다(780,000원 = 780000원 = 78만원).
+ *  - "70만원대"는 특정 금액이 아니라 구간이므로 허용 금액이 그 안에 있으면 통과시킨다.
+ */
+export function fabricatedPriceAmounts(markdown: string, facts: string): number[] {
+  const allowed = priceAmountsIn(facts);
+  if (!allowed.size) return [];
+  const amounts = [...allowed];
+  // 근사 표현("70만원대")은 특정 금액 주장이 아니라 구간 주장이다. 구간 안에 실제 금액이 하나라도
+  // 있으면 통과시키고, 하나도 없으면 그 구간을 근거 없는 주장으로 본다.
+  const unsupportedBands = approximateWonBands(markdown)
+    .filter((band) => !amounts.some((amount) => amount >= band.floor && amount < band.floor + band.width))
+    .map((band) => band.floor);
+  const used = priceAmountsIn(stripApproximateWonBands(markdown));
+  const fabricated = [...used].filter((amount) => !allowed.has(amount));
+  return [...new Set([...fabricated, ...unsupportedBands])].sort((left, right) => left - right);
+}
+
+/** 텍스트의 금액(원 단위 정수). "780,000원"·"780000원"·"78만원"을 같은 값으로 본다. */
+export function priceAmountsIn(text: string): Set<number> {
+  const value = String(text || "");
+  const amounts = new Set<number>();
+  for (const match of value.matchAll(/([\d,]{4,})\s*원/gu)) {
+    const amount = Number(String(match[1] ?? "").replace(/,/g, ""));
+    if (Number.isFinite(amount) && amount > 0) amounts.add(amount);
+  }
+  for (const match of value.matchAll(/(\d{2,4})\s*만\s*원/gu)) {
+    const amount = Number(match[1]) * 10000;
+    if (Number.isFinite(amount) && amount > 0) amounts.add(amount);
+  }
+  return amounts;
+}
+
+/**
+ * "70만원대" 같은 근사 표현의 구간. 한국어에서 폭은 앞자리 단위로 정해진다:
+ * "70만원대" = 700,000~799,999(폭 10만), "75만원대" = 750,000~759,999(폭 1만).
+ */
+function approximateWonBands(text: string): { floor: number; width: number }[] {
+  return Array.from(String(text || "").matchAll(/(\d{2,4})\s*만\s*원?\s*대/gu))
+    .map((match) => Number(match[1]))
+    .filter((unit) => Number.isFinite(unit) && unit > 0)
+    .map((unit) => ({ floor: unit * 10000, width: unit % 10 === 0 ? 100000 : 10000 }));
+}
+
+/** 근사 표현은 특정 금액 주장이 아니므로 금액 추출 대상에서 뺀다. */
+function stripApproximateWonBands(text: string): string {
+  return String(text || "").replace(/\d{2,4}\s*만\s*원?\s*대/gu, " ");
 }
 
 // 공개 글에 실릴 수 있는 전화번호는 facts 가 준 번호(안심번호)뿐이다. 실번호는 facts 에 넣지 않지만
