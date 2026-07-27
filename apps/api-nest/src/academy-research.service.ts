@@ -256,20 +256,38 @@ export class AcademyResearchService {
 
   // 조사는 학원 1곳당 웹 수집 + LLM 호출이라 동시 실행하지 않는다(CLI 서브프로세스가 곱절로 뜬다).
   // 취소는 학원 사이에서만 확인하므로, 진행 중이던 1곳은 마치고 멈춘다.
+  //
+  // 결과를 반드시 집계한다. researchOne 은 소스를 못 찾으면 예외가 아니라 no_sources 로
+  // 정상 반환하는데(값을 지어내지 않으려는 설계), 이걸 버리면 전건 실패한 배치도
+  // "done 380/380" 으로 끝나 운영자는 성공으로 읽는다. 실제로 검색이 막혔던 동안
+  // 그렇게 돌고 있었다.
   private async runRegionBatch(runId: string, externalIds: string[], provider: ResearchProviderPreference): Promise<void> {
-    let done = 0;
+    const tally = { done: 0, saved: 0, no_sources: 0, failed: 0 };
+    let lastError = "";
     let cancelled = false;
     for (const externalId of externalIds) {
       if (this.db.isCancelRequested(runId)) { cancelled = true; break; }
       try {
-        await this.researchOne(externalId, { method: "a_batch", provider });
+        const result = await this.researchOne(externalId, { method: "a_batch", provider });
+        if (result.ok) tally.saved += 1;
+        else if (result.no_sources) tally.no_sources += 1;
+        else { tally.failed += 1; lastError = result.error || lastError; }
       } catch (error: any) {
-        this.logger.warn(`researchOne(${externalId}) 실패: ${error?.message || error}`);
+        tally.failed += 1;
+        lastError = String(error?.message || error);
+        this.logger.warn(`researchOne(${externalId}) 실패: ${lastError}`);
       }
-      done += 1;
-      this.db.updateRun(runId, { count_done: done });
+      tally.done += 1;
+      this.db.updateRun(runId, { count_done: tally.done, result: tally });
     }
-    this.db.updateRun(runId, { status: cancelled ? "cancelled" : "done", finished: true });
+    // 한 건도 저장하지 못했으면 완료가 아니라 실패다. 초록색 "완료"가 수집 0건을 덮지 않게 한다.
+    const barren = tally.done > 0 && tally.saved === 0;
+    this.db.updateRun(runId, {
+      status: cancelled ? "cancelled" : barren ? "error" : "done",
+      result: tally,
+      error: barren ? `${tally.done}곳 모두 저장 실패(소스 없음 ${tally.no_sources} · 조사 실패 ${tally.failed})${lastError ? ` — ${lastError}` : ""}` : undefined,
+      finished: true,
+    });
   }
 
   private persistResearch(externalId: string, parsed: ResearchResult, meta: { engine: ResearchProvider; method: string }, fallbackSourceUrls: string[] = []): void {
