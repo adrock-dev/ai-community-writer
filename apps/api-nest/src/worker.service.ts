@@ -5,7 +5,7 @@ import { runLlm } from "./llm-runner.js";
 import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_DESIGN_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, DRIVING_AUTHORITATIVE_SOURCES_GUIDE, TITLE_RULES, defaultDesignForTemplate, type TitleRule } from "./constants.js";
 import { resolveTemplateDirection, safeTemplateOverrides } from "./axis-tags.js";
 import { publicBrandName } from "./brand.js";
-import { buildT16AxisPlan, normalizeT16ReviewAttribution, t16FactsForPrompt, t16PromptContract, t16StructureGuide, t16ToneFromDirection, t16WritingGuide, T16_TEMPLATE_ID, type T16AxisPlan } from "./t16-axis-comparison.js";
+import { buildT16AxisPlan, normalizeT16ReviewAttribution, t16FactsForPrompt, t16ReviewPromptInstruction, t16PromptContract, t16StructureGuide, t16ToneFromDirection, t16WritingGuide, T16_TEMPLATE_ID, type T16AxisPlan } from "./t16-axis-comparison.js";
 import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
@@ -77,6 +77,15 @@ export type GenerationPromptOptions = {
   /** T01 built-in or T01-origin custom template. Keeps comparison-only safety
    * guidance available even when an explicit legacy override is used. */
   t01Comparison?: boolean;
+  /**
+   * 학원 카드를 여는 방식. 기본(미지정)은 기존 그대로 — 확인된 후기가 있으면 그 학원의 분위기
+   * 한 문장으로 연다. `"fact_first"` 는 카드를 **확인된 사실의 차이**로 열고 후기는 카드 맨 아래
+   * 인용에만 남긴다(T16 전용).
+   *
+   * 왜 옵션인가: 이 지침 줄들은 T01 Legacy Plus 와 공유된다. T01 은 자체 카드 리듬 지침을 따로
+   * 갖고 있어, 여기서 전역으로 바꾸면 두 지침이 서로 다른 첫 문장을 요구하게 된다.
+   */
+  cardIntro?: "fact_first";
 };
 
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
@@ -228,7 +237,9 @@ export class WorkerService {
         const images: Record<string, string> = { ...facts.images };
         for (const key of plannedGenKeys) images[key] = "";
         const factsText = appendPlannedImageFacts(facts.text, Object.keys(facts.images), plannedGenKeys);
-        const promptFactsText = t01LegacyPlusContext ? legacyPlusFactsForPrompt(factsText) : t16Plan ? t16FactsForPrompt(factsText) : factsText;
+        // T16 은 후보 목록을 함께 넘긴다 — 후보들을 서로 대조해야 나오는 '이 학원이 두드러지는 점'을
+        // facts 에 붙이기 위함이다(모델이 카드 순서대로 항목을 선점하는 문제를 코드가 미리 배분한다).
+        const promptFactsText = t01LegacyPlusContext ? legacyPlusFactsForPrompt(factsText) : t16Plan ? t16FactsForPrompt(factsText, facts.academies) : factsText;
         const t01PromptOptions: GenerationPromptOptions | undefined = t01LegacyPlusContext ? {
           structureGuide: legacyPlusStructureGuide(t01LegacyPlusContext),
           writingGuide: legacyPlusWritingGuide(t01LegacyPlusContext),
@@ -249,6 +260,8 @@ export class WorkerService {
           writingGuide: t16WritingGuide(slot, t16ToneFromDirection(templateDirection)),
           articlePatternGuide: legacyPlusArticlePatternGuide(),
           designGuide: legacyPlusDesignGuide(),
+          reviewInstruction: t16ReviewPromptInstruction(),
+          cardIntro: "fact_first",
           readerFlow: true,
           t01Comparison: true,
           // "가까운/근처"는 선택 힌트일 뿐 독자용 관점이 아니라 라벨에서 뺀다(helper 주석 참조).
@@ -1007,13 +1020,19 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
   const personaMobilityGuide = personaHasMobilityConstraint
     ? "페르소나에 명시된 이동 조건을 확인된 셔틀 운행 지역과 연결해 독자가 판단할 수 있게 쓴다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다."
     : "확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
+  // 카드를 사실의 차이로 여는 모드(T16). 후기는 카드 맨 아래 인용에만 남는다.
+  const isFactFirstCard = options?.cardIntro === "fact_first";
   const academyNarrativeGuide = options?.readerFlow
     ? [
       "- 이 글의 흐름은 ‘독자 질문 → 학원별 차이 → 객관 정보 → 선택 도움’이다. 도입은 지역에서 면허를 준비할 때 생기는 현실적인 고민을 한두 짧은 문단으로 열고 학원 소개로 자연스럽게 이어 간다. 면허 종류·교육 과정·전문학원 여부는 실제 차이가 있거나 독자의 고민과 맞을 때만 활용하며, 모든 도입의 고정 주제로 삼지 않는다.",
       "- 학원 카드 묶음은 반드시 H2 소제목(`## ` 예: `## ○○에서 살펴볼 운전면허학원 N곳`)으로 연다. 첫 `### 학원명` 카드 앞에 이 H2가 없으면 제목이 H1 다음 바로 H3로 건너뛰어 계층이 깨진다 — H1 → H2(카드 섹션) → H3(각 학원) 순서를 지킨다. 그 H2 아래에 첫 `### 학원명` 앞 한두 문장의 도입을 둔다: 이제 어떤 학원들을 볼지 밝히고 첫 학원으로 자연스럽게 이어 간다. 대화체 톤이면 활기 있게 연다(예: \"자, 그럼 원주에서 다닐 만한 4곳을 하나씩 볼게요!\"). 실제 수강생 후기가 함께 담겼다는 점은 도입에서 짧게 알려도 되지만, 후기 내용을 도입에서 요약·해석하지 않는다(\"실제 후기에서는 ~한 반응이 보인다\" 같은 대신 서술 금지). 후기는 각 학원 카드 안 원문 인용으로 보여주고, 그 인용과 확인된 사실이 어우러져 그 학원의 분위기·개성이 자연스럽게 드러나게 한다. \"엄선·BEST·만족도 높은·추천 많은·합격률\" 같은 미검증·순위 단정은 쓰지 않는다.",
-      `- 주소·전화·실제 소재지는 오표현을 막는 보조 사실이다. 주소를 학원 소개의 첫 문장·추천 이유·${tableNoun}의 중심 열로 삼지 않는다. 실제 지역이 다른 학원도 별도 그룹이나 H2 섹션으로 나누지 말고, 해당 학원 소개 또는 ${tableNoun}에 실제 지역명만 짧게 적는다.`,
+      isFactFirstCard
+        ? `- 주소·전화는 오표현을 막는 보조 사실이다. 학원이 자리한 지역(시·군·구·동)은 소개 첫 문장에서 위치를 알려 주는 용도로 쓸 수 있고, 실제 소재지가 주제 지역과 다르면 그 사실을 첫 문장에서 밝혀도 된다. 다만 번지까지 적은 전체 주소는 기본 정보 불릿이 담당하고, 주소나 소재지만으로 통학 편의·접근성·가까움·거리를 단정하지 않는다(통학 이야기는 확인된 셔틀 운행 지역으로만 한다). 주소·전화를 ${tableNoun}의 중심 열로 삼지 않으며, 실제 지역이 다른 학원도 별도 그룹이나 H2 섹션으로 나누지 말고 해당 학원 소개 또는 ${tableNoun}에 실제 지역명만 짧게 적는다.`
+        : `- 주소·전화·실제 소재지는 오표현을 막는 보조 사실이다. 주소를 학원 소개의 첫 문장·추천 이유·${tableNoun}의 중심 열로 삼지 않는다. 실제 지역이 다른 학원도 별도 그룹이나 H2 섹션으로 나누지 말고, 해당 학원 소개 또는 ${tableNoun}에 실제 지역명만 짧게 적는다.`,
       `- ${personaMobilityGuide} 거리 수치, 이동시간, 셔틀 가능성을 추측하지 않는다.`,
-      "- 학원 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·자체시험·수강생 리뷰를 필요한 경우에만 활용한다. 각 학원은 반드시 `### 학원명` H3로 시작하고, 그 바로 아래 소개에서 그 학원의 개성(확인된 후기가 있으면 그 분위기 한 문장)을 먼저 드러낸 뒤 제공된 주소·전화·수강료·셔틀 운행 지역·운영 과정 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리하고, 수강생 리뷰 인용은 그 불릿 아래(카드 맨 끝)에 둔다(운영 형태는 학원마다 다를 때만 불릿에 넣고, 모두 같으면 넣지 않는다). 학원마다 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 주소는 기본 정보이지 추천 이유가 아니다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다.",
+      isFactFirstCard
+        ? "- 학원 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·운영 시간·수강료·셔틀 운행 지역을 활용한다. 각 학원은 반드시 `### 학원명` H3로 시작하고, 그 바로 아래 소개는 그 학원이 다른 후보와 실제로 다른 점으로 열되 한 카드가 앞세운 항목을 다른 카드가 첫 강점으로 다시 쓰지 않는다. 이어서 제공된 주소·전화·수강료·셔틀 운행 지역·운영 과정 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리하고, 수강생 리뷰 인용은 그 불릿 아래(카드 맨 끝)에 둔다(운영 형태는 학원마다 다를 때만 불릿에 넣고, 모두 같으면 넣지 않는다). 학원마다 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다."
+        : "- 학원 소개는 각 학원에서 실제로 차이가 드러나는 면허 과정·운영 형태·자체시험·수강생 리뷰를 필요한 경우에만 활용한다. 각 학원은 반드시 `### 학원명` H3로 시작하고, 그 바로 아래 소개에서 그 학원의 개성(확인된 후기가 있으면 그 분위기 한 문장)을 먼저 드러낸 뒤 제공된 주소·전화·수강료·셔틀 운행 지역·운영 과정 중 확인된 항목을 짧은 기본 정보 불릿으로 한 번만 정리하고, 수강생 리뷰 인용은 그 불릿 아래(카드 맨 끝)에 둔다(운영 형태는 학원마다 다를 때만 불릿에 넣고, 모두 같으면 넣지 않는다). 학원마다 첫 문장과 문단 순서를 기계적으로 같게 맞추지 않는다. 주소는 기본 정보이지 추천 이유가 아니다. 정보가 부족하면 내용을 부풀리지 말고 공통 체크리스트로 한 번만 확인 행동을 안내한다.",
     ].join("\n")
     : [
       "- 딱딱한 데이터 나열이 아니라 사람이 쓴 블로그처럼 자연스럽게 시작한다. 예: 지역 생활권, 면허 준비 상황, 비용/동선 고민을 먼저 짚고 학원으로 연결한다.",
@@ -1021,7 +1040,7 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
       "- 학원 소개는 원본 블로그의 카드형 리듬을 따른다. 학원마다 반드시 '### 학원명' H3 소제목을 먼저 쓰고, 위치/동선, 추천 대상, 상담 질문, 사진을 짧은 문단과 불릿으로 섞어 보여준다.",
     ].join("\n");
   const academyDetailGuide = options?.readerFlow
-    ? "- 학원 카드 묶음은 H2 섹션 제목(`## ` 예: `## ○○에서 살펴볼 운전면허학원 N곳`) 아래에 둔다 — 첫 `### 학원명` 카드 앞에 반드시 H2를 두어 제목이 H1 다음 바로 H3로 건너뛰지 않게 한다(H1 → H2 → H3). 각 학원은 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 그 학원의 개성이 드러나는 소개를 쓰고(확인된 후기가 있으면 그 분위기 한 문장으로 연다), 확인된 면허 과정·운영 형태·자체시험 여부는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **수강료:**`, `- **셔틀 운행 지역:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~6개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 카드는 소개 → (이미지) → 기본 정보 불릿 → 수강생 리뷰 인용 순으로 쓰고, 리뷰 인용(blockquote)은 항상 기본 정보 불릿 아래(카드 맨 끝)에 둔다. 개성은 H3 바로 아래 소개가 맡는다 — 기본 정보 불릿과 인용 사이에 분위기 문장을 따로 끼워 넣지 않는다. 셔틀 운행 지역·경유지는 정확한 개수(예: \"15곳\")를 세지 말고 대표 지역 몇 곳을 나열한 뒤 \"등\"으로 마무리한다. 정보 불릿은 라벨(`- **라벨:**`)만 굵게 하고 값(수강료 금액 등)은 추가로 굵게 하지 않는다 — 라벨이 이미 굵어 값까지 굵히면 다른 불릿과 어긋난다(비용을 강조하고 싶으면 소개 산문 문장에서 한다). **운영 형태는 학원마다 다를 때만 불릿에 넣고, 모든 학원이 같은 운영 형태면 카드 불릿에 넣지 않는다(공통 사실이라 글에서 한 번만 밝힌다).** 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 " + tableNoun + "의 중심 열로 쓰지 않는다."
+    ? "- 학원 카드 묶음은 H2 섹션 제목(`## ` 예: `## ○○에서 살펴볼 운전면허학원 N곳`) 아래에 둔다 — 첫 `### 학원명` 카드 앞에 반드시 H2를 두어 제목이 H1 다음 바로 H3로 건너뛰지 않게 한다(H1 → H2 → H3). 각 학원은 반드시 `### 학원명` H3로 시작한다. H3 뒤에는 " + (isFactFirstCard ? "그 학원이 다른 후보와 실제로 다른 점으로 소개를 열고" : "그 학원의 개성이 드러나는 소개를 쓰고(확인된 후기가 있으면 그 분위기 한 문장으로 연다)") + ", 확인된 면허 과정·운영 형태·자체시험 여부는 실제 차이가 있거나 독자의 선택에 도움이 될 때만 쓴다. 이어서 제공된 정보만 사용해 `- **주소:**`, `- **전화:**`, `- **수강료:**`, `- **셔틀 운행 지역:**`, `- **운영 과정:**`, `- **운영 형태:**` 중 2~6개의 짧은 기본 정보 불릿을 둔다. 값이 없는 항목은 만들지 않는다. 카드는 소개 → (이미지) → 기본 정보 불릿 → 수강생 리뷰 인용 순으로 쓰고, 리뷰 인용(blockquote)은 항상 기본 정보 불릿 아래(카드 맨 끝)에 둔다. 개성은 H3 바로 아래 소개가 맡는다 — 기본 정보 불릿과 인용 사이에 별도 문장을 따로 끼워 넣지 않는다. 셔틀 운행 지역·경유지는 정확한 개수(예: \"15곳\")를 세지 말고 대표 지역 몇 곳을 나열한 뒤 \"등\"으로 마무리한다. 정보 불릿은 라벨(`- **라벨:**`)만 굵게 하고 값(수강료 금액 등)은 추가로 굵게 하지 않는다 — 라벨이 이미 굵어 값까지 굵히면 다른 불릿과 어긋난다(비용을 강조하고 싶으면 소개 산문 문장에서 한다). **운영 형태는 학원마다 다를 때만 불릿에 넣고, 모든 학원이 같은 운영 형태면 카드 불릿에 넣지 않는다(공통 사실이라 글에서 한 번만 밝힌다).** 실제 지역은 주소 불릿 또는 짧은 사실로만 적고, 주소·전화는 추천 이유나 " + tableNoun + "의 중심 열로 쓰지 않는다."
     : "- 학원별 설명에는 가능한 경우 학원명, 주소, 전화, 운영 과정/유형, 추천 대상, 상담 시 확인할 점을 포함한다. 전화번호는 자료에 있는 번호만 그대로 쓰고 다른 번호를 만들지 않는다.";
   const academyPrinciples = options?.academyPrinciples ?? DRIVING_ACADEMY_PRINCIPLES;
   // 내부(자사) 글 링크: facts 에 '관련 글 후보'가 실제로 주어졌을 때만 유도한다. 현재 후보 제공이
