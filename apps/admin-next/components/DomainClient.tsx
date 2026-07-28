@@ -3,7 +3,7 @@
 import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
-import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
+import { formatDateTime } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
@@ -1376,18 +1376,6 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   useEffect(() => { setRegionDraft(regionAxisText); }, [regionAxisText]);
   // 학원 행에 남은 synced_at 중 가장 최근 값(다른 브라우저에서 동기화된 경우의 폴백).
   const academySyncedAt = useMemo(() => remoteAcademies.reduce<string | null>((max, a) => (a.synced_at && (!max || a.synced_at > max) ? a.synced_at : max), null), [remoteAcademies]);
-  // 「최근 동기화」의 진실 원본은 DB(academies.synced_at)다. 브라우저 기록(localStorage)만 보여주면
-  // 동기화가 실패해도 옛 성공 기록이 그대로 남아 "386개 반영"인데 목록은 0개인 모순이 표시된다.
-  // (2026-07-27 실제 사고: 60초 걸리는 학원 동기화 도중 tsx watch 가 API 를 재시작해 전량 유실됐는데,
-  //  화면은 나흘 전 성공 기록을 계속 보여줘 원인 파악이 늦어졌다.)
-  // 브라우저 기록이 DB 반영 시각보다 뒤면 그 시도는 반영되지 않은 것이다. 성공 직후에도 응답 처리
-  // 시간만큼 브라우저 기록이 뒤서므로 1분 여유를 둔다.
-  const academyAttemptUnapplied = useMemo(() => {
-    const attempt = parseUtcTimestamp(lastSync.academies?.at)?.getTime();
-    if (!attempt) return false;
-    const applied = parseUtcTimestamp(academySyncedAt)?.getTime();
-    return !applied || attempt > applied + 60_000;
-  }, [lastSync.academies?.at, academySyncedAt]);
   useEffect(() => { setRemoteAcademies(academies); setRemoteTotal(academies.length); }, [academies]);
   useEffect(() => {
     let cancelled = false;
@@ -1652,12 +1640,12 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)} title="「운전학원 자료」가 이미 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다.">{syncBusy === "link" ? "연결 중..." : "학원자료 연결"}</button><button className="btn danger" type="button" onClick={unlinkAcademies} disabled={Boolean(syncBusy)} title="이 도메인에서 학원 자료를 비웁니다. 「운전학원 자료」의 원본과 조사값은 그대로 남고, 다시 연결하면 복구됩니다.">연결 끊기</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
-      <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>
-      {academyAttemptUnapplied && (
+      <p className="muted small">최근 연결: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳` : "아직 연결한 학원이 없습니다"}</p>
+      {!loading && remoteTotal === 0 && (
         <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
-          ⚠️ 이 브라우저의 마지막 동기화 시도({formatDateTime(lastSync.academies?.at)})는 DB에 반영되지 않았습니다.
-          학원 동기화는 1분 안팎이 걸리는데 그사이 개발 서버가 재시작되면 전량 유실됩니다.
-          <code>npm run sync:academies -- {domain.domain}</code> 로 다시 실행하면 서버 재시작과 무관하게 반영됩니다.
+          ⚠️ 이 도메인에 연결된 학원이 없습니다. 학원 자료 없이 생성하면 실제 후보를 인용하지 못하고
+          지역 가이드·체크리스트 위주로만 쓰입니다. 위 <b>「학원자료 연결」</b>을 누르세요 —
+          「운전학원 자료」가 이미 받아 둔 자료를 가져오므로 원천 API 를 다시 호출하지 않고 수십 초면 끝납니다.
         </p>
       )}
       <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={onSave} />
