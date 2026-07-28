@@ -22,7 +22,7 @@ export default function AcademyResearchClient() {
   const [researchProvider, setResearchProvider] = useState<ResearchProvider>("auto");
   // 조사는 학원 1곳당 1분 안팎이라 나눠 돌린다. 0이면 전체.
   const [researchLimit, setResearchLimit] = useState(30);
-  // 기본은 아직 조사하지 않은 곳만. 중단돼도 다시 눌러 이어서 진행하기 위함이다.
+  // 기본은 미시도·실패만. 근거 없음은 정상 시도로 남겨 무한 재시도를 막는다.
   const [refreshAll, setRefreshAll] = useState(false);
   const [researchOffset, setResearchOffset] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -91,7 +91,7 @@ export default function AcademyResearchClient() {
     void load().finally(() => {
       if (run.status === "error") {
         setNotice("");
-        setError(`${runLabel(run)} 중단됨 — ${run.error || "원인 미상"} (${run.count_done}/${run.count_total || "?"}곳까지 저장)`);
+        setError(`${runLabel(run)} 중단됨 — ${run.error || "원인 미상"} (${runSummary(run)})`);
         return;
       }
       setError("");
@@ -119,7 +119,7 @@ export default function AcademyResearchClient() {
   }
 
   async function onResearchAll() {
-    const scope = refreshAll ? "이미 조사한 곳까지 다시" : "아직 조사하지 않은 곳만";
+    const scope = refreshAll ? "이미 조사한 곳까지 다시" : "미시도·실패 학원만";
     const size = researchLimit ? `최대 ${researchLimit}곳` : "전체";
     const offset = refreshAll && researchLimit > 0 ? researchOffset : undefined;
     if (!confirm(`${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요?`)) return;
@@ -190,6 +190,13 @@ export default function AcademyResearchClient() {
   const activeSyncRun = runs.find((r) => r.status === "running" && r.scope === "sync");
   const activeBlogRun = runs.find((r) => r.status === "running" && r.scope === "sync_blog");
   const activeResearchRun = runs.find((r) => r.status === "running" && r.scope !== "sync" && r.scope !== "sync_blog");
+  const researchCounts = items.reduce((counts, item) => {
+    if (item.last_attempt_outcome === "failed") counts.failed += 1;
+    else if (item.researched_at) counts.saved += 1;
+    else if (item.last_attempt_outcome === "no_sources") counts.noSources += 1;
+    else counts.unattempted += 1;
+    return counts;
+  }, { saved: 0, noSources: 0, failed: 0, unattempted: 0 });
   // 끝난 동기화 중 가장 최근 것 — 진행 중이 아닐 때도 "언제 받아온 자료인지" 알 수 있어야 한다.
   const lastSyncRun = runs.find((r) => r.scope === "sync" && r.status !== "running");
   const lastBlogRun = runs.find((r) => r.scope === "sync_blog" && r.status !== "running");
@@ -302,7 +309,7 @@ export default function AcademyResearchClient() {
           </div>
           {/* 배치는 API 프로세스 안의 루프라 재시작되면 사라진다. 다시 눌러 이어서 진행한다. */}
           <div className="muted small" style={{ paddingLeft: 96 }}>
-            기본은 아직 조사하지 않은 곳만 대상입니다. 중단되면 다시 눌러 이어서 진행할 수 있습니다.
+            기본은 미시도·실패 학원만 대상입니다. 공개 근거가 없었던 학원은 <b>근거 없음</b>으로 남고, 다시 조사하려면 체크박스를 켜세요.
             {refreshAll && researchLimit > 0 ? ` 현재 다음 배치 시작 위치: ${researchOffset}번째.` : ""}
           </div>
         </div>
@@ -358,6 +365,7 @@ export default function AcademyResearchClient() {
         <button className="btn" onClick={load} disabled={loading}>새로고침</button>
         <span className="muted small" style={{ paddingBottom: 10 }}>
           {loading ? "불러오는 중…" : `${items.length}곳`}
+          {!loading && ` · 조사값 있음 ${researchCounts.saved} · 근거 없음 ${researchCounts.noSources} · 미시도 ${researchCounts.unattempted}${researchCounts.failed ? ` · 재시도 필요 ${researchCounts.failed}` : ""}`}
           {!loading && hiddenCount > 0 && (
             <span title="원천 목록에서 내려간 항목입니다. 자료는 보관하되 목록·동기화 대상에서 제외합니다.">
               {" "}(원천 목록에 없는 {hiddenCount}곳 제외)
@@ -380,10 +388,7 @@ export default function AcademyResearchClient() {
                 <td className="muted">{a.address || "-"}</td>
                 <td className="muted">{a.phone || "-"}</td>
                 <td className="muted">{a.academy_type || "-"}</td>
-                <td>{a.researched_at
-                  ? <span className="badge">{a.research_engine || "AI"} · {fmtDate(a.researched_at)}</span>
-                  : <span className="muted">미조사</span>}
-                </td>
+                <td><ResearchAttemptStatus academy={a} /></td>
                 <td className="row" style={{ gap: 6 }}>
                   <Link className="btn" href={`/academies/${encodeURIComponent(a.external_id)}`}>상세</Link>
                   {a.source === "manual" && (
@@ -495,6 +500,18 @@ function pct(run: ResearchRun): number {
   if (!run.count_total) return 0;
   return Math.min(100, Math.round((run.count_done / run.count_total) * 100));
 }
+function ResearchAttemptStatus({ academy }: { academy: AcademyBaseRow }) {
+  if (academy.last_attempt_outcome === "failed") {
+    return <span className="badge warn" title={academy.last_attempt_error || "최근 조사 시도 실패"}>재시도 필요 · {fmtDate(academy.last_attempted_at)}</span>;
+  }
+  if (academy.researched_at) {
+    return <span className="badge">{academy.research_engine || "AI"} · {fmtDate(academy.researched_at)}</span>;
+  }
+  if (academy.last_attempt_outcome === "no_sources") {
+    return <span className="badge warn" title={academy.last_attempt_error || "신뢰할 공개 소스를 찾지 못했습니다."}>근거 없음 · {fmtDate(academy.last_attempted_at)}</span>;
+  }
+  return <span className="muted">미시도</span>;
+}
 // 마지막 동기화 시각 + 결과. 중단된 실행은 "일부만 갱신됨"이 드러나야 한다.
 function lastSyncLabel(run: ResearchRun | undefined, running: boolean): string {
   if (running) return "진행 중";
@@ -526,6 +543,12 @@ function runSummary(run: ResearchRun): string {
     const reviews = result?.reviews;
     const unit = run.scope === "sync_blog" ? "블로그리뷰" : "후기 원문";
     return `학원 ${result?.matched ?? run.count_done}곳${typeof reviews === "number" ? ` · ${unit} ${reviews.toLocaleString()}건` : ""}`;
+  }
+  const saved = Number(result?.saved);
+  const noSources = Number(result?.no_sources);
+  const failed = Number(result?.failed);
+  if (Number.isFinite(saved) || Number.isFinite(noSources) || Number.isFinite(failed)) {
+    return `${run.count_done}/${run.count_total}곳 처리 · 저장 ${Number.isFinite(saved) ? saved : 0} · 근거 없음 ${Number.isFinite(noSources) ? noSources : 0} · 실패 ${Number.isFinite(failed) ? failed : 0}`;
   }
   return `${run.count_done}/${run.count_total}곳`;
 }

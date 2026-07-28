@@ -325,14 +325,40 @@ export class AcademyResearchDbService implements OnModuleInit {
     if (addedAttemptOutcome) {
       // 기존에 값이 저장된 행은 이미 성공 시도였으므로 상태만 안전하게 이관한다.
       this.run("UPDATE academy_research SET last_attempted_at=COALESCE(last_attempted_at, researched_at), last_attempt_outcome='saved' WHERE researched_at IS NOT NULL AND last_attempt_outcome IS NULL");
-      this.recoverLegacyNoSourceAttempts();
     }
+    // 빠른 코드 재적재 중 컬럼만 먼저 만들어진 경우도 있어, 안전 조건을 만족할 때만
+    // 실행 집계에서 no_sources 대상을 복원한다.
+    this.recoverLegacyNoSourceAttempts();
 
     // 학원 홈페이지 표본 조사(2026-07-28)에서 공통으로 나왔는데 스키마에 자리가 없던 항목.
     // "입학안내·준비사항" 5곳 · "온라인 예약·상담신청" 4곳. 원천은 둘 다 주지 않는다.
     const researchCols = new Set(this.all("PRAGMA table_info(academy_research)").map((r) => r.name));
     if (!researchCols.has("enrollment_prep")) this.db.exec("ALTER TABLE academy_research ADD COLUMN enrollment_prep TEXT");
     if (!researchCols.has("booking_channel")) this.db.exec("ALTER TABLE academy_research ADD COLUMN booking_channel TEXT");
+  }
+
+  /**
+   * 이 메타를 도입하기 전 실행은 학원별 결과를 남기지 않아, 소스를 못 찾은 대상을
+   * 그대로 `미조사`로만 볼 수 있었다. 마지막 배치가 실패 없이 끝났고 현재 미저장 수가
+   * 그 배치의 no_sources 수와 정확히 같을 때에만 안전하게 복원한다.
+   */
+  private recoverLegacyNoSourceAttempts(): void {
+    const run = this.get("SELECT id, started_at, count_done, count_total, result FROM research_runs WHERE scope='all' AND method='a_batch' AND status='done' ORDER BY started_at DESC LIMIT 1");
+    if (!run) return;
+    let result: Record<string, unknown> = {};
+    try { result = JSON.parse(String(run.result ?? "{}")); } catch { return; }
+    const saved = Number(result.saved ?? 0);
+    const noSources = Number(result.no_sources ?? 0);
+    const failed = Number(result.failed ?? 0);
+    const done = Number(result.done ?? run.count_done ?? 0);
+    if (noSources < 1 || failed !== 0 || saved + noSources !== done || done !== Number(run.count_total ?? 0)) return;
+    const unattempted = this.all(
+      "SELECT b.external_id FROM academy_base b LEFT JOIN academy_research r ON r.external_id=b.external_id WHERE b.active=1 AND r.researched_at IS NULL AND r.last_attempt_outcome IS NULL",
+    );
+    if (unattempted.length !== noSources) return;
+    for (const row of unattempted) {
+      this.recordResearchAttempt(String(row.external_id), "no_sources", "기존 전체 조사에서 공개 소스를 찾지 못함(실행 집계에서 복원)", String(run.started_at ?? nowIso()));
+    }
   }
 
   /**
@@ -435,9 +461,9 @@ export class AcademyResearchDbService implements OnModuleInit {
     const params: any[] = [];
     // 기본은 최신 동기화에 포함된 학원만. 원천에서 내려간 행은 보관만 하고 쓰지 않는다.
     if (!opts.includeInactive) where.push("b.active = 1");
-    // 아직 조사되지 않은 학원만. 조사 배치는 API 프로세스 안의 루프라 파일 저장 한 번에
-    // 사라지는데, 이 필터가 있으면 "다시 실행 = 이어서 진행" 이 된다(재개 기능 대용).
-    if (opts.onlyUnresearched) where.push("r.researched_at IS NULL");
+    // 기본 배치는 한 번도 시도하지 않았거나 실행 자체가 실패한 학원만 이어서 처리한다.
+    // 공개 근거가 없어 저장하지 않은 `no_sources`는 정상 시도이므로 재조사 옵션에서만 다시 다룬다.
+    if (opts.onlyUnresearched) where.push("(r.last_attempt_outcome IS NULL OR r.last_attempt_outcome = 'failed')");
     if (opts.region) { where.push("(region = ? OR address LIKE ?)"); params.push(opts.region, `%${opts.region}%`); }
     if (opts.q) { where.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${opts.q}%`, `%${opts.q}%`); }
     const limit = Math.max(1, Math.min(5000, Math.trunc(opts.limit ?? 1000)));
@@ -447,7 +473,7 @@ export class AcademyResearchDbService implements OnModuleInit {
     const orderBy = opts.oldestResearchFirst
       ? "CASE WHEN r.researched_at IS NULL THEN 0 ELSE 1 END ASC, r.researched_at ASC, b.external_id ASC"
       : "b.name ASC";
-    const sql = `SELECT b.*, r.researched_at, r.research_engine
+    const sql = `SELECT b.*, r.researched_at, r.research_engine, r.last_attempted_at, r.last_attempt_outcome, r.last_attempt_error
        FROM academy_base b LEFT JOIN academy_research r ON r.external_id = b.external_id
        ${where.length ? "WHERE " + where.join(" AND ") : ""}
        ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
@@ -610,8 +636,8 @@ export class AcademyResearchDbService implements OnModuleInit {
     }
     const now = nowIso();
     // 조사메타
-    const setCols = [...cols, "research_engine", "research_method", "researched_at", "updated_at"];
-    const setVals = [...vals, meta.engine ?? null, meta.method ?? null, now, now];
+    const setCols = [...cols, "research_engine", "research_method", "researched_at", "last_attempted_at", "last_attempt_outcome", "last_attempt_error", "updated_at"];
+    const setVals = [...vals, meta.engine ?? null, meta.method ?? null, now, now, "saved", null, now];
     const placeholders = setCols.map(() => "?").join(",");
     const updates = setCols.map((c) => `${c}=excluded.${c}`).join(", ");
     this.run(
@@ -624,9 +650,23 @@ export class AcademyResearchDbService implements OnModuleInit {
 
   getResearch(externalId: string): Row | undefined { return this.get("SELECT * FROM academy_research WHERE external_id = ?", [externalId]); }
 
+  // 값이 저장되지 않아도 시도 사실은 남긴다. 다음 기본 배치가 같은 학원을 무한 반복하지 않고,
+  // 화면도 "미조사" 대신 "근거 없음"으로 설명할 수 있다.
+  recordResearchAttempt(externalId: string, outcome: "no_sources" | "failed", error?: string, attemptedAt = nowIso()): void {
+    this.run(
+      `INSERT INTO academy_research (external_id, last_attempted_at, last_attempt_outcome, last_attempt_error, updated_at)
+       VALUES (?,?,?,?,?)
+       ON CONFLICT(external_id) DO UPDATE SET
+        last_attempted_at=excluded.last_attempted_at,
+        last_attempt_outcome=excluded.last_attempt_outcome,
+        last_attempt_error=excluded.last_attempt_error`,
+      [externalId, attemptedAt, outcome, error ?? null, attemptedAt],
+    );
+  }
+
   // 웹 조사 도구가 차단된 경우: (지어냈을 수 있는) 값은 저장하지 않고, 시도 시각·엔진만 기록 + 모든 필드를 web_blocked 로 표시.
   markResearchBlocked(externalId: string, meta: { engine?: string; method?: string } = {}): void {
-    this.upsertResearch(externalId, {}, meta);
+    this.recordResearchAttempt(externalId, "failed", `${meta.engine ?? "AI"} 웹조사 차단`);
     for (const key of RESEARCH_FIELDS) {
       this.setFieldMeta(externalId, key, { status: "web_blocked", source_name: `${meta.engine ?? "AI"} 웹조사 차단` });
     }

@@ -81,3 +81,40 @@ describe("AcademyResearchDbService listRuns", () => {
     expect(run?.finished_at).toBeTruthy();
   });
 });
+
+describe("AcademyResearchDbService 조사 시도 상태", () => {
+  let tmp: string;
+  let db: AcademyResearchDbService;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "research-attempt-state-"));
+    process.env.ACADEMY_RESEARCH_DB_PATH = join(tmp, "research.db");
+    db = new AcademyResearchDbService();
+    db.init();
+    for (const externalId of ["never", "no-source", "failed", "saved"]) {
+      db.upsertBase({ external_id: externalId, name: externalId, address: "서울특별시 테스트구 1" });
+    }
+  });
+
+  afterEach(() => {
+    delete process.env.ACADEMY_RESEARCH_DB_PATH;
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("근거 없음은 미시도와 구분하고 기본 배치 대상에서 제외한다", () => {
+    db.recordResearchAttempt("no-source", "no_sources", "공개 소스를 찾지 못했습니다.");
+    db.recordResearchAttempt("failed", "failed", "CLI 실행 실패");
+    db.upsertResearch("saved", { name_researched: "saved" }, { engine: "codex" });
+
+    const retryTargets = db.listBase({ onlyUnresearched: true, limit: 10 })
+      .map((row) => String(row.external_id)).sort();
+    const noSource = db.listBase({ q: "no-source", limit: 1 })[0];
+
+    expect(retryTargets).toEqual(["failed", "never"]);
+    expect(noSource).toMatchObject({
+      researched_at: null,
+      last_attempt_outcome: "no_sources",
+      last_attempt_error: "공개 소스를 찾지 못했습니다.",
+    });
+  });
+});

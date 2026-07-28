@@ -23,6 +23,10 @@ export interface AcademyBaseRow {
   synced_at?: string | null;
   researched_at?: string | null;
   research_engine?: string | null;
+  /** 마지막 조사 시도 결과. researched_at은 실제 값 저장 성공일 때만 채워진다. */
+  last_attempted_at?: string | null;
+  last_attempt_outcome?: "saved" | "no_sources" | "failed" | null;
+  last_attempt_error?: string | null;
 }
 
 export interface StatusDef { code: string; label: string; rank: number }

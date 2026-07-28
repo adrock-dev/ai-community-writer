@@ -240,8 +240,10 @@ export class AcademyResearchService {
     // 1) 공개 소스 수집(검색 → 페이지 fetch)
     const sources = await gatherSources(ref);
     if (sources.length === 0) {
+      const error = "공개 소스를 찾지 못했습니다(검색/페치 실패). 값은 저장하지 않았습니다.";
+      this.db.recordResearchAttempt(externalId, "no_sources", error);
       this.bumpRun(opts.runId);
-      return { ok: false, external_id: externalId, provider: providers[0], no_sources: true, error: "공개 소스를 찾지 못했습니다(검색/페치 실패). 값은 저장하지 않았습니다." };
+      return { ok: false, external_id: externalId, provider: providers[0], no_sources: true, error };
     }
 
     // 2) 소스 본문에서만 추출(웹툴 불필요 → Opus 지정).
@@ -267,7 +269,9 @@ export class AcademyResearchService {
       return { ok: true, external_id: externalId, provider, sources: sources.length, ...grounding };
     }
 
-    return { ok: false, external_id: externalId, provider: providers[providers.length - 1], error: lastError || "CLI 실행 실패" };
+    const error = lastError || "CLI 실행 실패";
+    this.db.recordResearchAttempt(externalId, "failed", error);
+    return { ok: false, external_id: externalId, provider: providers[providers.length - 1], error };
   }
 
   // 소스에서 기계적으로 확정되는 값을 모델 답 위에 덮고, 근거 URL 도 그 소스로 맞춘다.
@@ -368,6 +372,7 @@ export class AcademyResearchService {
       })
       .catch((error) => {
         this.logger.error(`single research failed: ${error?.message || error}`);
+        this.db.recordResearchAttempt(externalId, "failed", String(error?.message || error));
         this.db.updateRun(runId, { status: "error", count_done: 1, error: String(error?.message || error), finished: true });
       });
     return { ok: true, run_id: runId };
@@ -401,6 +406,7 @@ export class AcademyResearchService {
       } catch (error: any) {
         tally.failed += 1;
         tally.last_error = String(error?.message || error);
+        this.db.recordResearchAttempt(externalId, "failed", tally.last_error);
         this.logger.warn(`researchOne(${externalId}) 예외: ${tally.last_error}`);
       }
       tally.done += 1;
