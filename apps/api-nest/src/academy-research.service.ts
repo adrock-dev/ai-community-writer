@@ -309,23 +309,27 @@ export class AcademyResearchService {
   // 이미 조사한 곳까지 갱신하려면 refreshAll 을 켠다.
   async startRegionResearch(
     region?: string,
-    opts: { provider?: ResearchProviderPreference; refreshAll?: boolean; retryOnly?: boolean; limit?: number; offset?: number } = {},
+    opts: { provider?: ResearchProviderPreference; refreshAll?: boolean; retryOnly?: boolean; limit?: number; offset?: number; externalIds?: string[] } = {},
   ): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
     if (this.db.findRunningRun("all")) return { ok: false, error: "이미 진행 중인 전체 조사가 있습니다." };
     const providers = await this.resolveProviders(opts.provider);
     if (!providers.length) return { ok: false, error: "claude/codex CLI를 찾을 수 없습니다." };
-    const targets = this.db.listBase({
-      region,
-      limit: opts.limit ?? 5000,
-      onlyUnresearched: !opts.refreshAll && !opts.retryOnly,
-      attemptOutcomes: opts.retryOnly && !opts.refreshAll ? ["failed", "no_sources"] : undefined,
-      offset: opts.offset,
-      // 재조사도 허용할 때는 아직 조사하지 않은 곳부터, 그다음 가장 오래된 조사부터 갱신한다.
-      // 따라서 성공한 30곳씩 연달아 실행하면 직전 묶음 대신 다음 묶음으로 진행된다.
-      // UI가 offset으로 페이지를 넘길 때는 고정된 이름순을 유지해야 한다. 조사 완료 시각은
-      // 첫 배치가 끝날 때 바뀌므로, 그 상태에서 가변 순서 + offset을 같이 쓰면 중간 묶음을 건너뛴다.
-      oldestResearchFirst: opts.refreshAll === true && opts.offset == null,
-    });
+    const requestedIds = [...new Set((opts.externalIds ?? []).map((id) => String(id).trim()).filter(Boolean))];
+    const targets = requestedIds.length
+      // 데이터 정리처럼 특정 학원만 다시 조사해야 할 때, 다른 오래된 학원이 끼어들지 않게 한다.
+      ? requestedIds.map((externalId) => this.db.getBase(externalId)).filter((row): row is Record<string, unknown> => Boolean(row))
+      : this.db.listBase({
+        region,
+        limit: opts.limit ?? 5000,
+        onlyUnresearched: !opts.refreshAll && !opts.retryOnly,
+        attemptOutcomes: opts.retryOnly && !opts.refreshAll ? ["failed", "no_sources"] : undefined,
+        offset: opts.offset,
+        // 재조사도 허용할 때는 아직 조사하지 않은 곳부터, 그다음 가장 오래된 조사부터 갱신한다.
+        // 따라서 성공한 30곳씩 연달아 실행하면 직전 묶음 대신 다음 묶음으로 진행된다.
+        // UI가 offset으로 페이지를 넘길 때는 고정된 이름순을 유지해야 한다. 조사 완료 시각은
+        // 첫 배치가 끝날 때 바뀌므로, 그 상태에서 가변 순서 + offset을 같이 쓰면 중간 묶음을 건너뛴다.
+        oldestResearchFirst: opts.refreshAll === true && opts.offset == null,
+      });
     if (!targets.length) {
       return {
         ok: false,
@@ -484,7 +488,16 @@ export class AcademyResearchService {
     for (const key of SCALAR_KEYS) {
       if (known.skipFields.has(key as string)) continue;
       const value = parsed[key];
-      if (value == null || value === "") continue;
+      // 새 조사에서 이 필드를 명시적으로 비웠다면 값은 upsertResearch에서 이미 지워졌다.
+      // 이때 과거 값에 붙었던 검토 상태를 남기면, 화면에는 `(빈 값) · AI 초안/검토 필요`라는
+      // 모순이 생긴다. 메타가 있었던 항목만 미확인으로 되돌려 빈 필드를 새로 만들지는 않는다.
+      if (value === null || value === "") {
+        if (previousStatus.has(key as string)) {
+          this.db.setFieldMeta(externalId, key as string, { status: "unverified", note: "" });
+        }
+        continue;
+      }
+      if (value === undefined) continue;
       const sourceUrl = sources[key as string] ?? fallbackUrl;
       const report = inspectResearchValue(key as string, String(value), haystack);
       checked += 1;

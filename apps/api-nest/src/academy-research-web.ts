@@ -584,7 +584,7 @@ const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
   { key: "night_class", text: `"night_class": string|null` },
   { key: "weekend", text: `"weekend": string|null` },
   { key: "closed_days", text: `"closed_days": string|null` },
-  { key: "shuttle_available", text: `"shuttle_available": "yes"|"no"|"unknown"|null` },
+  { key: "shuttle_available", text: `"shuttle_available": "yes"|"no"|null` },
   { key: "shuttle_summary", text: `"shuttle_summary": string|null` },
   { key: "licenses", text: `"licenses": string|null` },
   { key: "self_test", text: `"self_test": string|null` },

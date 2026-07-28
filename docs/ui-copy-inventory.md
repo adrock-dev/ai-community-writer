@@ -313,7 +313,7 @@
 | `apps/admin-next/lib/domain-gate.ts:11` | lib-string | 글 생성을 하려면 운영 도메인이 필요합니다<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:16` | lib-string | 검수·보내기를 하려면 운영 도메인이 필요합니다<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:17` | lib-string | 도메인을 만든 뒤 생성된 글을 미리보기, export, 색인 요청으로 마무리할 수 있습니다.<br>_빈 화면 안내._ | — |
-| `apps/api-nest/src/academy-research.controller.ts:171` | api-error | 수동 등록한 학원만 삭제할 수 있습니다. | — |
+| `apps/api-nest/src/academy-research.controller.ts:175` | api-error | 수동 등록한 학원만 삭제할 수 있습니다. | — |
 | `apps/api-nest/src/admin.controller.ts:716` | api-error | 실행 이력을 찾을 수 없습니다.<br>_단순 404 안내._ | — |
 
 </details>

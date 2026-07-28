@@ -75,4 +75,14 @@ describe("startRegionResearch 재조사 배치 대상 선정", () => {
     expect(started).toMatchObject({ ok: true, count: 2 });
     expect(selectedBatches).toEqual([["academy-02", "academy-03"]]);
   });
+
+  it("명시한 학원만 중복 없이 순서대로 재조사한다", async () => {
+    const started = await service.startRegionResearch(undefined, {
+      provider: "codex",
+      externalIds: ["academy-60", "academy-02", "academy-60", "missing"],
+    });
+
+    expect(started).toMatchObject({ ok: true, count: 2 });
+    expect(selectedBatches).toEqual([["academy-60", "academy-02"]]);
+  });
 });

@@ -84,12 +84,16 @@ export class AcademyResearchController {
   async researchRegion(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
     checkAuth(req, headers);
     const provider = parseResearchProvider(body?.provider);
+    const externalIds = Array.isArray(body?.external_ids)
+      ? [...new Set(body.external_ids.map((id: unknown) => String(id).trim()).filter(Boolean))].slice(0, 2_000)
+      : undefined;
     const result = await this.service.startRegionResearch(undefined, {
       provider,
       refreshAll: body?.refresh_all === true,
       retryOnly: body?.retry_only === true,
       limit: parseLimit(body?.limit),
       offset: parseOffset(body?.offset),
+      externalIds,
     });
     if (!result.ok) throw new HttpException(result.error || "failed", 409);
     return result;

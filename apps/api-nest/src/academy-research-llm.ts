@@ -101,7 +101,7 @@ ${ref}
   "name_researched": string|null, "address_researched": string|null, "phone_researched": string|null,
   "gu": string|null, "dong": string|null, "jibun_address": string|null,
   "hours": string|null, "night_class": string|null, "weekend": string|null, "closed_days": string|null,
-  "shuttle_available": "yes"|"no"|"unknown"|null, "shuttle_summary": string|null,
+  "shuttle_available": "yes"|"no"|null, "shuttle_summary": string|null,
   "licenses": string|null, "self_test": string|null, "facilities": string|null,
   "fee_summary": string|null, "price_disclosed": "yes"|"no"|null,
   "pass_rate": string|null, "pass_rate_scope": "official"|"self_claim"|null,
@@ -157,10 +157,23 @@ export function parseResearchJson(text: string): ResearchResult | null {
   for (const c of candidates) {
     try {
       const obj = JSON.parse(c);
-      if (obj && typeof obj === "object") return obj as ResearchResult;
+      if (obj && typeof obj === "object") return normalizeResearchResult(obj as ResearchResult);
     } catch { /* try next */ }
   }
   return null;
+}
+
+// "unknown" 같은 자리표시는 근거가 없는 상태이지 조사값이 아니다. 모델이 프롬프트를
+// 어겨도 DB에는 null로만 들어가게 경계에서 정규화한다.
+function normalizeResearchResult(result: ResearchResult): ResearchResult {
+  const normalized = { ...result };
+  for (const [key, value] of Object.entries(normalized)) {
+    if (typeof value !== "string") continue;
+    if (["unknown", "n/a", "na"].includes(value.trim().toLowerCase())) {
+      normalized[key as keyof ResearchResult] = null as never;
+    }
+  }
+  return normalized;
 }
 
 function spawnText(cmd: string, args: string[], input: string, timeoutSec: number, envPatch: Record<string, string | undefined> = {}): Promise<{ code: number | null; stdout: string; stderr: string }> {
