@@ -398,8 +398,13 @@ export default function AcademyResearchClient() {
               </tr>
             ))}
             {!loading && items.length === 0 && (
-              <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 24 }}>
-                동기화된 학원이 없습니다. 위 <b>학원정보 동기화</b>를 먼저 실행하세요.
+              <tr><td colSpan={6} style={{ padding: 16 }}>
+                <div className="action-hint">
+                  <span>동기화된 학원이 없습니다. 원천에서 학원 목록과 후기를 먼저 받아야 합니다.</span>
+                  <button className="btn primary" onClick={onSync} disabled={busy === "sync" || syncBusy}>
+                    {activeSyncRun ? "동기화 진행 중…" : busy === "sync" ? "시작하는 중…" : "학원정보 동기화"}
+                  </button>
+                </div>
               </td></tr>
             )}
           </tbody>

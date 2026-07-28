@@ -9,7 +9,7 @@ import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/ge
 import { rememberDomain } from "@/lib/recent-domain";
 import { getSyncSummary, recordSync, type SyncSummary } from "@/lib/sync-summary";
 import { JobCard } from "./JobCard";
-import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
+import { domainTourHref, isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus, type TourMode } from "@/lib/tour";
 import type { AcademyCoverage, Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec, TitleRule } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -1247,9 +1247,16 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         {(academyTypeOptions ?? []).map((t) => <label key={t.value} className="row" style={{ gap: 6 }}>
           <input type="checkbox" checked={academyTypes.has(t.value)} onChange={(e) => setAcademyTypes((prev) => { const next = new Set(prev); if (e.target.checked) next.add(t.value); else next.delete(t.value); return next; })} /> {t.value} <span className="muted small">({t.count})</span>
         </label>)}
-        {!(academyTypeOptions ?? []).length && <p className="muted small">먼저 학원 동기화를 실행하면 타입 목록이 표시됩니다.</p>}
+        {!(academyTypeOptions ?? []).length && <p className="muted small">「원천 데이터」 탭에서 학원자료를 연결하면 타입 목록이 표시됩니다.</p>}
       </div>
-      {(academyTypeOptions ?? []).length > 0 && (academyTypeOptions ?? []).every((t) => !t.count) && <p className="toast-warn small">아직 이 도메인에 동기화된 학원이 없습니다(모든 타입 0건). 학원 타입을 골라도 실제 후보가 없어 지역 가이드/체크리스트로만 작성됩니다 — 먼저 「원천 데이터」 탭에서 <b>학원자료 연결</b>을 실행하세요.</p>}
+      {/* 눌러야 할 버튼이 다른 탭에 있다. 문장으로만 안내하면 운영자가 탭을 찾아 옮겨야 하므로
+          그 자리로 보내는 링크를 문장 안에 둔다. */}
+      {(academyTypeOptions ?? []).length > 0 && (academyTypeOptions ?? []).every((t) => !t.count) && (
+        <div className="action-hint">
+          <span>이 도메인에 연결된 학원이 없습니다(모든 타입 0건). 학원 타입을 골라도 실제 후보가 없어 지역 가이드·체크리스트로만 작성됩니다.</span>
+          <Link className="btn primary" href={domainTourHref(domain, "basic", "source")}>원천 데이터로 이동</Link>
+        </div>
+      )}
     </div>}
       </div>
     </details>
@@ -1669,7 +1676,14 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
             const blogReviewCount = parseJsonCount(a.blog_reviews);
             return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => exclude(a.id, a.name)}>제외</button></td></tr>;
           })}</tbody></table></div>
-        : <p className="muted small">{loading ? "불러오는 중..." : "연결된 학원이 없습니다. 위 「학원자료 연결」로 가져오거나 검색 조건을 바꿔보세요."}</p>}
+        : loading
+          ? <p className="muted small">불러오는 중...</p>
+          : (q || region || academyType || hasPhotos)
+            ? <p className="muted small">검색 조건에 맞는 학원이 없습니다. 조건을 바꿔보세요.</p>
+            : <div className="action-hint">
+                <span>연결된 학원이 없습니다. 「운전학원 자료」가 받아 둔 자료를 가져오세요.</span>
+                <button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)}>{syncBusy === "link" ? "연결 중…" : "학원자료 연결"}</button>
+              </div>}
       {exclusions.length > 0 && <details className="card card-pad grid compact-pad" style={{ background: "#fffbeb" }}>
         <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>제외한 학원</h3><p className="muted small">이 도메인에서만 빼 둔 학원입니다. 「학원자료 연결」이 이 목록을 건너뜁니다. 해제하면 그 자리에서 다시 연결됩니다. 자료 원본과 조사값은 「운전학원 자료」에 그대로 남아 다른 도메인에는 영향이 없습니다.</p></div><span className="badge info">{exclusions.length}곳</span></div></summary>
         <div className="table-wrap" style={{ maxHeight: 240, overflow: "auto" }}><table><thead><tr><th>학원명</th><th>제외 시각</th><th></th></tr></thead><tbody>{exclusions.map((x) => (

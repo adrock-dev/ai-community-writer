@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   type AcademyFull, type ResearchProvider, type ResearchRun, type StatusDef, RESEARCH_FIELD_LABELS,
   getAcademyResearch, getResearchRun, listResearchRuns, listStatusDefs, researchOneAcademy,
-  setResearchFieldMeta, updateResearchField,
+  setResearchFieldMeta, syncOneAcademy, updateResearchField,
 } from "@/lib/academy-research";
 import { formatDateTime } from "@/lib/date";
 
@@ -45,6 +45,17 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
    * fetch(기본 300초)에 끊겼다 — 서버는 저장했는데 화면은 실패로 보이는 상태였다.
    * 이제 창을 닫았다 와도 진행 중이면 다시 붙는다.
    */
+  /** 이 학원의 기본정보·후기만 원천에서 다시 받는다. 전체 동기화(380곳)를 돌릴 이유가 없다. */
+  async function onSyncOne() {
+    setBusy("sync"); setError(""); setNotice("");
+    try {
+      const r = await syncOneAcademy(externalId);
+      setNotice(r.found ? `원천에서 다시 받았습니다 · 후기 ${r.reviews}건` : "원천 목록에서 이 학원을 찾지 못했습니다.");
+      await load();
+    } catch (e: any) { setError(e?.message || "동기화 실패"); }
+    finally { setBusy(""); }
+  }
+
   async function onResearch() {
     const targetName = data?.base?.name || externalId;
     if (!confirm(`${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다.\n1~2분 걸리며 창을 닫아도 서버에서 계속 진행됩니다. 진행할까요?`)) return;
@@ -117,6 +128,7 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
           </select>
           <button className="btn" onClick={onResearch} disabled={busy === "research"} style={{ whiteSpace: "nowrap" }}>{busy === "research" ? "조사 중… (수분 소요)" : "AI 단건 조사"}</button>
         </div>
+        <button className="btn" onClick={onSyncOne} disabled={Boolean(busy)} style={{ whiteSpace: "nowrap" }}>{busy === "sync" ? "받는 중…" : "원천에서 다시 받기"}</button>
       </div>
       {notice && <div className="card card-pad" style={{ borderColor: "#1a9c5b", color: "#1a9c5b", margin: "8px 0" }}>{notice}</div>}
       {error && <div className="card card-pad" style={{ borderColor: "#d64545", color: "#d64545", margin: "8px 0" }}>{error}</div>}
@@ -240,7 +252,12 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
           <p style={{ margin: "6px 0" }}>{rv.quote_text}</p>
           {rv.source_url && <a href={rv.source_url} target="_blank" rel="noreferrer" className="muted" style={{ fontSize: 12 }}>원문 링크 ↗</a>}
         </div>
-      )) : <p className="muted">수집된 후기가 없습니다. 재동기화를 시도하세요.</p>}
+      )) : (
+        <div className="action-hint">
+          <span>수집된 후기가 없습니다. 원천에서 이 학원만 다시 받아 볼 수 있습니다.</span>
+          <button className="btn primary" onClick={onSyncOne} disabled={Boolean(busy)}>{busy === "sync" ? "받는 중…" : "원천에서 다시 받기"}</button>
+        </div>
+      )}
     </div>
   );
 }
