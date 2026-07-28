@@ -3,7 +3,7 @@
 import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
-import { formatDateTime } from "@/lib/date";
+import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
@@ -1653,7 +1653,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           「운전학원 자료」가 이미 받아 둔 자료를 가져오므로 원천 API 를 다시 호출하지 않고 수십 초면 끝납니다.
         </p>
       )}
-      <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={onSave} />
+      <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={onSave} onLink={linkFromResearch} linkBusy={syncBusy === "link"} />
       <div className="spread"><div><h3 style={{ margin: 0 }}>현재 연결 학원 목록</h3><p className="muted small">이 도메인에 연결된 학원입니다. 검색·지역으로 찾고, 쓰지 않을 학원은 제외합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p></div><span className="badge info">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
       <div className="grid grid-4">
         <Field label="검색"><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명, 주소, SEO 설명" /></Field>
@@ -2177,21 +2177,33 @@ const RESEARCH_USAGE_CHOICES = [
 
 // 심층조사 현황(읽기 전용). 조사는 학원 자체의 속성이라 도메인마다 돌리면 같은 학원을
 // 도메인 수만큼 다시 조사하게 된다. 그래서 실행은 자료관리에서 전역으로 하고 여기선 현황만 본다.
-function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; usage: "off" | "verified" | "draft"; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void> }) {
+function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy }: { domain: string; usage: "off" | "verified" | "draft"; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onLink: () => Promise<void>; linkBusy: boolean }) {
   const [summary, setSummary] = useState<ResearchSummary | null>(null);
   const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    let alive = true;
-    getResearchSummary(domain)
-      .then((s) => { if (alive) setSummary(s); })
-      .catch(() => { if (alive) setFailed(true); });
-    return () => { alive = false; };
+  const reload = useCallback(async () => {
+    try { setSummary(await getResearchSummary(domain)); } catch { setFailed(true); }
   }, [domain]);
+  useEffect(() => { void reload(); }, [reload]);
 
   const total = summary?.total ?? 0;
   const researched = summary?.researched ?? 0;
   const percent = total ? Math.round((researched / total) * 100) : 0;
+  // 조사 자료(값 또는 검증상태)가 마지막 연결보다 새로우면 아직 이 도메인 글에 닿지 않았다.
+  // 한 번도 연결한 적이 없으면(linked_at 없음) 그 자체가 연결이 필요하다는 뜻이다.
+  //
+  // 두 시각은 저장 형식이 다르다 — academies.synced_at 은 nowSql()("2026-07-28 07:40:46"),
+  // 조사 DB 는 nowIso()("2026-07-28T07:36:26.128Z"). 문자열로 비교하면 공백(0x20) < "T"(0x54)
+  // 라 **연결 시각이 언제나 더 작게** 나와 안내가 영영 꺼지지 않는다. 반드시 파싱해서 견준다.
+  const pendingLink = useMemo(() => {
+    const changed = parseUtcTimestamp(summary?.last_changed_at)?.getTime();
+    if (!changed) return false;
+    const linked = parseUtcTimestamp(summary?.linked_at)?.getTime();
+    if (!linked) return true;
+    // synced_at 은 초 단위라 밀리초가 잘린다. 같은 초에 연결했는데 변경 쪽에 .276 이 붙어 있으면
+    // 반영이 끝났는데도 안내가 켜진 채로 남는다. 1초는 같은 시점으로 본다.
+    return changed > linked + 1000;
+  }, [summary?.last_changed_at, summary?.linked_at]);
 
   return (
     <div className="card card-pad grid compact-pad" style={{ background: "#f8fafc" }}>
@@ -2217,12 +2229,29 @@ function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; 
                 <span className="badge">조사 완료 {researched.toLocaleString()}곳 ({percent}%)</span>
                 <span className="badge">미조사 {(total - researched).toLocaleString()}곳</span>
                 {summary.needs_review > 0 && <span className="badge warn">검토 필요 {summary.needs_review.toLocaleString()}건</span>}
+                {/* 「검증완료만」을 고를 때 실제로 쓸 값이 있는지 여기서 보여야 한다 —
+                    0건인 줄 모르고 고르면 조사값이 하나도 안 실린 채 글이 나간다. */}
+                <span className={`badge${summary.verified > 0 ? " success" : ""}`}>승인됨 {summary.verified.toLocaleString()}건</span>
               </div>
               <p className="muted small">
                 {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."}
                 {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).toLocaleString()}곳(자료관리에서 동기화 필요)` : ""}
               </p>
             </>}
+      {/* 할 일이 실제로 있을 때만 띄운다. 늘 떠 있는 안내는 배경이 되고, 정작 눌러야 할
+          때를 못 알아본다. 조사값·승인 상태는 「학원자료 연결」 시점에 학원 자료로 구워지므로,
+          그 뒤에 자료가 바뀌었으면 아직 이 도메인 글에는 반영되지 않은 것이다. */}
+      {pendingLink && (
+        <div className="action-hint">
+          <span>
+            조사 자료가 마지막 연결 이후에 바뀌었습니다({formatDateTime(summary?.last_changed_at)} 변경 · {summary?.linked_at ? `${formatDateTime(summary.linked_at)} 연결` : "연결 기록 없음"}).
+            다시 연결해야 이 도메인 글에 반영됩니다.
+          </span>
+          <button className="btn primary" onClick={() => void onLink().then(() => reload())} disabled={linkBusy || busy}>
+            {linkBusy ? "연결 중…" : "학원자료 연결"}
+          </button>
+        </div>
+      )}
       {/* 사용 여부는 이 도메인이 정한다(자료는 업종 자산, 사용 결정은 도메인).
           승인 도구를 새로 만들지 않고 필드 검증상태를 그대로 관문으로 쓴다. */}
       <div className="grid" style={{ gap: 6, borderTop: "1px solid var(--line, #e5e7eb)", paddingTop: 10 }}>

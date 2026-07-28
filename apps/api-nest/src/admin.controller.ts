@@ -656,11 +656,16 @@ export class AdminController {
   @Get("domains/:domain/research-summary")
   researchSummary(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const externalIds = this.db.listAcademies(domain, { limit: 5000 })
-      .map((row) => String(row.external_id ?? ""))
-      .filter(Boolean);
+    const academies = this.db.listAcademies(domain, { limit: 5000 });
+    const externalIds = academies.map((row) => String(row.external_id ?? "")).filter(Boolean);
     const summary = this.researchDb.summarizeByExternalIds(externalIds);
-    return { domain, total: externalIds.length, ...summary };
+    // 마지막으로 이 도메인에 연결한 시각. 조사 자료가 이보다 새로우면 아직 반영되지 않은 것이다
+    // (조사값은 연결 시점에 academies.extra.research 로 구워진다).
+    const linkedAt = academies.reduce<string | null>((max, row) => {
+      const at = row.synced_at ? String(row.synced_at) : "";
+      return at && (!max || at > max) ? at : max;
+    }, null);
+    return { domain, total: externalIds.length, linked_at: linkedAt, ...summary };
   }
 
   /**

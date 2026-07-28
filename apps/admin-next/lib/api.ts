@@ -148,7 +148,15 @@ export async function downloadPostExport(domain: string, body: { post_ids: strin
   }
   return res.blob();
 }
-export interface ResearchSummary { domain: string; total: number; matched: number; researched: number; needs_review: number; last_researched_at: string | null }
+export interface ResearchSummary {
+  domain: string; total: number; matched: number; researched: number;
+  needs_review: number; verified: number;
+  last_researched_at: string | null;
+  /** 조사값·검증상태가 마지막으로 바뀐 시각. linked_at 보다 새로우면 아직 도메인에 반영되지 않았다. */
+  last_changed_at: string | null;
+  /** 이 도메인에 마지막으로 연결한 시각(academies.synced_at 최댓값). */
+  linked_at: string | null;
+}
 // 심층조사는 도메인이 아니라 학원 자체의 속성이라 실행은 자료관리(전역)에서 한다.
 // 도메인 화면에는 현황만 보여주고 실행 버튼은 두지 않는다.
 export const getResearchSummary = (domain: string) =>

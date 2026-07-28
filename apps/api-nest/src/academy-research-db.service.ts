@@ -561,15 +561,23 @@ export class AcademyResearchDbService implements OnModuleInit {
    * 조사됐나"를 보려면 도메인 쪽 external_id 목록을 받아 대조하는 수밖에 없다.
    * 두 DB 가 파일로 분리돼 있어 조인이 불가능하기 때문이다.
    */
-  summarizeByExternalIds(externalIds: string[]): { matched: number; researched: number; needs_review: number; last_researched_at: string | null } {
+  summarizeByExternalIds(externalIds: string[]): {
+    matched: number; researched: number; needs_review: number; verified: number;
+    last_researched_at: string | null; last_changed_at: string | null;
+  } {
     const ids = [...new Set(externalIds.map((id) => String(id)).filter(Boolean))];
-    if (!ids.length) return { matched: 0, researched: 0, needs_review: 0, last_researched_at: null };
+    if (!ids.length) return { matched: 0, researched: 0, needs_review: 0, verified: 0, last_researched_at: null, last_changed_at: null };
     // SQLite 변수 상한(기본 999)을 넘기지 않도록 나눠 센다.
     const chunkSize = 500;
     let matched = 0;
     let researched = 0;
     let needsReview = 0;
+    let verified = 0;
     let last: string | null = null;
+    // 「자료가 마지막으로 바뀐 시각」. 조사값이 새로 들어온 것뿐 아니라 **사람이 승인한 것**도
+    // 도메인에 반영하려면 다시 연결해야 한다. researched_at 만 보면 승인은 잡히지 않는다.
+    let changed: string | null = null;
+    const bump = (value: unknown) => { const v = value ? String(value) : ""; if (v && (!changed || v > changed)) changed = v; };
     for (let i = 0; i < ids.length; i += chunkSize) {
       const chunk = ids.slice(i, i + chunkSize);
       const marks = chunk.map(() => "?").join(",");
@@ -581,12 +589,18 @@ export class AcademyResearchDbService implements OnModuleInit {
       researched += Number(done?.n ?? 0);
       if (done?.last && (!last || String(done.last) > last)) last = String(done.last);
       // 검토 필요는 필드 단위로 센다 — 한 학원에 여러 건이 걸릴 수 있다.
-      needsReview += Number(this.get(
-        `SELECT COUNT(*) AS n FROM academy_field_meta WHERE status = 'needs_review' AND external_id IN (${marks})`,
+      const metaCounts = this.get(
+        `SELECT SUM(status='needs_review') AS review, SUM(status='verified') AS ok, MAX(updated_at) AS last
+         FROM academy_field_meta WHERE external_id IN (${marks})`,
         chunk,
-      )?.n ?? 0);
+      );
+      needsReview += Number(metaCounts?.review ?? 0);
+      verified += Number(metaCounts?.ok ?? 0);
+      bump(metaCounts?.last);
+      bump(done?.last);
+      bump(this.get(`SELECT MAX(updated_at) AS last FROM academy_research WHERE external_id IN (${marks})`, chunk)?.last);
     }
-    return { matched, researched, needs_review: needsReview, last_researched_at: last };
+    return { matched, researched, needs_review: needsReview, verified, last_researched_at: last, last_changed_at: changed };
   }
   countBase(opts: { region?: string; includeInactive?: boolean } = {}): number {
     const where: string[] = [];
