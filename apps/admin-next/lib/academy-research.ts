@@ -86,6 +86,25 @@ export const listAcademyResearch = (region?: string, q?: string) => {
   return api<{ count: number; region: string | null; items: AcademyBaseRow[]; hidden?: number }>(`/academy-research/list?${search.toString()}`);
 };
 export const getAcademyResearch = (externalId: string) => api<AcademyFull>(`/academy-research/${encodeURIComponent(externalId)}`);
+export interface ReviewQueueRow {
+  external_id: string;
+  name?: string | null;
+  field_key: string;
+  status: string;
+  value?: string | null;
+  note?: string | null;
+  source_url?: string | null;
+  updated_at?: string | null;
+}
+// 검토 대기 — 학원을 가로질러 필드 단위로 모은다. 사용 관문이 "사람이 검증완료로 올린 값만
+// 쓴다" 인데 대기 중인 필드를 찾을 화면이 없으면 380곳을 하나씩 열어야 한다.
+export const listReviewQueue = (opts: { status?: string; q?: string; limit?: number } = {}) => {
+  const search = new URLSearchParams();
+  if (opts.status) search.set("status", opts.status);
+  if (opts.q) search.set("q", opts.q);
+  if (opts.limit) search.set("limit", String(opts.limit));
+  return api<{ items: ReviewQueueRow[]; total: number }>(`/academy-research/review-queue?${search.toString()}`);
+};
 export const listStatusDefs = () => api<{ items: StatusDef[] }>("/academy-research/status-defs");
 export const listResearchRuns = () => api<{ items: ResearchRun[] }>("/academy-research/runs");
 // 취소 "요청". 처리 중이던 학원은 마치고 멈추므로 즉시 반영되지는 않는다.

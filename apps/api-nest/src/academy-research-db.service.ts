@@ -533,6 +533,46 @@ export class AcademyResearchDbService implements OnModuleInit {
 
   listFieldMeta(externalId: string): Row[] { return this.all("SELECT * FROM academy_field_meta WHERE external_id = ?", [externalId]); }
 
+  /**
+   * 검토 대기 목록 — 학원을 가로질러 필드 단위로 모은다.
+   *
+   * 사용 관문이 "사람이 검증완료로 올린 값만 쓴다" 인데, 어느 학원의 어느 필드가 대기 중인지
+   * 찾을 화면이 없어 380곳을 하나씩 열어야 했다. 그러면 verified 모드를 실질적으로 못 쓴다.
+   *
+   * 값은 academy_research 의 컬럼이라 field_key 로 동적 접근이 필요하다. 컬럼명을 SQL 에
+   * 끼워 넣지 않고 행을 통째로 읽어 코드에서 고른다(임의 컬럼 주입 차단).
+   */
+  listReviewQueue(opts: { statuses?: string[]; q?: string; limit?: number } = {}): { items: Row[]; total: number } {
+    const statuses = (opts.statuses ?? ["needs_review", "ai_draft"]).filter((s) => typeof s === "string" && s.trim());
+    if (!statuses.length) return { items: [], total: 0 };
+    const limit = Math.max(1, Math.min(1000, Math.trunc(opts.limit ?? 200)));
+    const where = [`m.status IN (${statuses.map(() => "?").join(",")})`, "b.active = 1"];
+    const params: any[] = [...statuses];
+    if (opts.q) { where.push("(b.name LIKE ? OR b.address LIKE ?)"); params.push(`%${opts.q}%`, `%${opts.q}%`); }
+    const clause = `FROM academy_field_meta m JOIN academy_base b ON b.external_id = m.external_id WHERE ${where.join(" AND ")}`;
+
+    const total = Number(this.get(`SELECT COUNT(*) AS n ${clause}`, params)?.n ?? 0);
+    // 검토가 급한 순서: 검토 필요 → 나머지. 그 안에서는 학원명·항목 순으로 안정 정렬한다.
+    const rows = this.all(
+      `SELECT m.external_id, m.field_key, m.status, m.note, m.source_url, m.updated_at, b.name
+       ${clause}
+       ORDER BY CASE m.status WHEN 'needs_review' THEN 0 ELSE 1 END, b.name ASC, m.field_key ASC
+       LIMIT ${limit}`,
+      params,
+    );
+
+    const research = new Map<string, Row>();
+    for (const externalId of new Set(rows.map((r) => String(r.external_id)))) {
+      const row = this.getResearch(externalId);
+      if (row) research.set(externalId, row);
+    }
+    const items = rows.map((r) => ({
+      ...r,
+      value: RESEARCH_FIELDS.has(String(r.field_key)) ? (research.get(String(r.external_id))?.[String(r.field_key)] ?? null) : null,
+    }));
+    return { items, total };
+  }
+
   // 재조사 시 이전 'web_blocked' 흔적을 정리(자체 fetch 방식에선 발생하지 않음).
   clearWebBlocked(externalId: string): void {
     this.run("UPDATE academy_field_meta SET status='unverified', updated_at=? WHERE external_id=? AND status='web_blocked'", [nowIso(), externalId]);

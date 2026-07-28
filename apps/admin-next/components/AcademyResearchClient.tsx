@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
-  cancelResearchRun, listAcademyResearch, listResearchRuns, researchRegion, syncBlogReviews, syncRegion,
+  type ReviewQueueRow,
+  cancelResearchRun, listAcademyResearch, listResearchRuns, listReviewQueue, researchRegion,
+  setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS,
 } from "@/lib/academy-research";
 import { getBlogReviewSync } from "@/lib/api";
 import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
 
 export default function AcademyResearchClient() {
+  const [tab, setTab] = useState<"list" | "review">("list");
   const [q, setQ] = useState("");
   const [items, setItems] = useState<AcademyBaseRow[]>([]);
   const [hiddenCount, setHiddenCount] = useState(0);
@@ -315,7 +318,16 @@ export default function AcademyResearchClient() {
         </div>
       ))}
 
-      <div className="row" style={{ alignItems: "flex-end", margin: "18px 0 10px" }}>
+      {/* 조사 실행과 검토를 같은 화면에서 잇는다. 대기 목록이 없으면 「검증완료만」 설정은
+          380곳을 하나씩 열어야 해서 실질적으로 쓸 수 없다. */}
+      <div className="row" style={{ gap: 6, margin: "18px 0 0" }}>
+        <button className={`btn${tab === "list" ? " primary" : ""}`} onClick={() => setTab("list")}>학원 목록</button>
+        <button className={`btn${tab === "review" ? " primary" : ""}`} onClick={() => setTab("review")}>검토 대기</button>
+      </div>
+
+      {tab === "review" ? <ReviewQueue /> : null}
+
+      <div className="row" style={{ alignItems: "flex-end", margin: "18px 0 10px", display: tab === "list" ? undefined : "none" }}>
         <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 180 }}>
           <span className="muted">목록 검색(이름/주소)</span>
           <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
@@ -330,7 +342,7 @@ export default function AcademyResearchClient() {
           )}
         </span>
       </div>
-      <div style={{ overflowX: "auto" }}>
+      <div style={{ overflowX: "auto", display: tab === "list" ? undefined : "none" }}>
         <table className="table">
           <thead>
             <tr><th>이름</th><th>주소</th><th>전화</th><th>유형</th><th>조사</th><th></th></tr>
@@ -448,4 +460,113 @@ function parseResult(value?: string | null): Record<string, any> | null {
 function fmtDate(iso?: string | null): string {
   if (!iso) return "";
   return formatShortDate(iso);
+}
+
+const FIELD_LABEL = new Map(RESEARCH_FIELD_LABELS.map((f) => [f.key, f.label]));
+
+// 검토 대기 — 학원을 가로질러 필드 단위로 모은다.
+// 값을 고치는 곳은 학원 상세다. 여기서는 "검증완료로 올린다"만 한다(승인 도구를 새로 만들지 않는다).
+function ReviewQueue() {
+  const [rows, setRows] = useState<ReviewQueueRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [status, setStatus] = useState("needs_review,ai_draft");
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [busyKey, setBusyKey] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await listReviewQueue({ status, q: q.trim() || undefined, limit: 200 });
+      setRows(res.items);
+      setTotal(res.total);
+    } catch (e: any) {
+      setError(e?.message || "검토 대기 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [status, q]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function approve(row: ReviewQueueRow) {
+    const key = `${row.external_id}:${row.field_key}`;
+    setBusyKey(key);
+    try {
+      await setResearchFieldMeta(row.external_id, { field_key: row.field_key, status: "verified" });
+      // 승인한 행만 걷어낸다. 전체를 다시 불러오면 검토 중이던 위치를 잃는다.
+      setRows((prev) => prev.filter((r) => `${r.external_id}:${r.field_key}` !== key));
+      setTotal((n) => Math.max(0, n - 1));
+    } catch (e: any) {
+      setError(e?.message || "검증완료 처리에 실패했습니다.");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  return (
+    <div className="grid" style={{ gap: 10, marginTop: 14 }}>
+      <p className="muted small" style={{ margin: 0 }}>
+        도메인 설정이 <b>「검증완료만」</b>이면 여기서 승인한 값만 글에 쓰입니다. 값을 고치려면 학원 상세로 가세요.
+      </p>
+      <div className="row" style={{ alignItems: "flex-end", gap: 8 }}>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="muted small">상태</span>
+          <select className="select" value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: "auto" }}>
+            <option value="needs_review,ai_draft">검토 필요 + AI 초안</option>
+            <option value="needs_review">검토 필요만</option>
+            <option value="ai_draft">AI 초안만</option>
+            <option value="web_blocked">웹조사 차단</option>
+          </select>
+        </label>
+        <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 160 }}>
+          <span className="muted small">학원 검색</span>
+          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
+        </label>
+        <button className="btn" onClick={() => void load()} disabled={loading}>새로고침</button>
+        <span className="muted small" style={{ paddingBottom: 10 }}>
+          {loading ? "불러오는 중…" : `${total.toLocaleString()}건`}
+          {!loading && total > rows.length ? ` (상위 ${rows.length}건 표시)` : ""}
+        </span>
+      </div>
+      {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
+      <div style={{ overflowX: "auto" }}>
+        <table className="table">
+          <thead>
+            <tr><th style={{ width: 180 }}>학원</th><th style={{ width: 120 }}>항목</th><th>값</th><th style={{ width: 90 }}>상태</th><th style={{ width: 60 }}>출처</th><th style={{ width: 90 }}></th></tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const key = `${r.external_id}:${r.field_key}`;
+              return (
+                <tr key={key}>
+                  <td><Link href={`/academies/${encodeURIComponent(r.external_id)}`}>{r.name || r.external_id}</Link></td>
+                  <td className="muted">{FIELD_LABEL.get(r.field_key) ?? r.field_key}</td>
+                  <td>
+                    {r.value ? <span>{String(r.value).slice(0, 160)}</span> : <span className="muted">(빈 값)</span>}
+                    {r.note ? <p className="small" style={{ margin: "4px 0 0", color: r.status === "needs_review" ? "#b45309" : "var(--muted, #64748b)" }}>
+                      {r.status === "needs_review" ? "⚠️ " : ""}{r.note}
+                    </p> : null}
+                  </td>
+                  <td><span className={`badge${r.status === "needs_review" ? " warn" : ""}`}>{r.status === "needs_review" ? "검토 필요" : r.status === "ai_draft" ? "AI 초안" : r.status}</span></td>
+                  <td>{r.source_url ? <a href={r.source_url} target="_blank" rel="noreferrer" className="badge">링크</a> : <span className="muted">-</span>}</td>
+                  <td>
+                    {/* 빈 값을 검증완료로 올리면 "사람이 확인한 값" 이 비어 있게 된다. 값이 있을 때만 승인한다. */}
+                    <button className="btn" onClick={() => void approve(r)} disabled={busyKey === key || !r.value} title={r.value ? "이 값을 글에 쓸 수 있게 승인합니다" : "값이 비어 있어 승인할 수 없습니다"}>
+                      {busyKey === key ? "처리 중…" : "검증완료"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && rows.length === 0 && (
+              <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 24 }}>검토 대기 중인 항목이 없습니다.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }

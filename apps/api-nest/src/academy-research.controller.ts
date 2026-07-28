@@ -92,6 +92,20 @@ export class AcademyResearchController {
     return result;
   }
 
+  // 검토 대기 목록(학원 가로질러 필드 단위). :externalId 보다 먼저 선언해야 경로가 안 먹힌다.
+  @Get("review-queue")
+  reviewQueue(
+    @Req() req: Request,
+    @Headers() headers: Record<string, string>,
+    @Query("status") status?: string,
+    @Query("q") q?: string,
+    @Query("limit") limit?: string,
+  ) {
+    checkAuth(req, headers);
+    const statuses = String(status || "needs_review,ai_draft").split(",").map((s) => s.trim()).filter(Boolean);
+    return this.db.listReviewQueue({ statuses, q: q || undefined, limit: Number(limit) || 200 });
+  }
+
   // 상세(집계)
   @Get(":externalId")
   detail(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("externalId") externalId: string) {
