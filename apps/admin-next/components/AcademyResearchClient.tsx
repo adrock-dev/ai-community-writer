@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
-  type ReviewQueueRow,
-  cancelResearchRun, listAcademyResearch, listResearchRuns, listReviewQueue, researchRegion,
+  type ManualAcademyInput, type ReviewQueueRow,
+  cancelResearchRun, createManualAcademy, deleteManualAcademy,
+  listAcademyResearch, listResearchRuns, listReviewQueue, researchRegion,
   setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS,
 } from "@/lib/academy-research";
 import { getBlogReviewSync } from "@/lib/api";
@@ -13,7 +14,7 @@ import { ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
 
 export default function AcademyResearchClient() {
-  const [tab, setTab] = useState<"list" | "review">("list");
+  const [tab, setTab] = useState<"list" | "review" | "manual">("list");
   const [q, setQ] = useState("");
   const [items, setItems] = useState<AcademyBaseRow[]>([]);
   const [hiddenCount, setHiddenCount] = useState(0);
@@ -139,6 +140,22 @@ export default function AcademyResearchClient() {
     }
   }
 
+
+  /** 수동 등록분만 지운다. 원천분은 다음 동기화에 되살아나므로 버튼 자체를 두지 않는다. */
+  async function removeManual(row: AcademyBaseRow) {
+    if (!confirm(`직접 등록한 「${row.name || row.external_id}」을(를) 삭제할까요?\n조사 결과와 검토 상태도 함께 지워집니다. 되돌릴 수 없습니다.`)) return;
+    setBusy("manual-delete");
+    setError("");
+    try {
+      await deleteManualAcademy(row.external_id);
+      setNotice(`「${row.name || row.external_id}」을(를) 삭제했습니다.`);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || "삭제 실패");
+    } finally {
+      setBusy("");
+    }
+  }
 
   async function onCancel(run: ResearchRun) {
     if (!confirm(`${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.`)) return;
@@ -330,12 +347,13 @@ export default function AcademyResearchClient() {
       {/* 조사 실행과 검토를 같은 화면에서 잇는다. 대기 목록이 없으면 「검증완료만」 설정은
           380곳을 하나씩 열어야 해서 실질적으로 쓸 수 없다. */}
       <div className="tabs" style={{ marginTop: 18 }}>
-        {([["list", "학원 목록"], ["review", "검토 대기"]] as const).map(([id, label]) => (
+        {([["list", "학원 목록"], ["review", "검토 대기"], ["manual", "직접 등록"]] as const).map(([id, label]) => (
           <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>
         ))}
       </div>
 
       {tab === "review" ? <ReviewQueue /> : null}
+      {tab === "manual" ? <ManualAcademies onSaved={load} /> : null}
 
       <div className="row" style={{ alignItems: "flex-end", margin: "18px 0 10px", display: tab === "list" ? undefined : "none" }}>
         <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 180 }}>
@@ -360,7 +378,10 @@ export default function AcademyResearchClient() {
           <tbody>
             {items.map((a) => (
               <tr key={a.external_id}>
-                <td>{a.name || "(이름없음)"}</td>
+                <td>
+                  {a.name || "(이름없음)"}
+                  {a.source === "manual" && <span className="badge" style={{ marginLeft: 6 }} title="원천 동기화가 아니라 사람이 직접 등록한 학원입니다.">직접 등록</span>}
+                </td>
                 <td className="muted">{a.address || "-"}</td>
                 <td className="muted">{a.phone || "-"}</td>
                 <td className="muted">{a.academy_type || "-"}</td>
@@ -368,7 +389,12 @@ export default function AcademyResearchClient() {
                   ? <span className="badge">{a.research_engine || "AI"} · {fmtDate(a.researched_at)}</span>
                   : <span className="muted">미조사</span>}
                 </td>
-                <td><Link className="btn" href={`/academies/${encodeURIComponent(a.external_id)}`}>상세</Link></td>
+                <td className="row" style={{ gap: 6 }}>
+                  <Link className="btn" href={`/academies/${encodeURIComponent(a.external_id)}`}>상세</Link>
+                  {a.source === "manual" && (
+                    <button className="btn danger" onClick={() => removeManual(a)} disabled={busy !== ""}>삭제</button>
+                  )}
+                </td>
               </tr>
             ))}
             {!loading && items.length === 0 && (
@@ -379,6 +405,93 @@ export default function AcademyResearchClient() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+const MANUAL_FIELDS: Array<{ name: keyof ManualAcademyInput; label: string }> = [
+  { name: "region", label: "지역" },
+  { name: "name", label: "이름" },
+  { name: "address", label: "주소" },
+  { name: "phone", label: "전화" },
+  { name: "academy_type", label: "학원 유형" },
+  { name: "price", label: "수강료" },
+  { name: "shuttle", label: "셔틀" },
+  { name: "hours", label: "운영시간" },
+  { name: "pass_rate", label: "합격률" },
+  { name: "source_name", label: "출처명" },
+  { name: "source_url", label: "출처 URL" },
+  { name: "review", label: "검증 메모" },
+];
+
+/**
+ * 원천에 없는 학원을 직접 등록한다.
+ *
+ * 예전에는 도메인의 「원천 데이터」 탭에 있었다. 그때는 도메인마다 따로 입력해야 했고, 도메인의
+ * 학원 연결을 끊으면 함께 사라졌다 — 원천분은 다시 동기화하면 되지만 수동분은 되살릴 방법이 없다.
+ * 학원 자료는 도메인이 아니라 업종의 자산이므로 수집처인 이 화면으로 옮겼다. 여기서 한 번 등록하면
+ * 도메인의 「학원자료 연결」을 누르는 모든 도메인에 함께 들어간다.
+ */
+function ManualAcademies({ onSaved }: { onSaved: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function submit(run: () => Promise<{ created: number; errors: string[] }>) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const res = await run();
+      setNotice(`${res.created}곳 등록했습니다.${res.errors.length ? ` (건너뜀 ${res.errors.length}건: ${res.errors[0]})` : ""} 도메인에 반영하려면 그 도메인에서 「학원자료 연결」을 다시 누르세요.`);
+      await onSaved();
+      return true;
+    } catch (e: any) {
+      setError(e?.message || "등록 실패");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addOne(form: HTMLFormElement) {
+    const values = Object.fromEntries(new FormData(form).entries()) as unknown as ManualAcademyInput;
+    if (await submit(() => createManualAcademy(values))) form.reset();
+  }
+
+  async function addBulk(form: HTMLFormElement) {
+    const text = String(new FormData(form).get("json") || "").trim();
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { setError("JSON 형식이 아닙니다."); return; }
+    const rows = (Array.isArray(parsed) ? parsed : [parsed]) as ManualAcademyInput[];
+    if (await submit(() => createManualAcademy(rows))) form.reset();
+  }
+
+  return (
+    <div className="grid" style={{ gap: 14, marginTop: 14 }}>
+      <p className="muted small" style={{ margin: 0 }}>
+        원천 동기화 목록에 없는 학원을 직접 넣습니다. 필수는 <b>이름</b> 하나이며, 나머지는 근거로 확인한 것만 채우세요.
+        여기 등록한 학원은 동기화를 다시 돌려도 사라지지 않고, AI 조사 대상에도 함께 들어갑니다.
+      </p>
+      <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
+        ⚠️ 수강료·셔틀·운영시간은 <b>원천이 그 학원 값을 주지 않을 때만</b> 쓰입니다. 원천에 구조화된 값이 있으면 그쪽이 이깁니다.
+      </p>
+      {error && <p className="small" style={{ color: "var(--danger)", margin: 0 }}>{error}</p>}
+      {notice && <p className="small" style={{ margin: 0 }}>{notice}</p>}
+
+      <form className="grid" onSubmit={(e) => { e.preventDefault(); void addOne(e.currentTarget); }}>
+        <h3 style={{ margin: 0 }}>1. 단건 등록</h3>
+        <div className="grid grid-3">
+          {MANUAL_FIELDS.map((f) => (
+            <input key={f.name} className="input" name={f.name} placeholder={f.label} required={f.name === "name"} />
+          ))}
+        </div>
+        <button className="btn primary" disabled={busy}>{busy ? "등록 중…" : "단건 등록"}</button>
+      </form>
+
+      <form className="grid" onSubmit={(e) => { e.preventDefault(); void addBulk(e.currentTarget); }}>
+        <h3 style={{ margin: 0 }}>2. JSON 일괄 등록</h3>
+        <textarea className="textarea mono" name="json" rows={5} placeholder='[{"region":"대구","name":"OO운전전문학원","price":"65만원"}]' />
+        <button className="btn" disabled={busy}>JSON 일괄 등록</button>
+      </form>
     </div>
   );
 }

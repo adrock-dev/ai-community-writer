@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpException, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Headers, HttpException, Inject, Param, Patch, Post, Query, Req } from "@nestjs/common";
 import type { Request } from "express";
 import { checkAuth } from "./admin.controller.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
@@ -105,6 +105,41 @@ export class AcademyResearchController {
     checkAuth(req, headers);
     const statuses = String(status || "needs_review,ai_draft").split(",").map((s) => s.trim()).filter(Boolean);
     return this.db.listReviewQueue({ statuses, q: q || undefined, limit: Number(limit) || 200 });
+  }
+
+  /**
+   * 수동 등록 — 원천 목록에 없는 학원을 직접 넣는다.
+   *
+   * 예전에는 도메인의 「원천 데이터 → 수동 자료 보완」에 있었다. 그러면 같은 학원을 쓰는 도메인마다
+   * 다시 입력해야 하고, 도메인의 학원 연결을 끊을 때 함께 지워져 복구할 방법이 없었다
+   * (원천분은 다시 동기화하면 되지만 수동분은 원본이 사람 머릿속뿐이다).
+   * 학원 자료는 도메인이 아니라 업종의 자산이므로 수집처인 이곳에 모은다.
+   */
+  @Post("manual")
+  createManual(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const rows: Row[] = Array.isArray(body?.items) ? body.items : Array.isArray(body) ? body : [body ?? {}];
+    const created: string[] = [];
+    const errors: string[] = [];
+    for (const row of rows) {
+      try {
+        created.push(this.db.createManualBase({ ...row, name: String(row?.name ?? "") }));
+      } catch (err) {
+        errors.push(`${row?.name || "(이름 없음)"}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (!created.length) throw new HttpException(errors[0] || "등록할 학원이 없습니다.", 400);
+    return { ok: true, created: created.length, external_ids: created, errors };
+  }
+
+  /** 수동 등록분 삭제. 원천 미러는 동기화가 관리하므로 지울 수 없다(다음 동기화에 되살아난다). */
+  @Delete("manual/:externalId")
+  deleteManual(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("externalId") externalId: string) {
+    checkAuth(req, headers);
+    if (!this.db.deleteManualBase(externalId)) {
+      throw new HttpException("수동 등록한 학원만 삭제할 수 있습니다.", 400);
+    }
+    return { ok: true };
   }
 
   // 상세(집계)

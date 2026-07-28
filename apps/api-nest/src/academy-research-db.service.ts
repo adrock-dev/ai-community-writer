@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS academy_base (
   seo_keywords TEXT,
   seo_description TEXT,
   raw_json TEXT,
+  source TEXT NOT NULL DEFAULT 'drivingplus',
   synced_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -200,6 +201,8 @@ const RESEARCH_FIELDS = new Set<string>([
 
 export interface BaseAcademyInput {
   external_id: string;
+  /** 'drivingplus'(원천 동기화) 또는 'manual'(사람이 직접 등록). 기본은 원천. */
+  source?: string | null;
   name?: string | null;
   region?: string | null;
   address?: string | null;
@@ -214,6 +217,23 @@ export interface BaseAcademyInput {
   seo_keywords?: string | null;
   seo_description?: string | null;
   raw_json?: unknown;
+}
+
+/** 원천에 없는 학원을 사람이 등록할 때 받는 값. 예전 도메인 「수동 자료 보완」 폼과 같은 항목이다. */
+export interface ManualAcademyInput {
+  external_id?: string | null;
+  name: string;
+  region?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  academy_type?: string | null;
+  price?: string | null;
+  shuttle?: string | null;
+  hours?: string | null;
+  pass_rate?: string | null;
+  source_name?: string | null;
+  source_url?: string | null;
+  review?: string | null;
 }
 
 export interface ReviewInput {
@@ -231,6 +251,10 @@ export interface ReviewInput {
 }
 
 function nowIso(): string { return new Date().toISOString(); }
+function text(value: unknown): string | null {
+  const s = String(value ?? "").trim();
+  return s === "" ? null : s;
+}
 function jsonOrNull(value: unknown): string | null {
   if (value == null) return null;
   if (typeof value === "string") return value;
@@ -276,6 +300,8 @@ export class AcademyResearchDbService implements OnModuleInit {
     // 원천 목록에 아직 있는지. 삭제하지 않는 이유는 FK CASCADE 로 조사·검증상태까지 함께 날아가기 때문이다.
     // 대신 목록·동기화 대상에서 빼서 노출과 헛수고를 막는다.
     if (!baseCols.has("active")) this.db.exec("ALTER TABLE academy_base ADD COLUMN active INTEGER NOT NULL DEFAULT 1");
+    // 수동 등록 학원 구분. 원천 목록에 없다는 이유로 꺼지면 안 되기 때문이다(setActiveByExternalIds).
+    if (!baseCols.has("source")) this.db.exec("ALTER TABLE academy_base ADD COLUMN source TEXT NOT NULL DEFAULT 'drivingplus'");
 
     const runCols = new Set(this.all("PRAGMA table_info(research_runs)").map((r) => r.name));
     // 실행 결과 요약(JSON). 동기화는 학원 수 외에 리뷰 건수도 남겨야 해서 진행률 컬럼만으로는 부족하다.
@@ -337,8 +363,8 @@ export class AcademyResearchDbService implements OnModuleInit {
     const region = input.region ?? regionFromAddress(input.address);
     this.run(
       `INSERT INTO academy_base
-        (external_id, name, region, address, phone, vphone, academy_type, latitude, longitude, thumb_url, photos, seo_title, seo_keywords, seo_description, raw_json, synced_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (external_id, name, region, address, phone, vphone, academy_type, latitude, longitude, thumb_url, photos, seo_title, seo_keywords, seo_description, raw_json, source, synced_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(external_id) DO UPDATE SET
         name=excluded.name, region=excluded.region, address=excluded.address, phone=excluded.phone,
         vphone=excluded.vphone, academy_type=excluded.academy_type, latitude=excluded.latitude,
@@ -349,7 +375,7 @@ export class AcademyResearchDbService implements OnModuleInit {
         input.external_id, input.name ?? null, region, input.address ?? null, input.phone ?? null,
         input.vphone ?? null, input.academy_type ?? null, input.latitude ?? null, input.longitude ?? null,
         input.thumb_url ?? null, jsonOrNull(input.photos), input.seo_title ?? null, input.seo_keywords ?? null,
-        input.seo_description ?? null, jsonOrNull(input.raw_json), nowIso(),
+        input.seo_description ?? null, jsonOrNull(input.raw_json), input.source ?? "drivingplus", nowIso(),
       ],
     );
   }
@@ -359,7 +385,12 @@ export class AcademyResearchDbService implements OnModuleInit {
   setActiveByExternalIds(externalIds: string[]): { active: number; inactive: number } {
     if (!externalIds.length) return { active: 0, inactive: this.countBase({ includeInactive: true }) };
     const placeholders = externalIds.map(() => "?").join(",");
-    this.run(`UPDATE academy_base SET active = CASE WHEN external_id IN (${placeholders}) THEN 1 ELSE 0 END`, externalIds);
+    // 수동 등록분은 원천 목록에 없는 게 정상이다. 함께 끄면 동기화할 때마다 사라진다.
+    this.run(
+      `UPDATE academy_base SET active = CASE WHEN external_id IN (${placeholders}) THEN 1 ELSE 0 END
+       WHERE source <> 'manual'`,
+      externalIds,
+    );
     return {
       active: Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE active = 1")?.n ?? 0),
       inactive: Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE active = 0")?.n ?? 0),
@@ -403,6 +434,69 @@ export class AcademyResearchDbService implements OnModuleInit {
   }
 
   getBase(externalId: string): Row | undefined { return this.get("SELECT * FROM academy_base WHERE external_id = ?", [externalId]); }
+
+  /**
+   * 원천에 없는 학원을 사람이 직접 등록한다.
+   *
+   * 예전에는 도메인의 원천 데이터 탭에서 admin.db `academies` 에 바로 넣었다. 그러면 수동분이
+   * 도메인마다 따로 존재하고, 연결을 끊을 때(도메인 학원 전체 삭제) 함께 사라진다 — 원천 동기화로
+   * 복구되는 다른 행과 달리 되살릴 방법이 없다. 학원 자료는 도메인이 아니라 업종의 자산이므로
+   * 수집처인 조사 DB 에 둔다. 도메인에는 연결로만 나타난다.
+   *
+   * external_id 에 `manual-` 을 붙이는 이유: 원천 id 와 절대 겹치지 않아야 하고,
+   * setActiveByExternalIds 가 "원천 목록에 없다"는 이유로 끄면 안 되기 때문이다(source 로 제외).
+   */
+  createManualBase(input: ManualAcademyInput): string {
+    const name = String(input.name ?? "").trim();
+    if (!name) throw new Error("학원 이름은 필수입니다.");
+    const externalId = String(input.external_id ?? "").trim() || `manual-${randomUUID()}`;
+    const address = text(input.address);
+    // raw_json 은 원천 응답 원본을 담는 자리이고, 도메인 연결(AcademyLinkService)이 그 형태를 기대한다.
+    // 수동분도 같은 형태로 맞춰 두면 연결 경로에 예외 분기를 만들지 않아도 된다.
+    // 구조화할 수 없는 사람 입력(수강료 문장 등)은 __manual 로 따로 싣는다 — 원천 값과 섞지 않는다.
+    const raw = {
+      id: externalId,
+      title: name,
+      roadAddress: address,
+      phone: text(input.phone),
+      type: text(input.academy_type),
+      __manual: {
+        price: text(input.price),
+        shuttle: text(input.shuttle),
+        hours: text(input.hours),
+        pass_rate: text(input.pass_rate),
+        source_name: text(input.source_name),
+        source_url: text(input.source_url),
+        review: text(input.review),
+      },
+    };
+    this.upsertBase({
+      external_id: externalId,
+      name,
+      region: text(input.region),
+      address,
+      phone: text(input.phone),
+      academy_type: text(input.academy_type),
+      raw_json: raw,
+      source: "manual",
+    });
+    return externalId;
+  }
+
+  /** 수동 등록분만 지운다. 원천 미러는 동기화가 관리하므로 여기서 지우면 다음 동기화에 되살아난다. */
+  deleteManualBase(externalId: string): boolean {
+    const row = this.getBase(externalId);
+    if (!row || String(row.source ?? "") !== "manual") return false;
+    this.run("DELETE FROM academy_reviews WHERE external_id = ?", [externalId]);
+    this.run("DELETE FROM academy_field_meta WHERE external_id = ?", [externalId]);
+    this.run("DELETE FROM academy_research WHERE external_id = ?", [externalId]);
+    this.run("DELETE FROM academy_base WHERE external_id = ?", [externalId]);
+    return true;
+  }
+
+  countManual(): number {
+    return Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE source = 'manual'")?.n ?? 0);
+  }
 
   /**
    * 주어진 학원들의 조사 현황 요약.

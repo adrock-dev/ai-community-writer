@@ -10,12 +10,12 @@
 
 | 급 | 뜻 | 처방 | 건수 |
 | --- | --- | --- | --- |
-| **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 13 |
+| **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 12 |
 | **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 86 |
-| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 163 |
-| | | **합계** | **262** |
+| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 165 |
+| | | **합계** | **263** |
 
-파일별: `apps/admin-next/components/DomainClient.tsx` 195 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/AcademyResearchClient.tsx` 11 · `apps/admin-next/components/DashboardClient.tsx` 10 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/lib/domain-gate.ts` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/JobsClient.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/components/PostDetailClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1
+파일별: `apps/admin-next/components/DomainClient.tsx` 191 · `apps/admin-next/components/AcademyResearchClient.tsx` 15 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 10 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/lib/domain-gate.ts` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/JobsClient.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/components/PostDetailClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
 
 ## 지금 이미 어긋난 것 (0건)
 
@@ -23,24 +23,23 @@
 
 
 
-## A — 파생 가능 (13건)
+## A — 파생 가능 (12건)
 
 코드 상수에서 계산할 수 있는데 손으로 적었다. **값에서 렌더하면 드리프트가 구조적으로 불가능해진다.**
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
-| `apps/admin-next/components/AcademyResearchClient.tsx:124` | confirm | ${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요? | `조사 소요시간(공유 상수 없음)` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:156` | confirm | 블로그리뷰를 동기화합니다. 한 곳씩 받아야 해 전체에 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다(백그라운드). 수집만 하며 글 생성에는 쓰이지 않습니다. 진행할까요?<br>_2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:125` | confirm | ${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요? | `조사 소요시간(공유 상수 없음)` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:173` | confirm | 블로그리뷰를 동기화합니다. 한 곳씩 받아야 해 전체에 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다(백그라운드). 수집만 하며 글 생성에는 쓰이지 않습니다. 진행할까요?<br>_2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG` |
 | `apps/admin-next/components/DomainClient.tsx:402` | field:action | 이 흐름이 안정적이면 현재 검색 ${WRITE_BATCH_SEARCH}개, 이후 ${WRITE_BATCH_NATIONWIDE}개로 확장하세요.<br>_2026-07-28 수정. 버튼 개수를 손으로 적고 있었다. WRITE_BATCH_SEARCH/NATIONWIDE 상수에서 렌더한다._ | `apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_SEARCH`<br>`apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_NATIONWIDE` |
 | `apps/admin-next/components/DomainClient.tsx:689` | confirm | 키워드 마스터를 기본값(운전 프리셋 18개)으로 초기화할까요? 지금 표의 키워드·직접 추가한 값이 덮어써집니다.<br>_현재 18개로 일치. 프리셋에 항목을 더하면 세 곳(679·688·704)이 동시에 거짓이 된다._ | `apps/api-nest/src/constants.ts#PRESETS.driving.keyword` |
 | `apps/admin-next/components/DomainClient.tsx:698` | muted-p | 글유형이 고르는 키워드 풀 + SEO 메트릭입니다. 월검색량·경쟁도(KD)는 슬롯 우선순위에 쓰입니다. 직접 편집하거나 「기본값으로 초기화」로 운전 프리셋 18개를 채웁니다. | `apps/api-nest/src/constants.ts#PRESETS.driving.keyword` |
 | `apps/admin-next/components/DomainClient.tsx:714` | tooltip | 키워드 마스터를 운전 프리셋 기본값(18개+메트릭)으로 되돌립니다 | `apps/api-nest/src/constants.ts#PRESETS.driving.keyword` |
 | `apps/admin-next/components/DomainClient.tsx:941` | muted-p | 학원 커버리지 (총 {coh.academy.regions_total}개 지역): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.r…<br>_2026-07-28 수정. 20km 하드코딩을 서버값(coh.academy.nearby_km)으로 바꿨다. ACADEMY_NEARBY_MAX_KM 은 env 로 덮이는 값이라 하드코딩이면 환경변수를 바꾸는 순간 화면이 거짓이 됐다._ | `apps/api-nest/src/constants.ts#ACADEMY_NEARBY_MAX_KM` |
 | `apps/admin-next/components/DomainClient.tsx:1275` | info-div | &lsquo;실제 후보 수&rsquo;란? 그 지역 글에 소개하려고 선정된 학원 수입니다 — 지역명이 맞는 직접 후보 + {candidateRules?.nearby_km ?? 20}km 이내 인근 후보로 모으고(둘 다 부족하면 {candidateRules?.min_guarantee_km ?? 50}km 이내 최근접으로 보…<br>_2026-07-28 수정. 20km·50km·5곳을 손으로 적고 있었다. 셋 다 env 로 덮이는 값이라 /options 의 candidate_rules 로 내려받아 렌더한다. 이 문단은 info-panel div 라 추출기 사각지대에 있어 인벤토리에도 안 잡혔었다._ | `apps/api-nest/src/constants.ts#ACADEMY_NEARBY_MAX_KM`<br>`apps/api-nest/src/constants.ts#ACADEMY_MIN_GUARANTEE_MAX_KM`<br>`apps/api-nest/src/constants.ts#ACADEMY_USED_PER_POST` |
-| `apps/admin-next/components/DomainClient.tsx:1651` | muted-p | ⚠️ 이 브라우저의 마지막 동기화 시도({formatDateTime(lastSync.academies?.at)})는 DB에 반영되지 않았습니다. 학원 동기화는 1분 안팎이 걸리는데 그사이 개발 서버가 재시작되면 전량 유실됩니다. npm run sync:academies -- {domain.domain} 로 다시 실행하면 … | `동기화 소요시간(공유 상수 없음)`<br>`package.json#sync:academies` |
-| `apps/admin-next/components/DomainClient.tsx:1662` | muted-p | 학원 1곳의 {SINGLE_ACADEMY_FIELDS.map((f) => f.label).join(", ")}를 직접 입력합니다.<br>_2026-07-28 수정. 폼은 11개 필드를 렌더하는데 안내는 5개만 말하고 있었다(수강료·셔틀·운영시간·합격률·출처 누락). 목록을 SINGLE_ACADEMY_FIELDS 하나로 합쳐 안내도 거기서 렌더한다._ | `apps/admin-next/components/DomainClient.tsx#SINGLE_ACADEMY_FIELDS` |
-| `apps/admin-next/components/DomainClient.tsx:1926` | muted-p | 글 작성/중복검사/가지치기/색인 작업을 이 화면에서 바로 확인합니다. 3초마다 자동 새로고침됩니다. | `apps/admin-next/components/DomainClient.tsx:1896 setInterval(…, 3000)` |
-| `apps/admin-next/components/DomainClient.tsx:2026` | muted-p | 생성 글 본문·CTA·HTML 내보내기·공개 API에 나가는 이름입니다. 마지막 섹션 CTA에서 3~7회 언급되므로 독자가 브랜드로 읽을 수 있는 고유명이어야 합니다. 비워 두면 표시 이름({effectiveBrand})이 그대로 쓰입니다.<br>_현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다._ | `apps/api-nest/src/brand.ts`<br>`apps/api-nest/src/worker.service.ts:1105 CTA 지침` |
+| `apps/admin-next/components/DomainClient.tsx:1634` | muted-p | ⚠️ 이 브라우저의 마지막 동기화 시도({formatDateTime(lastSync.academies?.at)})는 DB에 반영되지 않았습니다. 학원 동기화는 1분 안팎이 걸리는데 그사이 개발 서버가 재시작되면 전량 유실됩니다. npm run sync:academies -- {domain.domain} 로 다시 실행하면 … | `동기화 소요시간(공유 상수 없음)`<br>`package.json#sync:academies` |
+| `apps/admin-next/components/DomainClient.tsx:1901` | muted-p | 글 작성/중복검사/가지치기/색인 작업을 이 화면에서 바로 확인합니다. 3초마다 자동 새로고침됩니다. | `apps/admin-next/components/DomainClient.tsx:1896 setInterval(…, 3000)` |
+| `apps/admin-next/components/DomainClient.tsx:2001` | muted-p | 생성 글 본문·CTA·HTML 내보내기·공개 API에 나가는 이름입니다. 마지막 섹션 CTA에서 3~7회 언급되므로 독자가 브랜드로 읽을 수 있는 고유명이어야 합니다. 비워 두면 표시 이름({effectiveBrand})이 그대로 쓰입니다.<br>_현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다._ | `apps/api-nest/src/brand.ts`<br>`apps/api-nest/src/worker.service.ts:1105 CTA 지침` |
 | `apps/admin-next/components/SettingsClient.tsx:237` | muted-p | 켜면 학원 동기화가 {ACADEMY_SYNC_DURATION}에서 {ACADEMY_SYNC_DURATION_WITH_BLOG}으로 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다). 이미 수집된 자료는 끄더라도 지워지지 않고 학원 상세에 남습니다.<br>_2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION`<br>`apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG` |
 
 ## B — 동작 계약 (86건)
@@ -50,12 +49,13 @@
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
 | `apps/admin-next/components/AcademyDetailClient.tsx:118` | muted-p | 아래 항목은 원천 동기화로 이미 확인돼 조사 대상에서 빠집니다. 글 생성도 이 값을 씁니다. | `조사 항목 정의`<br>`docs/source-field-usage.md` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:144` | confirm | ${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.<br>_「1곳 마친 뒤 중단·여기까지 저장 유지」는 취소 구현에 직접 매달린 약속이다._ | `apps/api-nest/src/academy-research.service.ts 취소 처리` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:196` | jsx-text | 이 화면은 아직 전체 기능이 완성되지 않았습니다.<br>_미완성 범위 선언. 조사 항목 편집·대량 관리가 붙으면 이 문단을 지워야 한다._ | `apps/admin-next/components/AcademyResearchClient.tsx` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:197` | jsx-text | 현재는 DrivingPlus에서 동기화한 학원 목록 조회와 학원별 기본 조사 정보 확인까지만 안정적으로 제공합니다. 조사 항목 편집, 대량 관리, 자동 조사 흐름은 아직 정리 중이므로 운영 판단용 보조 화면으로만 사용해 주세요.<br>_미완성 범위 선언. 바로 위 「전체 기능이 완성되지 않았습니다」와 한 쌍이라 기능이 붙으면 둘 다 지워야 한다._ | `apps/admin-next/components/AcademyResearchClient.tsx` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:204` | muted-p | 기본정보·리뷰 원문과 AI 심층조사 데이터는 별도 DB(academy_research.db)에 저장됩니다. admin.db와 분리되어 초기화되지 않습니다. | `academy-research 저장소` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:322` | muted-p | {run!.cancel_requested ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다." : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."}<br>_「창을 닫아도 계속·다시 들어오면 진행률이 이어짐」이 백그라운드 run 구현에 종속._ | `apps/api-nest/src/academy-research.service.ts 백그라운드 실행` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:530` | muted-p | 조사값은 아직 글 생성에 연결되지 않았습니다. 연결되면 도메인 설정이 「검증완료만」일 때 여기서 승인한 값만 쓰입니다. 값을 고치거나 승인을 되돌리려면 학원 상세로 가세요. 상태를 검증완료로 두면 연결 시점에 글에 쓰일 값을 미리 볼 수 있습니다.<br>_2026-07-28 수정. 조사값이 아직 생성에 닿지 않는데 이미 쓰이는 것처럼 단정하고 있었다(worker.service.ts 에 조사값 참조 없음). 도메인 설정 화면과 같은 기준으로 맞췄다._ | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:161` | confirm | ${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.<br>_「1곳 마친 뒤 중단·여기까지 저장 유지」는 취소 구현에 직접 매달린 약속이다._ | `apps/api-nest/src/academy-research.service.ts 취소 처리` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:213` | jsx-text | 이 화면은 아직 전체 기능이 완성되지 않았습니다.<br>_미완성 범위 선언. 조사 항목 편집·대량 관리가 붙으면 이 문단을 지워야 한다._ | `apps/admin-next/components/AcademyResearchClient.tsx` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:214` | jsx-text | 현재는 DrivingPlus에서 동기화한 학원 목록 조회와 학원별 기본 조사 정보 확인까지만 안정적으로 제공합니다. 조사 항목 편집, 대량 관리, 자동 조사 흐름은 아직 정리 중이므로 운영 판단용 보조 화면으로만 사용해 주세요.<br>_미완성 범위 선언. 바로 위 「전체 기능이 완성되지 않았습니다」와 한 쌍이라 기능이 붙으면 둘 다 지워야 한다._ | `apps/admin-next/components/AcademyResearchClient.tsx` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:221` | muted-p | 기본정보·리뷰 원문과 AI 심층조사 데이터는 별도 DB(academy_research.db)에 저장됩니다. admin.db와 분리되어 초기화되지 않습니다. | `academy-research 저장소` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:339` | muted-p | {run!.cancel_requested ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다." : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."}<br>_「창을 닫아도 계속·다시 들어오면 진행률이 이어짐」이 백그라운드 run 구현에 종속._ | `apps/api-nest/src/academy-research.service.ts 백그라운드 실행` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:474` | muted-p | ⚠️ 수강료·셔틀·운영시간은 원천이 그 학원 값을 주지 않을 때만 쓰입니다. 원천에 구조화된 값이 있으면 그쪽이 이깁니다. | `apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies __manual 폴백` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:643` | muted-p | 조사값은 아직 글 생성에 연결되지 않았습니다. 연결되면 도메인 설정이 「검증완료만」일 때 여기서 승인한 값만 쓰입니다. 값을 고치거나 승인을 되돌리려면 학원 상세로 가세요. 상태를 검증완료로 두면 연결 시점에 글에 쓰일 값을 미리 볼 수 있습니다.<br>_2026-07-28 수정. 조사값이 아직 생성에 닿지 않는데 이미 쓰이는 것처럼 단정하고 있었다(worker.service.ts 에 조사값 참조 없음). 도메인 설정 화면과 같은 기준으로 맞췄다._ | `조사값 사용 게이트(미구현)` |
 | `apps/admin-next/components/DashboardClient.tsx:144` | muted-p | 운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 도메인이 있어야 도메인 관리, 글 생성, 검수·보내기 메뉴를 사용할 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/admin.controller.ts 도메인 생성` |
 | `apps/admin-next/components/DomainClient.tsx:378` | field:body | 이 사이트만의 말투·태도, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 확인된 데이터만 사용·날조 금지 같은 안전·데이터 규칙은 이미 강제되니 여기 적지 않아도 됩니다. 지금 건너뛰고 나중에 정해도 됩니다.<br>_2026-07-28 수정. 투어가 「안전·데이터 원칙을 정하라」고 안내해 바로 아래 입력칸 안내(「이미 강제되니 적지 마라」)와 모순이었다. 입력칸과 같은 기준으로 맞췄다._ | `apps/api-nest/src/worker.service.ts#buildPrompt 공통원칙 주입` |
 | `apps/admin-next/components/DomainClient.tsx:379` | field:body | 글 유형마다 기본 디자인이 자동 적용됩니다. 대부분 그대로 두면 되고, 특별한 레이아웃이 필요할 때만 커스텀 디자인 메모나 커스텀 글유형 복제로 조정합니다.<br>_투어 문구. 아래 디자인 탭 안내와 같은 사실을 말한다 — 한쪽만 고치면 어긋난다._ | `apps/api-nest/src/constants.ts default_design`<br>`docs/design-template-mapping.md` |
@@ -86,31 +86,30 @@
 | `apps/admin-next/components/DomainClient.tsx:1274` | muted-p | 제목을 생성 시점의 실제 후보 수로 확정해 LLM 즉흥·후보 수 부풀림을 막습니다. tier는 후보 수 내림차순으로 첫 매칭 제목을 씁니다(예: 3곳↑ &quot;BEST {"{개수}"}&quot;, 2곳 &quot;추천&quot;). 치환 토큰: {"{지역}"} {"{개수}"} {"{키워드}"} {"{학원명}"}(첫 후… | `apps/api-nest/src/slot.service.ts 제목 tier` |
 | `apps/admin-next/components/DomainClient.tsx:1282` | muted-p | 위 &lsquo;실제 후보 수&rsquo;가 이 값보다 적으면 생성하지 않고 건너뜁니다(슬롯 skipped · 후보 부족 지역 차단용). 비우거나 0이면 스킵 없음. | `apps/api-nest/src/slot.service.ts slot skipped` |
 | `apps/admin-next/components/DomainClient.tsx:1304` | jsx-text | 참조 아키타입(kind)은 만든 뒤 바꿀 수 없습니다. | `apps/api-nest/src/admin.controller.ts` |
-| `apps/admin-next/components/DomainClient.tsx:1569` | muted-p | DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
-| `apps/admin-next/components/DomainClient.tsx:1574` | muted-p | 블로그 리뷰 수집: {blogSyncOn === null ? "확인 중" : blogSyncOn ? "켜짐" : "꺼짐"} {blogSyncOn === null ? "" : blogSyncOn ? ` — 학원 동기화가 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 …<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
-| `apps/admin-next/components/DomainClient.tsx:1606` | muted-p | 지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 지역 동기화에만 적용됩니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
-| `apps/admin-next/components/DomainClient.tsx:1616` | muted-p | 글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 가중치·월검색량·KD는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다. | `apps/api-nest/src/slot.service.ts 우선순위 계산` |
-| `apps/admin-next/components/DomainClient.tsx:1635` | muted-p | 「운전학원 자료」가 원천에서 받아 둔 학원 상세(사진·별점리뷰{blogSyncOn === true ? "·블로그 리뷰" : ""} 포함)와 조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다. 원천 자료 자체를 새로 받으려면 「운전학원 자료」 화면에서 동기화하고 여기서 다시 연결하세…<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
-| `apps/admin-next/components/DomainClient.tsx:1661` | muted-p | ⚠️ 같은 학원(지역+이름)을 다시 등록하면 비운 항목이 기존 값을 덮어 지웁니다. 일부만 수정할 땐 나머지 항목도 함께 채워주세요. 단건·JSON 일괄 등록 모두 동일합니다. | `apps/api-nest/src/admin.controller.ts academies upsert` |
-| `apps/admin-next/components/DomainClient.tsx:1666` | muted-p | 동기화된 학원을 검색·지역으로 찾고, 필요 없는 자료는 삭제합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”). | `apps/api-nest/src/slot.service.ts academy_type_filter` |
-| `apps/admin-next/components/DomainClient.tsx:1820` | muted-p | 글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM을 호출하지 않습니다. | `apps/api-nest/src/slot.service.ts` |
-| `apps/admin-next/components/DomainClient.tsx:1835` | muted-p | 조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/slot.service.ts` |
-| `apps/admin-next/components/DomainClient.tsx:1843` | muted-p | 후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 1단계 ‘글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.) | `apps/api-nest/src/slot.service.ts` |
-| `apps/admin-next/components/DomainClient.tsx:1862` | muted-p | 추천: 1개 테스트 작성 → QA 확인 → 현재 검색 {WRITE_BATCH_SEARCH}개 → 전국 골고루 {WRITE_BATCH_NATIONWIDE}개. 작성 대상은 무작위가 아니라 우선순위(검색량·경쟁도·weight) 상위 N개를 고르며, 전국 작성은 지역을 라운드로빈으로 섞습니다.<br>_같은 문장이 작성 규모(현재 검색 N개 → 전국 M개)도 말한다. 2026-07-28 그 숫자는 상수 렌더로 바꿨고, 남은 종속은 선별·라운드로빈 규칙 쪽이다._ | `apps/admin-next/components/DomainClient.tsx 작성 버튼 개수`<br>`apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_NATIONWIDE`<br>`apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_SEARCH`<br>`apps/api-nest/src/slot.service.ts 선별·라운드로빈` |
-| `apps/admin-next/components/DomainClient.tsx:1869` | muted-p | 아래 필터는 목록 표시와 「현재 검색 N개 작성」 선별에 쓰입니다. | `apps/api-nest/src/slot.service.ts 선별` |
-| `apps/admin-next/components/DomainClient.tsx:1906` | tooltip | 비우면 규칙/LLM 자동 제목. 입력하면 규칙보다 우선합니다. {지역}/{개수}/{키워드}/{학원명} 은 생성 시점에 치환됩니다.<br>_수동 제목이 규칙보다 우선한다는 순서와 치환 토큰 목록이 구현에 종속._ | `apps/api-nest/src/slot.service.ts 제목 규칙` |
-| `apps/admin-next/components/DomainClient.tsx:1929` | muted-p | 대기/진행 작업이 멈춰 있으면 서버 터미널에서 npm run worker:once를 실행해 처리할 수 있습니다. | `package.json#worker:once` |
-| `apps/admin-next/components/DomainClient.tsx:1986` | muted-p | 비용($)은 종량 API 사용 시에만 계측됩니다. 이미지는 OpenAI 이미지 API + SEO_IMAGE_PRICE_USD(장당 단가) 설정, 텍스트는 API LLM이 필요합니다. Codex/구독 경로는 $0으로 표시됩니다. | `apps/api-nest/src/worker.service.ts 비용 계측`<br>`SEO_IMAGE_PRICE_USD` |
-| `apps/admin-next/components/DomainClient.tsx:2009` | muted-p | 체크한 빌트인만 「글유형/디자인」 탭의 빌트인 추가 카탈로그·커스텀 시작점·참조 아키타입 목록에 노출됩니다. 모든 도메인 공통이며, 이미 켜 둔 유형의 생성에는 영향이 없습니다(노출만 제어). 유형 검증이 끝나면 제거할 임시 기능입니다.<br>_「유형 검증이 끝나면 제거할 임시 기능」 — 제거 시 이 문단도 함께 사라져야 한다._ | `apps/api-nest/src/admin.controller.ts 빌트인 노출 설정` |
-| `apps/admin-next/components/DomainClient.tsx:2026` | muted-p | 발행 글을 Google Indexing API로 색인 요청하는 기능입니다. 배포 연동 방식이 정해지면 활성화 예정이며, 현재는 동작하지 않습니다. (서비스계정 JSON은 전 도메인 공통으로 관리될 예정) | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
-| `apps/admin-next/components/DomainClient.tsx:2167` | field:help | 조사값을 글에 전혀 쓰지 않습니다. 글은 원천 동기화로 받은 학원 자료(주소·전화·수강료·셔틀·영업시간·운영 과정·운영 형태·사진 등)와 자체 수강생 후기만 근거로 씁니다.<br>_정책 자체가 아직 생성에 연결되지 않았지만, 같은 패널 바로 아래 ⚠️ 경고가 그 사실을 밝히므로 문구는 그대로 둔다. 연결되는 순간 세 문장이 동시에 검증 대상이 된다._ | `조사값 사용 게이트(미구현)` |
-| `apps/admin-next/components/DomainClient.tsx:2172` | field:help | 위 원천 자료·후기에 더해, 조사값 중에서는 사람이 학원 상세 화면에서 「검증완료」로 올린 것만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다. | `조사값 사용 게이트(미구현)` |
-| `apps/admin-next/components/DomainClient.tsx:2177` | field:help | 위 원천 자료·후기에 더해, 사람이 확인하지 않은 AI 조사값까지 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다. | `조사값 사용 게이트(미구현)` |
-| `apps/admin-next/components/DomainClient.tsx:2204` | muted-p | 원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다. 조사는 학원 단위라 도메인마다 따로 돌리지 않습니다 — 실행은 자료관리에서 합니다. | `academy-research 저장소` |
-| `apps/admin-next/components/DomainClient.tsx:2248` | muted-p | 어느 설정에서도 「검토 필요」(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와 「웹조사 차단」 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다. | `조사값 사용 게이트(미구현)` |
-| `apps/admin-next/components/DomainClient.tsx:2252` | muted-p | ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.<br>_구현되면 이 경고를 지워야 한다. 지우는 것을 잊으면 반대 방향으로 거짓이 된다._ | `조사값 사용 게이트(미구현)` |
-| `apps/admin-next/components/DomainClient.tsx:2297` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
-| `apps/admin-next/components/DomainClient.tsx:2322` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료를 가져오는 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계 「학원자료 연결」을 다시 눌러야 반영됩니다. | `셔틀 지역 판정` |
+| `apps/admin-next/components/DomainClient.tsx:1552` | muted-p | DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
+| `apps/admin-next/components/DomainClient.tsx:1557` | muted-p | 블로그 리뷰 수집: {blogSyncOn === null ? "확인 중" : blogSyncOn ? "켜짐" : "꺼짐"} {blogSyncOn === null ? "" : blogSyncOn ? ` — 학원 동기화가 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 …<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
+| `apps/admin-next/components/DomainClient.tsx:1589` | muted-p | 지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 지역 동기화에만 적용됩니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
+| `apps/admin-next/components/DomainClient.tsx:1599` | muted-p | 글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 가중치·월검색량·KD는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다. | `apps/api-nest/src/slot.service.ts 우선순위 계산` |
+| `apps/admin-next/components/DomainClient.tsx:1618` | muted-p | 「운전학원 자료」가 원천에서 받아 둔 학원 상세(사진·별점리뷰{blogSyncOn === true ? "·블로그 리뷰" : ""} 포함)와 조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다. 원천 자료 자체를 새로 받으려면 「운전학원 자료」 화면에서 동기화하고 여기서 다시 연결하세…<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
+| `apps/admin-next/components/DomainClient.tsx:1641` | muted-p | 동기화된 학원을 검색·지역으로 찾고, 필요 없는 자료는 삭제합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”). | `apps/api-nest/src/slot.service.ts academy_type_filter` |
+| `apps/admin-next/components/DomainClient.tsx:1795` | muted-p | 글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM을 호출하지 않습니다. | `apps/api-nest/src/slot.service.ts` |
+| `apps/admin-next/components/DomainClient.tsx:1810` | muted-p | 조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/slot.service.ts` |
+| `apps/admin-next/components/DomainClient.tsx:1818` | muted-p | 후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 1단계 ‘글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.) | `apps/api-nest/src/slot.service.ts` |
+| `apps/admin-next/components/DomainClient.tsx:1837` | muted-p | 추천: 1개 테스트 작성 → QA 확인 → 현재 검색 {WRITE_BATCH_SEARCH}개 → 전국 골고루 {WRITE_BATCH_NATIONWIDE}개. 작성 대상은 무작위가 아니라 우선순위(검색량·경쟁도·weight) 상위 N개를 고르며, 전국 작성은 지역을 라운드로빈으로 섞습니다.<br>_같은 문장이 작성 규모(현재 검색 N개 → 전국 M개)도 말한다. 2026-07-28 그 숫자는 상수 렌더로 바꿨고, 남은 종속은 선별·라운드로빈 규칙 쪽이다._ | `apps/admin-next/components/DomainClient.tsx 작성 버튼 개수`<br>`apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_NATIONWIDE`<br>`apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_SEARCH`<br>`apps/api-nest/src/slot.service.ts 선별·라운드로빈` |
+| `apps/admin-next/components/DomainClient.tsx:1844` | muted-p | 아래 필터는 목록 표시와 「현재 검색 N개 작성」 선별에 쓰입니다. | `apps/api-nest/src/slot.service.ts 선별` |
+| `apps/admin-next/components/DomainClient.tsx:1881` | tooltip | 비우면 규칙/LLM 자동 제목. 입력하면 규칙보다 우선합니다. {지역}/{개수}/{키워드}/{학원명} 은 생성 시점에 치환됩니다.<br>_수동 제목이 규칙보다 우선한다는 순서와 치환 토큰 목록이 구현에 종속._ | `apps/api-nest/src/slot.service.ts 제목 규칙` |
+| `apps/admin-next/components/DomainClient.tsx:1904` | muted-p | 대기/진행 작업이 멈춰 있으면 서버 터미널에서 npm run worker:once를 실행해 처리할 수 있습니다. | `package.json#worker:once` |
+| `apps/admin-next/components/DomainClient.tsx:1961` | muted-p | 비용($)은 종량 API 사용 시에만 계측됩니다. 이미지는 OpenAI 이미지 API + SEO_IMAGE_PRICE_USD(장당 단가) 설정, 텍스트는 API LLM이 필요합니다. Codex/구독 경로는 $0으로 표시됩니다. | `apps/api-nest/src/worker.service.ts 비용 계측`<br>`SEO_IMAGE_PRICE_USD` |
+| `apps/admin-next/components/DomainClient.tsx:1984` | muted-p | 체크한 빌트인만 「글유형/디자인」 탭의 빌트인 추가 카탈로그·커스텀 시작점·참조 아키타입 목록에 노출됩니다. 모든 도메인 공통이며, 이미 켜 둔 유형의 생성에는 영향이 없습니다(노출만 제어). 유형 검증이 끝나면 제거할 임시 기능입니다.<br>_「유형 검증이 끝나면 제거할 임시 기능」 — 제거 시 이 문단도 함께 사라져야 한다._ | `apps/api-nest/src/admin.controller.ts 빌트인 노출 설정` |
+| `apps/admin-next/components/DomainClient.tsx:2001` | muted-p | 발행 글을 Google Indexing API로 색인 요청하는 기능입니다. 배포 연동 방식이 정해지면 활성화 예정이며, 현재는 동작하지 않습니다. (서비스계정 JSON은 전 도메인 공통으로 관리될 예정) | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
+| `apps/admin-next/components/DomainClient.tsx:2142` | field:help | 조사값을 글에 전혀 쓰지 않습니다. 글은 원천 동기화로 받은 학원 자료(주소·전화·수강료·셔틀·영업시간·운영 과정·운영 형태·사진 등)와 자체 수강생 후기만 근거로 씁니다.<br>_정책 자체가 아직 생성에 연결되지 않았지만, 같은 패널 바로 아래 ⚠️ 경고가 그 사실을 밝히므로 문구는 그대로 둔다. 연결되는 순간 세 문장이 동시에 검증 대상이 된다._ | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/DomainClient.tsx:2147` | field:help | 위 원천 자료·후기에 더해, 조사값 중에서는 사람이 학원 상세 화면에서 「검증완료」로 올린 것만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다. | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/DomainClient.tsx:2152` | field:help | 위 원천 자료·후기에 더해, 사람이 확인하지 않은 AI 조사값까지 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다. | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/DomainClient.tsx:2179` | muted-p | 원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다. 조사는 학원 단위라 도메인마다 따로 돌리지 않습니다 — 실행은 자료관리에서 합니다. | `academy-research 저장소` |
+| `apps/admin-next/components/DomainClient.tsx:2223` | muted-p | 어느 설정에서도 「검토 필요」(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와 「웹조사 차단」 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다. | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/DomainClient.tsx:2227` | muted-p | ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.<br>_구현되면 이 경고를 지워야 한다. 지우는 것을 잊으면 반대 방향으로 거짓이 된다._ | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/DomainClient.tsx:2272` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
+| `apps/admin-next/components/DomainClient.tsx:2297` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료를 가져오는 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계 「학원자료 연결」을 다시 눌러야 반영됩니다. | `셔틀 지역 판정` |
 | `apps/admin-next/components/DraftsClient.tsx:81` | muted-p | 품질 게이트를 통과하지 못한 글이 생기면 버려지지 않고 여기에 자동으로 보관됩니다. 지금 비어 있는 이유는 보통 둘 중 하나입니다. | `draft 격리 훅` |
 | `apps/admin-next/components/DraftsClient.tsx:86` | jsx-text | 실패한 글은 소급 보관되지 않습니다. 당시에는 본문이 그대로 폐기됐기 때문입니다. | `draft 격리 훅` |
 | `apps/admin-next/components/DraftsClient.tsx:176` | muted-p | 품질 게이트에 걸려 발행되지 못한 글입니다. B(안전·사실) 이슈가 있으면 발행할 수 없고, 본문을 수정해 재검증해야 합니다. A(구조/문체)만 남으면 사유를 확인한 뒤 발행할 수 있습니다. | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
@@ -130,27 +129,30 @@
 | `apps/api-nest/src/admin.controller.ts:301` | api-error | 검증할 방향성(direction)을 입력하세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
 | `apps/api-nest/src/admin.controller.ts:312` | api-error | LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
 | `apps/api-nest/src/admin.controller.ts:566` | api-error | 안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다. 본문을 수정해 재검증하세요.<br>_DraftsClient 의 같은 규칙 설명 2건과 한 몸이다 — 등급 기준이 바뀌면 세 곳을 같이 고쳐야 한다._ | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
-| `apps/api-nest/src/admin.controller.ts:783` | api-error | 작성할 planned 후보가 없습니다. 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)<br>_후보가 없을 때의 대처(‘재료로 글 후보 만들기’)를 안내하므로 화면 흐름·버튼 이름에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
-| `apps/api-nest/src/admin.controller.ts:959` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
-| `apps/api-nest/src/admin.controller.ts:970` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
-| `apps/api-nest/src/admin.controller.ts:972` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
-| `apps/api-nest/src/admin.controller.ts:974` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:790` | api-error | 작성할 planned 후보가 없습니다. 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)<br>_후보가 없을 때의 대처(‘재료로 글 후보 만들기’)를 안내하므로 화면 흐름·버튼 이름에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
+| `apps/api-nest/src/admin.controller.ts:966` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
+| `apps/api-nest/src/admin.controller.ts:977` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
+| `apps/api-nest/src/admin.controller.ts:979` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:981` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 
-## C — 순수 안내 (163건)
+## C — 순수 안내 (165건)
 
 흐름 설명·투어 문구·빈 상태 문구. 사실을 주장하지 않으므로 코드 변경과 무관하다.
 새로 추가된 문장이 사실을 주장하는데 C 로 남아 있는지는 `node scripts/copy-inventory.mjs --untagged` 로 점검한다.
 
-<details><summary>전체 163건 펼치기</summary>
+<details><summary>전체 165건 펼치기</summary>
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
 | `apps/admin-next/components/AcademyDetailClient.tsx:42` | confirm | ${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다. 진행할까요? | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:191` | muted-p | 조사된 셔틀 노선이 없습니다. | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:205` | muted-p | 수집된 후기가 없습니다. 재동기화를 시도하세요. | — |
-| `apps/admin-next/components/AcademyResearchClient.tsx:103` | confirm | DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요? | — |
-| `apps/admin-next/components/AcademyResearchClient.tsx:349` | tooltip | 원천 목록에서 내려간 항목입니다. 자료는 보관하되 목록·동기화 대상에서 제외합니다. | — |
-| `apps/admin-next/components/AcademyResearchClient.tsx:375` | jsx-text | 동기화된 학원이 없습니다. 위 | — |
+| `apps/admin-next/components/AcademyResearchClient.tsx:104` | confirm | DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요? | — |
+| `apps/admin-next/components/AcademyResearchClient.tsx:146` | confirm | 직접 등록한 「${row.name \|\| row.external_id}」을(를) 삭제할까요?\n조사 결과와 검토 상태도 함께 지워집니다. 되돌릴 수 없습니다. | — |
+| `apps/admin-next/components/AcademyResearchClient.tsx:367` | tooltip | 원천 목록에서 내려간 항목입니다. 자료는 보관하되 목록·동기화 대상에서 제외합니다. | — |
+| `apps/admin-next/components/AcademyResearchClient.tsx:383` | tooltip | 원천 동기화가 아니라 사람이 직접 등록한 학원입니다. | — |
+| `apps/admin-next/components/AcademyResearchClient.tsx:401` | jsx-text | 동기화된 학원이 없습니다. 위 | — |
+| `apps/admin-next/components/AcademyResearchClient.tsx:470` | muted-p | 원천 동기화 목록에 없는 학원을 직접 넣습니다. 필수는 이름 하나이며, 나머지는 근거로 확인한 것만 채우세요. 여기 등록한 학원은 동기화를 다시 돌려도 사라지지 않고, AI 조사 대상에도 함께 들어갑니다. | — |
 | `apps/admin-next/components/DashboardClient.tsx:97` | muted-p | 운전면허·운전학원 도메인의 콘텐츠 생성·발행 작업을 운영하는 내부 관리자 화면입니다. | — |
 | `apps/admin-next/components/DashboardClient.tsx:103` | muted-p | ℹ️ 현재 범위 — 이 관리자는 운전면허·운전학원(driving) 글 생성에 특화되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 이 주제 기준이라, 다른 주제의 글은 생성되더라도 품질을 보장할 수 없습니다. (업종은 추가할 수 있으나 전용 프리셋·품질은 아직 운전면허·운전학원에만 적용) | — |
 | `apps/admin-next/components/DashboardClient.tsx:115` | muted-p | 생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다. | — |
@@ -258,39 +260,37 @@
 | `apps/admin-next/components/DomainClient.tsx:1286` | muted-p | tier가 없습니다. 「+ tier 추가」로 &quot;후보 N곳 이상일 때 이 제목&quot; 규칙을 만드세요. (없으면 LLM이 제목 결정) | — |
 | `apps/admin-next/components/DomainClient.tsx:1296` | placeholder | 어떤 tier도 안 맞을 때 쓸 제목 (예: {지역} 운전학원 안내) | — |
 | `apps/admin-next/components/DomainClient.tsx:1302` | tooltip | 입력한 내용을 모두 지우고 빈 폼으로 되돌립니다 | — |
-| `apps/admin-next/components/DomainClient.tsx:1445` | confirm | 이 도메인에서 학원 자료를 비웁니다.\n「운전학원 자료」의 원본과 조사값은 그대로 남고, 다시 연결하면 복구됩니다. 진행할까요? | — |
-| `apps/admin-next/components/DomainClient.tsx:1464` | confirm | 「운전학원 자료」에 이미 받아 둔 학원 자료를 이 도메인으로 가져옵니다.\n원천 API 는 호출하지 않아 수십 초면 끝납니다. 진행할까요? | — |
-| `apps/admin-next/components/DomainClient.tsx:1555` | confirm | 지역 축을 기본값(운전 프리셋 지역)으로 초기화할까요? 지금 지역 목록이 덮어써집니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:1611` | tooltip | 지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline) | — |
-| `apps/admin-next/components/DomainClient.tsx:1615` | muted-p | 최근 지역 동기화(이 브라우저 기록): {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.… | — |
-| `apps/admin-next/components/DomainClient.tsx:1617` | jsx-text | 에만 쓰이며 글 내용은 바꾸지 않습니다(추후 | — |
-| `apps/admin-next/components/DomainClient.tsx:1617` | jsx-text | 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:1623` | muted-p | 지역이 없습니다. 위 「지역 동기화」 또는 「기본값으로 초기화」로 채우세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:1625` | muted-p | 보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요. 한 줄에 하나: 값,가중치,월검색량,KD | — |
-| `apps/admin-next/components/DomainClient.tsx:1646` | tooltip | 「운전학원 자료」가 이미 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:1646` | tooltip | 이 도메인에서 학원 자료를 비웁니다. 「운전학원 자료」의 원본과 조사값은 그대로 남고, 다시 연결하면 복구됩니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:1649` | muted-p | 최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academi… | — |
-| `apps/admin-next/components/DomainClient.tsx:1659` | muted-p | DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:1663` | muted-p | 여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:1679` | muted-p | {photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개 | — |
-| `apps/admin-next/components/DomainClient.tsx:1681` | muted-p | {loading ? "불러오는 중..." : "학원이 없습니다. 위 「학원 동기화」로 채우거나 검색 조건을 바꿔보세요."} | — |
-| `apps/admin-next/components/DomainClient.tsx:1775` | confirm | 요청한 개수 ${max.toLocaleString()}개는 글유형당 상한 ${cap.toLocaleString()}개로 제한됩니다.${typeof created === "number" ? | — |
-| `apps/admin-next/components/DomainClient.tsx:1787` | confirm | 작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:1798` | confirm | ${label}: ${count}개 글 작성을 큐에 등록할까요? | — |
-| `apps/admin-next/components/DomainClient.tsx:1802` | confirm | ${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:1834` | muted-p | 활성화된 글유형이 없습니다. 글유형/디자인 탭에서 유형을 켜세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:1874` | placeholder | 지역/키워드/후보 검색 예: 서울, 강남구 | — |
-| `apps/admin-next/components/DomainClient.tsx:1936` | jsx-text | 아직 작업이 없습니다. 글 생성 탭에서 “1개 테스트 작성”부터 등록하세요.<br>_빈 상태 문구._ | — |
-| `apps/admin-next/components/DomainClient.tsx:1981` | muted-p | {scoped.length}개 글 · 이미지 {aggImgs}장(평균 {scoped.length ? (aggImgs / scoped.length).toFixed(1) : "0"}장) · 비용 ${aggCost.toFixed(3)} (평균 ${scoped.length ? (aggCost / scoped.length).toF… | — |
-| `apps/admin-next/components/DomainClient.tsx:2025` | confirm | 정말 삭제할까요? 모든 데이터가 삭제됩니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:2026` | muted-p | 도메인 목록·상단 전환 메뉴에서 이 도메인을 구분하는 이름입니다. 글에는 나오지 않으니 운영 편한 대로 적어도 됩니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:2026` | muted-p | 미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:2026` | muted-p | 이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:2212` | muted-p | 조사 현황을 불러오지 못했습니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:2222` | muted-p | {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."} {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).t… | — |
-| `apps/admin-next/components/DomainClient.tsx:2303` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
-| `apps/admin-next/components/DomainClient.tsx:2311` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:2315` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:1428` | confirm | 이 도메인에서 학원 자료를 비웁니다.\n「운전학원 자료」의 원본과 조사값은 그대로 남고, 다시 연결하면 복구됩니다. 진행할까요? | — |
+| `apps/admin-next/components/DomainClient.tsx:1447` | confirm | 「운전학원 자료」에 이미 받아 둔 학원 자료를 이 도메인으로 가져옵니다.\n원천 API 는 호출하지 않아 수십 초면 끝납니다. 진행할까요? | — |
+| `apps/admin-next/components/DomainClient.tsx:1538` | confirm | 지역 축을 기본값(운전 프리셋 지역)으로 초기화할까요? 지금 지역 목록이 덮어써집니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:1594` | tooltip | 지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline) | — |
+| `apps/admin-next/components/DomainClient.tsx:1598` | muted-p | 최근 지역 동기화(이 브라우저 기록): {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.… | — |
+| `apps/admin-next/components/DomainClient.tsx:1600` | jsx-text | 에만 쓰이며 글 내용은 바꾸지 않습니다(추후 | — |
+| `apps/admin-next/components/DomainClient.tsx:1600` | jsx-text | 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:1606` | muted-p | 지역이 없습니다. 위 「지역 동기화」 또는 「기본값으로 초기화」로 채우세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:1608` | muted-p | 보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요. 한 줄에 하나: 값,가중치,월검색량,KD | — |
+| `apps/admin-next/components/DomainClient.tsx:1629` | tooltip | 「운전학원 자료」가 이미 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:1629` | tooltip | 이 도메인에서 학원 자료를 비웁니다. 「운전학원 자료」의 원본과 조사값은 그대로 남고, 다시 연결하면 복구됩니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:1632` | muted-p | 최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academi… | — |
+| `apps/admin-next/components/DomainClient.tsx:1654` | muted-p | {photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개 | — |
+| `apps/admin-next/components/DomainClient.tsx:1656` | muted-p | {loading ? "불러오는 중..." : "학원이 없습니다. 위 「학원 동기화」로 채우거나 검색 조건을 바꿔보세요."} | — |
+| `apps/admin-next/components/DomainClient.tsx:1750` | confirm | 요청한 개수 ${max.toLocaleString()}개는 글유형당 상한 ${cap.toLocaleString()}개로 제한됩니다.${typeof created === "number" ? | — |
+| `apps/admin-next/components/DomainClient.tsx:1762` | confirm | 작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:1773` | confirm | ${label}: ${count}개 글 작성을 큐에 등록할까요? | — |
+| `apps/admin-next/components/DomainClient.tsx:1777` | confirm | ${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:1809` | muted-p | 활성화된 글유형이 없습니다. 글유형/디자인 탭에서 유형을 켜세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:1849` | placeholder | 지역/키워드/후보 검색 예: 서울, 강남구 | — |
+| `apps/admin-next/components/DomainClient.tsx:1911` | jsx-text | 아직 작업이 없습니다. 글 생성 탭에서 “1개 테스트 작성”부터 등록하세요.<br>_빈 상태 문구._ | — |
+| `apps/admin-next/components/DomainClient.tsx:1956` | muted-p | {scoped.length}개 글 · 이미지 {aggImgs}장(평균 {scoped.length ? (aggImgs / scoped.length).toFixed(1) : "0"}장) · 비용 ${aggCost.toFixed(3)} (평균 ${scoped.length ? (aggCost / scoped.length).toF… | — |
+| `apps/admin-next/components/DomainClient.tsx:2000` | confirm | 정말 삭제할까요? 모든 데이터가 삭제됩니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:2001` | muted-p | 도메인 목록·상단 전환 메뉴에서 이 도메인을 구분하는 이름입니다. 글에는 나오지 않으니 운영 편한 대로 적어도 됩니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:2001` | muted-p | 미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:2001` | muted-p | 이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:2187` | muted-p | 조사 현황을 불러오지 못했습니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:2197` | muted-p | {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."} {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).t… | — |
+| `apps/admin-next/components/DomainClient.tsx:2278` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
+| `apps/admin-next/components/DomainClient.tsx:2286` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:2290` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:67` | muted-p | 검수 대기 목록에서 반려한 글이 여기에 모입니다. 반려해도 본문은 지워지지 않아 나중에 다시 열어볼 수 있습니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:74` | muted-p | 검수 후 발행한 글이 여기에 기록됩니다. 발행된 글 자체는 검수·내보내기 화면에서 확인합니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:85` | jsx-text | 최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다.<br>_빈 상태 해석._ | — |
@@ -307,6 +307,7 @@
 | `apps/admin-next/lib/domain-gate.ts:11` | lib-string | 글 생성을 하려면 운영 도메인이 필요합니다<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:16` | lib-string | 검수·보내기를 하려면 운영 도메인이 필요합니다<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:17` | lib-string | 도메인을 만든 뒤 생성된 글을 미리보기, export, 색인 요청으로 마무리할 수 있습니다.<br>_빈 화면 안내._ | — |
-| `apps/api-nest/src/admin.controller.ts:693` | api-error | 실행 이력을 찾을 수 없습니다.<br>_단순 404 안내._ | — |
+| `apps/api-nest/src/academy-research.controller.ts:140` | api-error | 수동 등록한 학원만 삭제할 수 있습니다. | — |
+| `apps/api-nest/src/admin.controller.ts:700` | api-error | 실행 이력을 찾을 수 없습니다.<br>_단순 404 안내._ | — |
 
 </details>

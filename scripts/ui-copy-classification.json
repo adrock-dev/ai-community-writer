@@ -445,14 +445,6 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "다시 등록하면 비운 항목이 기존 값을 덮어",
-      "class": "B",
-      "depends": [
-        "apps/api-nest/src/admin.controller.ts academies upsert"
-      ]
-    },
-    {
-      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "학원 타입은 글유형별로 정합니다",
       "class": "B",
       "depends": [
@@ -736,15 +728,6 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "직접 입력합니다",
-      "class": "A",
-      "depends": [
-        "apps/admin-next/components/DomainClient.tsx#SINGLE_ACADEMY_FIELDS"
-      ],
-      "note": "2026-07-28 수정. 폼은 11개 필드를 렌더하는데 안내는 5개만 말하고 있었다(수강료·셔틀·운영시간·합격률·출처 누락). 목록을 SINGLE_ACADEMY_FIELDS 하나로 합쳐 안내도 거기서 렌더한다."
-    },
-    {
-      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "글 생성 탭이 두 단계로 나뉩니다",
       "class": "C",
       "depends": [],
@@ -956,6 +939,14 @@
       "class": "C",
       "depends": [],
       "note": "빈 화면 안내."
+    },
+    {
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
+      "match": "원천이 그 학원 값을 주지 않을 때만",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies __manual 폴백"
+      ]
     }
   ]
 }

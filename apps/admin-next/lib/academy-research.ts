@@ -18,6 +18,8 @@ export interface AcademyBaseRow {
   seo_keywords?: string | null;
   seo_description?: string | null;
   raw_json?: string | null;
+  /** 'drivingplus'(원천 동기화) 또는 'manual'(직접 등록). 수동분만 삭제할 수 있다. */
+  source?: string | null;
   synced_at?: string | null;
   researched_at?: string | null;
   research_engine?: string | null;
@@ -106,6 +108,29 @@ export const listReviewQueue = (opts: { status?: string; q?: string; limit?: num
   if (opts.limit) search.set("limit", String(opts.limit));
   return api<{ items: ReviewQueueRow[]; total: number }>(`/academy-research/review-queue?${search.toString()}`);
 };
+/** 원천에 없는 학원을 직접 등록한다. 지역·이름 외에는 아는 것만 채우면 된다. */
+export interface ManualAcademyInput {
+  name: string;
+  region?: string;
+  address?: string;
+  phone?: string;
+  academy_type?: string;
+  price?: string;
+  shuttle?: string;
+  hours?: string;
+  pass_rate?: string;
+  source_name?: string;
+  source_url?: string;
+  review?: string;
+}
+export const createManualAcademy = (body: ManualAcademyInput | ManualAcademyInput[]) =>
+  api<{ ok: boolean; created: number; external_ids: string[]; errors: string[] }>("/academy-research/manual", {
+    method: "POST",
+    body: JSON.stringify(Array.isArray(body) ? { items: body } : body),
+  });
+export const deleteManualAcademy = (externalId: string) =>
+  api<{ ok: boolean }>(`/academy-research/manual/${encodeURIComponent(externalId)}`, { method: "DELETE" });
+
 export const listStatusDefs = () => api<{ items: StatusDef[] }>("/academy-research/status-defs");
 export const listResearchRuns = () => api<{ items: ResearchRun[] }>("/academy-research/runs");
 // 취소 "요청". 처리 중이던 학원은 마치고 멈추므로 즉시 반영되지는 않는다.

@@ -619,6 +619,13 @@ export class AdminController {
     return { count: items.length, items, academy_types: this.db.listAcademyTypes(domain) };
   }
 
+  /**
+   * 학원 자료 직접 등록(레거시 · 화면에서는 쓰지 않는다).
+   *
+   * 이 도메인에만 존재하는 행이 만들어져, 「연결 끊기」로 지우면 되살릴 방법이 없었다.
+   * 사람이 등록하는 경로는 「운전학원 자료 → 직접 등록」(POST /api/admin/academy-research/manual)로
+   * 옮겼고 그쪽은 업종 자산으로 남는다. 이 엔드포인트는 API 직접 호출 호환을 위해서만 남긴다.
+   */
   @Post("domains/:domain/academies")
   upsertAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: any) {
     checkAuth(req, headers); this.requireDomain(domain);

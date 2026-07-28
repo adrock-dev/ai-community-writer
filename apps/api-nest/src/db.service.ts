@@ -1067,7 +1067,11 @@ export class DbService implements OnModuleInit {
         const name = String(row.title || "").trim();
         if (!externalId || !name) { skipped++; continue; }
         const address = nullableText(row.roadAddress);
-        const region = bestRegionForAddress(address, regions) || fallbackRegionFromAddress(address);
+        // 수동 등록 학원은 원천의 구조화된 값(educationPerformance 등)이 없고 사람이 적은 문장뿐이다.
+        // 구조화 값이 있으면 그쪽이 언제나 이긴다 — 수동은 원천이 비어 있는 자리만 메운다.
+        const manual = (row.__manual as Record<string, unknown> | undefined) ?? null;
+        // 수동분은 주소를 안 적어도 되게 한다. 주소가 없으면 지역을 못 뽑아 후보 선정에서 통째로 빠진다.
+        const region = bestRegionForAddress(address, regions) || fallbackRegionFromAddress(address) || nullableText(manual?.region);
         if (!region) warnings.push(`${name}: 주소에서 지역을 추정하지 못했습니다.`);
         const photos = Array.isArray(row.photos) ? row.photos.map((v) => String(v || "").trim()).filter(Boolean) : [];
         const reviews = normalizeDrivingplusReviews(row.reviews);
@@ -1091,9 +1095,12 @@ export class DbService implements OnModuleInit {
         // pass_rate 는 의도적으로 채우지 않는다: accidentRate 는 교통사고율, graduates 는 수료생 수이며
         // 합격률 원천은 어디에도 없다. 합격률로 오독하면 글에 근거 없는 합격 주장이 실린다.
         const performance = (row.educationPerformance ?? null) as DrivingplusEducationPerformance | null;
-        const price = formatTuitionFact(performance);
-        const shuttle = formatShuttleFact((row.shuttleBuses ?? []) as DrivingplusShuttleBus[], nearbyDirectoryRegions(directory, nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude)));
-        const hours = formatOperatingHoursFact((row.operateHour ?? null) as DrivingplusOperateHour | null);
+        const price = formatTuitionFact(performance) ?? nullableText(manual?.price);
+        const shuttle = formatShuttleFact((row.shuttleBuses ?? []) as DrivingplusShuttleBus[], nearbyDirectoryRegions(directory, nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude))) ?? nullableText(manual?.shuttle);
+        const hours = formatOperatingHoursFact((row.operateHour ?? null) as DrivingplusOperateHour | null) ?? nullableText(manual?.hours);
+        // 출처 표기. 수동분까지 "DrivingPlus" 로 적으면 검수자가 근거를 원천에서 찾다가 못 찾는다.
+        const sourceName = nullableText(manual?.source_name) ?? (manual ? "직접 입력" : "DrivingPlus");
+        const sourceUrl = manual ? nullableText(manual.source_url) : `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`;
         // extra 는 원천 응답을 손실 없이 보관하는 자리다(컬럼으로 승격한 값 외 전부).
         // 새 키를 읽어 facts/프롬프트로 올릴지는 별도 판단이며, 여기서는 저장만 한다.
         // 조사값은 "학원자료 연결"(AcademyLinkService)로 들어올 때만 갱신한다. 원천 동기화 경로가
@@ -1127,15 +1134,19 @@ export class DbService implements OnModuleInit {
         });
         if (existing) {
           this.run(`UPDATE academies SET region=?, name=?, address=?, price=?, shuttle=?, hours=?, phone=?, vphone=?, review=?, review_json=?, blog_reviews=?, seo_title=?, seo_keywords=?, seo_description=?, seo_content=?, latitude=?, longitude=?, thumb_url=?, photos=?, academy_type=?, extra=?, source_name=?, source_url=?, synced_at=? WHERE id=? AND domain=?`,
-            [region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt, existing.id, domain]);
+            [region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), JSON.stringify(blogReviews), nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, sourceName, sourceUrl, syncedAt, existing.id, domain]);
         } else {
           this.run(`INSERT INTO academies (id, domain, external_id, region, name, address, price, shuttle, hours, phone, vphone, review, review_json, blog_reviews, seo_title, seo_keywords, seo_description, seo_content, latitude, longitude, thumb_url, photos, academy_type, extra, source_name, source_url, synced_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             -- blog_reviews 를 NULL 로 넣으면 위 COALESCE 가 (domain, region, name) 충돌 시 기존 값을 지킨다
             ON CONFLICT(domain, region, name) DO UPDATE SET external_id=excluded.external_id, address=excluded.address, price=excluded.price, shuttle=excluded.shuttle, hours=excluded.hours, phone=excluded.phone, vphone=excluded.vphone, review=excluded.review, review_json=excluded.review_json, blog_reviews=COALESCE(excluded.blog_reviews, academies.blog_reviews), seo_title=excluded.seo_title, seo_keywords=excluded.seo_keywords, seo_description=excluded.seo_description, seo_content=excluded.seo_content, latitude=excluded.latitude, longitude=excluded.longitude, thumb_url=excluded.thumb_url, photos=excluded.photos, academy_type=excluded.academy_type, extra=excluded.extra, source_name=excluded.source_name, source_url=excluded.source_url, synced_at=excluded.synced_at
             WHERE academies.external_id IS NULL OR academies.external_id=excluded.external_id`,
-            [randomUUID(), domain, externalId, region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), blogReviewsFetched ? JSON.stringify(blogReviews) : null, nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, "DrivingPlus", `${drivingplusApiBaseUrl()}/v1/academy/get-all-academy`, syncedAt]);
+            [randomUUID(), domain, externalId, region, name, address, price, shuttle, hours, nullableText(row.phone), nullableText(row.vphone), reviewText, JSON.stringify(reviews), blogReviewsFetched ? JSON.stringify(blogReviews) : null, nullableText(row.seoTitle), nullableText(row.seoKeywords), nullableText(row.seoDescription), nullableText(row.seoContent), nullableNumber(row.roadLatitude), nullableNumber(row.roadLongitude), nullableText(row.thumbSavePath), JSON.stringify(photos), nullableText(row.type), extra, sourceName, sourceUrl, syncedAt]);
         }
+        // pass_rate 는 원천 경로가 절대 쓰지 않는다(합격률 원천이 없기 때문). 사람이 근거를 확인해
+        // 적어 넣은 값만 따로 반영한다. 위 SQL 에 컬럼으로 넣으면 동기화마다 전부 NULL 로 밀린다.
+        const manualPassRate = nullableText(manual?.pass_rate);
+        if (manualPassRate) this.run("UPDATE academies SET pass_rate=? WHERE domain=? AND external_id=?", [manualPassRate, domain, externalId]);
         upserted++;
       }
     });
