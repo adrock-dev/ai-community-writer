@@ -87,6 +87,7 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | `docs/admin-json-api.md` | 관리자 API 상세 명세 |
 | `docs/source-analysis.md` | 현재 소스 구조 분석 |
 | `docs/source-field-usage.md` | 원천 학원 필드가 어디에 저장되고 어디에 쓰이는지 대조표(안 쓰는 이유 포함) |
+| `docs/data-portability.md` | 다른 경로·장비로 옮길 때 무엇이 따라오고 무엇이 사라지는지 + 복사 절차(WAL 주의) |
 | `scripts/qa-posts.mjs` | 생성 글 품질 QA |
 | `scripts/verify-company-clean.mjs` | 회사 제출용 금지 흔적 검사 |
 
