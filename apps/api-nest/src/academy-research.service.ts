@@ -327,6 +327,52 @@ export class AcademyResearchService {
     return { ok: true, run_id: runId, count: targets.length };
   }
 
+  /**
+   * 학원 1곳 조사를 **백그라운드로** 시작하고 run_id 를 즉시 돌려준다.
+   *
+   * 예전에는 요청 안에서 끝까지 기다렸다. 그런데 조사 1곳은 평균 85초, 소스를 많이 따라가면
+   * 388초까지 걸린다(실측). 관리자 프록시의 fetch 는 기본 300초에 끊으므로, 오래 걸린 조사는
+   * **서버는 완주해 저장했는데 화면에는 실패로 뜬다.** 학원 동기화에서 이미 겪은 문제라
+   * 같은 해법(run 행 + 폴링)을 쓴다.
+   *
+   * 배치와 겹쳐 도는 것은 막지 않는다 — 운영자가 특정 학원 하나를 지금 고치고 싶을 수 있다.
+   * 다만 같은 학원을 두 번 겹쳐 돌리는 것은 막는다(서로의 값을 덮는다).
+   */
+  async startSingleResearch(
+    externalId: string,
+    opts: { provider?: ResearchProviderPreference } = {},
+  ): Promise<{ ok: boolean; run_id?: string; error?: string }> {
+    if (!this.db.getBase(externalId)) return { ok: false, error: "학원(base)이 없습니다. 먼저 동기화하세요." };
+    if (this.db.findRunningRunForAcademy(externalId)) return { ok: false, error: "이 학원은 이미 조사 중입니다." };
+    const providers = await this.resolveProviders(opts.provider);
+    if (!providers.length) return { ok: false, error: "claude/codex CLI를 찾을 수 없습니다." };
+
+    const runId = this.db.createRun({
+      scope: "single",
+      external_id: externalId,
+      engine: opts.provider && opts.provider !== "auto" ? opts.provider : "auto",
+      method: "b_single",
+      count_total: 1,
+    });
+    void this.researchOne(externalId, { method: "b_single", provider: opts.provider ?? "auto" })
+      .then((result) => {
+        // 소스 없음은 예외가 아니라 명시적 상태다(값을 지어내지 않으려는 설계). 그래도 성공은
+        // 아니므로 error 로 끝낸다 — 화면이 "완료" 로 읽으면 빈 결과를 성공으로 오해한다.
+        this.db.updateRun(runId, {
+          status: result.ok ? "done" : "error",
+          count_done: 1,
+          result: { saved: result.ok ? 1 : 0, no_sources: result.no_sources ? 1 : 0, sources: result.sources ?? 0, provider: result.provider },
+          error: result.ok ? undefined : (result.error || "조사 실패"),
+          finished: true,
+        });
+      })
+      .catch((error) => {
+        this.logger.error(`single research failed: ${error?.message || error}`);
+        this.db.updateRun(runId, { status: "error", count_done: 1, error: String(error?.message || error), finished: true });
+      });
+    return { ok: true, run_id: runId };
+  }
+
   // 조사는 학원 1곳당 웹 수집 + LLM 호출이라 동시 실행하지 않는다(CLI 서브프로세스가 곱절로 뜬다).
   // 취소는 학원 사이에서만 확인하므로, 진행 중이던 1곳은 마치고 멈춘다.
   //

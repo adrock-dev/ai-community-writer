@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
-  type AcademyFull, type ResearchProvider, type StatusDef, RESEARCH_FIELD_LABELS,
-  getAcademyResearch, listStatusDefs, researchOneAcademy, setResearchFieldMeta, updateResearchField,
+  type AcademyFull, type ResearchProvider, type ResearchRun, type StatusDef, RESEARCH_FIELD_LABELS,
+  getAcademyResearch, getResearchRun, listResearchRuns, listStatusDefs, researchOneAcademy,
+  setResearchFieldMeta, updateResearchField,
 } from "@/lib/academy-research";
 import { formatDateTime } from "@/lib/date";
 
@@ -37,18 +38,55 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
 
   useEffect(() => { load(); }, [load]);
 
+  /**
+   * 단건 조사. 서버가 백그라운드로 돌리고 run_id 만 주므로 여기서 진행을 폴링한다.
+   *
+   * 예전에는 응답을 끝까지 기다렸는데, 조사 1곳이 평균 85초·길면 388초라 관리자 프록시의
+   * fetch(기본 300초)에 끊겼다 — 서버는 저장했는데 화면은 실패로 보이는 상태였다.
+   * 이제 창을 닫았다 와도 진행 중이면 다시 붙는다.
+   */
   async function onResearch() {
     const targetName = data?.base?.name || externalId;
-    if (!confirm(`${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다. 진행할까요?`)) return;
+    if (!confirm(`${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다.\n1~2분 걸리며 창을 닫아도 서버에서 계속 진행됩니다. 진행할까요?`)) return;
     setBusy("research"); setError(""); setNotice("");
     try {
-      const r = await researchOneAcademy(externalId, researchProvider);
-      if (r.no_sources) { setError(`⚠️ ${r.error || "공개 소스를 찾지 못했습니다."}`); await load(); return; }
-      if (!r.ok) throw new Error(r.error || "실패");
-      setNotice(`AI 조사 완료 (${r.provider}) · 소스 ${r.sources ?? 0}건`); await load();
-    } catch (e: any) { setError(e?.message || "조사 실패"); }
-    finally { setBusy(""); }
+      const started = await researchOneAcademy(externalId, researchProvider);
+      if (!started.ok || !started.run_id) throw new Error(started.error || "시작 실패");
+      await watchRun(started.run_id);
+    } catch (e: any) { setError(e?.message || "조사 실패"); setBusy(""); }
   }
+
+  // 끝날 때까지 run 행을 지켜본다. 결과는 요청이 아니라 run 에만 남으므로, 새로고침하거나
+  // 창을 닫았다 와도 같은 방식으로 이어 볼 수 있다(목록 화면의 배치와 동일한 구조).
+  const watchRun = useCallback(async (runId: string) => {
+    setBusy("research");
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      let run: ResearchRun;
+      try { run = await getResearchRun(runId); }
+      catch { continue; } // 일시적 조회 실패로 진행을 포기하지 않는다
+      if (run.status === "running") { setNotice(`AI 조사 진행 중… (${run.engine || "auto"})`); continue; }
+      const tally = (() => { try { return JSON.parse(String(run.result ?? "{}")); } catch { return {}; } })();
+      setBusy("");
+      await load();
+      if (run.status === "done") { setNotice(`AI 조사 완료 (${tally.provider ?? run.engine ?? "auto"}) · 소스 ${tally.sources ?? 0}건`); return; }
+      setNotice("");
+      setError(tally.no_sources ? `⚠️ ${run.error || "공개 소스를 찾지 못했습니다."}` : `조사 실패: ${run.error || "원인 미상"}`);
+      return;
+    }
+  }, [load]);
+
+  // 진행 중이던 조사가 있으면 화면을 다시 열었을 때 붙는다.
+  useEffect(() => {
+    let cancelled = false;
+    void listResearchRuns()
+      .then((res) => {
+        const mine = res.items.find((r) => r.scope === "single" && r.external_id === externalId && r.status === "running");
+        if (mine && !cancelled) void watchRun(mine.id);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [externalId, watchRun]);
   async function saveValue(field: string) {
     setError(""); setNotice("");
     try { await updateResearchField(externalId, field, values[field] ?? ""); setNotice(`저장됨: ${field}`); }

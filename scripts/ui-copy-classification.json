@@ -948,6 +948,14 @@
         "apps/api-nest/src/academy-research-db.service.ts",
         "apps/api-nest/src/academy-link.service.ts#linkToDomain"
       ]
+    },
+    {
+      "file": "apps/admin-next/components/AcademyDetailClient.tsx",
+      "match": "창을 닫아도 서버에서 계속 진행됩니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-research.service.ts#startSingleResearch"
+      ]
     }
   ]
 }

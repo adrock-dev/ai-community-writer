@@ -315,9 +315,13 @@ export default function AcademyResearchClient() {
         <div key={run!.id} className="card card-pad" style={{ margin: "8px 0" }}>
           <div className="row" style={{ alignItems: "center", justifyContent: "space-between", gap: 12 }}>
             <b>{runLabel(run!)} 진행</b>
-            <button className="btn" onClick={() => onCancel(run!)} disabled={Boolean(run!.cancel_requested)} style={{ whiteSpace: "nowrap" }}>
-              {run!.cancel_requested ? "중단하는 중…" : "중단"}
-            </button>
+            {/* 단건은 학원 사이에서 멈출 지점이 없어 중단을 지원하지 않는다. 눌러도 안 멈추는
+                버튼을 두느니 안 보이는 편이 낫다(1곳이라 85초 안팎이면 끝난다). */}
+            {run!.scope !== "single" && (
+              <button className="btn" onClick={() => onCancel(run!)} disabled={Boolean(run!.cancel_requested)} style={{ whiteSpace: "nowrap" }}>
+                {run!.cancel_requested ? "중단하는 중…" : "중단"}
+              </button>
+            )}
           </div>
           <div className="muted small" style={{ marginTop: 4 }}>{runDetail(run!)} · {run!.count_done}/{run!.count_total || "?"}</div>
           <div style={{ height: 8, background: "var(--surface-2, #eee)", borderRadius: 999, marginTop: 8, overflow: "hidden" }}>
@@ -507,11 +511,13 @@ function lastSyncLabel(run: ResearchRun | undefined, running: boolean): string {
 function runLabel(run: ResearchRun): string {
   if (run.scope === "sync") return "학원정보 동기화";
   if (run.scope === "sync_blog") return "블로그리뷰 동기화";
+  if (run.scope === "single") return "단건 AI 조사";
   return "전체 AI 조사";
 }
 function runDetail(run: ResearchRun): string {
   if (run.scope === "sync") return "DrivingPlus 기본정보 + 후기";
   if (run.scope === "sync_blog") return "DrivingPlus 블로그리뷰";
+  if (run.scope === "single") return `학원 #${run.external_id ?? "?"} · ${run.engine || "auto"}`;
   return `${run.region || "전체"} · ${run.engine || "auto"}`;
 }
 function runSummary(run: ResearchRun): string {

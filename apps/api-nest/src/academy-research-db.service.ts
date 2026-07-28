@@ -769,6 +769,10 @@ export class AcademyResearchDbService implements OnModuleInit {
       ? this.get("SELECT * FROM research_runs WHERE status='running' AND scope=? ORDER BY started_at DESC", [scope])
       : this.get("SELECT * FROM research_runs WHERE status='running' ORDER BY started_at DESC");
   }
+  /** 이 학원을 지금 조사 중인 단건 실행. 같은 학원을 두 번 겹쳐 돌리면 서로의 값을 덮는다. */
+  findRunningRunForAcademy(externalId: string): Row | undefined {
+    return this.get("SELECT * FROM research_runs WHERE status='running' AND scope='single' AND external_id=?", [externalId]);
+  }
   getRun(id: string): Row | undefined { return this.get("SELECT * FROM research_runs WHERE id = ?", [id]); }
 
   // ---- 상세(집계) ----

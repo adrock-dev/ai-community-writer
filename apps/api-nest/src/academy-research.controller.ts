@@ -161,9 +161,25 @@ export class AcademyResearchController {
     return this.service.syncOne(externalId);
   }
 
-  // 단건 AI 조사(b, 동기)
+  /**
+   * 단건 AI 조사 — 백그라운드로 시작하고 run_id 만 준다.
+   *
+   * 예전에는 요청 안에서 끝까지 기다렸다. 조사 1곳은 평균 85초, 소스를 많이 따라가면 388초까지
+   * 걸리는데(실측) 관리자 프록시의 fetch 는 기본 300초에 끊는다 — 서버는 완주해 저장했는데
+   * 화면에는 실패로 뜨는 상태였다. 진행은 runs/:runId 로 조회한다.
+   */
   @Post(":externalId/research")
   async researchOne(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("externalId") externalId: string, @Body() body: Row) {
+    checkAuth(req, headers);
+    const provider = parseResearchProvider(body?.provider);
+    const started = await this.service.startSingleResearch(externalId, { provider });
+    if (!started.ok) throw new HttpException(started.error || "조사를 시작하지 못했습니다.", 400);
+    return started;
+  }
+
+  /** 요청 안에서 끝까지 기다리는 옛 경로. API 직접 호출 호환용이며 화면은 쓰지 않는다. */
+  @Post(":externalId/research-sync")
+  async researchOneSync(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("externalId") externalId: string, @Body() body: Row) {
     checkAuth(req, headers);
     const provider = parseResearchProvider(body?.provider);
     const result = await this.service.researchOne(externalId, { method: "b_single", provider });

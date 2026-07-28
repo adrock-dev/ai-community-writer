@@ -30,7 +30,10 @@ export type ResearchProvider = "auto" | "codex" | "claude";
 
 export interface ResearchRun {
   id: string;
+  /** 'sync' | 'sync_blog' | 'all'(전체 조사) | 'single'(학원 1곳 조사) */
   scope: string;
+  /** scope='single' 일 때 대상 학원. */
+  external_id?: string | null;
   region?: string | null;
   engine?: string | null;
   method?: string | null;
@@ -142,7 +145,11 @@ export const syncRegion = () => api<{ ok: boolean; run_id?: string; error?: stri
 // (원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞인다). 검증 방식이 정해지면 다시 켠다.
 export const syncBlogReviews = () => api<{ ok: boolean; run_id?: string; error?: string }>("/academy-research/sync/blog-reviews", { method: "POST", body: JSON.stringify({}) });
 export const syncOneAcademy = (externalId: string) => api<{ external_id: string; found: boolean; reviews: number }>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });
-export const researchOneAcademy = (externalId: string, provider: ResearchProvider = "auto") => api<{ ok: boolean; external_id: string; provider?: string; error?: string; no_sources?: boolean; sources?: number }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST", body: JSON.stringify({ provider }) });
+// 단건 조사도 백그라운드다 — 학원 1곳이 평균 85초, 길면 388초 걸려 요청 안에서 기다리면
+// 관리자 프록시의 fetch(기본 300초)에 끊긴다. run_id 로 진행을 폴링한다.
+export const researchOneAcademy = (externalId: string, provider: ResearchProvider = "auto") =>
+  api<{ ok: boolean; run_id?: string; error?: string }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST", body: JSON.stringify({ provider }) });
+export const getResearchRun = (runId: string) => api<ResearchRun>(`/academy-research/runs/${encodeURIComponent(runId)}`);
 // 기본은 아직 조사되지 않은 학원만 대상으로 한다. 배치가 중단돼도 다시 눌러 이어서
 // 진행하기 위함이다. limit 은 이번 실행의 상한(학원 1곳이 1분 안팎이라 나눠 돌린다).
 export const researchRegion = (provider: ResearchProvider = "auto", opts: { refreshAll?: boolean; limit?: number; offset?: number } = {}) =>
