@@ -1329,6 +1329,22 @@ function uniquePreviewItems(items: string[]): string[] {
 }
 
 
+// 단건 등록 폼이 받는 필드. 폼과 안내 문구가 이 하나를 같이 읽는다 — 따로 적었더니 폼은 11개를
+// 렌더하는데 안내는 5개만 말하고 있었다(수강료·셔틀·운영시간·합격률·출처가 빠져 있었다).
+const SINGLE_ACADEMY_FIELDS = [
+  { name: "region", label: "지역" },
+  { name: "name", label: "이름" },
+  { name: "address", label: "주소" },
+  { name: "phone", label: "전화" },
+  { name: "price", label: "수강료" },
+  { name: "shuttle", label: "셔틀" },
+  { name: "hours", label: "운영시간" },
+  { name: "pass_rate", label: "합격률" },
+  { name: "source_name", label: "출처명" },
+  { name: "source_url", label: "출처 URL" },
+  { name: "review", label: "검증 메모" },
+] as const;
+
 function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: { domain: DomainConfig; academies: Academy[]; regionAxis: AxisValue[]; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onRefresh: () => Promise<void> }) {
   async function saveRegionAxis(form: HTMLFormElement) {
     const values = parseCsv(String(new FormData(form).get("values") || ""));
@@ -1644,7 +1660,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         <div className="spread"><div><h3 style={{ margin: 0 }}>선택 · 수동 자료 보완</h3><p className="muted small">DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다.</p></div><button className="btn" type="button" onClick={() => setManualToolsOpen((open) => !open)}>{manualToolsOpen ? "닫기" : "열기"}</button></div>
         {manualToolsOpen && <>
           <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>⚠️ 같은 학원(지역+이름)을 다시 등록하면 비운 항목이 기존 값을 덮어 지웁니다. 일부만 수정할 땐 나머지 항목도 함께 채워주세요. 단건·JSON 일괄 등록 모두 동일합니다.</p>
-          <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다.</p><div className="grid grid-3">{["region","name","address","price","shuttle","hours","pass_rate","phone","source_name","source_url","review"].map((n) => <input key={n} className="input" name={n} placeholder={n} required={n === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
+          <form className="grid" onSubmit={(e) => { e.preventDefault(); add(e.currentTarget); }}><h3>1. 단건 등록</h3><p className="muted small">학원 1곳의 {SINGLE_ACADEMY_FIELDS.map((f) => f.label).join(", ")}를 직접 입력합니다.</p><div className="grid grid-3">{SINGLE_ACADEMY_FIELDS.map((f) => <input key={f.name} className="input" name={f.name} placeholder={f.label} required={f.name === "name"} />)}</div><button className="btn primary">단건 등록</button></form>
           <form className="grid" onSubmit={(e) => { e.preventDefault(); bulk(e.currentTarget); }}><h3>2. JSON 일괄 등록</h3><p className="muted small">여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다.</p><textarea className="textarea mono" name="json" placeholder='[{"region":"대구","name":"OO학원","price":"65만원"}]' /><button className="btn">JSON 일괄 등록</button></form>
         </>}
       </div>

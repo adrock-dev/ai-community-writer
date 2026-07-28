@@ -100,7 +100,9 @@ for (const row of classification.rows ?? []) {
 }
 const inventory = raw.map((r) => {
   const tag = tagOf.get(r.id);
-  return { ...r, class: tag?.class ?? "C", depends: tag?.depends ?? [], defect: tag?.defect ?? false, note: tag?.note ?? "" };
+  // reviewed = overlay 에 등록된 것. class:"C" 로 명시하면 "봤고 사실 주장이 아니다"라는 뜻이라
+  // --untagged 가 다시 지목하지 않는다. 그래야 남는 게 진짜 미검토뿐이다.
+  return { ...r, class: tag?.class ?? "C", reviewed: Boolean(tag), depends: tag?.depends ?? [], defect: tag?.defect ?? false, note: tag?.note ?? "" };
 });
 
 if (unresolved.length) {
@@ -113,8 +115,8 @@ if (unresolved.length) {
 if (process.argv.includes("--json")) {
   console.log(JSON.stringify(inventory, null, 2));
 } else if (process.argv.includes("--untagged")) {
-  const suspicious = inventory.filter((r) => r.class === "C" && /(게이트|프롬프트|강제|자동|적용됩니다|쓰입니다|제외됩니다|건너뜁니다|[0-9]+(개|초|분|곳|km|회))/.test(r.text));
-  console.log(`분류가 C 인데 사실을 서술하는 것으로 보이는 항목 ${suspicious.length}건 — A/B 여부 확인 필요\n`);
+  const suspicious = inventory.filter((r) => !r.reviewed && /(게이트|프롬프트|강제|자동|적용됩니다|쓰입니다|제외됩니다|건너뜁니다|[0-9]+(개|초|분|곳|km|회))/.test(r.text));
+  console.log(`아직 분류하지 않았는데 사실을 서술하는 것으로 보이는 항목 ${suspicious.length}건 — A/B/C 판정 필요\n`);
   for (const r of suspicious) console.log(`  ${r.id}  ${r.file}:${r.line}\n      ${r.text.slice(0, 160)}`);
 } else {
   writeDoc();

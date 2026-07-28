@@ -10,9 +10,9 @@
 
 | 급 | 뜻 | 처방 | 건수 |
 | --- | --- | --- | --- |
-| **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 12 |
-| **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 56 |
-| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 175 |
+| **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 13 |
+| **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 73 |
+| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 157 |
 | | | **합계** | **243** |
 
 파일별: `components/DomainClient.tsx` 194 · `components/AcademyResearchClient.tsx` 12 · `components/DashboardClient.tsx` 10 · `components/SettingsClient.tsx` 10 · `components/DraftsClient.tsx` 7 · `components/AcademyDetailClient.tsx` 4 · `components/IntegrationSettingsClient.tsx` 2 · `components/JobCard.tsx` 1 · `components/JobsClient.tsx` 1 · `components/NeedDomainClient.tsx` 1 · `components/PostDetailClient.tsx` 1
@@ -23,7 +23,7 @@
 
 
 
-## A — 파생 가능 (12건)
+## A — 파생 가능 (13건)
 
 코드 상수에서 계산할 수 있는데 손으로 적었다. **값에서 렌더하면 드리프트가 구조적으로 불가능해진다.**
 
@@ -37,63 +37,80 @@
 | `components/DomainClient.tsx:707` | tooltip | 키워드 마스터를 운전 프리셋 기본값(18개+메트릭)으로 되돌립니다 | `apps/api-nest/src/constants.ts#PRESETS.driving.keyword` |
 | `components/DomainClient.tsx:934` | muted-p | 학원 커버리지 (총 {coh.academy.regions_total}개 지역): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.r…<br>_2026-07-28 수정. 20km 하드코딩을 서버값(coh.academy.nearby_km)으로 바꿨다. ACADEMY_NEARBY_MAX_KM 은 env 로 덮이는 값이라 하드코딩이면 환경변수를 바꾸는 순간 화면이 거짓이 됐다._ | `apps/api-nest/src/constants.ts#ACADEMY_NEARBY_MAX_KM` |
 | `components/DomainClient.tsx:1268` | info-div | &lsquo;실제 후보 수&rsquo;란? 그 지역 글에 소개하려고 선정된 학원 수입니다 — 지역명이 맞는 직접 후보 + {candidateRules?.nearby_km ?? 20}km 이내 인근 후보로 모으고(둘 다 부족하면 {candidateRules?.min_guarantee_km ?? 50}km 이내 최근접으로 보…<br>_2026-07-28 수정. 20km·50km·5곳을 손으로 적고 있었다. 셋 다 env 로 덮이는 값이라 /options 의 candidate_rules 로 내려받아 렌더한다. 이 문단은 info-panel div 라 추출기 사각지대에 있어 인벤토리에도 안 잡혔었다._ | `apps/api-nest/src/constants.ts#ACADEMY_NEARBY_MAX_KM`<br>`apps/api-nest/src/constants.ts#ACADEMY_MIN_GUARANTEE_MAX_KM`<br>`apps/api-nest/src/constants.ts#ACADEMY_USED_PER_POST` |
-| `components/DomainClient.tsx:1636` | muted-p | ⚠️ 이 브라우저의 마지막 동기화 시도({formatDateTime(lastSync.academies?.at)})는 DB에 반영되지 않았습니다. 학원 동기화는 1분 안팎이 걸리는데 그사이 개발 서버가 재시작되면 전량 유실됩니다. npm run sync:academies -- {domain.domain} 로 다시 실행하면 … | `동기화 소요시간(공유 상수 없음)`<br>`package.json#sync:academies` |
-| `components/DomainClient.tsx:1911` | muted-p | 글 작성/중복검사/가지치기/색인 작업을 이 화면에서 바로 확인합니다. 3초마다 자동 새로고침됩니다. | `components/DomainClient.tsx:1896 setInterval(…, 3000)` |
-| `components/DomainClient.tsx:2011` | muted-p | 생성 글 본문·CTA·HTML 내보내기·공개 API에 나가는 이름입니다. 마지막 섹션 CTA에서 3~7회 언급되므로 독자가 브랜드로 읽을 수 있는 고유명이어야 합니다. 비워 두면 표시 이름({effectiveBrand})이 그대로 쓰입니다.<br>_현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다._ | `apps/api-nest/src/brand.ts`<br>`apps/api-nest/src/worker.service.ts:1105 CTA 지침` |
+| `components/DomainClient.tsx:1652` | muted-p | ⚠️ 이 브라우저의 마지막 동기화 시도({formatDateTime(lastSync.academies?.at)})는 DB에 반영되지 않았습니다. 학원 동기화는 1분 안팎이 걸리는데 그사이 개발 서버가 재시작되면 전량 유실됩니다. npm run sync:academies -- {domain.domain} 로 다시 실행하면 … | `동기화 소요시간(공유 상수 없음)`<br>`package.json#sync:academies` |
+| `components/DomainClient.tsx:1663` | muted-p | 학원 1곳의 {SINGLE_ACADEMY_FIELDS.map((f) => f.label).join(", ")}를 직접 입력합니다.<br>_2026-07-28 수정. 폼은 11개 필드를 렌더하는데 안내는 5개만 말하고 있었다(수강료·셔틀·운영시간·합격률·출처 누락). 목록을 SINGLE_ACADEMY_FIELDS 하나로 합쳐 안내도 거기서 렌더한다._ | `components/DomainClient.tsx#SINGLE_ACADEMY_FIELDS` |
+| `components/DomainClient.tsx:1927` | muted-p | 글 작성/중복검사/가지치기/색인 작업을 이 화면에서 바로 확인합니다. 3초마다 자동 새로고침됩니다. | `components/DomainClient.tsx:1896 setInterval(…, 3000)` |
+| `components/DomainClient.tsx:2027` | muted-p | 생성 글 본문·CTA·HTML 내보내기·공개 API에 나가는 이름입니다. 마지막 섹션 CTA에서 3~7회 언급되므로 독자가 브랜드로 읽을 수 있는 고유명이어야 합니다. 비워 두면 표시 이름({effectiveBrand})이 그대로 쓰입니다.<br>_현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다._ | `apps/api-nest/src/brand.ts`<br>`apps/api-nest/src/worker.service.ts:1105 CTA 지침` |
 | `components/SettingsClient.tsx:237` | muted-p | 켜면 학원 동기화가 {ACADEMY_SYNC_DURATION}에서 {ACADEMY_SYNC_DURATION_WITH_BLOG}으로 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다). 이미 수집된 자료는 끄더라도 지워지지 않고 학원 상세에 남습니다.<br>_2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION`<br>`apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG` |
 
-## B — 동작 계약 (56건)
+## B — 동작 계약 (73건)
 
 코드가 강제하는 규칙을 문장으로 다시 설명한다. 파생이 불가능하므로 **종속 대상이 바뀌면 사람이 같이 고쳐야 한다.**
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
 | `components/AcademyDetailClient.tsx:118` | muted-p | 아래 항목은 원천 동기화로 이미 확인돼 조사 대상에서 빠집니다. 글 생성도 이 값을 씁니다. | `조사 항목 정의`<br>`docs/source-field-usage.md` |
+| `components/AcademyResearchClient.tsx:141` | confirm | ${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.<br>_「1곳 마친 뒤 중단·여기까지 저장 유지」는 취소 구현에 직접 매달린 약속이다._ | `apps/api-nest/src/academy-research.service.ts 취소 처리` |
+| `components/AcademyResearchClient.tsx:193` | jsx-text | 이 화면은 아직 전체 기능이 완성되지 않았습니다.<br>_미완성 범위 선언. 조사 항목 편집·대량 관리가 붙으면 이 문단을 지워야 한다._ | `components/AcademyResearchClient.tsx` |
+| `components/AcademyResearchClient.tsx:194` | jsx-text | 현재는 DrivingPlus에서 동기화한 학원 목록 조회와 학원별 기본 조사 정보 확인까지만 안정적으로 제공합니다. 조사 항목 편집, 대량 관리, 자동 조사 흐름은 아직 정리 중이므로 운영 판단용 보조 화면으로만 사용해 주세요.<br>_미완성 범위 선언. 바로 위 「전체 기능이 완성되지 않았습니다」와 한 쌍이라 기능이 붙으면 둘 다 지워야 한다._ | `components/AcademyResearchClient.tsx` |
 | `components/AcademyResearchClient.tsx:201` | muted-p | 기본정보·리뷰 원문과 AI 심층조사 데이터는 별도 DB(academy_research.db)에 저장됩니다. admin.db와 분리되어 초기화되지 않습니다. | `academy-research 저장소` |
+| `components/AcademyResearchClient.tsx:314` | muted-p | {run!.cancel_requested ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다." : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."}<br>_「창을 닫아도 계속·다시 들어오면 진행률이 이어짐」이 백그라운드 run 구현에 종속._ | `apps/api-nest/src/academy-research.service.ts 백그라운드 실행` |
 | `components/AcademyResearchClient.tsx:522` | muted-p | 조사값은 아직 글 생성에 연결되지 않았습니다. 연결되면 도메인 설정이 「검증완료만」일 때 여기서 승인한 값만 쓰입니다. 값을 고치거나 승인을 되돌리려면 학원 상세로 가세요. 상태를 검증완료로 두면 연결 시점에 글에 쓰일 값을 미리 볼 수 있습니다.<br>_2026-07-28 수정. 조사값이 아직 생성에 닿지 않는데 이미 쓰이는 것처럼 단정하고 있었다(worker.service.ts 에 조사값 참조 없음). 도메인 설정 화면과 같은 기준으로 맞췄다._ | `조사값 사용 게이트(미구현)` |
+| `components/DashboardClient.tsx:144` | muted-p | 운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 도메인이 있어야 도메인 관리, 글 생성, 검수·보내기 메뉴를 사용할 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/admin.controller.ts 도메인 생성` |
 | `components/DomainClient.tsx:371` | field:body | 이 사이트만의 말투·태도, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 확인된 데이터만 사용·날조 금지 같은 안전·데이터 규칙은 이미 강제되니 여기 적지 않아도 됩니다. 지금 건너뛰고 나중에 정해도 됩니다.<br>_2026-07-28 수정. 투어가 「안전·데이터 원칙을 정하라」고 안내해 바로 아래 입력칸 안내(「이미 강제되니 적지 마라」)와 모순이었다. 입력칸과 같은 기준으로 맞췄다._ | `apps/api-nest/src/worker.service.ts#buildPrompt 공통원칙 주입` |
+| `components/DomainClient.tsx:372` | field:body | 글 유형마다 기본 디자인이 자동 적용됩니다. 대부분 그대로 두면 되고, 특별한 레이아웃이 필요할 때만 커스텀 디자인 메모나 커스텀 글유형 복제로 조정합니다.<br>_투어 문구. 아래 디자인 탭 안내와 같은 사실을 말한다 — 한쪽만 고치면 어긋난다._ | `apps/api-nest/src/constants.ts default_design`<br>`docs/design-template-mapping.md` |
 | `components/DomainClient.tsx:621` | muted-p | 생성 프롬프트에 항상 들어갑니다(학원 규칙은 학원 후보를 다루는 글에만). 이 중 금액 날조·전화번호 노출·후보 수 부풀리기처럼 게이트가 완성된 글을 직접 검사하는 항목이 있고, 나머지는 프롬프트 지시입니다. 어느 쪽이든 아래 「공통 작성 원칙」에 다시 적지 마세요 — 강제력은 더 생기지 않고, 그 칸에서만 전달되는 말투… | `apps/api-nest/src/worker.service.ts#buildPrompt`<br>`apps/api-nest/src/quality-gate.ts` |
 | `components/DomainClient.tsx:635` | muted-p | 글유형에 따라 일부 규칙은 그 유형의 지침이 대신합니다(예: T01 계열은 학원 원칙을 자체 지침으로 덮어씁니다). | `apps/api-nest/src/constants.ts 아키타입 writing_guide` |
 | `components/DomainClient.tsx:655` | muted-p | 이 사이트만의 말투·태도를 적는 칸입니다. 확인된 데이터만 사용·가격/합격률 날조 금지·후보 수 부풀리기 금지 같은 안전·데이터 규칙은 이미 생성 프롬프트와 품질 게이트가 강제하므로 여기에 다시 적지 않아도 됩니다. 오히려 중복해서 채우면 이 칸에서만 전달되는 말투 지시가 묻힙니다. 비우면 프롬프트에 「공통원칙: 없음」으…<br>_2026-07-28 기준 코드와 일치(커밋 8a1134a 로 정정됨). 단 같은 화면의 투어 문구는 아직 옛 안내다 — 아래 항목 참조._ | `apps/api-nest/src/worker.service.ts#buildPrompt 공통원칙 주입`<br>`apps/api-nest/src/constants.ts#DEFAULT_DRIVING_COMMON_PRINCIPLES` |
 | `components/DomainClient.tsx:656` | muted-p | 한 줄에 하나씩 입력하면 후보 생성, 후보 검색, 작성 큐, 최종 저장 전에 제외됩니다. | `apps/api-nest/src/slot.service.ts`<br>`apps/api-nest/src/worker.service.ts` |
 | `components/DomainClient.tsx:657` | muted-p | 여러 글에서 똑같이 반복되는 판박이 문장을 한 줄에 하나씩 입력하면, 생성 품질 게이트가 이 문구를 감지해 다른 표현으로 다시 쓰도록(중복 콘텐츠 방지) 합니다. 제외어와 달리 글을 건너뛰지 않고 재작성합니다. | `apps/api-nest/src/quality-gate.ts#boilerplatePhraseIssues`<br>`apps/api-nest/src/worker.service.ts repair` |
+| `components/DomainClient.tsx:692` | jsx-text | 연동 시 실측값으로 자동 갱신될 예정입니다. (<br>_미구현 예정 선언. 연동되면 지워야 하고, 안 지우면 반대로 거짓이 된다._ | `키워드 메트릭 실측 연동(미구현)` |
 | `components/DomainClient.tsx:769` | muted-p | 아직 안 켠 빌트인 글 유형입니다(코드 소유·초기화에도 복구). | `apps/api-nest/src/constants.ts#TEMPLATE_SPECS` |
+| `components/DomainClient.tsx:785` | muted-p | 글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 위 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요. | `apps/api-nest/src/constants.ts default_design`<br>`docs/design-template-mapping.md` |
+| `components/DomainClient.tsx:797` | muted-p | 기본 디자인 밖의 레이아웃이 필요할 때만. 원하는 구조를 적고, 커스텀 글유형에서 디자인을 ‘커스텀’으로 지정하면 이 메모가 작성 프롬프트로 들어갑니다. | `apps/api-nest/src/worker.service.ts 커스텀 디자인 메모 주입` |
+| `components/DomainClient.tsx:874` | muted-p | 검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다. | `apps/api-nest/src/constants.ts 아키타입`<br>`apps/api-nest/src/admin.controller.ts` |
+| `components/DomainClient.tsx:874` | muted-p | 「새로고침」은 목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다. 이 화면에서 만들기/편집/삭제한 뒤엔 자동 갱신되며, 다른 창·다른 사람이 바꾼 경우에만 수동으로 누르면 됩니다.<br>_같은 파일 안의 동작 설명이라 함께 바뀔 가능성이 높지만, 자동 갱신 여부를 단정하므로 분류해 둔다._ | `components/DomainClient.tsx` |
 | `components/DomainClient.tsx:1161` | muted-p | 📐 섹션 순서 자동 다양화 (글마다 자동 선택 · 편집 불가): {structureVariants[kind]!.map((l, i) => {l})} | `apps/api-nest/src/constants.ts structure variants` |
 | `components/DomainClient.tsx:1166` | muted-p | 이 글유형이 쓸 키워드를 한 줄에 하나씩 적습니다. 적으면 그 키워드를 그대로 사용(아키타입 패턴 무시), 비우면 아키타입 패턴으로 자동 선택. 아래 키워드 마스터에서 클릭하면 추가되고, 마스터에 없는 키워드도 직접 입력할 수 있습니다. | `apps/api-nest/src/slot.service.ts` |
+| `components/DomainClient.tsx:1167` | placeholder | 운전면허학원\n자동차운전전문학원 (한 줄에 하나 · 비우면 아키타입 패턴)<br>_placeholder 지만 동작을 단정한다 — 위 muted-p 와 같은 사실이라 한쪽만 고치면 어긋난다._ | `apps/api-nest/src/slot.service.ts` |
 | `components/DomainClient.tsx:1171` | muted-p | ⚠️ 키워드 마스터에 없는 키워드: {unknown.join(", ")} — 지역형 글유형은 영향 없지만, 키워드형은 검색량·경쟁도가 없어 우선순위 0으로 취급돼 대량 선별에서 후순위가 됩니다. 우선순위를 반영하려면 「공통 설정」 탭의 키워드 마스터에 등록하세요. | `apps/api-nest/src/slot.service.ts 우선순위 계산` |
+| `components/DomainClient.tsx:1190` | tooltip | 입력한 방향성이 이미 강제되는 절대 원칙·공통원칙·작성 지침과 겹치는지 대조하고, 이 글유형만의 방향만 남긴 개선안을 제안합니다. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
 | `components/DomainClient.tsx:1192` | muted-p | ✍️ 여기서 정해지는 것: 이 글유형의 말투 격식과 다루는 각도·전개 방식입니다. 말투는 방향성이 최종 결정권을 갖습니다 — “옆자리 선배가 이야기해 주듯”이라고 쓰면 대화체(반말체 아님·이모지 허용)로, “차분한 전문가 설명”이라고 쓰면 전문가 톤(격식체·이모지 절제)으로 글이 달라집니다. | `apps/api-nest/src/worker.service.ts 톤 결정` |
 | `components/DomainClient.tsx:1193` | muted-p | 🔒 방향성으로 바뀌지 않는 것: 제목 규칙·H2 구성·표/이미지 배치 같은 필수 출력 구조, 축(의도·수식어)이 정하는 강조 섹션과 필수 응답, 그리고 품질 게이트입니다. 게이트는 프롬프트 밖에서 완성된 글을 검사하므로, 방향성에 예외를 적어도 통과되지 않습니다. | `apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 필수 출력 구조` |
 | `components/DomainClient.tsx:1194` | muted-p | 🔎 방향성 검증: 방향성은 이 글유형만의 방향을 적는 자리입니다. 날조 금지·데이터 검증 같은 안전·데이터 규칙은 이미 모든 글에 강제(절대 원칙)되니 방향성에 다시 쓰면 중복이고, 여기서만 전달되는 톤·관점 지시가 묻힙니다. 버튼을 누르면 절대 원칙·공통원칙·아키타입 작성 지침(학원 후보를 다루는 유형이면 학원 전용 … | `apps/api-nest/src/admin.controller.ts` |
 | `components/DomainClient.tsx:1208` | muted-p | 이 글유형이 쓸 persona·intent·modifier 값입니다. 쓸 축을 켜면 값을 반드시 입력하세요 — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩. | `apps/api-nest/src/slot.service.ts axis_values` |
 | `components/DomainClient.tsx:1209` | muted-p | 📐 축은 글감 라벨에 그치지 않습니다. 「지역 운전학원 축 기반 소개」 계열(아키타입 local_axis)에서는 intent가 반드시 답할 질문을, modifier가 각 학원에서 부각할 관점·강조 섹션 주제·요약표 열을, 둘이 합쳐 제목 부제를 결정합니다. 축 값을 바꾸면 글의 구조가 달라집니다. 자료가 뒷받침하지 못하…<br>_「자료가 뒷받침하지 못하는 축은 자동으로 내려앉는다」는 강등 로직에 직접 종속._ | `apps/api-nest/src/worker.service.ts local_axis` |
+| `components/DomainClient.tsx:1215` | muted-p | 먼저 이름·방향성을 채우고 쓸 축(persona·intent·modifier)을 ‘사용’으로 켠 뒤 누르면, LLM이 이 글유형에 맞는 값을 제안해 아래 텍스트영역을 채웁니다. 제안일 뿐 자동 저장하지 않으니 반드시 검토·수정한 뒤 저장하세요. (codex/claude CLI 인증 필요)<br>_「제안일 뿐 자동 저장 안 함 · CLI 인증 필요」가 구현에 종속._ | `apps/api-nest/src/admin.controller.ts 축 제안` |
 | `components/DomainClient.tsx:1238` | muted-p | 이 글유형이 후보로 쓸 학원 타입입니다. 괄호 안 숫자는 이 도메인에 동기화된 학원 수예요. 비우면 학원정보를 쓰지 않고 지역 가이드/체크리스트 중심으로 작성합니다. 지역형 글유형에만 적용됩니다. | `apps/api-nest/src/slot.service.ts academy_type_filter` |
 | `components/DomainClient.tsx:1252` | muted-p | 글 유형마다 자동 매칭되는 기본 디자인입니다. 아래 목업으로 레이아웃을 확인하세요. 「커스텀」을 고르면 도메인 「디자인」 영역의 커스텀 디자인 메모가 적용됩니다. | `apps/api-nest/src/constants.ts design_presets` |
 | `components/DomainClient.tsx:1267` | muted-p | 제목을 생성 시점의 실제 후보 수로 확정해 LLM 즉흥·후보 수 부풀림을 막습니다. tier는 후보 수 내림차순으로 첫 매칭 제목을 씁니다(예: 3곳↑ &quot;BEST {"{개수}"}&quot;, 2곳 &quot;추천&quot;). 치환 토큰: {"{지역}"} {"{개수}"} {"{키워드}"} {"{학원명}"}(첫 후… | `apps/api-nest/src/slot.service.ts 제목 tier` |
 | `components/DomainClient.tsx:1275` | muted-p | 위 &lsquo;실제 후보 수&rsquo;가 이 값보다 적으면 생성하지 않고 건너뜁니다(슬롯 skipped · 후보 부족 지역 차단용). 비우거나 0이면 스킵 없음. | `apps/api-nest/src/slot.service.ts slot skipped` |
 | `components/DomainClient.tsx:1297` | jsx-text | 참조 아키타입(kind)은 만든 뒤 바꿀 수 없습니다. | `apps/api-nest/src/admin.controller.ts` |
-| `components/DomainClient.tsx:1556` | muted-p | DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
-| `components/DomainClient.tsx:1561` | muted-p | 블로그 리뷰 수집: {blogSyncOn === null ? "확인 중" : blogSyncOn ? "켜짐" : "꺼짐"} {blogSyncOn === null ? "" : blogSyncOn ? ` — 학원 동기화가 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 …<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
-| `components/DomainClient.tsx:1593` | muted-p | 지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 지역 동기화에만 적용됩니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
-| `components/DomainClient.tsx:1603` | muted-p | 글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 가중치·월검색량·KD는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다. | `apps/api-nest/src/slot.service.ts 우선순위 계산` |
-| `components/DomainClient.tsx:1622` | muted-p | 각 지역의 학원 상세(사진·별점리뷰{blogSyncOn === true ? "·블로그 리뷰" : ""} 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다. {blogSyncOn === null ? " 블로그 리뷰 수집 여부는 확인 중입니다." : blogSyncOn ? …<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
-| `components/DomainClient.tsx:1646` | muted-p | ⚠️ 같은 학원(지역+이름)을 다시 등록하면 비운 항목이 기존 값을 덮어 지웁니다. 일부만 수정할 땐 나머지 항목도 함께 채워주세요. 단건·JSON 일괄 등록 모두 동일합니다. | `apps/api-nest/src/admin.controller.ts academies upsert` |
-| `components/DomainClient.tsx:1651` | muted-p | 동기화된 학원을 검색·지역으로 찾고, 필요 없는 자료는 삭제합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”). | `apps/api-nest/src/slot.service.ts academy_type_filter` |
-| `components/DomainClient.tsx:1805` | muted-p | 글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM을 호출하지 않습니다. | `apps/api-nest/src/slot.service.ts` |
-| `components/DomainClient.tsx:1820` | muted-p | 조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/slot.service.ts` |
-| `components/DomainClient.tsx:1828` | muted-p | 후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 1단계 ‘글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.) | `apps/api-nest/src/slot.service.ts` |
-| `components/DomainClient.tsx:1847` | muted-p | 추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 작성 대상은 무작위가 아니라 우선순위(검색량·경쟁도·weight) 상위 N개를 고르며, 전국 작성은 지역을 라운드로빈으로 섞습니다.<br>_같은 문장이 「현재 검색 10개 → 전국 골고루 100개」라는 버튼 개수까지 손으로 적는다(A 성격). 버튼을 바꾸면 이 문장도 거짓이 된다._ | `apps/api-nest/src/slot.service.ts 선별·라운드로빈`<br>`components/DomainClient.tsx 작성 버튼 개수` |
-| `components/DomainClient.tsx:1914` | muted-p | 대기/진행 작업이 멈춰 있으면 서버 터미널에서 npm run worker:once를 실행해 처리할 수 있습니다. | `package.json#worker:once` |
-| `components/DomainClient.tsx:1971` | muted-p | 비용($)은 종량 API 사용 시에만 계측됩니다. 이미지는 OpenAI 이미지 API + SEO_IMAGE_PRICE_USD(장당 단가) 설정, 텍스트는 API LLM이 필요합니다. Codex/구독 경로는 $0으로 표시됩니다. | `apps/api-nest/src/worker.service.ts 비용 계측`<br>`SEO_IMAGE_PRICE_USD` |
-| `components/DomainClient.tsx:1994` | muted-p | 체크한 빌트인만 「글유형/디자인」 탭의 빌트인 추가 카탈로그·커스텀 시작점·참조 아키타입 목록에 노출됩니다. 모든 도메인 공통이며, 이미 켜 둔 유형의 생성에는 영향이 없습니다(노출만 제어). 유형 검증이 끝나면 제거할 임시 기능입니다.<br>_「유형 검증이 끝나면 제거할 임시 기능」 — 제거 시 이 문단도 함께 사라져야 한다._ | `apps/api-nest/src/admin.controller.ts 빌트인 노출 설정` |
-| `components/DomainClient.tsx:2011` | muted-p | 발행 글을 Google Indexing API로 색인 요청하는 기능입니다. 배포 연동 방식이 정해지면 활성화 예정이며, 현재는 동작하지 않습니다. (서비스계정 JSON은 전 도메인 공통으로 관리될 예정) | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
-| `components/DomainClient.tsx:2152` | field:help | 조사값을 글에 전혀 쓰지 않습니다. 글은 원천 동기화로 받은 학원 자료(주소·전화·수강료·셔틀·영업시간·운영 과정·운영 형태·사진 등)와 자체 수강생 후기만 근거로 씁니다.<br>_정책 자체가 아직 생성에 연결되지 않았지만, 같은 패널 바로 아래 ⚠️ 경고가 그 사실을 밝히므로 문구는 그대로 둔다. 연결되는 순간 세 문장이 동시에 검증 대상이 된다._ | `조사값 사용 게이트(미구현)` |
-| `components/DomainClient.tsx:2157` | field:help | 위 원천 자료·후기에 더해, 조사값 중에서는 사람이 학원 상세 화면에서 「검증완료」로 올린 것만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다. | `조사값 사용 게이트(미구현)` |
-| `components/DomainClient.tsx:2162` | field:help | 위 원천 자료·후기에 더해, 사람이 확인하지 않은 AI 조사값까지 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다. | `조사값 사용 게이트(미구현)` |
-| `components/DomainClient.tsx:2189` | muted-p | 원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다. 조사는 학원 단위라 도메인마다 따로 돌리지 않습니다 — 실행은 자료관리에서 합니다. | `academy-research 저장소` |
-| `components/DomainClient.tsx:2233` | muted-p | 어느 설정에서도 「검토 필요」(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와 「웹조사 차단」 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다. | `조사값 사용 게이트(미구현)` |
-| `components/DomainClient.tsx:2237` | muted-p | ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.<br>_구현되면 이 경고를 지워야 한다. 지우는 것을 잊으면 반대 방향으로 거짓이 된다._ | `조사값 사용 게이트(미구현)` |
-| `components/DomainClient.tsx:2282` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
-| `components/DomainClient.tsx:2307` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료 동기화 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계를 다시 실행해야 반영됩니다. | `셔틀 지역 판정` |
+| `components/DomainClient.tsx:1572` | muted-p | DrivingPlus 원천 API의 지역·학원 데이터를 가져와 글 생성 프롬프트의 검증된 자료로 씁니다. 지역 → 학원 순서로 한 번 준비해두면 생성 때 다시 열 필요는 없습니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
+| `components/DomainClient.tsx:1577` | muted-p | 블로그 리뷰 수집: {blogSyncOn === null ? "확인 중" : blogSyncOn ? "켜짐" : "꺼짐"} {blogSyncOn === null ? "" : blogSyncOn ? ` — 학원 동기화가 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 …<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
+| `components/DomainClient.tsx:1609` | muted-p | 지역(시군구/읍면동) 목록을 가져오고, 옵션을 켜면 region 축을 교체합니다. 아래 옵션은 지역 동기화에만 적용됩니다. | `apps/api-nest/src/drivingplus-api.service.ts` |
+| `components/DomainClient.tsx:1619` | muted-p | 글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 가중치·월검색량·KD는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다. | `apps/api-nest/src/slot.service.ts 우선순위 계산` |
+| `components/DomainClient.tsx:1638` | muted-p | 각 지역의 학원 상세(사진·별점리뷰{blogSyncOn === true ? "·블로그 리뷰" : ""} 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다. {blogSyncOn === null ? " 블로그 리뷰 수집 여부는 확인 중입니다." : blogSyncOn ? …<br>_2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG`<br>`apps/api-nest/src/quality-gate.ts`<br>`apps/api-nest/src/worker.service.ts 프롬프트` |
+| `components/DomainClient.tsx:1662` | muted-p | ⚠️ 같은 학원(지역+이름)을 다시 등록하면 비운 항목이 기존 값을 덮어 지웁니다. 일부만 수정할 땐 나머지 항목도 함께 채워주세요. 단건·JSON 일괄 등록 모두 동일합니다. | `apps/api-nest/src/admin.controller.ts academies upsert` |
+| `components/DomainClient.tsx:1667` | muted-p | 동기화된 학원을 검색·지역으로 찾고, 필요 없는 자료는 삭제합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”). | `apps/api-nest/src/slot.service.ts academy_type_filter` |
+| `components/DomainClient.tsx:1821` | muted-p | 글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM을 호출하지 않습니다. | `apps/api-nest/src/slot.service.ts` |
+| `components/DomainClient.tsx:1836` | muted-p | 조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/slot.service.ts` |
+| `components/DomainClient.tsx:1844` | muted-p | 후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 1단계 ‘글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.) | `apps/api-nest/src/slot.service.ts` |
+| `components/DomainClient.tsx:1863` | muted-p | 추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 작성 대상은 무작위가 아니라 우선순위(검색량·경쟁도·weight) 상위 N개를 고르며, 전국 작성은 지역을 라운드로빈으로 섞습니다.<br>_같은 문장이 「현재 검색 10개 → 전국 골고루 100개」라는 버튼 개수까지 손으로 적는다(A 성격). 버튼을 바꾸면 이 문장도 거짓이 된다._ | `apps/api-nest/src/slot.service.ts 선별·라운드로빈`<br>`components/DomainClient.tsx 작성 버튼 개수` |
+| `components/DomainClient.tsx:1870` | muted-p | 아래 필터는 목록 표시와 「현재 검색 N개 작성」 선별에 쓰입니다. | `apps/api-nest/src/slot.service.ts 선별` |
+| `components/DomainClient.tsx:1907` | tooltip | 비우면 규칙/LLM 자동 제목. 입력하면 규칙보다 우선합니다. {지역}/{개수}/{키워드}/{학원명} 은 생성 시점에 치환됩니다.<br>_수동 제목이 규칙보다 우선한다는 순서와 치환 토큰 목록이 구현에 종속._ | `apps/api-nest/src/slot.service.ts 제목 규칙` |
+| `components/DomainClient.tsx:1930` | muted-p | 대기/진행 작업이 멈춰 있으면 서버 터미널에서 npm run worker:once를 실행해 처리할 수 있습니다. | `package.json#worker:once` |
+| `components/DomainClient.tsx:1987` | muted-p | 비용($)은 종량 API 사용 시에만 계측됩니다. 이미지는 OpenAI 이미지 API + SEO_IMAGE_PRICE_USD(장당 단가) 설정, 텍스트는 API LLM이 필요합니다. Codex/구독 경로는 $0으로 표시됩니다. | `apps/api-nest/src/worker.service.ts 비용 계측`<br>`SEO_IMAGE_PRICE_USD` |
+| `components/DomainClient.tsx:2010` | muted-p | 체크한 빌트인만 「글유형/디자인」 탭의 빌트인 추가 카탈로그·커스텀 시작점·참조 아키타입 목록에 노출됩니다. 모든 도메인 공통이며, 이미 켜 둔 유형의 생성에는 영향이 없습니다(노출만 제어). 유형 검증이 끝나면 제거할 임시 기능입니다.<br>_「유형 검증이 끝나면 제거할 임시 기능」 — 제거 시 이 문단도 함께 사라져야 한다._ | `apps/api-nest/src/admin.controller.ts 빌트인 노출 설정` |
+| `components/DomainClient.tsx:2027` | muted-p | 발행 글을 Google Indexing API로 색인 요청하는 기능입니다. 배포 연동 방식이 정해지면 활성화 예정이며, 현재는 동작하지 않습니다. (서비스계정 JSON은 전 도메인 공통으로 관리될 예정) | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
+| `components/DomainClient.tsx:2168` | field:help | 조사값을 글에 전혀 쓰지 않습니다. 글은 원천 동기화로 받은 학원 자료(주소·전화·수강료·셔틀·영업시간·운영 과정·운영 형태·사진 등)와 자체 수강생 후기만 근거로 씁니다.<br>_정책 자체가 아직 생성에 연결되지 않았지만, 같은 패널 바로 아래 ⚠️ 경고가 그 사실을 밝히므로 문구는 그대로 둔다. 연결되는 순간 세 문장이 동시에 검증 대상이 된다._ | `조사값 사용 게이트(미구현)` |
+| `components/DomainClient.tsx:2173` | field:help | 위 원천 자료·후기에 더해, 조사값 중에서는 사람이 학원 상세 화면에서 「검증완료」로 올린 것만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다. | `조사값 사용 게이트(미구현)` |
+| `components/DomainClient.tsx:2178` | field:help | 위 원천 자료·후기에 더해, 사람이 확인하지 않은 AI 조사값까지 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다. | `조사값 사용 게이트(미구현)` |
+| `components/DomainClient.tsx:2205` | muted-p | 원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다. 조사는 학원 단위라 도메인마다 따로 돌리지 않습니다 — 실행은 자료관리에서 합니다. | `academy-research 저장소` |
+| `components/DomainClient.tsx:2249` | muted-p | 어느 설정에서도 「검토 필요」(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와 「웹조사 차단」 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다. | `조사값 사용 게이트(미구현)` |
+| `components/DomainClient.tsx:2253` | muted-p | ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.<br>_구현되면 이 경고를 지워야 한다. 지우는 것을 잊으면 반대 방향으로 거짓이 된다._ | `조사값 사용 게이트(미구현)` |
+| `components/DomainClient.tsx:2298` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
+| `components/DomainClient.tsx:2323` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료 동기화 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계를 다시 실행해야 반영됩니다. | `셔틀 지역 판정` |
 | `components/DraftsClient.tsx:81` | muted-p | 품질 게이트를 통과하지 못한 글이 생기면 버려지지 않고 여기에 자동으로 보관됩니다. 지금 비어 있는 이유는 보통 둘 중 하나입니다. | `draft 격리 훅` |
 | `components/DraftsClient.tsx:86` | jsx-text | 실패한 글은 소급 보관되지 않습니다. 당시에는 본문이 그대로 폐기됐기 때문입니다. | `draft 격리 훅` |
 | `components/DraftsClient.tsx:176` | muted-p | 품질 게이트에 걸려 발행되지 못한 글입니다. B(안전·사실) 이슈가 있으면 발행할 수 없고, 본문을 수정해 재검증해야 합니다. A(구조/문체)만 남으면 사유를 확인한 뒤 발행할 수 있습니다. | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
@@ -101,16 +118,17 @@
 | `components/IntegrationSettingsClient.tsx:14` | muted-p | 구글 색인 설정은 도메인 관리 &gt; 설정 탭으로 이동되었습니다. 현재는 비활성(추후 지원 예정) 상태입니다. | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
 | `components/IntegrationSettingsClient.tsx:18` | muted-p | 배포 연동 방식이 정해지면 색인 기능을 활성화할 예정입니다. 그 전까지는 별도 연동 설정이 없습니다. | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
 | `components/JobsClient.tsx:26` | muted-p | worker가 처리하는 generate/dedup/prune/indexing 작업 상태입니다. | `apps/api-nest/src/worker.service.ts job types` |
+| `components/SettingsClient.tsx:111` | muted-p | 도메인 개요나 대시보드에서 「글 생성 / 검수 흐름 시작」(또는 세부 단계 시작)을 누르면 단계별 가이드가 표시됩니다. × 또는 Esc로 이번 안내만 닫을 수 있고, 「더 이상 안 보기」는 이후 자동 제안을 끕니다. | `apps/admin-next/lib/tour.ts` |
 | `components/SettingsClient.tsx:196` | muted-p | 도메인 생성 시 고르는 업종 목록입니다. key는 프리셋·프롬프트에 쓰는 슬러그, 표시명은 화면 표시용입니다. 새 업종은 전용 프리셋이 없어 도메인이 빈 축으로 시작합니다(현재 실질 생성은 driving 기준). 이 설정은 서버에 저장되어 즉시 반영됩니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/admin.controller.ts` |
 | `components/SettingsClient.tsx:227` | muted-p | 수집만 켜고 끕니다. 글 생성에는 어느 쪽이든 쓰지 않습니다. 생성 프롬프트와 품질 게이트에서 이미 빠져 있어, 켜도 글 내용이 달라지지 않습니다. 글에 다시 쓰려면 블로그 글이 실제 그 학원의 글인지 건별로 가려내는 검증 기능이 먼저 필요합니다. 그런 기능이 생긴다면 검증을 통과한 것만 골라 쓰는 방식을 검토해볼 만합니… | `apps/api-nest/src/worker.service.ts 프롬프트`<br>`apps/api-nest/src/quality-gate.ts` |
 | `components/SettingsClient.tsx:251` | jsx-text | 서버에 저장되어 즉시 반영됩니다(재시작 불필요). | `apps/api-nest/src/admin.controller.ts settings/verticals` |
 
-## C — 순수 안내 (175건)
+## C — 순수 안내 (157건)
 
 흐름 설명·투어 문구·빈 상태 문구. 사실을 주장하지 않으므로 코드 변경과 무관하다.
 새로 추가된 문장이 사실을 주장하는데 C 로 남아 있는지는 `node scripts/copy-inventory.mjs --untagged` 로 점검한다.
 
-<details><summary>전체 175건 펼치기</summary>
+<details><summary>전체 157건 펼치기</summary>
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
@@ -118,17 +136,12 @@
 | `components/AcademyDetailClient.tsx:191` | muted-p | 조사된 셔틀 노선이 없습니다. | — |
 | `components/AcademyDetailClient.tsx:205` | muted-p | 수집된 후기가 없습니다. 재동기화를 시도하세요. | — |
 | `components/AcademyResearchClient.tsx:102` | confirm | DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요? | — |
-| `components/AcademyResearchClient.tsx:141` | confirm | ${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다. | — |
-| `components/AcademyResearchClient.tsx:193` | jsx-text | 이 화면은 아직 전체 기능이 완성되지 않았습니다. | — |
-| `components/AcademyResearchClient.tsx:194` | jsx-text | 현재는 DrivingPlus에서 동기화한 학원 목록 조회와 학원별 기본 조사 정보 확인까지만 안정적으로 제공합니다. 조사 항목 편집, 대량 관리, 자동 조사 흐름은 아직 정리 중이므로 운영 판단용 보조 화면으로만 사용해 주세요. | — |
 | `components/AcademyResearchClient.tsx:289` | jsx-text | 기본은 아직 조사하지 않은 곳만 대상입니다. 중단되면 다시 눌러 이어서 진행할 수 있습니다. | — |
-| `components/AcademyResearchClient.tsx:314` | muted-p | {run!.cancel_requested ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다." : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."} | — |
 | `components/AcademyResearchClient.tsx:341` | tooltip | 원천 목록에서 내려간 항목입니다. 자료는 보관하되 목록·동기화 대상에서 제외합니다. | — |
 | `components/AcademyResearchClient.tsx:367` | jsx-text | 동기화된 학원이 없습니다. 위 | — |
 | `components/DashboardClient.tsx:97` | muted-p | 운전면허·운전학원 도메인의 콘텐츠 생성·발행 작업을 운영하는 내부 관리자 화면입니다. | — |
 | `components/DashboardClient.tsx:103` | muted-p | ℹ️ 현재 범위 — 이 관리자는 운전면허·운전학원(driving) 글 생성에 특화되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 이 주제 기준이라, 다른 주제의 글은 생성되더라도 품질을 보장할 수 없습니다. (업종은 추가할 수 있으나 전용 프리셋·품질은 아직 운전면허·운전학원에만 적용) | — |
 | `components/DashboardClient.tsx:115` | muted-p | 생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다. | — |
-| `components/DashboardClient.tsx:144` | muted-p | 운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 도메인이 있어야 도메인 관리, 글 생성, 검수·보내기 메뉴를 사용할 수 있습니다. | — |
 | `components/DashboardClient.tsx:153` | muted-p | 전체 도메인의 후보·대기·발행 상태를 보고 필요한 화면으로 이동합니다. | — |
 | `components/DashboardClient.tsx:214` | field:desc | 새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있어요. | — |
 | `components/DashboardClient.tsx:215` | field:desc | 글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 후보를 만드세요. | — |
@@ -166,13 +179,12 @@
 | `components/DomainClient.tsx:188` | field:body | 상담, 예약, 내부 링크 등 마지막 행동을 어디에 둘지 정합니다. | — |
 | `components/DomainClient.tsx:274` | muted-p | 등록되지 않은 도메인이거나 API 연결에 문제가 있을 수 있습니다. 대시보드에서 도메인을 만들거나 목록에서 다시 선택하세요. | — |
 | `components/DomainClient.tsx:322` | jsx-text | 1단계 후보 만들기 → 2단계 글 작성 순서로 진행하세요 | — |
-| `components/DomainClient.tsx:323` | muted-p | 글 생성 탭이 두 단계로 나뉩니다. 먼저 후보를 만들고, 2단계 카드에서 1개 테스트 작성으로 품질을 확인한 뒤 확장하세요. | — |
+| `components/DomainClient.tsx:323` | muted-p | 글 생성 탭이 두 단계로 나뉩니다. 먼저 후보를 만들고, 2단계 카드에서 1개 테스트 작성으로 품질을 확인한 뒤 확장하세요.<br>_화면 구조 설명. 화면과 함께 바뀐다._ | — |
 | `components/DomainClient.tsx:332` | jsx-text | 완성 글 확인, 내보내기, 색인 요청을 한곳에서 처리하세요 | — |
 | `components/DomainClient.tsx:333` | muted-p | 제목을 눌러 상세 미리보기를 확인하고 필요한 글만 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다. | — |
 | `components/DomainClient.tsx:368` | field:body | 지역과 학원 데이터를 가져와두면 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다. 지금 건너뛰고 나중에 준비해도 됩니다. (상단 진행 막대가 전체 흐름입니다.) | — |
 | `components/DomainClient.tsx:368` | field:action | 데이터가 이미 있거나 나중에 할 거면 다음 단계로 넘어가세요. | — |
 | `components/DomainClient.tsx:371` | field:action | 입력 후 ‘저장’을 누르거나, 필요 없으면 다음으로 넘어가세요. | — |
-| `components/DomainClient.tsx:372` | field:body | 글 유형마다 기본 디자인이 자동 적용됩니다. 대부분 그대로 두면 되고, 특별한 레이아웃이 필요할 때만 커스텀 디자인 메모나 커스텀 글유형 복제로 조정합니다. | — |
 | `components/DomainClient.tsx:372` | field:action | 특별한 요구가 없으면 그대로 두고 넘어가세요. | — |
 | `components/DomainClient.tsx:373` | field:body | 새 도메인은 글 유형이 하나도 켜져 있지 않아 이 단계 없이는 후보를 만들 수 없습니다. 비교형·지역형·체크리스트형처럼 어떤 검색 의도에 맞출지 고르고 켜면 즉시 저장됩니다. 위에서 준비한 원천 데이터·공통 설정을 근거로 커스텀 유형을 만들 수도 있습니다. | — |
 | `components/DomainClient.tsx:373` | field:action | 운영 초반엔 필요한 유형만 켜세요. 너무 많이 켜면 후보가 급증합니다. | — |
@@ -186,7 +198,7 @@
 | `components/DomainClient.tsx:567` | muted-p | 운영자가 이미 중간까지 진행했다면 처음부터 다시 보지 않고, 필요한 단계 버튼만 누르면 됩니다. | — |
 | `components/DomainClient.tsx:598` | field:desc | ${counts.failed.toLocaleString()}개 실패가 있어 같은 조건으로 다시 만들기 전에 에러를 먼저 봐야 합니다. | — |
 | `components/DomainClient.tsx:599` | field:desc | ${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다. | — |
-| `components/DomainClient.tsx:600` | field:desc | ${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다. | — |
+| `components/DomainClient.tsx:600` | field:desc | ${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.<br>_운영 권고. 코드가 강제하지 않는다._ | — |
 | `components/DomainClient.tsx:601` | field:desc | 새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있습니다. 「글 생성」 흐름을 처음부터 따라가세요. | — |
 | `components/DomainClient.tsx:602` | field:desc | 글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 글 후보를 만드세요. | — |
 | `components/DomainClient.tsx:603` | field:desc | 후보는 있지만 공통 작성 원칙이 비어 있습니다. 이 사이트에서만 쓰는 말투·태도를 적어 두면 글의 결이 일정해집니다. | — |
@@ -194,11 +206,10 @@
 | `components/DomainClient.tsx:605` | field:desc | 현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요. | — |
 | `components/DomainClient.tsx:654` | muted-p | 모든 글 유형에 공통 적용되는 말투·태도, 제외어, 그리고 키워드 마스터(아래 표)입니다. 글 유형별 방향성·축·키워드 선택은 「글유형/디자인」 탭의 커스텀 글유형에서 관리합니다(빌트인 글유형은 복제해 커스텀으로 조정). | — |
 | `components/DomainClient.tsx:655` | placeholder | 처음 준비하는 독자도 이해할 수 있는 쉬운 표현을 쓰되, 신뢰감 있는 전문가의 설명 톤을 유지한다.&#10;광고성·낚시성 문구와 근거 없는 과장 표현을 쓰지 않는다.&#10;경쟁 브랜드나 특정 업체를 비방하지 않고 균형 있게 설명한다. | — |
-| `components/DomainClient.tsx:656` | placeholder | 실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보 | — |
+| `components/DomainClient.tsx:656` | placeholder | 실내운전연습장\n실내운전연습장 추천\n대성자동차학원 찾기 전 볼 인근 후보<br>_제외어 입력 예시._ | — |
 | `components/DomainClient.tsx:657` | placeholder | 후기 요약에서는 친절한 상담과 꼼꼼한 설명이 확인됩니다\n정리하면 선택 기준은 단순합니다 | — |
 | `components/DomainClient.tsx:692` | jsx-text | 는 실측이 아닌 초기 추정 시드값입니다. 슬롯 생성 | — |
 | `components/DomainClient.tsx:692` | jsx-text | 계산에만 쓰이며, 글의 내용·품질·길이는 바꾸지 않습니다. 추후 | — |
-| `components/DomainClient.tsx:692` | jsx-text | 연동 시 실측값으로 자동 갱신될 예정입니다. ( | — |
 | `components/DomainClient.tsx:692` | jsx-text | 는 검색 데이터가 아닌 운영 우선순위 값으로, 수기 관리 항목입니다.) | — |
 | `components/DomainClient.tsx:703` | jsx-text | 키워드가 없습니다. 「행 추가」 또는 「기본값으로 초기화」로 채우세요. | — |
 | `components/DomainClient.tsx:747` | tooltip | 제목을 후보 수 규칙으로 확정 | — |
@@ -207,12 +218,8 @@
 | `components/DomainClient.tsx:771` | muted-p | 모든 빌트인 글 유형이 이미 담겨 있습니다. | — |
 | `components/DomainClient.tsx:775` | muted-p | 아직 안 켠 커스텀 글 유형입니다. 맨 아래에서 만들 수 있어요. | — |
 | `components/DomainClient.tsx:777` | muted-p | 추가할 커스텀 글 유형이 없습니다. 맨 아래에서 만들어 보세요. | — |
-| `components/DomainClient.tsx:785` | muted-p | 글 유형마다 기본 디자인이 자동으로 적용됩니다(대부분 그대로 두면 됩니다). 특정 글에 다른 디자인을 쓰려면 위 「커스텀 글유형」에서 그 유형을 복제해 디자인을 바꾸세요. | — |
 | `components/DomainClient.tsx:786` | muted-p | 각 디자인이 어떤 화면인지 보여주는 참고용 목록입니다. | — |
-| `components/DomainClient.tsx:797` | muted-p | 기본 디자인 밖의 레이아웃이 필요할 때만. 원하는 구조를 적고, 커스텀 글유형에서 디자인을 ‘커스텀’으로 지정하면 이 메모가 작성 프롬프트로 들어갑니다. | — |
-| `components/DomainClient.tsx:798` | placeholder | 첫 화면에는 큰 제목과 핵심 요약 3개를 둔다. 비교표는 본문 상단에 배치한다. CTA는 중간 1회, 마지막 1회만 사용한다. 모바일에서는 카드형 목록으로 보이게 한다. | — |
-| `components/DomainClient.tsx:874` | muted-p | 검증된 아키타입을 참조해 직접 만든 글유형입니다. 주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다. 만든 뒤 위 「이 도메인의 글 유형」에서 켜야 생성에 쓰입니다. | — |
-| `components/DomainClient.tsx:874` | muted-p | 「새로고침」은 목록·정합성 미리보기·학원 타입 옵션을 서버에서 다시 불러옵니다. 이 화면에서 만들기/편집/삭제한 뒤엔 자동 갱신되며, 다른 창·다른 사람이 바꾼 경우에만 수동으로 누르면 됩니다. | — |
+| `components/DomainClient.tsx:798` | placeholder | 첫 화면에는 큰 제목과 핵심 요약 3개를 둔다. 비교표는 본문 상단에 배치한다. CTA는 중간 1회, 마지막 1회만 사용한다. 모바일에서는 카드형 목록으로 보이게 한다.<br>_커스텀 디자인 메모 입력 예시._ | — |
 | `components/DomainClient.tsx:879` | muted-p | 글유형이 참조하는 &apos;동작 원형&apos;입니다. 자세한 설명을 펼쳐 보세요. | — |
 | `components/DomainClient.tsx:881` | muted-p | 아키타입은 글의 검증된 &apos;동작 원형&apos;입니다 — 주축(지역/키워드)·주키워드 생성 규칙·작성 지침·품질 규칙을 정해 둔 틀이에요. 커스텀 글유형은 이 중 하나를 골라 참조하고, 키워드·페르소나·디자인·방향성 같은 세부만 조정합니다(주키워드 규칙·품질 지침은 아키타입 그대로).주축(아키타입이 결정, 변경 불… | — |
 | `components/DomainClient.tsx:899` | muted-p | 아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요. | — |
@@ -227,11 +234,8 @@
 | `components/DomainClient.tsx:1148` | muted-p | {source ? "선택한 글유형의 값을 채웠습니다. 필요한 부분만 고치면 됩니다. weight·축 태그·기존 설정은 그대로 복제되고, 아키타입은 소스로 고정됩니다." : "빈 폼으로 직접 만들거나, 기존 글유형(빌트인/커스텀)을 골라 값을 채워 시작할 수 있습니다."} | — |
 | `components/DomainClient.tsx:1151` | muted-p | 이름 · 참조 아키타입 · 키워드 선택 | — |
 | `components/DomainClient.tsx:1159` | muted-p | 주축 {(kindOptions.find((o) => o.kind === kind)?.primary ?? "keyword") === "region" ? "지역형(지역+키워드)" : "키워드형"}{source ? " · 시작점을 고르면 소스의 아키타입으로 고정됩니다." : ""} | — |
-| `components/DomainClient.tsx:1167` | placeholder | 운전면허학원\n자동차운전전문학원 (한 줄에 하나 · 비우면 아키타입 패턴) | — |
 | `components/DomainClient.tsx:1188` | placeholder | 예: 옆자리 선배가 이야기해 주듯 친근하게 쓰고, 지역 학원을 하나씩 소개하며 상담에서 물어볼 것으로 잇는다 | — |
-| `components/DomainClient.tsx:1190` | tooltip | 입력한 방향성이 이미 강제되는 절대 원칙·공통원칙·작성 지침과 겹치는지 대조하고, 이 글유형만의 방향만 남긴 개선안을 제안합니다. | — |
 | `components/DomainClient.tsx:1213` | tooltip | 켜 놓은 축의 값을 LLM 이 이 글유형(이름·방향성·아키타입)에 맞게 제안해 채웁니다. 제안이므로 검토·수정 후 저장하세요. | — |
-| `components/DomainClient.tsx:1215` | muted-p | 먼저 이름·방향성을 채우고 쓸 축(persona·intent·modifier)을 ‘사용’으로 켠 뒤 누르면, LLM이 이 글유형에 맞는 값을 제안해 아래 텍스트영역을 채웁니다. 제안일 뿐 자동 저장하지 않으니 반드시 검토·수정한 뒤 저장하세요. (codex/claude CLI 인증 필요) | — |
 | `components/DomainClient.tsx:1220` | placeholder | 퇴근 후 배우는 직장인\n주말만 가능한 직장인 (한 줄에 하나씩 · 필수) | — |
 | `components/DomainClient.tsx:1224` | placeholder | 필기접수\n준비물 (한 줄에 하나씩 · 필수) | — |
 | `components/DomainClient.tsx:1234` | placeholder | 필기시험부터\n상담전확인 (한 줄에 하나씩 · 필수) | — |
@@ -242,52 +246,48 @@
 | `components/DomainClient.tsx:1279` | muted-p | tier가 없습니다. 「+ tier 추가」로 &quot;후보 N곳 이상일 때 이 제목&quot; 규칙을 만드세요. (없으면 LLM이 제목 결정) | — |
 | `components/DomainClient.tsx:1289` | placeholder | 어떤 tier도 안 맞을 때 쓸 제목 (예: {지역} 운전학원 안내) | — |
 | `components/DomainClient.tsx:1295` | tooltip | 입력한 내용을 모두 지우고 빈 폼으로 되돌립니다 | — |
-| `components/DomainClient.tsx:1420` | confirm | 이 도메인의 학원 자료를 전부 삭제할까요? (검색/지역 필터와 무관하게 모두 삭제) 되돌릴 수 없습니다. | — |
-| `components/DomainClient.tsx:1542` | confirm | 지역 축을 기본값(운전 프리셋 지역)으로 초기화할까요? 지금 지역 목록이 덮어써집니다. | — |
-| `components/DomainClient.tsx:1598` | tooltip | 지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline) | — |
-| `components/DomainClient.tsx:1602` | muted-p | 최근 지역 동기화(이 브라우저 기록): {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.… | — |
-| `components/DomainClient.tsx:1604` | jsx-text | 에만 쓰이며 글 내용은 바꾸지 않습니다(추후 | — |
-| `components/DomainClient.tsx:1604` | jsx-text | 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다. | — |
-| `components/DomainClient.tsx:1610` | muted-p | 지역이 없습니다. 위 「지역 동기화」 또는 「기본값으로 초기화」로 채우세요. | — |
-| `components/DomainClient.tsx:1612` | muted-p | 보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요. 한 줄에 하나: 값,가중치,월검색량,KD | — |
-| `components/DomainClient.tsx:1631` | tooltip | 지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다. | — |
-| `components/DomainClient.tsx:1631` | tooltip | 이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음) | — |
-| `components/DomainClient.tsx:1634` | muted-p | 최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academi… | — |
-| `components/DomainClient.tsx:1644` | muted-p | DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다. | — |
-| `components/DomainClient.tsx:1647` | muted-p | 학원 1곳의 지역, 이름, 주소, 전화, 검증 메모를 직접 입력합니다. | — |
-| `components/DomainClient.tsx:1648` | muted-p | 여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다. | — |
-| `components/DomainClient.tsx:1664` | muted-p | {photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개 | — |
-| `components/DomainClient.tsx:1666` | muted-p | {loading ? "불러오는 중..." : "학원이 없습니다. 위 「학원 동기화」로 채우거나 검색 조건을 바꿔보세요."} | — |
-| `components/DomainClient.tsx:1760` | confirm | 요청한 개수 ${max.toLocaleString()}개는 글유형당 상한 ${cap.toLocaleString()}개로 제한됩니다.${typeof created === "number" ? | — |
-| `components/DomainClient.tsx:1772` | confirm | 작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
-| `components/DomainClient.tsx:1783` | confirm | ${label}: ${count}개 글 작성을 큐에 등록할까요? | — |
-| `components/DomainClient.tsx:1787` | confirm | ${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
-| `components/DomainClient.tsx:1819` | muted-p | 활성화된 글유형이 없습니다. 글유형/디자인 탭에서 유형을 켜세요. | — |
-| `components/DomainClient.tsx:1854` | muted-p | 아래 필터는 목록 표시와 「현재 검색 N개 작성」 선별에 쓰입니다. | — |
-| `components/DomainClient.tsx:1859` | placeholder | 지역/키워드/후보 검색 예: 서울, 강남구 | — |
-| `components/DomainClient.tsx:1891` | tooltip | 비우면 규칙/LLM 자동 제목. 입력하면 규칙보다 우선합니다. {지역}/{개수}/{키워드}/{학원명} 은 생성 시점에 치환됩니다. | — |
-| `components/DomainClient.tsx:1921` | jsx-text | 아직 작업이 없습니다. 글 생성 탭에서 “1개 테스트 작성”부터 등록하세요. | — |
-| `components/DomainClient.tsx:1966` | muted-p | {scoped.length}개 글 · 이미지 {aggImgs}장(평균 {scoped.length ? (aggImgs / scoped.length).toFixed(1) : "0"}장) · 비용 ${aggCost.toFixed(3)} (평균 ${scoped.length ? (aggCost / scoped.length).toF… | — |
-| `components/DomainClient.tsx:2010` | confirm | 정말 삭제할까요? 모든 데이터가 삭제됩니다. | — |
-| `components/DomainClient.tsx:2011` | muted-p | 도메인 목록·상단 전환 메뉴에서 이 도메인을 구분하는 이름입니다. 글에는 나오지 않으니 운영 편한 대로 적어도 됩니다. | — |
-| `components/DomainClient.tsx:2011` | muted-p | 미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요. | — |
-| `components/DomainClient.tsx:2011` | muted-p | 이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다. | — |
-| `components/DomainClient.tsx:2197` | muted-p | 조사 현황을 불러오지 못했습니다. | — |
-| `components/DomainClient.tsx:2207` | muted-p | {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."} {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).t… | — |
-| `components/DomainClient.tsx:2288` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
-| `components/DomainClient.tsx:2296` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
-| `components/DomainClient.tsx:2300` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
+| `components/DomainClient.tsx:1436` | confirm | 이 도메인의 학원 자료를 전부 삭제할까요? (검색/지역 필터와 무관하게 모두 삭제) 되돌릴 수 없습니다. | — |
+| `components/DomainClient.tsx:1558` | confirm | 지역 축을 기본값(운전 프리셋 지역)으로 초기화할까요? 지금 지역 목록이 덮어써집니다. | — |
+| `components/DomainClient.tsx:1614` | tooltip | 지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline) | — |
+| `components/DomainClient.tsx:1618` | muted-p | 최근 지역 동기화(이 브라우저 기록): {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.… | — |
+| `components/DomainClient.tsx:1620` | jsx-text | 에만 쓰이며 글 내용은 바꾸지 않습니다(추후 | — |
+| `components/DomainClient.tsx:1620` | jsx-text | 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다. | — |
+| `components/DomainClient.tsx:1626` | muted-p | 지역이 없습니다. 위 「지역 동기화」 또는 「기본값으로 초기화」로 채우세요. | — |
+| `components/DomainClient.tsx:1628` | muted-p | 보통은 위 동기화로 채웁니다. 지역 목록을 수동 조정할 때만 여세요. 한 줄에 하나: 값,가중치,월검색량,KD | — |
+| `components/DomainClient.tsx:1647` | tooltip | 지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다. | — |
+| `components/DomainClient.tsx:1647` | tooltip | 이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음) | — |
+| `components/DomainClient.tsx:1650` | muted-p | 최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academi… | — |
+| `components/DomainClient.tsx:1660` | muted-p | DrivingPlus 동기화에 없는 검증 자료가 있을 때만 직접 채웁니다. 필수 단계는 아니며, 위 지역·학원 동기화만으로도 글을 생성할 수 있습니다. | — |
+| `components/DomainClient.tsx:1664` | muted-p | 여러 학원 자료를 JSON 객체 또는 배열로 한 번에 등록합니다. | — |
+| `components/DomainClient.tsx:1680` | muted-p | {photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개 | — |
+| `components/DomainClient.tsx:1682` | muted-p | {loading ? "불러오는 중..." : "학원이 없습니다. 위 「학원 동기화」로 채우거나 검색 조건을 바꿔보세요."} | — |
+| `components/DomainClient.tsx:1776` | confirm | 요청한 개수 ${max.toLocaleString()}개는 글유형당 상한 ${cap.toLocaleString()}개로 제한됩니다.${typeof created === "number" ? | — |
+| `components/DomainClient.tsx:1788` | confirm | 작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
+| `components/DomainClient.tsx:1799` | confirm | ${label}: ${count}개 글 작성을 큐에 등록할까요? | — |
+| `components/DomainClient.tsx:1803` | confirm | ${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 큐 탭에서 진행상태를 확인하세요. | — |
+| `components/DomainClient.tsx:1835` | muted-p | 활성화된 글유형이 없습니다. 글유형/디자인 탭에서 유형을 켜세요. | — |
+| `components/DomainClient.tsx:1875` | placeholder | 지역/키워드/후보 검색 예: 서울, 강남구 | — |
+| `components/DomainClient.tsx:1937` | jsx-text | 아직 작업이 없습니다. 글 생성 탭에서 “1개 테스트 작성”부터 등록하세요.<br>_빈 상태 문구._ | — |
+| `components/DomainClient.tsx:1982` | muted-p | {scoped.length}개 글 · 이미지 {aggImgs}장(평균 {scoped.length ? (aggImgs / scoped.length).toFixed(1) : "0"}장) · 비용 ${aggCost.toFixed(3)} (평균 ${scoped.length ? (aggCost / scoped.length).toF… | — |
+| `components/DomainClient.tsx:2026` | confirm | 정말 삭제할까요? 모든 데이터가 삭제됩니다. | — |
+| `components/DomainClient.tsx:2027` | muted-p | 도메인 목록·상단 전환 메뉴에서 이 도메인을 구분하는 이름입니다. 글에는 나오지 않으니 운영 편한 대로 적어도 됩니다. | — |
+| `components/DomainClient.tsx:2027` | muted-p | 미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요. | — |
+| `components/DomainClient.tsx:2027` | muted-p | 이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다. | — |
+| `components/DomainClient.tsx:2213` | muted-p | 조사 현황을 불러오지 못했습니다. | — |
+| `components/DomainClient.tsx:2223` | muted-p | {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."} {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).t… | — |
+| `components/DomainClient.tsx:2304` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
+| `components/DomainClient.tsx:2312` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
+| `components/DomainClient.tsx:2316` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
 | `components/DraftsClient.tsx:67` | muted-p | 검수 대기 목록에서 반려한 글이 여기에 모입니다. 반려해도 본문은 지워지지 않아 나중에 다시 열어볼 수 있습니다. | — |
 | `components/DraftsClient.tsx:74` | muted-p | 검수 후 발행한 글이 여기에 기록됩니다. 발행된 글 자체는 검수·내보내기 화면에서 확인합니다. | — |
-| `components/DraftsClient.tsx:85` | jsx-text | 최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다. | — |
+| `components/DraftsClient.tsx:85` | jsx-text | 최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다.<br>_빈 상태 해석._ | — |
 | `components/JobCard.tsx:81` | muted-p | 예약 {formatDateTime(job.scheduled_at)} · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)} · 대기 {String(job.payload_obj?.cooldown_sec ?? "-")}초 · 제한 {String… | — |
 | `components/NeedDomainClient.tsx:57` | jsx-text | 백엔드가 실행 중인지, `SEO_API_BASE_URL` 설정을 확인하세요. | — |
 | `components/PostDetailClient.tsx:56` | muted-p | 원문은 상단의 복사/다운로드 버튼으로 확인합니다. 상세 화면에는 발행 디자인만 표시합니다. | — |
 | `components/SettingsClient.tsx:101` | muted-p | 튜토리얼·생성 기본값처럼 이 브라우저의 작업 편의에만 영향을 주는 설정입니다. | — |
-| `components/SettingsClient.tsx:111` | muted-p | 도메인 개요나 대시보드에서 「글 생성 / 검수 흐름 시작」(또는 세부 단계 시작)을 누르면 단계별 가이드가 표시됩니다. × 또는 Esc로 이번 안내만 닫을 수 있고, 「더 이상 안 보기」는 이후 자동 제안을 끕니다. | — |
 | `components/SettingsClient.tsx:124` | muted-p | 튜토리얼 안에서 「더 이상 안 보기」를 눌러도 여기서 다시 켤 수 있습니다. 설정은 이 브라우저에만 저장됩니다. | — |
 | `components/SettingsClient.tsx:136` | muted-p | 「글 후보 만들기 / 글 작성」 화면의 작성 엔진·모델·이미지 옵션 초기값입니다. 자주 쓰는 조합을 저장해두면 매번 다시 고르지 않아도 됩니다. | — |
 | `components/SettingsClient.tsx:187` | muted-p | 이 브라우저에만 저장됩니다. 저장 후 이미 열려 있는 작성 화면에는 다음에 그 화면을 다시 열 때부터 반영됩니다. | — |
-| `components/SettingsClient.tsx:232` | muted-p | 끈 이유: 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞입니다. 2026-07-27 실측 539건 중 55건(10%)은 학원 고유명이 글 어디에도 없었고, 같은 글 18건이 이름이 비슷한 학원 2~3곳에 중복 배정됐습니다(중앙/천안중앙/북부중앙 등). 10%는 하한선입니다 — 고유명이 지역명인… | — |
+| `components/SettingsClient.tsx:232` | muted-p | 끈 이유: 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞입니다. 2026-07-27 실측 539건 중 55건(10%)은 학원 고유명이 글 어디에도 없었고, 같은 글 18건이 이름이 비슷한 학원 2~3곳에 중복 배정됐습니다(중앙/천안중앙/북부중앙 등). 10%는 하한선입니다 — 고유명이 지역명인…<br>_2026-07-27 실측 근거(539건 중 55건·중복 18건). 코드가 아니라 측정에 매달린 값이라 재측정 전에는 고치지 않는다. 정본 docs/source-field-usage.md §3.6._ | — |
 
 </details>
