@@ -553,27 +553,37 @@ function ReviewQueue() {
         </span>
       </div>
       {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
-      <div style={{ overflowX: "auto" }}>
-        <table className="table">
+      <div className="review-queue-table">
+        <table>
           <thead>
-            <tr><th style={{ width: 180 }}>학원</th><th style={{ width: 120 }}>항목</th><th>값</th><th style={{ width: 90 }}>상태</th><th style={{ width: 60 }}>출처</th><th style={{ width: 90 }}></th></tr>
+            <tr>
+              <th className="review-queue-school" style={{ width: 160 }}>학원</th>
+              <th className="review-queue-field" style={{ width: 100 }}>항목</th>
+              <th>값</th>
+              <th className="review-queue-status" style={{ width: 80 }}>상태</th>
+              <th className="review-queue-source" style={{ width: 60 }}>출처</th>
+              <th className="review-queue-action" style={{ width: 90 }}>승인</th>
+            </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
               const key = `${r.external_id}:${r.field_key}`;
               return (
                 <tr key={key}>
-                  <td><Link href={`/academies/${encodeURIComponent(r.external_id)}`}>{r.name || r.external_id}</Link></td>
-                  <td className="muted">{FIELD_LABEL.get(r.field_key) ?? r.field_key}</td>
-                  <td>
-                    {r.value ? <span>{String(r.value).slice(0, 160)}</span> : <span className="muted">(빈 값)</span>}
-                    {r.note ? <p className="small" style={{ margin: "4px 0 0", color: r.status === "needs_review" ? "#b45309" : "var(--muted, #64748b)" }}>
+                  <td className="review-queue-school">
+                    <Link href={`/academies/${encodeURIComponent(r.external_id)}`}>{r.name || r.external_id}</Link>
+                    {r.address ? <span className="review-queue-address" title={r.address}>{compactReviewQueueAddress(r.address)}</span> : null}
+                  </td>
+                  <td className="review-queue-field muted">{FIELD_LABEL.get(r.field_key) ?? r.field_key}</td>
+                  <td className="review-queue-value">
+                    {r.value ? <span className="review-queue-value-text">{String(r.value)}</span> : <span className="muted">(빈 값)</span>}
+                    {r.note ? <p className="review-queue-note small" style={{ margin: "4px 0 0", color: r.status === "needs_review" ? "#b45309" : "var(--muted, #64748b)" }}>
                       {r.status === "needs_review" ? "⚠️ " : ""}{r.note}
                     </p> : null}
                   </td>
-                  <td><span className={`badge${r.status === "needs_review" ? " warn" : r.status === "verified" ? " success" : ""}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
-                  <td>{r.source_url ? <a href={r.source_url} target="_blank" rel="noreferrer" className="badge">링크</a> : <span className="muted">-</span>}</td>
-                  <td>
+                  <td className="review-queue-status"><span className={`badge${r.status === "needs_review" ? " warn" : r.status === "verified" ? " success" : ""}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
+                  <td className="review-queue-source">{r.source_url ? <a href={r.source_url} target="_blank" rel="noreferrer" className="badge">링크</a> : <span className="muted">-</span>}</td>
+                  <td className="review-queue-action">
                     {/* 승인 해제는 학원 상세에서 한다. 목록에서 되돌리기까지 두면 실수로 누르기 쉽다. */}
                     {r.status === "verified"
                       ? <span className="muted small">승인됨</span>
@@ -595,4 +605,15 @@ function ReviewQueue() {
       </div>
     </div>
   );
+}
+
+function compactReviewQueueAddress(address: string): string {
+  const parts = address.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return address;
+  const district = parts.find((part) => /(?:군|구)$/.test(part))
+    ?? parts.slice(1).find((part) => /시$/.test(part));
+  const city = parts.find((part) => /(?:특별시|광역시|특별자치시|특별자치도|도|시)$/.test(part));
+  const neighborhood = parts.find((part) => /(?:읍|면|동|리)$/.test(part));
+  const road = parts.find((part) => /(?:로|길)$/.test(part));
+  return [district ?? city ?? parts[0], neighborhood ?? road].filter(Boolean).join(" · ");
 }

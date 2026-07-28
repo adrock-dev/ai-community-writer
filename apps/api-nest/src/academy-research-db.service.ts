@@ -304,13 +304,16 @@ export class AcademyResearchDbService implements OnModuleInit {
    * 그래서 시간으로 판단한다. 배치는 학원 1곳마다 heartbeat 를 갱신하므로(updateRun),
    * 그보다 한참 지난 실행만 유령으로 본다. 학원 1곳이 2~3분이라 여유를 크게 둔다.
    */
-  private recoverStaleRuns(): void {
+  // API 재시작뿐 아니라 실행 목록 폴링에서도 호출한다. 프로세스가 사라진 뒤 서버가
+  // 살아 있어도 UI가 `취소 중`으로 영구 고정되지 않게 한다.
+  recoverStaleRuns(): number {
     const cutoff = new Date(Date.now() - STALE_RUN_MS).toISOString();
-    this.run(
+    const result = this.run(
       `UPDATE research_runs SET status='error', error=COALESCE(error, ?), finished_at=?
        WHERE status='running' AND (heartbeat_at IS NULL OR heartbeat_at < ?)`,
       ["응답이 끊겨 중단 처리됨(프로세스 종료 추정)", nowIso(), cutoff],
     );
+    return Number(result.changes ?? 0);
   }
 
   private seedStatusDefs(): void {
@@ -596,7 +599,7 @@ export class AcademyResearchDbService implements OnModuleInit {
     const total = Number(this.get(`SELECT COUNT(*) AS n ${clause}`, params)?.n ?? 0);
     // 검토가 급한 순서: 검토 필요 → 나머지. 그 안에서는 학원명·항목 순으로 안정 정렬한다.
     const rows = this.all(
-      `SELECT m.external_id, m.field_key, m.status, m.note, m.source_url, m.updated_at, b.name
+      `SELECT m.external_id, m.field_key, m.status, m.note, m.source_url, m.updated_at, b.name, b.address
        ${clause}
        ORDER BY CASE m.status WHEN 'needs_review' THEN 0 ELSE 1 END, b.name ASC, m.field_key ASC
        LIMIT ${limit}`,
@@ -649,7 +652,10 @@ export class AcademyResearchDbService implements OnModuleInit {
     this.run(`UPDATE research_runs SET ${sets.join(", ")} WHERE id=?`, params);
   }
 
-  listRuns(limit = 30): Row[] { return this.all("SELECT * FROM research_runs ORDER BY started_at DESC LIMIT ?", [Math.max(1, Math.min(200, limit))]); }
+  listRuns(limit = 30): Row[] {
+    this.recoverStaleRuns();
+    return this.all("SELECT * FROM research_runs ORDER BY started_at DESC LIMIT ?", [Math.max(1, Math.min(200, limit))]);
+  }
 
   // 취소 요청. 실행 중인 것만 대상으로 한다(이미 끝난 실행에 표시해 봐야 의미가 없다).
   requestCancel(id: string): boolean {

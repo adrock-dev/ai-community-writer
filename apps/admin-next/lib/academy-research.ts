@@ -89,6 +89,7 @@ export const getAcademyResearch = (externalId: string) => api<AcademyFull>(`/aca
 export interface ReviewQueueRow {
   external_id: string;
   name?: string | null;
+  address?: string | null;
   field_key: string;
   status: string;
   value?: string | null;
