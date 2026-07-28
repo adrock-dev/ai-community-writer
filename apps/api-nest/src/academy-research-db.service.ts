@@ -14,6 +14,10 @@ type Row = Record<string, any>;
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 const DEFAULT_DB = resolve(PROJECT_DIR, "data/academy_research.db");
 
+// 이보다 오래 heartbeat 가 없으면 프로세스가 죽은 것으로 본다.
+// 학원 1곳이 2~3분이므로 한 곳 처리 중 재시작돼도 살아남을 만큼 여유를 둔다.
+const STALE_RUN_MS = 15 * 60 * 1000;
+
 // 검증상태 기본 3단계(미확인→AI초안→검증완료). 코드 테이블이라 추후 상태 추가가 마이그레이션 없이 가능.
 const DEFAULT_STATUS_DEFS: Array<{ code: string; label: string; rank: number }> = [
   { code: "unverified", label: "미확인", rank: 0 },
@@ -179,7 +183,8 @@ CREATE TABLE IF NOT EXISTS research_runs (
   count_done INTEGER NOT NULL DEFAULT 0,
   error TEXT,
   started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  finished_at TEXT
+  finished_at TEXT,
+  heartbeat_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_research_runs_started ON research_runs(started_at DESC);
 `;
@@ -277,6 +282,9 @@ export class AcademyResearchDbService implements OnModuleInit {
     if (!runCols.has("result")) this.db.exec("ALTER TABLE research_runs ADD COLUMN result TEXT");
     // 취소 요청 플래그. 실행 루프가 매 항목마다 읽어 스스로 멈춘다(중간에 끊지 않으므로 데이터가 깨지지 않는다).
     if (!runCols.has("cancel_requested")) this.db.exec("ALTER TABLE research_runs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0");
+    // 살아 있음 표시. 조사는 API 밖(research:once)에서도 돌기 때문에, 기동 시점만으로
+    // 유령 여부를 판단할 수 없다(아래 recoverStaleRuns 주석).
+    if (!runCols.has("heartbeat_at")) this.db.exec("ALTER TABLE research_runs ADD COLUMN heartbeat_at TEXT");
 
     // 학원 홈페이지 표본 조사(2026-07-28)에서 공통으로 나왔는데 스키마에 자리가 없던 항목.
     // "입학안내·준비사항" 5곳 · "온라인 예약·상담신청" 4곳. 원천은 둘 다 주지 않는다.
@@ -285,12 +293,23 @@ export class AcademyResearchDbService implements OnModuleInit {
     if (!researchCols.has("booking_channel")) this.db.exec("ALTER TABLE academy_research ADD COLUMN booking_channel TEXT");
   }
 
-  // 실행은 전부 API 프로세스 메모리 안에서만 돈다. 기동 시점에 'running' 인 행은
-  // 이전 프로세스가 죽으며 남긴 유령이므로 정리한다(안 하면 UI 버튼이 영원히 잠긴다).
+  /**
+   * 죽은 실행 정리. 안 하면 UI 버튼이 영원히 잠긴다.
+   *
+   * 예전에는 "기동 시점에 running 이면 유령" 으로 봤다. 조사가 API 프로세스 안에서만 돌던
+   * 시절에는 맞았지만, research:once 로 밖에서도 돌게 되면서 **살아 있는 실행을 죽었다고
+   * 표시**하는 사고가 났다(2026-07-28: 별도 프로세스가 24/30 까지 진행 중인데 API 가 재시작하며
+   * error 로 찍어 CLI 가 스스로 종료). 반대로 CLI 가 뜰 때 API 쪽 실행을 죽이는 일도 생긴다.
+   *
+   * 그래서 시간으로 판단한다. 배치는 학원 1곳마다 heartbeat 를 갱신하므로(updateRun),
+   * 그보다 한참 지난 실행만 유령으로 본다. 학원 1곳이 2~3분이라 여유를 크게 둔다.
+   */
   private recoverStaleRuns(): void {
+    const cutoff = new Date(Date.now() - STALE_RUN_MS).toISOString();
     this.run(
-      "UPDATE research_runs SET status='error', error=COALESCE(error, ?), finished_at=? WHERE status='running'",
-      ["API 재시작으로 중단됨", nowIso()],
+      `UPDATE research_runs SET status='error', error=COALESCE(error, ?), finished_at=?
+       WHERE status='running' AND (heartbeat_at IS NULL OR heartbeat_at < ?)`,
+      ["응답이 끊겨 중단 처리됨(프로세스 종료 추정)", nowIso(), cutoff],
     );
   }
 
@@ -591,8 +610,10 @@ export class AcademyResearchDbService implements OnModuleInit {
   createRun(input: { scope: string; external_id?: string | null; region?: string | null; engine?: string | null; method?: string | null; count_total?: number }): string {
     const id = randomUUID();
     this.run(
-      "INSERT INTO research_runs (id, scope, external_id, region, engine, method, status, count_total) VALUES (?,?,?,?,?,?,?,?)",
-      [id, input.scope, input.external_id ?? null, input.region ?? null, input.engine ?? null, input.method ?? null, "running", input.count_total ?? 0],
+      // 생성 시점에 heartbeat 를 찍는다. 첫 학원이 끝나기 전(2~3분)에 다른 프로세스가 뜨면
+      // heartbeat 가 NULL 이라는 이유로 갓 시작한 실행이 유령으로 정리된다.
+      "INSERT INTO research_runs (id, scope, external_id, region, engine, method, status, count_total, heartbeat_at) VALUES (?,?,?,?,?,?,?,?,?)",
+      [id, input.scope, input.external_id ?? null, input.region ?? null, input.engine ?? null, input.method ?? null, "running", input.count_total ?? 0, nowIso()],
     );
     return id;
   }
@@ -607,6 +628,9 @@ export class AcademyResearchDbService implements OnModuleInit {
     if (patch.result !== undefined) { sets.push("result=?"); params.push(jsonOrNull(patch.result)); }
     if (patch.finished) { sets.push("finished_at=?"); params.push(nowIso()); }
     if (!sets.length) return;
+    // 진행이 보고될 때마다 살아 있음을 남긴다. 이 값이 recoverStaleRuns 의 유일한 판단 근거다.
+    sets.push("heartbeat_at=?");
+    params.push(nowIso());
     params.push(id);
     this.run(`UPDATE research_runs SET ${sets.join(", ")} WHERE id=?`, params);
   }
