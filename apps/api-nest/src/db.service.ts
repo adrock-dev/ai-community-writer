@@ -168,6 +168,18 @@ CREATE TABLE IF NOT EXISTS academies (
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_academies_domain_region ON academies(domain, region);
+-- 이 도메인에서 쓰지 않기로 한 학원. academies 행을 지우는 것만으로는 부족하다 —
+-- 학원 자료의 원본은 조사 DB 이고 「학원자료 연결」이 전량을 다시 밀어넣기 때문에,
+-- 제외 의사를 따로 기록해 두지 않으면 다음 연결에 그대로 되살아난다.
+-- 반대로 조사 DB 에서 지우면 다른 도메인에서도 사라지므로, 제외는 도메인별 결정으로 남긴다.
+CREATE TABLE IF NOT EXISTS academy_exclusions (
+  domain TEXT NOT NULL,
+  external_id TEXT NOT NULL,
+  name TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (domain, external_id),
+  FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE
+);
 CREATE TABLE IF NOT EXISTS seo_regions (
   domain TEXT NOT NULL,
   level INTEGER NOT NULL,
@@ -1251,6 +1263,34 @@ export class DbService implements OnModuleInit {
     for (const row of this.all("SELECT level, COUNT(*) n FROM region_directory GROUP BY level ORDER BY level")) by_level[String(row.level)] = Number(row.n);
     return { total, by_level, synced_at: (this.get("SELECT MAX(synced_at) s FROM region_directory")?.s as string) ?? null };
   }
+  /**
+   * 이 도메인에서 학원 1곳을 뺀다.
+   *
+   * 행만 지우면 다음 「학원자료 연결」에 그대로 돌아온다(연결이 조사 DB 전량을 다시 밀어넣는다).
+   * 그래서 제외 의사를 함께 기록한다. external_id 가 없는 옛 행은 기록할 열쇠가 없어 삭제만 된다.
+   */
+  excludeAcademy(domain: string, id: string): { deleted: number; excluded: boolean } {
+    const row = this.get("SELECT external_id, name FROM academies WHERE id=? AND domain=?", [id, domain]);
+    const externalId = String(row?.external_id ?? "").trim();
+    if (externalId) {
+      this.run("INSERT OR REPLACE INTO academy_exclusions (domain, external_id, name) VALUES (?,?,?)", [domain, externalId, row?.name ?? null]);
+    }
+    return { deleted: this.run("DELETE FROM academies WHERE id=? AND domain=?", [id, domain]).changes ?? 0, excluded: Boolean(externalId) };
+  }
+
+  listAcademyExclusions(domain: string): Row[] {
+    return this.all("SELECT external_id, name, created_at FROM academy_exclusions WHERE domain=? ORDER BY created_at DESC", [domain]);
+  }
+
+  excludedAcademyIds(domain: string): Set<string> {
+    return new Set(this.all("SELECT external_id FROM academy_exclusions WHERE domain=?", [domain]).map((r) => String(r.external_id)));
+  }
+
+  /** 제외 해제. 다음 「학원자료 연결」에 다시 들어온다(여기서 되살리지는 않는다). */
+  unexcludeAcademy(domain: string, externalId: string): number {
+    return this.run("DELETE FROM academy_exclusions WHERE domain=? AND external_id=?", [domain, externalId]).changes ?? 0;
+  }
+
   deleteAcademy(domain: string, id: string): number { return this.run("DELETE FROM academies WHERE id=? AND domain=?", [id, domain]).changes ?? 0; }
   deleteAcademies(domain: string, region?: string): number {
     return this.run(`DELETE FROM academies WHERE domain=?${region ? " AND region=?" : ""}`, region ? [domain, region] : [domain]).changes ?? 0;

@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, linkAcademies, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
@@ -13,7 +13,7 @@ import { isTourEnabled, isTourFocus, isTourMode, setTourEnabled, type TourFocus,
 import type { AcademyCoverage, Academy, AdminOptions, Axis, AxisValue, CoherenceTemplate, CustomTemplate, DesignTemplateOption, DomainConfig, DomainDetailPayload, Job, PostSummary, Provider, RuntimeApis, Slot, SlotCounts, TemplateSpec, TitleRule } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 // 동기화 상태 폴링이 연속으로 이만큼 실패하면 화면 갱신을 포기한다(동기화 자체는 서버에서 계속된다).
@@ -1249,7 +1249,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
         </label>)}
         {!(academyTypeOptions ?? []).length && <p className="muted small">먼저 학원 동기화를 실행하면 타입 목록이 표시됩니다.</p>}
       </div>
-      {(academyTypeOptions ?? []).length > 0 && (academyTypeOptions ?? []).every((t) => !t.count) && <p className="toast-warn small">아직 이 도메인에 동기화된 학원이 없습니다(모든 타입 0건). 학원 타입을 골라도 실제 후보가 없어 지역 가이드/체크리스트로만 작성됩니다 — 먼저 「원천 데이터」 탭에서 <b>학원 동기화</b>를 실행하세요.</p>}
+      {(academyTypeOptions ?? []).length > 0 && (academyTypeOptions ?? []).every((t) => !t.count) && <p className="toast-warn small">아직 이 도메인에 동기화된 학원이 없습니다(모든 타입 0건). 학원 타입을 골라도 실제 후보가 없어 지역 가이드/체크리스트로만 작성됩니다 — 먼저 「원천 데이터」 탭에서 <b>학원자료 연결</b>을 실행하세요.</p>}
     </div>}
       </div>
     </details>
@@ -1352,6 +1352,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   const [replaceRegionAxis, setReplaceRegionAxis] = useState(true);
   const [regionMsg, setRegionMsg] = useState("");
   const [academyMsg, setAcademyMsg] = useState("");
+  const [exclusions, setExclusions] = useState<AcademyExclusion[]>([]);
   const [q, setQ] = useState("");
   const [region, setRegion] = useState("");
   const [academyType, setAcademyType] = useState("");
@@ -1395,6 +1396,12 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       .catch(() => { if (!cancelled) setRuntimeApis(null); });
     return () => { cancelled = true; };
   }, []);
+  // 제외한 학원 목록. 연결이 이 목록을 건너뛰므로, 보이지 않는 규칙이 되지 않게 화면에도 드러낸다.
+  const loadExclusions = useCallback(async () => {
+    try { setExclusions((await listAcademyExclusions(domain.domain)).items); }
+    catch { /* 조회 실패는 화면을 막지 않는다 */ }
+  }, [domain.domain]);
+  useEffect(() => { void loadExclusions(); }, [loadExclusions]);
   async function loadAcademies() {
     setLoading(true); setFilterError("");
     try {
@@ -1421,7 +1428,22 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     }, 250);
     return () => { cancelled = true; window.clearTimeout(handle); };
   }, [domain.domain, q, region, academyType, hasPhotos]);
-  async function del(id: string) { if (!confirm("삭제할까요?")) return; await api(`/domains/${encodeURIComponent(domain.domain)}/academies/${id}`, { method: "DELETE" }); await onRefresh(); await loadAcademies(); }
+  /**
+   * 이 도메인에서 학원 1곳 빼기.
+   *
+   * 행만 지우면 「학원자료 연결」을 다시 누를 때 되살아난다(연결이 조사 DB 전량을 밀어넣는다).
+   * 그래서 서버가 제외 목록에 기록하고, 연결이 그 목록을 건너뛴다. 자료 원본은 그대로 남는다.
+   */
+  async function exclude(id: string, name: string) {
+    if (!confirm(`「${name}」을(를) 이 도메인에서 뺄까요?\n다시 연결해도 돌아오지 않습니다. 아래 「제외한 학원」에서 언제든 되돌릴 수 있고, 자료 원본은 「운전학원 자료」에 그대로 남습니다.`)) return;
+    await api(`/domains/${encodeURIComponent(domain.domain)}/academies/${id}`, { method: "DELETE" });
+    await onRefresh(); await loadAcademies(); await loadExclusions();
+  }
+  async function restore(externalId: string, name: string) {
+    if (!confirm(`「${name}」의 제외를 해제할까요?\n목록에서 빠질 뿐 학원이 바로 돌아오지는 않습니다 — 위 「학원자료 연결」을 다시 눌러야 들어옵니다.`)) return;
+    await unexcludeAcademy(domain.domain, externalId);
+    await loadExclusions();
+  }
   // 연결 끊기 — 이 도메인의 학원 자료를 비운다. 「운전학원 자료」의 원본·조사값은 그대로 남고,
   // 「학원자료 연결」을 다시 누르면 복구된다. 그래서 되돌릴 수 없는 삭제가 아니다.
   async function unlinkAcademies() {
@@ -1638,7 +1660,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         </p>
       )}
       <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={onSave} />
-      <div className="spread"><div><h3 style={{ margin: 0 }}>현재 학원 목록</h3><p className="muted small">동기화된 학원을 검색·지역으로 찾고, 필요 없는 자료는 삭제합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p></div><span className="badge info">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
+      <div className="spread"><div><h3 style={{ margin: 0 }}>현재 연결 학원 목록</h3><p className="muted small">이 도메인에 연결된 학원입니다. 검색·지역으로 찾고, 쓰지 않을 학원은 제외합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p></div><span className="badge info">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
       <div className="grid grid-4">
         <Field label="검색"><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명, 주소, SEO 설명" /></Field>
         <Field label="지역"><input className="input" value={region} onChange={(e) => setRegion(e.target.value)} placeholder="서울, 부산, 강남구" /></Field>
@@ -1651,9 +1673,15 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
             const photoCount = parsePhotoCount(a.photos);
             const reviewCount = parseJsonCount(a.review_json);
             const blogReviewCount = parseJsonCount(a.blog_reviews);
-            return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => del(a.id)}>삭제</button></td></tr>;
+            return <tr key={a.id}><td>{a.region}</td><td><b>{a.name}</b><p className="muted small">{a.address}</p><p className="muted small">{a.external_id ? `#${a.external_id}` : ""}</p></td><td><span className="badge">{a.academy_type || "-"}</span></td><td>{a.vphone || a.phone}<p className="muted small">{photoCount ? `사진 ${photoCount}장` : "사진 없음"} · 리뷰 {reviewCount}개 · 블로그 {blogReviewCount}개</p></td><td><span className="small">{a.seo_description || a.review || "-"}</span></td><td>{a.source_url ? <a href={a.source_url} target="_blank">{a.source_name || "링크"}</a> : a.source_name}</td><td><button className="btn danger" onClick={() => exclude(a.id, a.name)}>제외</button></td></tr>;
           })}</tbody></table></div>
-        : <p className="muted small">{loading ? "불러오는 중..." : "학원이 없습니다. 위 「학원 동기화」로 채우거나 검색 조건을 바꿔보세요."}</p>}
+        : <p className="muted small">{loading ? "불러오는 중..." : "연결된 학원이 없습니다. 위 「학원자료 연결」로 가져오거나 검색 조건을 바꿔보세요."}</p>}
+      {exclusions.length > 0 && <details className="card card-pad grid compact-pad" style={{ background: "#fffbeb" }}>
+        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>제외한 학원</h3><p className="muted small">이 도메인에서만 빼 둔 학원입니다. 「학원자료 연결」이 이 목록을 건너뜁니다. 자료 원본과 조사값은 「운전학원 자료」에 그대로 남아 다른 도메인에는 영향이 없습니다.</p></div><span className="badge info">{exclusions.length}곳</span></div></summary>
+        <div className="table-wrap" style={{ maxHeight: 240, overflow: "auto" }}><table><thead><tr><th>학원명</th><th>제외 시각</th><th></th></tr></thead><tbody>{exclusions.map((x) => (
+          <tr key={x.external_id}><td><b>{x.name || x.external_id}</b><p className="muted small">#{x.external_id}</p></td><td className="muted small">{x.created_at ? formatDateTime(x.created_at) : "-"}</td><td><button className="btn" onClick={() => restore(x.external_id, x.name || x.external_id)}>제외 해제</button></td></tr>
+        ))}</tbody></table></div>
+      </details>}
     </div>
   </div>;
 }

@@ -52,3 +52,25 @@ it("수동 등록분만 삭제할 수 있다", () => {
   expect(rdb.deleteManualBase(manualId)).toBe(true);
   expect(rdb.listBase({ limit: 100 }).length).toBe(1);
 });
+
+it("제외한 학원은 다시 연결해도 돌아오지 않는다", () => {
+  rdb.upsertBase({ external_id: "src-2", name: "뺄학원", address: "대구광역시 수성구 3", raw_json: { id: "src-2", title: "뺄학원", roadAddress: "대구광역시 수성구 3" } });
+  link.linkToDomain("manual.test");
+  const target = db.listAcademies("manual.test", { limit: 10 }).find((r: any) => r.name === "뺄학원");
+  expect(target).toBeTruthy();
+
+  const res = db.excludeAcademy("manual.test", target.id);
+  expect(res).toEqual({ deleted: 1, excluded: true });
+
+  const relinked = link.linkToDomain("manual.test");
+  expect(relinked.excluded).toBe(1);
+  expect(db.listAcademies("manual.test", { limit: 10 }).some((r: any) => r.name === "뺄학원")).toBe(false);
+
+  // 조사 DB 원본은 남아 있어야 한다 — 제외는 도메인별 결정이다
+  expect(rdb.getBase("src-2")).toBeTruthy();
+
+  // 해제하면 다음 연결에 돌아온다
+  expect(db.unexcludeAcademy("manual.test", "src-2")).toBe(1);
+  link.linkToDomain("manual.test");
+  expect(db.listAcademies("manual.test", { limit: 10 }).some((r: any) => r.name === "뺄학원")).toBe(true);
+});

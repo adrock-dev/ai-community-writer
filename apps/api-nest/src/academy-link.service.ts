@@ -28,11 +28,15 @@ export class AcademyLinkService {
   ) {}
 
   linkToDomain(domain: string): {
-    linked: number; skipped: number; reviews: number; blog_reviews: number;
+    linked: number; skipped: number; excluded: number; reviews: number; blog_reviews: number;
     research_applied: number; research_usage: string; warnings: string[];
   } {
     const usage = parseResearchUsage(this.db.getDomain(domain)?.research_usage);
     const bases = this.researchDb.listBase({ limit: 5000 });
+    // 이 도메인에서 빼기로 한 학원. 연결은 조사 DB 전량을 밀어넣으므로, 여기서 걸러내지 않으면
+    // 운영자가 뺀 학원이 연결을 누를 때마다 되살아난다.
+    const excluded = this.db.excludedAcademyIds(domain);
+    let excludedCount = 0;
 
     const rows: Array<Record<string, unknown>> = [];
     let reviewCount = 0;
@@ -42,6 +46,7 @@ export class AcademyLinkService {
     for (const base of bases) {
       const externalId = String(base.external_id ?? "").trim();
       if (!externalId) continue;
+      if (excluded.has(externalId)) { excludedCount += 1; continue; }
       const raw = parseJson(base.raw_json);
       if (!raw || typeof raw !== "object") continue;
 
@@ -73,6 +78,7 @@ export class AcademyLinkService {
     return {
       linked: result.upserted,
       skipped: result.skipped,
+      excluded: excludedCount,
       reviews: result.review_count,
       blog_reviews: result.blog_review_count,
       research_applied: researchApplied,

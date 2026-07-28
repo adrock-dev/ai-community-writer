@@ -947,6 +947,14 @@
       "depends": [
         "apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies __manual 폴백"
       ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "「학원자료 연결」이 이 목록을 건너뜁니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-link.service.ts#linkToDomain excludedAcademyIds"
+      ]
     }
   ]
 }

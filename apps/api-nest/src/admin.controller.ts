@@ -751,9 +751,31 @@ export class AdminController {
     return { ok: true, regions: regionSummary, run_id: started.run_id, axis_replaced: Boolean(body.replace_axis), level };
   }
 
+  /**
+   * 이 도메인에서 학원 1곳을 뺀다(제외 목록에 기록).
+   *
+   * 예전에는 academies 행만 지웠는데, 학원 자료의 원본이 조사 DB 로 옮겨간 뒤로는
+   * 「학원자료 연결」이 전량을 다시 밀어넣어 뺀 학원이 곧바로 되살아났다. 제외는 도메인별
+   * 결정이므로 조사 DB 를 건드리지 않고 여기에만 남긴다.
+   */
   @Delete("domains/:domain/academies/:academyId")
   deleteAcademy(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("academyId") academyId: string) {
-    checkAuth(req, headers); this.requireDomain(domain); return { ok: true, deleted: this.db.deleteAcademy(domain, academyId) };
+    checkAuth(req, headers); this.requireDomain(domain);
+    return { ok: true, ...this.db.excludeAcademy(domain, academyId) };
+  }
+
+  @Get("domains/:domain/academy-exclusions")
+  listAcademyExclusions(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const items = this.db.listAcademyExclusions(domain);
+    return { count: items.length, items };
+  }
+
+  /** 제외 해제. 목록에서 빠질 뿐 학원이 곧바로 돌아오지는 않는다 — 「학원자료 연결」을 다시 눌러야 한다. */
+  @Delete("domains/:domain/academy-exclusions/:externalId")
+  unexcludeAcademy(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("externalId") externalId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return { ok: true, removed: this.db.unexcludeAcademy(domain, externalId) };
   }
 
   // 학원 자료 일괄 삭제. region 쿼리가 있으면 그 지역만, 없으면 도메인 전체.
