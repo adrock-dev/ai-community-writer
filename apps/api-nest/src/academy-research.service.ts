@@ -180,12 +180,18 @@ export class AcademyResearchService {
     const academy = all.find((a) => String(a.id) === String(externalId));
     if (!academy) return { external_id: externalId, found: false, reviews: 0, student_reviews: 0, blog_reviews: 0 };
     const id = this.upsertBaseRow(academy);
+    // 블로그리뷰는 수집 스위치를 따른다. 전에는 이 경로만 스위치를 건너뛰었는데, 화면에 단건
+    // 동기화 버튼이 붙으면서 한 번 클릭이면 닿게 됐다. 스위치를 끈 이유는 원천이 학원명을
+    // 느슨하게 매칭해 다른 학원 글이 섞이기 때문이고(오배정 10%), 저장은 전량교체라
+    // 빈 응답 한 번이면 멀쩡한 후기가 지워진다.
+    const collectBlog = blogReviewSyncEnabled();
     const [reviewPage, blogPage] = await Promise.all([
       this.pullReviews(academy.id, opts.reviewLimit ?? 5),
-      this.pullBlogReviews(academy.id, opts.blogReviewLimit ?? 5),
+      collectBlog ? this.pullBlogReviews(academy.id, opts.blogReviewLimit ?? 5) : Promise.resolve(null),
     ]);
     const studentReviews = this.storeReviewPlatform(id, reviewPage).stored;
-    const blogReviews = this.storeBlogPlatform(id, blogPage).stored;
+    // 스위치가 꺼져 있으면 기존 블로그리뷰를 건드리지 않는다(0건으로 덮지 않는다).
+    const blogReviews = blogPage ? this.storeBlogPlatform(id, blogPage).stored : 0;
     return {
       external_id: externalId, found: true,
       reviews: studentReviews + blogReviews,

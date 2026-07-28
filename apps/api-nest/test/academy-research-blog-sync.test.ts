@@ -109,6 +109,11 @@ describe("syncBlogReviews 원천 과부하 방어", () => {
   });
 
   it("단건 원천 재수집 결과는 일반 후기와 블로그 후기를 나눠 돌려준다", async () => {
+    // syncOne 은 블로그리뷰 수집 스위치를 따른다(꺼져 있으면 원천을 부르지 않고 기존 후기도
+    // 건드리지 않는다 — research-sync-one-blog-switch.test.ts). 여기서는 나눠 돌려주는지가
+    // 관심사이므로 스위치를 켠 상태로 본다.
+    const { registerSettingsReader } = await import("../src/runtime-config.js");
+    registerSettingsReader((key) => (key === "blog_review_sync" ? "1" : null));
     globalThis.fetch = (async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes("get-all-academy")) {
