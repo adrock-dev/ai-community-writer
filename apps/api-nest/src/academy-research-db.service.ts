@@ -322,13 +322,17 @@ export class AcademyResearchDbService implements OnModuleInit {
     if (!researchAttemptCols.has("last_attempted_at")) this.db.exec("ALTER TABLE academy_research ADD COLUMN last_attempted_at TEXT");
     if (addedAttemptOutcome) this.db.exec("ALTER TABLE academy_research ADD COLUMN last_attempt_outcome TEXT");
     if (!researchAttemptCols.has("last_attempt_error")) this.db.exec("ALTER TABLE academy_research ADD COLUMN last_attempt_error TEXT");
-    if (addedAttemptOutcome) {
-      // 기존에 값이 저장된 행은 이미 성공 시도였으므로 상태만 안전하게 이관한다.
-      this.run("UPDATE academy_research SET last_attempted_at=COALESCE(last_attempted_at, researched_at), last_attempt_outcome='saved' WHERE researched_at IS NOT NULL AND last_attempt_outcome IS NULL");
-    }
-    // 빠른 코드 재적재 중 컬럼만 먼저 만들어진 경우도 있어, 안전 조건을 만족할 때만
-    // 실행 집계에서 no_sources 대상을 복원한다.
-    this.recoverLegacyNoSourceAttempts();
+    // 기존에 값이 저장된 행은 이미 성공 시도였으므로 상태만 안전하게 이관한다.
+    // 조건이 좁아(researched_at 있고 outcome 없음) 항상 돌려도 안전하며, 컬럼만 먼저
+    // 만들어지고 이관이 빠진 DB 도 여기서 복구된다.
+    const backfilled = Number(this.run(
+      "UPDATE academy_research SET last_attempted_at=COALESCE(last_attempted_at, researched_at), last_attempt_outcome='saved' WHERE researched_at IS NOT NULL AND last_attempt_outcome IS NULL",
+    )?.changes ?? 0);
+    // 복원은 **이관이 실제로 일어난 기동에서만** 돈다. 매 기동 돌리면 안 된다 —
+    // 학원을 개수로만 대조하기 때문에, 이관이 끝난 뒤 원천 동기화로 새 학원이 들어와
+    // 그 수가 마지막 배치의 no_sources 수와 우연히 같으면 **한 번도 조사한 적 없는 학원이
+    // "근거 없음" 으로 찍혀 기본 배치에서 조용히 빠진다**(재현 테스트: research-attempt-outcome).
+    if (addedAttemptOutcome || backfilled > 0) this.recoverLegacyNoSourceAttempts();
 
     // 학원 홈페이지 표본 조사(2026-07-28)에서 공통으로 나왔는데 스키마에 자리가 없던 항목.
     // "입학안내·준비사항" 5곳 · "온라인 예약·상담신청" 4곳. 원천은 둘 다 주지 않는다.
