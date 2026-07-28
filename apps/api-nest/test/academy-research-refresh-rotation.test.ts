@@ -45,9 +45,9 @@ describe("startRegionResearch 재조사 배치 대상 선정", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("refreshAll 이어도 성공한 직전 배치와 겹치지 않는 다음 묶음을 고른다", async () => {
-    const first = await service.startRegionResearch("서울", { refreshAll: true, limit: 30, provider: "codex" });
-    const second = await service.startRegionResearch("서울", { refreshAll: true, limit: 30, provider: "codex" });
+  it("refreshAll 오프셋은 성공한 직전 배치와 겹치지 않는 바로 다음 묶음을 고른다", async () => {
+    const first = await service.startRegionResearch("서울", { refreshAll: true, limit: 30, offset: 0, provider: "codex" });
+    const second = await service.startRegionResearch("서울", { refreshAll: true, limit: 30, offset: 30, provider: "codex" });
 
     expect(first).toMatchObject({ ok: true, count: 30 });
     expect(second).toMatchObject({ ok: true, count: 30 });

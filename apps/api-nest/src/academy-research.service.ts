@@ -307,7 +307,9 @@ export class AcademyResearchService {
       offset: opts.offset,
       // 재조사도 허용할 때는 아직 조사하지 않은 곳부터, 그다음 가장 오래된 조사부터 갱신한다.
       // 따라서 성공한 30곳씩 연달아 실행하면 직전 묶음 대신 다음 묶음으로 진행된다.
-      oldestResearchFirst: opts.refreshAll === true,
+      // UI가 offset으로 페이지를 넘길 때는 고정된 이름순을 유지해야 한다. 조사 완료 시각은
+      // 첫 배치가 끝날 때 바뀌므로, 그 상태에서 가변 순서 + offset을 같이 쓰면 중간 묶음을 건너뛴다.
+      oldestResearchFirst: opts.refreshAll === true && opts.offset == null,
     });
     if (!targets.length) {
       return {
