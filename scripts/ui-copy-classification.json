@@ -572,15 +572,6 @@
     },
     {
       "file": "apps/admin-next/components/AcademyResearchClient.tsx",
-      "match": "이 화면은 아직 전체 기능이 완성되지 않았습니다",
-      "class": "B",
-      "depends": [
-        "apps/admin-next/components/AcademyResearchClient.tsx"
-      ],
-      "note": "미완성 범위 선언. 조사 항목 편집·대량 관리가 붙으면 이 문단을 지워야 한다."
-    },
-    {
-      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "서버에서 실행 중입니다",
       "class": "B",
       "depends": [
@@ -750,15 +741,6 @@
       "class": "C",
       "depends": [],
       "note": "2026-07-27 실측 근거(539건 중 55건·중복 18건). 코드가 아니라 측정에 매달린 값이라 재측정 전에는 고치지 않는다. 정본 docs/source-field-usage.md §3.6."
-    },
-    {
-      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
-      "match": "조사 항목 편집, 대량 관리, 자동 조사 흐름은 아직 정리 중",
-      "class": "B",
-      "depends": [
-        "apps/admin-next/components/AcademyResearchClient.tsx"
-      ],
-      "note": "미완성 범위 선언. 바로 위 「전체 기능이 완성되지 않았습니다」와 한 쌍이라 기능이 붙으면 둘 다 지워야 한다."
     },
     {
       "file": "apps/api-nest/src/admin.controller.ts",

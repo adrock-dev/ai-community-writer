@@ -207,17 +207,6 @@ export default function AcademyResearchClient() {
         </div>
       </div>
 
-      <section className="beta-callout">
-        <div>
-          <span className="badge warn">미완성 베타</span>
-          <h2>이 화면은 아직 전체 기능이 완성되지 않았습니다.</h2>
-          <p>
-            현재는 DrivingPlus에서 동기화한 학원 목록 조회와 학원별 기본 조사 정보 확인까지만 안정적으로 제공합니다.
-            조사 항목 편집, 대량 관리, 자동 조사 흐름은 아직 정리 중이므로 운영 판단용 보조 화면으로만 사용해 주세요.
-          </p>
-        </div>
-      </section>
-
       <p className="muted">
         기본정보·리뷰 원문과 AI 심층조사 데이터는 <b>별도 DB(academy_research.db)</b>에 저장됩니다.
         admin.db와 분리되어 초기화되지 않습니다.
