@@ -359,6 +359,13 @@ export class AcademyResearchService {
     collected: WebSource[] = [],
     known: KnownFacts = baseKnownFacts(),
   ): { checked: number; flagged: number } {
+    // 덮어쓰기 전에 이전 값·검증상태를 읽어 둔다. 사람이 검증완료로 올린 값을 재조사가
+    // 무조건 풀어버리면, 검토에 들인 노동이 조사 한 번에 전부 날아간다.
+    const previousValues = this.db.getResearch(externalId) ?? {};
+    const previousStatus = new Map<string, string>(
+      this.db.listFieldMeta(externalId).map((row) => [String(row.field_key), String(row.status ?? "")]),
+    );
+
     const scalar: Record<string, unknown> = {};
     for (const key of SCALAR_KEYS) {
       const value = parsed[key];
@@ -402,8 +409,13 @@ export class AcademyResearchService {
       const report = inspectResearchValue(key as string, String(value), haystack);
       checked += 1;
       if (hasFinding(report)) flagged += 1;
+      const status = nextFieldStatus({
+        wasVerified: previousStatus.get(key as string) === "verified",
+        unchanged: String(previousValues[key as string] ?? "") === String(value),
+        hasFinding: hasFinding(report),
+      });
       this.db.setFieldMeta(externalId, key as string, {
-        status: hasFinding(report) ? "needs_review" : "ai_draft",
+        status,
         source_url: sourceUrl,
         source_name: sourceUrl ? undefined : `${meta.engine} 조사`,
         // 빈 문자열로 덮는다. setFieldMeta 가 note 를 COALESCE 로 유지하므로 undefined 를 넘기면
@@ -461,6 +473,19 @@ export class AcademyResearchService {
     this.db.replaceReviews(externalId, "drivingplus_blog", rows);
     return { stored: rows.length, outcome: rows.length ? "data" : "empty" };
   }
+}
+
+/**
+ * 재조사 뒤 필드가 가질 검증상태.
+ *
+ * 사람이 검증완료로 올린 값은 **그 값 그대로일 때만** 승인을 유지한다.
+ * - 값이 바뀌었으면 사람이 확인한 적 없는 값이므로 다시 검토 대상으로 내린다.
+ * - 값이 그대로면 그라운딩 검사에 걸리더라도 승인을 유지한다. 사람이 그 문자열을 보고
+ *   판단한 결과가 자동 검사보다 우선이다. 다만 사유(note)는 남겨 화면에 보이게 한다.
+ */
+export function nextFieldStatus(input: { wasVerified: boolean; unchanged: boolean; hasFinding: boolean }): string {
+  if (input.wasVerified && input.unchanged) return "verified";
+  return input.hasFinding ? "needs_review" : "ai_draft";
 }
 
 // 과정별 가격은 날조 시 피해가 가장 큰 값이라 소스 대조 결과를 행에 남긴다.
