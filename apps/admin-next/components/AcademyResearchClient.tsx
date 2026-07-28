@@ -9,6 +9,7 @@ import {
   setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS,
 } from "@/lib/academy-research";
 import { getBlogReviewSync } from "@/lib/api";
+import { ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
 
 export default function AcademyResearchClient() {
@@ -149,7 +150,7 @@ export default function AcademyResearchClient() {
   }
 
   async function onSyncBlog() {
-    if (!confirm("블로그리뷰를 동기화합니다. 한 곳씩 받아야 해 전체에 8~15분 걸립니다(백그라운드). 수집만 하며 글 생성에는 쓰이지 않습니다. 진행할까요?")) return;
+    if (!confirm(`블로그리뷰를 동기화합니다. 한 곳씩 받아야 해 전체에 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다(백그라운드). 수집만 하며 글 생성에는 쓰이지 않습니다. 진행할까요?`)) return;
     setBusy("blog");
     setError("");
     setNotice("");
@@ -232,7 +233,7 @@ export default function AcademyResearchClient() {
                     {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
                   </button>
                   <span className="muted small">
-                    {lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))} · 한 곳씩 받아 8~15분 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다.
+                    {lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))} · 한 곳씩 받아 {ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다.
                   </span>
                 </>
               ) : (
@@ -516,9 +517,11 @@ function ReviewQueue() {
 
   return (
     <div className="grid" style={{ gap: 10, marginTop: 14 }}>
+      {/* 아직 쓰이지 않는 것을 쓰인다고 적지 않는다 — 도메인 설정 화면은 「조사값은 아직 글 생성에
+          연결되지 않았습니다」라고 안내하는데 여기만 이미 쓰이는 것처럼 단정하고 있었다. */}
       <p className="muted small" style={{ margin: 0 }}>
-        도메인 설정이 <b>「검증완료만」</b>이면 여기서 승인한 값만 글에 쓰입니다. 값을 고치거나 승인을 되돌리려면 학원 상세로 가세요.
-        상태를 <b>검증완료</b>로 두면 지금 글에 쓰이는 조사값을 그대로 볼 수 있습니다.
+        조사값은 <b>아직 글 생성에 연결되지 않았습니다.</b> 연결되면 도메인 설정이 <b>「검증완료만」</b>일 때 여기서 승인한 값만 쓰입니다.
+        값을 고치거나 승인을 되돌리려면 학원 상세로 가세요. 상태를 <b>검증완료</b>로 두면 연결 시점에 글에 쓰일 값을 미리 볼 수 있습니다.
       </p>
       <div className="row" style={{ alignItems: "flex-end", gap: 8 }}>
         <label style={{ display: "grid", gap: 4 }}>

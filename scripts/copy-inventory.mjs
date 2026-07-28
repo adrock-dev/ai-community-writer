@@ -37,9 +37,13 @@ function collect() {
 
   const rows = [];
   const push = (file, index, src, carrier, text) => {
-    const t = norm(text);
+    // JSX 주석은 화면에 안 나온다 — 안내멘트 본문으로 섞이면 인벤토리가 코드 주석을 카피로 센다.
+    const t = norm(text.replace(/\{\/\*[\s\S]*?\*\/\}/g, " "));
     if (hcount(t) < 12) return;   // 라벨·버튼·표머리는 안내멘트가 아니다
     if (t.length > 1200) return;  // 인라인 CSS 등
+    // 폼 컨트롤 마크업은 안내멘트가 아니다. 단 목록을 map 으로 렌더하는 정상 문단까지 버리지 않도록
+    // "=>" 만으로 거르지 않고, 핸들러 잔해(e.target·} />)와 속성만 본다.
+    if (/e\.target|\}\s*\/>|onChange=|onClick=|className=/.test(t)) return;
     rows.push({ file: file.replace("apps/admin-next/", ""), line: src.slice(0, index).split("\n").length, carrier, text: t });
   };
 
@@ -49,6 +53,10 @@ function collect() {
       push(rel, m.index, src, "placeholder", m[1] ?? m[2] ?? m[3] ?? "");
     for (const m of src.matchAll(/<p className="[^"]*(?:muted|small|hint|help)[^"]*"[^>]*>([\s\S]{0,900}?)<\/p>/g))
       push(rel, m.index, src, "muted-p", m[1].replace(/<[^>]+>/g, ""));
+    // 설명 상자는 <p> 만 쓰지 않는다. info-panel/side-note 같은 div 담체를 빼면 안내멘트가 통째로 누락된다
+    // (실제로 후보 선정 반경을 손으로 적던 문단이 이 사각지대에 있었다).
+    for (const m of src.matchAll(/<div className="[^"]*(?:info-panel|toast-info|toast-warn|side-note)[^"]*"[^>]*>([\s\S]{0,900}?)<\/div>/g))
+      push(rel, m.index, src, "info-div", m[1].replace(/<[^>]+>/g, ""));
     for (const m of src.matchAll(/\b(body|desc|action|hint|note|help)\s*:\s*(?:"([^"]*)"|`([^`]*)`)/g))
       push(rel, m.index, src, `field:${m[1]}`, m[2] ?? m[3] ?? "");
     for (const m of src.matchAll(/\b(confirm|alert)\(\s*(?:"([^"]*)"|`([^`]*)`)/g))

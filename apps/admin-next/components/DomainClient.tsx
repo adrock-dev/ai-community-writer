@@ -2,6 +2,7 @@
 
 import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
+import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
@@ -365,7 +366,9 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
   const hasSlots = Boolean(counts && Object.values(counts).reduce((sum, value) => sum + value, 0) > 0);
   const hasPosts = Boolean(counts && counts.published > 0);
   const sourceSync: TourStep = { focus: "source", tab: "academies", target: "academies-sync", title: "(선택) 원천 데이터 준비", body: "지역과 학원 데이터를 가져와두면 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다. 지금 건너뛰고 나중에 준비해도 됩니다. (상단 진행 막대가 전체 흐름입니다.)", action: "데이터가 이미 있거나 나중에 할 거면 다음 단계로 넘어가세요." };
-  const planBrief: TourStep = { focus: "plan", tab: "plan", target: "plan-brief", title: "(선택) 글 공통 설정", body: "모든 글에 공통 적용될 안전·데이터 원칙, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 지금 건너뛰고 나중에 정해도 됩니다.", action: "입력 후 ‘저장’을 누르거나, 필요 없으면 다음으로 넘어가세요." };
+  // 안전·데이터 원칙을 정하라고 안내하지 않는다 — 이미 프롬프트와 품질 게이트가 강제하는 내용이라,
+  // 여기 다시 적으면 강제력은 안 생기고 이 칸에서만 전달되는 말투 지시만 묻힌다(입력칸 안내와 같은 기준).
+  const planBrief: TourStep = { focus: "plan", tab: "plan", target: "plan-brief", title: "(선택) 글 공통 설정", body: "이 사이트만의 말투·태도, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 확인된 데이터만 사용·날조 금지 같은 안전·데이터 규칙은 이미 강제되니 여기 적지 않아도 됩니다. 지금 건너뛰고 나중에 정해도 됩니다.", action: "입력 후 ‘저장’을 누르거나, 필요 없으면 다음으로 넘어가세요." };
   const templateDesign: TourStep = { focus: "template-design", tab: "templates", target: "templates-design", title: "(선택) 디자인 (자동 매칭)", body: "글 유형마다 기본 디자인이 자동 적용됩니다. 대부분 그대로 두면 되고, 특별한 레이아웃이 필요할 때만 커스텀 디자인 메모나 커스텀 글유형 복제로 조정합니다.", action: "특별한 요구가 없으면 그대로 두고 넘어가세요." };
   const templateType: TourStep = { focus: "template-type", tab: "templates", target: "templates-types", title: "글 유형을 켜세요 (필수)", body: "새 도메인은 글 유형이 하나도 켜져 있지 않아 이 단계 없이는 후보를 만들 수 없습니다. 비교형·지역형·체크리스트형처럼 어떤 검색 의도에 맞출지 고르고 켜면 즉시 저장됩니다. 위에서 준비한 원천 데이터·공통 설정을 근거로 커스텀 유형을 만들 수도 있습니다.", action: "운영 초반엔 필요한 유형만 켜세요. 너무 많이 켜면 후보가 급증합니다." };
   const slotGenerate: TourStep = {
@@ -888,7 +891,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
     </details>
     {error && <p className="toast-warn">{error}</p>}
 
-    <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} structureVariants={options.archetype_structure_variants} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig)} busy={busy}
+    <CustomTemplateForm mode="create" domain={domain} kindOptions={kindOptions} designChoices={designChoices} sources={createSources} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} structureVariants={options.archetype_structure_variants} candidateRules={options.candidate_rules} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig)} busy={busy}
       onSubmit={(body) => run(() => createTemplate(domain, body))}
       onClone={(sourceId, name, overrides) => run(() => cloneTemplate(domain, { source_template_id: sourceId, name, overrides }))} />
 
@@ -896,7 +899,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
       ? <p className="muted small">아직 커스텀 글유형이 없습니다. 위에서 만들거나 복제해 보세요.</p>
       : <div className="grid">{custom.map((t) => {
         const coh = coherence[t.template_id];
-        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" domain={domain} initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} structureVariants={options.archetype_structure_variants} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig)} busy={busy}
+        if (editId === t.template_id) return <CustomTemplateForm key={t.template_id} mode="edit" domain={domain} initial={t} kindOptions={kindOptions} designChoices={designChoices} academyTypeOptions={academyTypeOptions} keywordPool={keywordPool} structureVariants={options.archetype_structure_variants} candidateRules={options.candidate_rules} brandColor={domainConfig.brand_color} brand={publicBrandName(domainConfig)} busy={busy}
           onCancel={() => setEditId(null)}
           onSubmit={(body) => run(() => updateTemplate(domain, t.template_id, body)).then(() => setEditId(null))} />;
         return <div key={t.template_id} className="info-panel grid">
@@ -928,7 +931,7 @@ function CustomTemplatesManager({ domainConfig, options, keywordPool, onSave, on
           {t.title_rule?.tiers?.length ? <p className="muted small">제목: {t.title_rule.tiers.map((tr) => `${tr.min_count}곳↑ "${tr.template}"`).join(" · ")}{t.title_rule.min_generate ? ` · 최소 ${t.title_rule.min_generate}곳` : ""}</p> : null}
           {coh && <>
             <p className="small"><b>예상 후보 상한:</b> {coh.estimated_slot_upperbound.toLocaleString()}</p>
-            {coh.academy?.applicable && <p className="small"><b>학원 커버리지</b> (총 {coh.academy.regions_total}개 지역): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · <span style={{ color: (coh.academy.regions_short ?? 0) > 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.regions_short}</span> <span className="muted">(직접+인근 20km / 보장 {coh.academy.min_guarantee_km}km)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
+            {coh.academy?.applicable && <p className="small"><b>학원 커버리지</b> (총 {coh.academy.regions_total}개 지역): 충분 {coh.academy.regions_with_min_for_best} · 보장 {coh.academy.regions_guaranteed} · <span style={{ color: (coh.academy.regions_short ?? 0) > 0 ? "var(--danger)" : undefined }}>부족 {coh.academy.regions_short}</span> <span className="muted">(직접+인근 {coh.academy.nearby_km}km / 보장 {coh.academy.min_guarantee_km}km)</span><button type="button" className="btn" style={{ marginLeft: 8, padding: "1px 8px", fontSize: 12 }} onClick={() => setCoverageFor(t.template_id)}>지역별 자세히</button></p>}
             {coh.warnings.length > 0 && <div className="grid">{coh.warnings.map((w, i) => <p key={i} className={w.level === "error" ? "toast-warn" : "muted small"}>{w.level === "error" ? "⚠️ " : "• "}{w.message}</p>)}</div>}
           </>}
         </div>;
@@ -983,9 +986,9 @@ type TemplateSource = { id: string; label: string; name: string; kind: string; u
 // 커스텀 글유형 생성/편집 폼. 생성 모드에선 '시작점'을 골라 기존 글유형(빌트인/커스텀) 값을 채워 시작할 수 있다(복제 통합).
 // 커스텀 글유형 폼 영역 구분자: "소제목 ──────" 형태로 유사 기능 그룹을 시각적으로 나눈다.
 
-function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, structureVariants, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
+function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices, sources, academyTypeOptions, keywordPool, structureVariants, candidateRules, brandColor, brand, busy, onSubmit, onClone, onCancel }: {
   mode: "create" | "edit"; domain: string; initial?: CustomTemplate; kindOptions: { kind: string; label: string; primary: string }[]; designChoices: DesignTemplateOption[];
-  sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; keywordPool?: string[]; structureVariants?: Record<string, string[]>; brandColor?: string | null; brand?: string; busy: boolean;
+  sources?: TemplateSource[]; academyTypeOptions?: Array<{ value: string; count: number }>; keywordPool?: string[]; structureVariants?: Record<string, string[]>; candidateRules?: AdminOptions["candidate_rules"]; brandColor?: string | null; brand?: string; busy: boolean;
   onSubmit: (body: Partial<CustomTemplate>) => void; onClone?: (sourceId: string, name: string, overrides: Record<string, unknown>) => void; onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -1263,7 +1266,8 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       <div className="grid" style={{ marginTop: 8, gap: 10 }}>
         <p className="toast-info small" style={{ margin: 0 }}>제목을 <b>생성 시점의 실제 후보 수</b>로 확정해 LLM 즉흥·후보 수 부풀림을 막습니다. <b>tier</b>는 후보 수 <b>내림차순</b>으로 첫 매칭 제목을 씁니다(예: 3곳↑ &quot;BEST {"{개수}"}&quot;, 2곳 &quot;추천&quot;). 치환 토큰: <code>{"{지역}"}</code> <code>{"{개수}"}</code> <code>{"{키워드}"}</code> <code>{"{학원명}"}</code>(첫 후보). <b>tier를 하나도 두지 않으면 규칙 없음</b> — 기존대로 LLM이 H1을 정합니다.</p>
         <div className="info-panel small" style={{ margin: 0 }}>
-          <b>&lsquo;실제 후보 수&rsquo;란?</b> 그 지역 글에 <b>소개하려고 선정된 학원 수</b>입니다 — 지역명이 맞는 <b>직접 후보</b> + 20km 이내 <b>인근 후보</b>로 모으고(둘 다 부족하면 50km 이내 최근접으로 <b>보장</b>), 글유형 상한(<b>비교형 최대 5곳 · 단독형 1곳</b>)만큼 추린 값이에요. tier의 <b>후보 수</b>·<b>min_generate</b>·<code>{"{개수}"}</code> 토큰이 모두 이 값을 가리킵니다.
+          {/* 반경·상한은 서버 상수를 그대로 렌더한다. 손으로 적으면 env 로 값을 바꿨을 때 화면만 옛 숫자로 남는다. */}
+          <b>&lsquo;실제 후보 수&rsquo;란?</b> 그 지역 글에 <b>소개하려고 선정된 학원 수</b>입니다 — 지역명이 맞는 <b>직접 후보</b> + {candidateRules?.nearby_km ?? 20}km 이내 <b>인근 후보</b>로 모으고(둘 다 부족하면 {candidateRules?.min_guarantee_km ?? 50}km 이내 최근접으로 <b>보장</b>), 글유형 상한(<b>비교형 최대 {candidateRules?.used_per_post ?? 5}곳 · 단독형 1곳</b>)만큼 추린 값이에요. tier의 <b>후보 수</b>·<b>min_generate</b>·<code>{"{개수}"}</code> 토큰이 모두 이 값을 가리킵니다.
           <br />주로 <b>학원형</b>(지역형 + 학원 타입 지정) 글유형에서 의미가 있습니다. 키워드형(가이드·시험 등)은 학원 후보가 0이라 tier가 안 맞아 fallback/LLM 제목으로 갑니다.
         </div>
         <Field label="최소 생성 후보 수 (min_generate · 선택)">
@@ -1445,9 +1449,9 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           .catch(() => null);
       }
       setAcademyMsg(on === null
-        ? "동기화를 시작했습니다. 블로그 리뷰 수집 설정을 확인하지 못해 소요 시간은 설정에 따라 1~2분 또는 10분 이상입니다."
+        ? `동기화를 시작했습니다. 블로그 리뷰 수집 설정을 확인하지 못해 소요 시간은 설정에 따라 ${ACADEMY_SYNC_DURATION} 또는 ${ACADEMY_SYNC_DURATION_WITH_BLOG}입니다.`
         : on
-          ? "동기화를 시작했습니다. 블로그 리뷰까지 받으므로 10분 이상 걸립니다."
+          ? `동기화를 시작했습니다. 블로그 리뷰까지 받으므로 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.`
           : "동기화를 시작했습니다. 학원 기본 정보와 수강생 후기를 받습니다.");
       await pollSyncRun(started.run_id);
     } catch (e) {
@@ -1559,7 +1563,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           {blogSyncOn === null
             ? ""
             : blogSyncOn
-              ? " — 학원 동기화가 10분 이상 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다."
+              ? ` — 학원 동기화가 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다.`
               : " — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다. 글 생성에도 쓰지 않습니다."}
           {" "}켜고 끄는 것은 <Link href="/settings">설정 → 블로그 리뷰 수집</Link>에서 합니다.
         </p>
@@ -1621,10 +1625,10 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         {blogSyncOn === null
           ? " 블로그 리뷰 수집 여부는 확인 중입니다."
           : blogSyncOn
-            ? " 블로그 리뷰도 받도록 설정돼 있어 10분 이상 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다(설정에서 끌 수 있습니다)."
+            ? ` 블로그 리뷰도 받도록 설정돼 있어 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다(설정에서 끌 수 있습니다).`
             : " 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다."}
       </p>
-      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title={blogSyncOn === null ? "학원 목록과 수강생 후기를 원천에서 받아옵니다. 블로그 리뷰 수집 설정에 따라 1~2분 또는 10분 이상 걸립니다." : blogSyncOn ? "학원 목록·수강생 후기·블로그 리뷰를 받아옵니다. 블로그 리뷰는 한 곳씩 받아야 해 10분 이상 걸립니다." : "학원 목록과 수강생 후기를 원천에서 받아옵니다(1~2분). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다."}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title={blogSyncOn === null ? `학원 목록과 수강생 후기를 원천에서 받아옵니다. 블로그 리뷰 수집 설정에 따라 ${ACADEMY_SYNC_DURATION} 또는 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : blogSyncOn ? `학원 목록·수강생 후기·블로그 리뷰를 받아옵니다. 블로그 리뷰는 한 곳씩 받아야 해 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : `학원 목록과 수강생 후기를 원천에서 받아옵니다(${ACADEMY_SYNC_DURATION}). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다.`}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
       <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>

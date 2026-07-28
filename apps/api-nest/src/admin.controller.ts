@@ -6,7 +6,7 @@ import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.se
 import { RegionDirectoryService } from "./region-directory.service.js";
 import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
-import { ACADEMY_TYPES, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
+import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
@@ -63,6 +63,10 @@ export class AdminController {
       // 처럼 이미 적혀 있는 것을 다시 묻게 됐고, 공통 원칙 칸에 중복해서 적으면 그 칸에서만
       // 전달되는 말투 지시가 묻힌다. 상수를 그대로 내려 화면과 실제가 어긋날 수 없게 한다.
       enforced_principles: { absolute: DRIVING_ABSOLUTE_PRINCIPLES, academy: DRIVING_ACADEMY_PRINCIPLES },
+      // 후보 선정 규칙(읽기 전용). 화면 안내멘트가 「20km 이내 인근 후보」처럼 이 값을 손으로 적고
+      // 있었는데, 셋 다 env 로 덮이는 값이라 환경변수를 바꾸면 화면만 옛 숫자로 남는다. 같은 이유로
+      // 상수를 그대로 내려 안내멘트가 값에서 렌더되게 한다(docs/ui-copy-inventory.md A급).
+      candidate_rules: { nearby_km: ACADEMY_NEARBY_MAX_KM, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, used_per_post: ACADEMY_USED_PER_POST },
       // 전역 빌트인 노출 허용 목록(검증용 임시). null = 전체 노출. 카탈로그/커스텀 시작점/아키타입 목록에서 필터.
       exposed_builtin_template_ids: this.exposedBuiltinIds()
     };

@@ -1,6 +1,7 @@
 "use client";
 
 import { addVertical, deleteVertical, getBlogReviewSync, getOptions, listVerticals, saveBlogReviewSync } from "@/lib/api";
+import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { DEFAULT_GENERATION_DEFAULTS, useGenerationDefaults } from "@/lib/generation-defaults";
 import { useTourEnabled } from "@/lib/tour";
 import type { Provider, Vertical } from "@/lib/types";
@@ -234,7 +235,7 @@ export default function SettingsClient() {
             중복 배정됐습니다(중앙/천안중앙/북부중앙 등). 10%는 하한선입니다 — 고유명이 지역명인 학원은 그 지역 아무 글이나 통과합니다.
           </p>
           <p className="muted small">
-            켜면 학원 동기화가 <b>1~2분에서 14분으로</b> 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다).
+            켜면 학원 동기화가 <b>{ACADEMY_SYNC_DURATION}에서 {ACADEMY_SYNC_DURATION_WITH_BLOG}으로</b> 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다).
             이미 수집된 자료는 끄더라도 지워지지 않고 학원 상세에 남습니다.
           </p>
         </div>

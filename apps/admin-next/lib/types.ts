@@ -322,6 +322,8 @@ export interface AdminOptions {
   // 아키타입 kind → 섹션 순서 변형 라벨(읽기전용 안내). 변형 없는 아키타입은 키 없음.
   archetype_structure_variants?: Record<string, string[]>;
   academy_types?: string[];
+  // 후보 선정 규칙(서버 상수). 안내멘트가 반경·상한을 손으로 적지 않도록 값으로 내려받는다.
+  candidate_rules?: { nearby_km: number; min_guarantee_km: number; used_per_post: number };
   axis_tag_vocab: { persona: string[]; intent: string[]; modifier: string[] };
   design_templates: DesignTemplateOption[];
   providers: Provider[];

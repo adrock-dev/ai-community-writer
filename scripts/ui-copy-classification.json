@@ -34,13 +34,12 @@
     },
     {
       "file": "components/DomainClient.tsx",
-      "match": "직접+인근 20km",
+      "match": "직접+인근 {coh.academy.nearby_km}km",
       "class": "A",
       "depends": [
         "apps/api-nest/src/constants.ts#ACADEMY_NEARBY_MAX_KM"
       ],
-      "defect": true,
-      "note": "같은 문장에서 보장 반경은 서버값(min_guarantee_km)을 렌더하는데 20km만 하드코딩이다. ACADEMY_NEARBY_MAX_KM 은 SEO_ACADEMY_NEARBY_MAX_KM 으로 덮이는 env 값이라, 환경변수를 바꾸면 화면이 즉시 거짓말을 한다. coh.academy.nearby_km 이 이미 API 로 내려온다."
+      "note": "2026-07-28 수정. 20km 하드코딩을 서버값(coh.academy.nearby_km)으로 바꿨다. ACADEMY_NEARBY_MAX_KM 은 env 로 덮이는 값이라 하드코딩이면 환경변수를 바꾸는 순간 화면이 거짓이 됐다."
     },
     {
       "file": "components/DomainClient.tsx",
@@ -87,23 +86,22 @@
     },
     {
       "file": "components/AcademyResearchClient.tsx",
-      "match": "전체에 8~15분 걸립니다",
+      "match": "블로그리뷰를 동기화합니다",
       "class": "A",
       "depends": [
-        "블로그 리뷰 수집 소요시간(공유 상수 없음)"
+        "apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG"
       ],
-      "defect": true,
-      "note": "같은 작업의 소요시간을 화면마다 다르게 적었다 — 여기 8~15분 / DomainClient 「10분 이상」 2곳 / SettingsClient 「14분」. 어느 것도 코드에서 오지 않는다."
+      "note": "2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다."
     },
     {
       "file": "components/SettingsClient.tsx",
-      "match": "1~2분에서 14분으로 늘어납니다",
+      "match": "켜면 학원 동기화가",
       "class": "A",
       "depends": [
-        "블로그 리뷰 수집 소요시간(공유 상수 없음)"
+        "apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION",
+        "apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG"
       ],
-      "defect": true,
-      "note": "위 8~15분·10분 이상과 불일치."
+      "note": "2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다."
     },
     {
       "file": "components/DomainClient.tsx",
@@ -134,13 +132,12 @@
     },
     {
       "file": "components/DomainClient.tsx",
-      "match": "모든 글에 공통 적용될 안전·데이터 원칙",
+      "match": "이 사이트만의 말투·태도, 절대 넣지 말 제외어",
       "class": "B",
       "depends": [
         "apps/api-nest/src/worker.service.ts#buildPrompt 공통원칙 주입"
       ],
-      "defect": true,
-      "note": "투어 문구만 정정에서 빠졌다. 바로 아래 입력칸 안내(652)는 「안전·데이터 규칙은 이미 게이트가 강제하므로 여기 다시 적지 마라」인데, 투어는 정반대로 「안전·데이터 원칙을 정하라」고 안내한다. 같은 화면 안에서 모순."
+      "note": "2026-07-28 수정. 투어가 「안전·데이터 원칙을 정하라」고 안내해 바로 아래 입력칸 안내(「이미 강제되니 적지 마라」)와 모순이었다. 입력칸과 같은 기준으로 맞췄다."
     },
     {
       "file": "components/DomainClient.tsx",
@@ -259,8 +256,7 @@
       "depends": [
         "조사값 사용 게이트(미구현)"
       ],
-      "defect": true,
-      "note": "세 단계 정책 자체가 아직 생성에 연결되지 않았다(같은 화면 2234가 그렇게 밝힘). 구현되는 순간 세 문장이 동시에 검증 대상이 된다."
+      "note": "정책 자체가 아직 생성에 연결되지 않았지만, 같은 패널 바로 아래 ⚠️ 경고가 그 사실을 밝히므로 문구는 그대로 둔다. 연결되는 순간 세 문장이 동시에 검증 대상이 된다."
     },
     {
       "file": "components/DomainClient.tsx",
@@ -297,13 +293,12 @@
     },
     {
       "file": "components/AcademyResearchClient.tsx",
-      "match": "도메인 설정이 「검증완료만」이면",
+      "match": "연결되면 도메인 설정이",
       "class": "B",
       "depends": [
         "조사값 사용 게이트(미구현)"
       ],
-      "defect": true,
-      "note": "DomainClient 2234 는 「아직 연결 안 됨」이라고 하는데 여기는 이미 쓰이는 것처럼 단정한다."
+      "note": "2026-07-28 수정. 조사값이 아직 생성에 닿지 않는데 이미 쓰이는 것처럼 단정하고 있었다(worker.service.ts 에 조사값 참조 없음). 도메인 설정 화면과 같은 기준으로 맞췄다."
     },
     {
       "file": "components/DomainClient.tsx",
@@ -465,22 +460,22 @@
       "match": "블로그 리뷰 수집:",
       "class": "B",
       "depends": [
-        "apps/api-nest/src/worker.service.ts 프롬프트",
-        "apps/api-nest/src/quality-gate.ts"
+        "apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG",
+        "apps/api-nest/src/quality-gate.ts",
+        "apps/api-nest/src/worker.service.ts 프롬프트"
       ],
-      "defect": true,
-      "note": "「10분 이상」이라는 숫자가 다른 화면(8~15분·14분)과 어긋난다."
+      "note": "2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다."
     },
     {
       "file": "components/DomainClient.tsx",
       "match": "각 지역의 학원 상세",
       "class": "B",
       "depends": [
-        "apps/api-nest/src/worker.service.ts 프롬프트",
-        "apps/api-nest/src/quality-gate.ts"
+        "apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG",
+        "apps/api-nest/src/quality-gate.ts",
+        "apps/api-nest/src/worker.service.ts 프롬프트"
       ],
-      "defect": true,
-      "note": "여기도 「10분 이상」. 위와 같은 문제."
+      "note": "2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다."
     },
     {
       "file": "components/SettingsClient.tsx",
@@ -582,6 +577,17 @@
       "depends": [
         "apps/api-nest/src/drivingplus-api.service.ts"
       ]
+    },
+    {
+      "file": "components/DomainClient.tsx",
+      "match": "소개하려고 선정된 학원 수",
+      "class": "A",
+      "depends": [
+        "apps/api-nest/src/constants.ts#ACADEMY_NEARBY_MAX_KM",
+        "apps/api-nest/src/constants.ts#ACADEMY_MIN_GUARANTEE_MAX_KM",
+        "apps/api-nest/src/constants.ts#ACADEMY_USED_PER_POST"
+      ],
+      "note": "2026-07-28 수정. 20km·50km·5곳을 손으로 적고 있었다. 셋 다 env 로 덮이는 값이라 /options 의 candidate_rules 로 내려받아 렌더한다. 이 문단은 info-panel div 라 추출기 사각지대에 있어 인벤토리에도 안 잡혔었다."
     }
   ]
 }
