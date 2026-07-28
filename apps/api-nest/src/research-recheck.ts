@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
-import { fieldTypeIssues, isNonClaimValue } from "./academy-research-grounding.js";
+import { extractClaims, fieldTypeIssues, isNonClaimValue } from "./academy-research-grounding.js";
 import { usableInArticle } from "./academy-research-article-fields.js";
 
 /**
@@ -76,10 +76,17 @@ function releaseStaleFindings(): void {
     const field = String(row.field_key);
     const note = String(row.note ?? "");
     const value = String(db.getResearch(String(row.external_id))?.[field] ?? "").trim();
-    // 소스를 봐야 판정되는 지적은 재평가 불가 — 단, "모름·없음" 값은 애초에 근거를 요구할
-    // 대상이 아니다(isNonClaimValue). 그 예외가 생기기 전에 걸린 값이 남아 있고,
-    // 이 판정에는 소스가 필요 없다.
-    if (note.includes("소스") && !isNonClaimValue(value)) continue;
+    // 소스를 봐야 판정되는 지적은 원칙적으로 재평가 불가다(소스 원문을 저장하지 않는다).
+    // 다만 소스 없이 확정할 수 있는 면제가 둘 있고, 둘 다 그 면제가 생기기 전에 걸린 값이 남아 있다.
+    //
+    //  a) "모름·없음" 값 — 근거를 요구할 대상이 아니다(isNonClaimValue).
+    //  b) 숫자 클레임이 전부 소스에서 확인된 값 — 사유에 「소스에서 확인 안 됨」이 없다는 것은
+    //     기록 시점에 클레임이 모두 확인됐다는 뜻이다. 그러면 지금 코드가 면제한다.
+    //     예: night_class 에 "야간" 이라 단정하지 않고 "교육시간표 11부 18:10~19:00" 이라 적은 값.
+    //     시각이 소스에 있으니 근거가 있는 것인데, "야간" 이 없다고 지적하면 정직하게 답할수록
+    //     걸리는 규칙이 된다.
+    const groundedClaimExempt = extractClaims(value).length > 0 && !note.includes("소스에서 확인 안 됨");
+    if (note.includes("소스") && !isNonClaimValue(value) && !groundedClaimExempt) continue;
     // 값이 비었으면 지적할 대상 자체가 없다(재조사에서 지워진 자리).
     if (value && fieldTypeIssues(field, value).length) continue;
     released.push({ externalId: String(row.external_id), field, note });
