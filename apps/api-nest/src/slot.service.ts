@@ -51,8 +51,10 @@ export class SlotService {
       //     없으면 아키타입 폴백 모드(keyword_rule 패턴 + archetype.primary). 폴백은 기존과 byte-동일 = 골든 0-diff.
       const topicUnits = buildTopicUnits(spec, archetype, axes);
       if (!topicUnits.length) { summary[tid] = 0; continue; }
-      // 글유형 수용 태그로 축 값을 부분집합화한다. 부합 값이 없으면 해당 축을 생략(null)해 미스매치를 피한다.
-      // 프리셋(spec.axis_values) 있으면 도메인 풀 대체, 없으면 도메인 풀+태그필터 폴백.
+      // 축 값의 소스는 **글유형 프리셋(spec.axis_values) 하나뿐이다** — 도메인 공통 축 폴백은 없다.
+      // 비어 있으면 그 축은 null 로 생략된다(아래 personaValues/intentValues 의 [{ value: null }]).
+      // (예전 주석은 "없으면 도메인 풀+태그필터 폴백"이라고 적혀 있었으나 resolveAxisPool 은 프리셋이
+      //  없으면 빈 배열을 돌려준다. 관리자 UI 안내가 맞고 주석이 낡은 상태였다.)
       const personaPool = resolveAxisPool(spec, "persona");
       const intentPool = resolveAxisPool(spec, "intent");
       const modifierPool = resolveAxisPool(spec, "modifier");

@@ -1147,11 +1147,13 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3>작성 방향 · 축</h3><p className="muted small">방향성 · 축 값(persona·intent·modifier) · 학원 타입</p></div><span className="badge info">{openSec.write ? "접기" : "열기"}</span></div></summary>
       <div className="grid" style={{ marginTop: 8 }}>
     <Field label="방향성 (선택)">
-      <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="이 글유형의 기본 방향성" />
+      <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="예: 옆자리 선배가 이야기해 주듯 친근하게 쓰고, 지역 학원을 하나씩 소개하며 상담에서 물어볼 것으로 잇는다" />
       <div className="row" style={{ gap: 8, marginTop: 4 }}>
         <button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={dirBusy || busy || !direction.trim()} onClick={() => void validateDirection()} title="입력한 방향성이 이미 강제되는 절대 원칙·공통원칙·작성 지침과 겹치는지 대조하고, 이 글유형만의 방향만 남긴 개선안을 제안합니다.">{dirBusy ? "검증 중..." : "🔎 방향성 검증"}</button>
       </div>
-      <p className="muted small">🔎 <b>방향성 검증</b>: 방향성은 <b>이 글유형만의 방향</b>(무엇을 어떤 각도로 다루고 어떤 전환으로 잇는지)을 적는 자리입니다. 날조 금지·데이터 검증 같은 <b>안전·데이터 규칙은 이미 모든 글에 강제(절대 원칙)</b>되니 방향성에 다시 쓰면 중복입니다. 버튼을 누르면 <b>절대 원칙·공통원칙·아키타입 작성 지침</b>과 대조해 중복/충돌을 짚고, 고유 방향만 남긴 개선안을 제안합니다. (제안일 뿐 자동 저장 안 함 · codex/claude CLI 인증 필요)</p>
+      <p className="muted small">✍️ <b>여기서 정해지는 것</b>: 이 글유형의 <b>말투 격식</b>과 <b>다루는 각도·전개 방식</b>입니다. 말투는 방향성이 최종 결정권을 갖습니다 — “옆자리 선배가 이야기해 주듯”이라고 쓰면 대화체(반말체 아님·이모지 허용)로, “차분한 전문가 설명”이라고 쓰면 전문가 톤(격식체·이모지 절제)으로 글이 달라집니다.</p>
+      <p className="muted small">🔒 <b>방향성으로 바뀌지 않는 것</b>: 제목 규칙·H2 구성·표/이미지 배치 같은 <b>필수 출력 구조</b>, 축(의도·수식어)이 정하는 강조 섹션과 필수 응답, 그리고 <b>품질 게이트</b>입니다. 게이트는 프롬프트 밖에서 완성된 글을 검사하므로, 방향성에 예외를 적어도 통과되지 않습니다.</p>
+      <p className="muted small">🔎 <b>방향성 검증</b>: 방향성은 <b>이 글유형만의 방향</b>을 적는 자리입니다. 날조 금지·데이터 검증 같은 <b>안전·데이터 규칙은 이미 모든 글에 강제(절대 원칙)</b>되니 방향성에 다시 쓰면 중복이고, 여기서만 전달되는 톤·관점 지시가 묻힙니다. 버튼을 누르면 <b>절대 원칙·공통원칙·아키타입 작성 지침</b>(학원 후보를 다루는 유형이면 학원 전용 원칙까지)과 대조해 중복/충돌을 짚고, 고유 방향만 남긴 개선안을 제안합니다. (제안일 뿐 자동 저장 안 함 · codex/claude CLI 인증 필요)</p>
       {dirError && <p className="toast-warn small">{dirError}</p>}
       {dirResult && <div className="info-panel grid" style={{ gap: 6, marginTop: 4 }}>
         {dirResult.summary && <p className="small" style={{ margin: 0 }}><b>진단:</b> {dirResult.summary}</p>}
@@ -1165,7 +1167,8 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </div>}
     </Field>
     <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">이 글유형이 쓸 persona·intent·modifier 값입니다. <b>쓸 축을 켜면 값을 반드시 입력하세요</b> — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩.</p></div>
+      <div><b className="small">축 구성 · 값 프리셋</b><p className="muted small">이 글유형이 쓸 persona·intent·modifier 값입니다. <b>쓸 축을 켜면 값을 반드시 입력하세요</b> — 이 값이 유일한 소스이고(도메인 공통 축 폴백 없음), 비어 있으면 그 축은 생성에서 무시됩니다. 한 줄에 하나씩.</p>
+        <p className="muted small">📐 축은 글감 라벨에 그치지 않습니다. <b>「지역 운전학원 축 기반 소개」 계열(아키타입 local_axis)</b>에서는 <b>intent가 반드시 답할 질문</b>을, <b>modifier가 각 학원에서 부각할 관점·강조 섹션 주제·요약표 열</b>을, 둘이 합쳐 <b>제목 부제</b>를 결정합니다. 축 값을 바꾸면 글의 구조가 달라집니다. 자료가 뒷받침하지 못하는 축은 생성 시 자동으로 근거 있는 축으로 내려앉습니다(예: 셔틀 자료가 없으면 위치 관점으로).</p></div>
       <div className="card card-pad grid compact-pad" style={{ background: "#f5f3ff", border: "1px solid #e9d5ff" }}>
         <div className="spread" style={{ alignItems: "center", gap: 8 }}>
           <b className="small">🤖 AI 축 값 제안</b>
