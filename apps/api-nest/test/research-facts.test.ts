@@ -38,15 +38,22 @@ it("후보가 여럿이면 중요도 상위만 싣는다", () => {
   // 원천이 0%인 항목이 앞에 온다 — 잘려도 조사의 존재 이유가 남아야 한다
   expect(capped[0]).toContain("편의시설");
   expect(capped.some((p) => p.startsWith("수강료(조사)"))).toBe(false);
-  // 단독 소개형은 상한 없이 전부
-  expect(researchFactParts(FULL).length).toBe(Object.keys(FULL).length);
+  // 단독 소개형은 상한 없이 전부(허용 목록에 남은 것만)
+  const allowed = Object.keys(FULL).filter((k) => !EXCLUDED_FROM_ARTICLE.has(k));
+  expect(researchFactParts(FULL).length).toBe(allowed.length);
 });
 
 it("자료 품질 때문에 뺀 필드는 값이 있어도 나가지 않는다", () => {
   // booking_channel 은 189건 중 48건이 값이 그냥 "예약"(네이버 플레이스 편의 태그),
   // naver_place_url 은 제3자 목록 페이지라 글에 링크할 것이 아니다.
   expect([...EXCLUDED_FROM_ARTICLE].length).toBeGreaterThan(0);
-  const parts = researchFactParts({ booking_channel: "예약", naver_place_url: "https://m.place.naver.com/x", facilities: "휴게실" });
+  // homepage_url 은 값이 멀쩡한데도 뺐다 — 160곳에 나갔지만 모델이 링크로 쓴 적이 없다.
+  const parts = researchFactParts({
+    booking_channel: "예약",
+    naver_place_url: "https://m.place.naver.com/x",
+    homepage_url: "https://example.test",
+    facilities: "휴게실",
+  });
   expect(parts).toEqual(["편의시설(조사): 휴게실"]);
 });
 

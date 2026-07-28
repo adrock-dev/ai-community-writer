@@ -54,7 +54,6 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   { key: "established_year", label: "설립연도(조사)" },
   { key: "scale", label: "규모(조사)" },
   { key: "enrollment_prep", label: "등록 준비물(조사)" },
-  { key: "homepage_url", label: "홈페이지(조사)" },
   // 원천이 이기는 항목. 원천이 그 학원 값을 안 줄 때만 빈 자리를 메운다.
   { key: "hours", label: "영업시간(조사)", sourceWins: true },
   { key: "shuttle_summary", label: "셔틀(조사)", sourceWins: true },
@@ -70,9 +69,15 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
  * - booking_channel: 189건 중 48건이 값이 그냥 "예약" 이고 6자 이하가 73건(39%)이다.
  *   네이버 플레이스의 편의 태그를 그대로 가져온 탓이라 독자에게 알려줄 내용이 없다.
  * - naver_place_url: 제3자 목록 페이지다. 글에 링크하면 독자를 밖으로 내보내는 셈이고,
- *   학원 자체 정보도 아니다. 검수자가 근거를 확인하는 용도로 학원 상세 화면에는 남는다.
+ *   학원 자체 정보도 아니다.
+ * - homepage_url: 값 자체는 멀쩡하다(207곳 중 83%가 학원 자체 도메인, 11%는 시험장이라
+ *   도로교통공단이 맞고, 블로그·카페는 6%뿐이다). 문제는 **글이 쓰지 않는다**는 것이다 —
+ *   160곳에 facts 로 나갔지만 모델이 링크로 쓴 적이 없다. 안 쓰이는 값은 프롬프트를 희석할
+ *   뿐이다. 링크를 쓰기로 하면(프롬프트에 쓰임새를 주면) 이 목록에 한 줄 넣으면 된다.
+ *
+ * 셋 다 조사 DB 에는 그대로 남아 학원 상세 화면에서 검수 근거로 쓰인다.
  */
-export const EXCLUDED_FROM_ARTICLE = new Set(["booking_channel", "naver_place_url"]);
+export const EXCLUDED_FROM_ARTICLE = new Set(["booking_channel", "naver_place_url", "homepage_url"]);
 
 /**
  * 사람이 읽을 문장이 아닌 기계값. "yes" 를 그대로 실으면 모델이 문장으로 못 만든다
