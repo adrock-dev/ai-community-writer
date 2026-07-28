@@ -23,17 +23,26 @@ import { dirname, resolve } from "node:path";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const CLASSIFICATION = `${ROOT}/scripts/ui-copy-classification.json`;
 const OUT_DOC = `${ROOT}/docs/ui-copy-inventory.md`;
-const SCAN_DIRS = ["apps/admin-next/components", "apps/admin-next/app"];
+// 화면에 뜨는 문구는 컴포넌트에만 있지 않다. API 가 돌려주는 오류 메시지도 그대로 화면에 뜨고,
+// lib 의 문자열도 화면에 나간다. 처음엔 컴포넌트만 봤는데, 그 밖의 문구는 아무도 안 보는 상태였다.
+const SCAN_TSX = ["apps/admin-next/components", "apps/admin-next/app", "integration/nextjs-community-kit"];
+const SCAN_TS = ["apps/api-nest/src", "apps/admin-next/lib"];
 
 const hcount = (s) => (s.match(/[가-힣]/g) || []).length;
 const norm = (s) => s.replace(/\s+/g, " ").trim();
 const idOf = (text) => createHash("sha1").update(norm(text).replace(/[\s·「」…—]/g, "")).digest("hex").slice(0, 10);
 
+const findFiles = (dirs, ext) =>
+  execSync(`cd ${ROOT} && find ${dirs.join(" ")} -name '*.${ext}' | grep -v node_modules | grep -v '\\.test\\.'`, {
+    encoding: "utf8",
+  })
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .sort();
+
 function collect() {
-  const files = execSync(
-    `cd ${ROOT} && find ${SCAN_DIRS.join(" ")} -name '*.tsx' | grep -v node_modules`,
-    { encoding: "utf8" },
-  ).trim().split("\n").filter(Boolean).sort();
+  const files = findFiles(SCAN_TSX, "tsx");
 
   const rows = [];
   const push = (file, index, src, carrier, text) => {
@@ -44,7 +53,7 @@ function collect() {
     // 폼 컨트롤 마크업은 안내멘트가 아니다. 단 목록을 map 으로 렌더하는 정상 문단까지 버리지 않도록
     // "=>" 만으로 거르지 않고, 핸들러 잔해(e.target·} />)와 속성만 본다.
     if (/e\.target|\}\s*\/>|onChange=|onClick=|className=/.test(t)) return;
-    rows.push({ file: file.replace("apps/admin-next/", ""), line: src.slice(0, index).split("\n").length, carrier, text: t });
+    rows.push({ file, line: src.slice(0, index).split("\n").length, carrier, text: t });
   };
 
   for (const rel of files) {
@@ -66,6 +75,24 @@ function collect() {
     for (const m of src.matchAll(/>([^<>{}]{20,600}?)</g)) {
       if (!/(습니다|하세요|됩니다|합니다|입니다|주세요|마세요|집니다)/.test(m[1])) continue;
       push(rel, m.index, src, "jsx-text", m[1]);
+    }
+  }
+
+  // .ts 는 마크업이 아니라 문자열이다. 화면에 그대로 뜨는 두 종류만 본다.
+  for (const rel of findFiles(SCAN_TS, "ts")) {
+    const src = readFileSync(`${ROOT}/${rel}`, "utf8");
+    // API 오류 메시지 — 관리자 화면에 그대로 표시된다.
+    for (const m of src.matchAll(/new \w*(?:Http|BadRequest|NotFound|Forbidden|Conflict)\w*Exception\(\s*(?:"([^"]*)"|`([^`]*)`)/g))
+      push(rel, m.index, src, "api-error", m[1] ?? m[2] ?? "");
+    // lib 의 화면 문구(빈 화면 안내·경고). 여기는 마크업이 아니라 코드라 잡음이 훨씬 많다:
+    //  - 줄바꿈을 넘는 매칭은 금지한다. 안 그러면 백틱 하나가 파일을 통째로 삼켜 주석까지 카피로 센다.
+    //  - 코드 조각(세미콜론·중괄호·화살표·태그)은 산문이 아니다.
+    if (rel.startsWith("apps/admin-next/lib/")) {
+      for (const m of src.matchAll(/"([^"\n]*[가-힣][^"\n]*)"|`([^`\n]*[가-힣][^`\n]*)`/g)) {
+        const text = m[1] ?? m[2] ?? "";
+        if (/[;{}<>]|=>|\/\/|export |import /.test(text)) continue;
+        push(rel, m.index, src, "lib-string", text);
+      }
     }
   }
 

@@ -50,9 +50,9 @@ const numericChecks = [
     source: "constants.ts#PRESETS.driving.keyword",
     expect: (n) => `${n}개`,
     sites: [
-      ["components/DomainClient.tsx", "키워드 마스터를 기본값"],
-      ["components/DomainClient.tsx", "글유형이 고르는 키워드 풀"],
-      ["components/DomainClient.tsx", "운전 프리셋 기본값"],
+      ["apps/admin-next/components/DomainClient.tsx", "키워드 마스터를 기본값"],
+      ["apps/admin-next/components/DomainClient.tsx", "글유형이 고르는 키워드 풀"],
+      ["apps/admin-next/components/DomainClient.tsx", "운전 프리셋 기본값"],
     ],
   },
   {
@@ -64,7 +64,7 @@ const numericChecks = [
     },
     source: "DomainClient.tsx setInterval",
     expect: (n) => `${n}초`,
-    sites: [["components/DomainClient.tsx", "글 작성/중복검사/가지치기/색인 작업을"]],
+    sites: [["apps/admin-next/components/DomainClient.tsx", "글 작성/중복검사/가지치기/색인 작업을"]],
   },
   {
     label: "CTA 브랜드 언급 횟수",
@@ -74,7 +74,7 @@ const numericChecks = [
     },
     source: "worker.service.ts CTA 지침",
     expect: (v) => `${v}회`,
-    sites: [["components/DomainClient.tsx", "생성 글 본문·CTA·HTML 내보내기"]],
+    sites: [["apps/admin-next/components/DomainClient.tsx", "생성 글 본문·CTA·HTML 내보내기"]],
   },
 ];
 
@@ -139,8 +139,7 @@ if (changed.length) {
       const [pathPart, symbol] = d.split("#");
       const path = pathPart.split(" ")[0].trim();
       if (!path.includes("/")) return false;
-      const full = path.startsWith("apps/") || path.startsWith("scripts/") || path.startsWith("docs/") ? path : `apps/admin-next/${path}`;
-      if (!changedSet.has(full)) return false;
+      if (!changedSet.has(path)) return false;
       // 값을 렌더하는 문구는 상수가 바뀌어도 틀릴 수 없다. 재서술한 것만 사람이 볼 대상이다.
       if (symbol && row.text.includes(symbol.trim())) return false;
       return true;
@@ -148,7 +147,7 @@ if (changed.length) {
     if (hits.length) touched.push({ row, hits });
   }
   // 안내멘트 자체가 이번 커밋에서 바뀌었으면 이미 챙긴 것으로 본다.
-  const stale = touched.filter(({ row }) => !changedSet.has(`apps/admin-next/${row.file}`));
+  const stale = touched.filter(({ row }) => !changedSet.has(row.file));
   if (stale.length) {
     warnings.push(
       `이번 변경에 매달린 안내멘트 ${stale.length}건 — 코드만 바뀌고 문구는 그대로다. 여전히 맞는 말인지 확인하라.\n` +

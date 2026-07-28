@@ -8,7 +8,7 @@
   "_defect": "true = 인벤토리 작성 시점에 이미 코드와 다르거나 화면끼리 모순인 것.",
   "rows": [
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "운전 프리셋 18개)으로 초기화",
       "class": "A",
       "depends": [
@@ -17,7 +17,7 @@
       "note": "현재 18개로 일치. 프리셋에 항목을 더하면 세 곳(679·688·704)이 동시에 거짓이 된다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "「기본값으로 초기화」로 운전 프리셋 18개를 채웁니다",
       "class": "A",
       "depends": [
@@ -25,7 +25,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "운전 프리셋 기본값(18개+메트릭)",
       "class": "A",
       "depends": [
@@ -33,7 +33,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "직접+인근 {coh.academy.nearby_km}km",
       "class": "A",
       "depends": [
@@ -42,23 +42,23 @@
       "note": "2026-07-28 수정. 20km 하드코딩을 서버값(coh.academy.nearby_km)으로 바꿨다. ACADEMY_NEARBY_MAX_KM 은 env 로 덮이는 값이라 하드코딩이면 환경변수를 바꾸는 순간 화면이 거짓이 됐다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "3초마다 자동 새로고침",
       "class": "A",
       "depends": [
-        "components/DomainClient.tsx:1896 setInterval(…, 3000)"
+        "apps/admin-next/components/DomainClient.tsx:1896 setInterval(…, 3000)"
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "현재 검색 10개, 이후 100개로 확장",
       "class": "A",
       "depends": [
-        "components/DomainClient.tsx 작성 버튼 개수"
+        "apps/admin-next/components/DomainClient.tsx 작성 버튼 개수"
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "3~7회 언급",
       "class": "A",
       "depends": [
@@ -68,7 +68,7 @@
       "note": "현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다."
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "학원 1곳당 1분 안팎",
       "class": "A",
       "depends": [
@@ -76,7 +76,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "학원 동기화는 1분 안팎이 걸리는데",
       "class": "A",
       "depends": [
@@ -85,7 +85,7 @@
       ]
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "블로그리뷰를 동기화합니다",
       "class": "A",
       "depends": [
@@ -94,7 +94,7 @@
       "note": "2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다."
     },
     {
-      "file": "components/SettingsClient.tsx",
+      "file": "apps/admin-next/components/SettingsClient.tsx",
       "match": "켜면 학원 동기화가",
       "class": "A",
       "depends": [
@@ -104,7 +104,7 @@
       "note": "2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "생성 프롬프트에 항상 들어갑니다",
       "class": "B",
       "depends": [
@@ -113,7 +113,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "T01 계열은 학원 원칙을 자체 지침으로 덮어씁니다",
       "class": "B",
       "depends": [
@@ -121,7 +121,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "이 사이트만의 말투·태도를 적는 칸입니다",
       "class": "B",
       "depends": [
@@ -131,7 +131,7 @@
       "note": "2026-07-28 기준 코드와 일치(커밋 8a1134a 로 정정됨). 단 같은 화면의 투어 문구는 아직 옛 안내다 — 아래 항목 참조."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "이 사이트만의 말투·태도, 절대 넣지 말 제외어",
       "class": "B",
       "depends": [
@@ -140,7 +140,7 @@
       "note": "2026-07-28 수정. 투어가 「안전·데이터 원칙을 정하라」고 안내해 바로 아래 입력칸 안내(「이미 강제되니 적지 마라」)와 모순이었다. 입력칸과 같은 기준으로 맞췄다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "후보 생성, 후보 검색, 작성 큐, 최종 저장 전에 제외",
       "class": "B",
       "depends": [
@@ -149,7 +149,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "생성 품질 게이트가 이 문구를 감지해",
       "class": "B",
       "depends": [
@@ -158,7 +158,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "적으면 그 키워드를 그대로 사용(아키타입 패턴 무시)",
       "class": "B",
       "depends": [
@@ -166,7 +166,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "우선순위 0으로 취급돼",
       "class": "B",
       "depends": [
@@ -174,7 +174,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "여기서 정해지는 것",
       "class": "B",
       "depends": [
@@ -182,7 +182,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "방향성으로 바뀌지 않는 것",
       "class": "B",
       "depends": [
@@ -191,7 +191,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "방향성 검증",
       "class": "B",
       "depends": [
@@ -199,7 +199,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "이 값이 유일한 소스이고",
       "class": "B",
       "depends": [
@@ -207,7 +207,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "축은 글감 라벨에 그치지 않습니다",
       "class": "B",
       "depends": [
@@ -216,7 +216,7 @@
       "note": "「자료가 뒷받침하지 못하는 축은 자동으로 내려앉는다」는 강등 로직에 직접 종속."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "tier는 후보 수 내림차순",
       "class": "B",
       "depends": [
@@ -224,7 +224,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "이 값보다 적으면 생성하지 않고 건너뜁니다",
       "class": "B",
       "depends": [
@@ -232,7 +232,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "「커스텀」을 고르면",
       "class": "B",
       "depends": [
@@ -240,17 +240,17 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "우선순위(검색량·경쟁도·weight) 상위 N개",
       "class": "B",
       "depends": [
         "apps/api-nest/src/slot.service.ts 선별·라운드로빈",
-        "components/DomainClient.tsx 작성 버튼 개수"
+        "apps/admin-next/components/DomainClient.tsx 작성 버튼 개수"
       ],
       "note": "같은 문장이 「현재 검색 10개 → 전국 골고루 100개」라는 버튼 개수까지 손으로 적는다(A 성격). 버튼을 바꾸면 이 문장도 거짓이 된다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "조사값을 글에 전혀 쓰지 않습니다",
       "class": "B",
       "depends": [
@@ -259,7 +259,7 @@
       "note": "정책 자체가 아직 생성에 연결되지 않았지만, 같은 패널 바로 아래 ⚠️ 경고가 그 사실을 밝히므로 문구는 그대로 둔다. 연결되는 순간 세 문장이 동시에 검증 대상이 된다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "「검증완료」로 올린 것만 씁니다",
       "class": "B",
       "depends": [
@@ -267,7 +267,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "사람이 확인하지 않은 AI 조사값까지 씁니다",
       "class": "B",
       "depends": [
@@ -275,7 +275,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "어느 설정에서도 「검토 필요」",
       "class": "B",
       "depends": [
@@ -283,7 +283,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "조사값은 아직 글 생성에 연결되지 않았습니다",
       "class": "B",
       "depends": [
@@ -292,7 +292,7 @@
       "note": "구현되면 이 경고를 지워야 한다. 지우는 것을 잊으면 반대 방향으로 거짓이 된다."
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "연결되면 도메인 설정이",
       "class": "B",
       "depends": [
@@ -301,7 +301,7 @@
       "note": "2026-07-28 수정. 조사값이 아직 생성에 닿지 않는데 이미 쓰이는 것처럼 단정하고 있었다(worker.service.ts 에 조사값 참조 없음). 도메인 설정 화면과 같은 기준으로 맞췄다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "비용($)은 종량 API 사용 시에만 계측",
       "class": "B",
       "depends": [
@@ -310,7 +310,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "배포 연동 방식이 정해지면 활성화 예정",
       "class": "B",
       "depends": [
@@ -318,7 +318,7 @@
       ]
     },
     {
-      "file": "components/IntegrationSettingsClient.tsx",
+      "file": "apps/admin-next/components/IntegrationSettingsClient.tsx",
       "match": "색인 기능을 활성화할 예정",
       "class": "B",
       "depends": [
@@ -326,7 +326,7 @@
       ]
     },
     {
-      "file": "components/IntegrationSettingsClient.tsx",
+      "file": "apps/admin-next/components/IntegrationSettingsClient.tsx",
       "match": "구글 색인 설정은 도메인 관리",
       "class": "B",
       "depends": [
@@ -334,7 +334,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "셔틀 운행 지역은 학원자료 동기화 시점에 계산",
       "class": "B",
       "depends": [
@@ -342,7 +342,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "도메인을 만들 때 자동으로 준비됩니다",
       "class": "B",
       "depends": [
@@ -350,7 +350,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "서버 터미널에서",
       "class": "B",
       "depends": [
@@ -358,7 +358,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "코드 소유·초기화에도 복구",
       "class": "B",
       "depends": [
@@ -366,7 +366,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "노출만 제어",
       "class": "B",
       "depends": [
@@ -375,7 +375,7 @@
       "note": "「유형 검증이 끝나면 제거할 임시 기능」 — 제거 시 이 문단도 함께 사라져야 한다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "planned)를 만듭니다. LLM을 호출하지 않습니다",
       "class": "B",
       "depends": [
@@ -383,7 +383,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "작성 버튼은 후보를 자동 생성하지 않습니다",
       "class": "B",
       "depends": [
@@ -391,7 +391,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "프리셋을 적용했다면 별도 동기화 없이도",
       "class": "B",
       "depends": [
@@ -400,7 +400,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "비우면 학원정보를 쓰지 않고",
       "class": "B",
       "depends": [
@@ -408,7 +408,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "섹션 순서 자동 다양화",
       "class": "B",
       "depends": [
@@ -416,7 +416,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "참조 아키타입(kind)은 만든 뒤 바꿀 수 없습니다",
       "class": "B",
       "depends": [
@@ -424,7 +424,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "옵션을 켜면 region 축을 교체",
       "class": "B",
       "depends": [
@@ -432,7 +432,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다",
       "class": "B",
       "depends": [
@@ -440,7 +440,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "다시 등록하면 비운 항목이 기존 값을 덮어",
       "class": "B",
       "depends": [
@@ -448,7 +448,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "학원 타입은 글유형별로 정합니다",
       "class": "B",
       "depends": [
@@ -456,7 +456,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "블로그 리뷰 수집:",
       "class": "B",
       "depends": [
@@ -467,7 +467,7 @@
       "note": "2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "각 지역의 학원 상세",
       "class": "B",
       "depends": [
@@ -478,7 +478,7 @@
       "note": "2026-07-28 수정. 「10분 이상」을 lib/copy-facts.ts 단일 출처로 옮겼다. 남은 종속은 「글 생성에 쓰지 않는다」는 규칙 쪽이다."
     },
     {
-      "file": "components/SettingsClient.tsx",
+      "file": "apps/admin-next/components/SettingsClient.tsx",
       "match": "수집만 켜고 끕니다",
       "class": "B",
       "depends": [
@@ -487,7 +487,7 @@
       ]
     },
     {
-      "file": "components/SettingsClient.tsx",
+      "file": "apps/admin-next/components/SettingsClient.tsx",
       "match": "새 업종은 전용 프리셋이 없어",
       "class": "B",
       "depends": [
@@ -496,7 +496,7 @@
       ]
     },
     {
-      "file": "components/SettingsClient.tsx",
+      "file": "apps/admin-next/components/SettingsClient.tsx",
       "match": "재시작 불필요",
       "class": "B",
       "depends": [
@@ -504,7 +504,7 @@
       ]
     },
     {
-      "file": "components/DraftsClient.tsx",
+      "file": "apps/admin-next/components/DraftsClient.tsx",
       "match": "B(안전·사실) 이슈가 있으면 발행할 수 없고",
       "class": "B",
       "depends": [
@@ -513,7 +513,7 @@
       ]
     },
     {
-      "file": "components/DraftsClient.tsx",
+      "file": "apps/admin-next/components/DraftsClient.tsx",
       "match": "안전·사실(B) 이슈가 있어 바로 발행할 수 없습니다",
       "class": "B",
       "depends": [
@@ -522,7 +522,7 @@
       ]
     },
     {
-      "file": "components/DraftsClient.tsx",
+      "file": "apps/admin-next/components/DraftsClient.tsx",
       "match": "품질 게이트를 통과하지 못한 글이 생기면",
       "class": "B",
       "depends": [
@@ -530,7 +530,7 @@
       ]
     },
     {
-      "file": "components/DraftsClient.tsx",
+      "file": "apps/admin-next/components/DraftsClient.tsx",
       "match": "실패한 글은 소급 보관되지 않습니다",
       "class": "B",
       "depends": [
@@ -538,7 +538,7 @@
       ]
     },
     {
-      "file": "components/JobsClient.tsx",
+      "file": "apps/admin-next/components/JobsClient.tsx",
       "match": "generate/dedup/prune/indexing",
       "class": "B",
       "depends": [
@@ -546,7 +546,7 @@
       ]
     },
     {
-      "file": "components/AcademyDetailClient.tsx",
+      "file": "apps/admin-next/components/AcademyDetailClient.tsx",
       "match": "조사 대상에서 빠집니다",
       "class": "B",
       "depends": [
@@ -555,7 +555,7 @@
       ]
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "별도 DB(academy_research.db)",
       "class": "B",
       "depends": [
@@ -563,7 +563,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "조사는 학원 단위라 도메인마다",
       "class": "B",
       "depends": [
@@ -571,7 +571,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "DrivingPlus 원천 API의 지역·학원 데이터",
       "class": "B",
       "depends": [
@@ -579,7 +579,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "소개하려고 선정된 학원 수",
       "class": "A",
       "depends": [
@@ -590,7 +590,7 @@
       "note": "2026-07-28 수정. 20km·50km·5곳을 손으로 적고 있었다. 셋 다 env 로 덮이는 값이라 /options 의 candidate_rules 로 내려받아 렌더한다. 이 문단은 info-panel div 라 추출기 사각지대에 있어 인벤토리에도 안 잡혔었다."
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "처리 중이던 학원 1곳은 마친 뒤 멈춥니다",
       "class": "B",
       "depends": [
@@ -599,16 +599,16 @@
       "note": "「1곳 마친 뒤 중단·여기까지 저장 유지」는 취소 구현에 직접 매달린 약속이다."
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "이 화면은 아직 전체 기능이 완성되지 않았습니다",
       "class": "B",
       "depends": [
-        "components/AcademyResearchClient.tsx"
+        "apps/admin-next/components/AcademyResearchClient.tsx"
       ],
       "note": "미완성 범위 선언. 조사 항목 편집·대량 관리가 붙으면 이 문단을 지워야 한다."
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "서버에서 실행 중입니다",
       "class": "B",
       "depends": [
@@ -617,7 +617,7 @@
       "note": "「창을 닫아도 계속·다시 들어오면 진행률이 이어짐」이 백그라운드 run 구현에 종속."
     },
     {
-      "file": "components/DashboardClient.tsx",
+      "file": "apps/admin-next/components/DashboardClient.tsx",
       "match": "운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다",
       "class": "B",
       "depends": [
@@ -626,7 +626,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "글 유형마다 기본 디자인이 자동 적용됩니다",
       "class": "B",
       "depends": [
@@ -636,7 +636,7 @@
       "note": "투어 문구. 아래 디자인 탭 안내와 같은 사실을 말한다 — 한쪽만 고치면 어긋난다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "글 유형마다 기본 디자인이 자동으로 적용됩니다",
       "class": "B",
       "depends": [
@@ -645,7 +645,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "연동 시 실측값으로 자동 갱신될 예정입니다",
       "class": "B",
       "depends": [
@@ -654,7 +654,7 @@
       "note": "미구현 예정 선언. 연동되면 지워야 하고, 안 지우면 반대로 거짓이 된다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "이 메모가 작성 프롬프트로 들어갑니다",
       "class": "B",
       "depends": [
@@ -662,7 +662,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "주키워드 규칙·품질 지침은 참조 아키타입을 그대로 씁니다",
       "class": "B",
       "depends": [
@@ -671,16 +671,16 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "「새로고침」은 목록·정합성 미리보기",
       "class": "B",
       "depends": [
-        "components/DomainClient.tsx"
+        "apps/admin-next/components/DomainClient.tsx"
       ],
       "note": "같은 파일 안의 동작 설명이라 함께 바뀔 가능성이 높지만, 자동 갱신 여부를 단정하므로 분류해 둔다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "자동차운전전문학원",
       "class": "B",
       "depends": [
@@ -689,7 +689,7 @@
       "note": "placeholder 지만 동작을 단정한다 — 위 muted-p 와 같은 사실이라 한쪽만 고치면 어긋난다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "입력한 방향성이 이미 강제되는 절대 원칙",
       "class": "B",
       "depends": [
@@ -697,7 +697,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "LLM이 이 글유형에 맞는 값을 제안해",
       "class": "B",
       "depends": [
@@ -706,7 +706,7 @@
       "note": "「제안일 뿐 자동 저장 안 함 · CLI 인증 필요」가 구현에 종속."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "아래 필터는 목록 표시와",
       "class": "B",
       "depends": [
@@ -714,7 +714,7 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "비우면 규칙/LLM 자동 제목",
       "class": "B",
       "depends": [
@@ -723,7 +723,7 @@
       "note": "수동 제목이 규칙보다 우선한다는 순서와 치환 토큰 목록이 구현에 종속."
     },
     {
-      "file": "components/SettingsClient.tsx",
+      "file": "apps/admin-next/components/SettingsClient.tsx",
       "match": "단계별 가이드가 표시됩니다",
       "class": "B",
       "depends": [
@@ -731,71 +731,227 @@
       ]
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "직접 입력합니다",
       "class": "A",
       "depends": [
-        "components/DomainClient.tsx#SINGLE_ACADEMY_FIELDS"
+        "apps/admin-next/components/DomainClient.tsx#SINGLE_ACADEMY_FIELDS"
       ],
       "note": "2026-07-28 수정. 폼은 11개 필드를 렌더하는데 안내는 5개만 말하고 있었다(수강료·셔틀·운영시간·합격률·출처 누락). 목록을 SINGLE_ACADEMY_FIELDS 하나로 합쳐 안내도 거기서 렌더한다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "글 생성 탭이 두 단계로 나뉩니다",
       "class": "C",
       "depends": [],
       "note": "화면 구조 설명. 화면과 함께 바뀐다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "품질 확인 없이 대량 생성하지 않도록",
       "class": "C",
       "depends": [],
       "note": "운영 권고. 코드가 강제하지 않는다."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "실내운전연습장",
       "class": "C",
       "depends": [],
       "note": "제외어 입력 예시."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "첫 화면에는 큰 제목과 핵심 요약",
       "class": "C",
       "depends": [],
       "note": "커스텀 디자인 메모 입력 예시."
     },
     {
-      "file": "components/DomainClient.tsx",
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "아직 작업이 없습니다",
       "class": "C",
       "depends": [],
       "note": "빈 상태 문구."
     },
     {
-      "file": "components/DraftsClient.tsx",
+      "file": "apps/admin-next/components/DraftsClient.tsx",
       "match": "최근 생성에서 게이트에 걸린 글이 없음",
       "class": "C",
       "depends": [],
       "note": "빈 상태 해석."
     },
     {
-      "file": "components/SettingsClient.tsx",
+      "file": "apps/admin-next/components/SettingsClient.tsx",
       "match": "끈 이유: 원천이 네이버 블로그 검색으로",
       "class": "C",
       "depends": [],
       "note": "2026-07-27 실측 근거(539건 중 55건·중복 18건). 코드가 아니라 측정에 매달린 값이라 재측정 전에는 고치지 않는다. 정본 docs/source-field-usage.md §3.6."
     },
     {
-      "file": "components/AcademyResearchClient.tsx",
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
       "match": "조사 항목 편집, 대량 관리, 자동 조사 흐름은 아직 정리 중",
       "class": "B",
       "depends": [
-        "components/AcademyResearchClient.tsx"
+        "apps/admin-next/components/AcademyResearchClient.tsx"
       ],
       "note": "미완성 범위 선언. 바로 위 「전체 기능이 완성되지 않았습니다」와 한 쌍이라 기능이 붙으면 둘 다 지워야 한다."
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "등록되지 않은 업종입니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 업종 검증",
+        "apps/api-nest/src/db.service.ts getVerticals"
+      ],
+      "note": "업종 레지스트리 검증 결과를 사용자에게 설명한다."
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "codex/claude CLI 설치·인증 확인",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/worker.service.ts runLlm"
+      ],
+      "note": "LLM 실행 경로가 CLI 서브프로세스라는 사실에 매달린다. 프로바이더 방식이 바뀌면 안내가 거짓이 된다."
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "LLM 응답에서 축 값을 추출하지 못했습니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 축 제안"
+      ]
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "검증할 방향성(direction)을 입력하세요",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 방향성 검증"
+      ]
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "LLM 응답을 해석하지 못했습니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 방향성 검증"
+      ]
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/quality-gate.ts",
+        "draft 격리 게이트"
+      ],
+      "note": "DraftsClient 의 같은 규칙 설명 2건과 한 몸이다 — 등급 기준이 바뀌면 세 곳을 같이 고쳐야 한다."
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "실행 이력을 찾을 수 없습니다",
+      "class": "C",
+      "depends": [],
+      "note": "단순 404 안내."
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "작성할 planned 후보가 없습니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/slot.service.ts"
+      ],
+      "note": "후보가 없을 때의 대처(‘재료로 글 후보 만들기’)를 안내하므로 화면 흐름·버튼 이름에 매달린다."
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "업종 key는 영문 소문자·숫자·하이픈만",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 업종 key 검증"
+      ],
+      "note": "검증 정규식과 한 몸이다."
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "기본 업종(driving)은 삭제할 수 없습니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL"
+      ]
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "이 업종을 쓰는 도메인이",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 업종 삭제"
+      ]
+    },
+    {
+      "file": "apps/api-nest/src/admin.controller.ts",
+      "match": "최소 1개 업종은 남겨야 합니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 업종 삭제"
+      ]
+    },
+    {
+      "file": "apps/admin-next/lib/api.ts",
+      "match": "콘텐츠 API에 연결할 수 없습니다",
+      "class": "B",
+      "depends": [
+        "apps/admin-next/app/api/admin/[...path]/route.ts",
+        "SEO_API_BASE_URL"
+      ],
+      "note": "프록시·base URL 설정에 매달린 진단 문구다."
+    },
+    {
+      "file": "apps/admin-next/lib/domain-gate.ts",
+      "match": "도메인 관리를 하려면",
+      "class": "C",
+      "depends": [],
+      "note": "빈 화면 안내."
+    },
+    {
+      "file": "apps/admin-next/lib/domain-gate.ts",
+      "match": "사이트 도메인을 먼저 등록하면",
+      "class": "C",
+      "depends": [],
+      "note": "빈 화면 안내."
+    },
+    {
+      "file": "apps/admin-next/lib/domain-gate.ts",
+      "match": "글 생성을 하려면",
+      "class": "C",
+      "depends": [],
+      "note": "빈 화면 안내."
+    },
+    {
+      "file": "apps/admin-next/lib/domain-gate.ts",
+      "match": "원천 데이터 동기화 → 후보 생성 → 테스트 작성",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/slot.service.ts"
+      ],
+      "note": "권장 순서를 단정한다 — 후보 생성이 선행 조건이라는 사실에 매달린다."
+    },
+    {
+      "file": "apps/admin-next/lib/domain-gate.ts",
+      "match": "검수·보내기를 하려면",
+      "class": "C",
+      "depends": [],
+      "note": "빈 화면 안내."
+    },
+    {
+      "file": "apps/admin-next/lib/domain-gate.ts",
+      "match": "미리보기, export, 색인 요청으로",
+      "class": "C",
+      "depends": [],
+      "note": "빈 화면 안내."
     }
   ]
 }

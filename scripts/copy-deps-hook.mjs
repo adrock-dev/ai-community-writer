@@ -41,13 +41,12 @@ const { inventory } = await import("./copy-inventory.mjs");
 // depends 는 "경로#심볼" 또는 설명 문구다. 경로처럼 보이는 앞부분만 떼어 방금 고친 파일과 맞춘다.
 const normalize = (dep) => {
   const path = dep.split("#")[0].split(" ")[0].trim();
-  if (!path.includes("/")) return null;
-  return path.startsWith("apps/") || path.startsWith("scripts/") || path.startsWith("docs/") ? path : `apps/admin-next/${path}`;
+  return path.includes("/") ? path : null;
 };
 
 const hits = [];
 for (const row of inventory) {
-  if (`apps/admin-next/${row.file}` === rel) continue; // 방금 고친 게 안내멘트 자신이면 알릴 필요가 없다
+  if (row.file === rel) continue; // 방금 고친 게 안내멘트 자신이면 알릴 필요가 없다
   const matched = row.depends.filter((d) => {
     if (normalize(d) !== rel) return false;
     // 값을 렌더하는 문구는 상수가 바뀌어도 틀릴 수 없다.
