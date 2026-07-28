@@ -21,7 +21,7 @@ describe("parseResearchUsage — 알 수 없는 값은 안전한 기본값으로
 
 describe("researchValueUsable — 설정 × 필드 검증상태", () => {
   it("off 면 무엇도 쓰지 않는다", () => {
-    for (const status of ["verified", "ai_draft", "unverified", "needs_review", "web_blocked"]) {
+    for (const status of ["verified", "ai_draft", "unverified", "needs_review"]) {
       expect(researchValueUsable("off", status)).toBe(false);
     }
   });
@@ -36,9 +36,10 @@ describe("researchValueUsable — 설정 × 필드 검증상태", () => {
     expect(researchValueUsable("draft", "ai_draft")).toBe(true);
   });
 
-  it("검토 필요·웹조사 차단·미확인은 어느 설정에서도 쓰이지 않는다", () => {
+  it("검토 필요·미확인은 어느 설정에서도 쓰이지 않는다", () => {
     for (const mode of ["verified", "draft"] as const) {
       expect(researchValueUsable(mode, "needs_review")).toBe(false);
+      // 폐지된 상태·알 수 없는 코드도 보수적으로 제외한다(허용 목록 판정).
       expect(researchValueUsable(mode, "web_blocked")).toBe(false);
       expect(researchValueUsable(mode, "unverified")).toBe(false);
     }

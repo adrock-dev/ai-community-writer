@@ -610,7 +610,6 @@ const STATUS_LABEL: Record<string, string> = {
   needs_review: "검토 필요",
   ai_draft: "AI 초안",
   verified: "검증완료",
-  web_blocked: "웹조사 차단",
   unverified: "미확인",
 };
 
@@ -702,7 +701,6 @@ function ReviewQueue() {
             <option value="needs_review,ai_draft">검토 필요 + AI 초안</option>
             <option value="needs_review">검토 필요만</option>
             <option value="ai_draft">AI 초안만</option>
-            <option value="web_blocked">웹조사 차단</option>
             <option value="verified">검증완료(승인된 값)</option>
           </select>
         </label>

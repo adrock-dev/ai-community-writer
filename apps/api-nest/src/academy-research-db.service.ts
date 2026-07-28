@@ -23,8 +23,6 @@ const DEFAULT_STATUS_DEFS: Array<{ code: string; label: string; rank: number }> 
   { code: "unverified", label: "미확인", rank: 0 },
   { code: "ai_draft", label: "AI 초안", rank: 1 },
   { code: "verified", label: "검증완료", rank: 2 },
-  // 웹 조사 도구가 차단돼 실제 웹검증을 못 한 상태(값을 신뢰할 수 없어 저장하지 않음). 웹 활성화 후 재조사 필요.
-  { code: "web_blocked", label: "웹조사 차단", rank: 3 },
   // 저장은 했지만 그라운딩 검사에 걸린 값 — 수집 소스에서 근거를 못 찾았거나, 그 필드에
   // 담기면 안 되는 값(광고 문구·개인거래 가격)이다. 사유는 academy_field_meta.note 에 남는다.
   { code: "needs_review", label: "검토 필요", rank: 4 },
@@ -333,6 +331,13 @@ export class AcademyResearchDbService implements OnModuleInit {
     // 그 수가 마지막 배치의 no_sources 수와 우연히 같으면 **한 번도 조사한 적 없는 학원이
     // "근거 없음" 으로 찍혀 기본 배치에서 조용히 빠진다**(재현 테스트: research-attempt-outcome).
     if (addedAttemptOutcome || backfilled > 0) this.recoverLegacyNoSourceAttempts();
+
+    // 'web_blocked' 폐지(2026-07-28). 이 상태를 찍던 markResearchBlocked 는 도입 시점부터
+    // 호출처가 없는 죽은 코드였다 — 웹 접근이 막히면 실제로는 gatherSources 가 빈 결과를 내
+    // no_sources 로, CLI·파싱이 실패하면 failed 로 기록된다. 두 갈래로 충분하다.
+    // 남아 있던 표시는 '미확인'으로 되돌린다(값이 저장된 것이 아니라 상태만 찍힌 자리였다).
+    this.run("UPDATE academy_field_meta SET status='unverified', updated_at=? WHERE status='web_blocked'", [nowIso()]);
+    this.run("DELETE FROM field_status_defs WHERE code='web_blocked'");
 
     // 학원 홈페이지 표본 조사(2026-07-28)에서 공통으로 나왔는데 스키마에 자리가 없던 항목.
     // "입학안내·준비사항" 5곳 · "온라인 예약·상담신청" 4곳. 원천은 둘 다 주지 않는다.
@@ -663,17 +668,12 @@ export class AcademyResearchDbService implements OnModuleInit {
        ON CONFLICT(external_id) DO UPDATE SET
         last_attempted_at=excluded.last_attempted_at,
         last_attempt_outcome=excluded.last_attempt_outcome,
-        last_attempt_error=excluded.last_attempt_error`,
+        last_attempt_error=excluded.last_attempt_error,
+        -- 다른 쓰기 경로(upsertResearch·updateResearchField)는 모두 갱신한다. 여기만 빠지면
+        -- saved → failed 처럼 상태가 바뀐 행이 마지막 성공 시각을 그대로 달고 있게 된다.
+        updated_at=excluded.updated_at`,
       [externalId, attemptedAt, outcome, error ?? null, attemptedAt],
     );
-  }
-
-  // 웹 조사 도구가 차단된 경우: (지어냈을 수 있는) 값은 저장하지 않고, 시도 시각·엔진만 기록 + 모든 필드를 web_blocked 로 표시.
-  markResearchBlocked(externalId: string, meta: { engine?: string; method?: string } = {}): void {
-    this.recordResearchAttempt(externalId, "failed", `${meta.engine ?? "AI"} 웹조사 차단`);
-    for (const key of RESEARCH_FIELDS) {
-      this.setFieldMeta(externalId, key, { status: "web_blocked", source_name: `${meta.engine ?? "AI"} 웹조사 차단` });
-    }
   }
 
   updateResearchField(externalId: string, field: string, value: unknown): boolean {
@@ -814,11 +814,6 @@ export class AcademyResearchDbService implements OnModuleInit {
       }
     });
     return changed;
-  }
-
-  // 재조사 시 이전 'web_blocked' 흔적을 정리(자체 fetch 방식에선 발생하지 않음).
-  clearWebBlocked(externalId: string): void {
-    this.run("UPDATE academy_field_meta SET status='unverified', updated_at=? WHERE external_id=? AND status='web_blocked'", [nowIso(), externalId]);
   }
 
   // ---- 조사 실행 이력 ----

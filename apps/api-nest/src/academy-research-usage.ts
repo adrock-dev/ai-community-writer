@@ -19,10 +19,9 @@ export const RESEARCH_USAGE_LABELS: Record<ResearchUsageMode, string> = {
 /**
  * 어떤 설정에서도 글에 쓰이지 않는 상태.
  * - needs_review: 그라운딩 검사에 걸린 값(소스에 근거가 없거나 그 필드에 담기면 안 되는 값)
- * - web_blocked: 웹 조사가 차단돼 값 자체를 신뢰할 수 없는 상태
  * - unverified: 조사가 채우지 않은 자리(사람이 손대기 전)
  */
-const NEVER_USABLE = new Set(["needs_review", "web_blocked", "unverified"]);
+const NEVER_USABLE = new Set(["needs_review", "unverified"]);
 
 export function parseResearchUsage(value: unknown): ResearchUsageMode {
   const raw = String(value ?? "").trim();

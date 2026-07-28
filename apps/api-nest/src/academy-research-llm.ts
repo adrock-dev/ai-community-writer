@@ -120,7 +120,7 @@ export interface ResearchCliOut {
   text: string;
   provider: ResearchProvider;
   error?: string;
-  // 웹 검증 여부. webUsed=false 면 웹조사가 실제로 일어나지 않은 것(값 신뢰 불가 → web_blocked 처리).
+  // 웹 검증 여부. webUsed=false 면 웹조사가 실제로 일어나지 않은 것(값 신뢰 불가).
   // codex 등 감지 불가한 경우 undefined.
   webUsed?: boolean;
   webDenied?: number;

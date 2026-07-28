@@ -446,7 +446,6 @@ export class AcademyResearchService {
     // 그러면 원천값과 모순되는 낡은 값이 DB 에 남아 어느 쪽이 쓰일지 알 수 없게 된다.
     for (const key of known.skipFields) if (SCALAR_KEY_SET.has(key)) scalar[key] = null;
     this.db.upsertResearch(externalId, scalar, { engine: meta.engine, method: meta.method });
-    this.db.clearWebBlocked(externalId); // 이전 CLI-웹 조사의 web_blocked 흔적 정리
 
     // 그라운딩 대조용 소스 본문. 지금 이 자리에서만 원문을 볼 수 있다 — 수집 결과는
     // 저장하지 않고, 나중에 다시 수집하면 다른 페이지가 나온다(실측: 3건 → 0건).
