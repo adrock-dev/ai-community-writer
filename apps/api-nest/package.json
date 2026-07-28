@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "worker:once": "tsx src/worker-once.ts",
+    "research:once": "tsx src/research-once.ts",
     "test:golden": "tsx scripts/tests/golden-runner.ts",
     "sync:academies": "tsx src/sync-academies-once.ts",
     "sync:region-directory": "tsx src/sync-region-directory-once.ts"
