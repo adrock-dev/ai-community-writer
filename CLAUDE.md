@@ -40,7 +40,7 @@ CI는 없다. 로컬 게이트가 전부다.
 커밋·제출 전 다음을 모두 통과시킨다:
 
 1. `npm run verify:company-clean`
-2. `npm run verify:copy-sync` — 안내멘트가 코드와 어긋났는지. **1·2는 `.git/hooks/pre-commit`이 자동 실행해 실패 시 커밋을 차단한다**(훅은 버전 관리되지 않으니 클론 후 다시 심어야 한다). 나머지는 수동이다.
+2. `npm run verify:copy-sync` — 안내멘트가 코드와 어긋났는지. **1·2는 `.git/hooks/pre-commit`이 자동 실행해 실패 시 커밋을 차단한다.** `.git/hooks`는 버전 관리되지 않으므로 **클론·장비 이전 후에는 `npm run hooks:install`로 다시 심어야 한다**(정본은 `scripts/install-git-hooks.sh`, 훅을 고칠 때도 그쪽을 고친다). 나머지는 수동이다.
 3. `npm run typecheck`
 4. `npm run test`
 5. `npm run qa:posts`
@@ -69,7 +69,7 @@ biome(`biome.json`)이 있으나 훅으로 강제되지는 않는다. 그 외 �
 - **`npm run dev` 중에는 글 생성이 언제든 끊긴다.** `API_WORKER=1`이면 워커가 API 프로세스 안에서 도는데 API는 `tsx watch`라, **`apps/api-nest/src` 아래 파일이 하나라도 저장되면 재시작하며 진행 중인 생성이 죽는다.** 생성 1건은 5~12분 걸린다. 죽은 잡은 `recoverStaleRunningJobs`가 `제한시간+여유(WORKER_CANCEL_EXTRA_GRACE_SEC, 기본 300초)` 초과 후 `failed`로 정리하는데, 에러 메시지가 `실패 처리됨(작업자 응답 없음...)`이라 **코드 문제와 구분되지 않는다.** 판별법: `jobs.heartbeat_at`이 `started_at`에서 거의 안 움직였으면 재시작으로 죽은 것이다. 편집하면서 생성을 돌려야 하면 별도 셸에서 `npm run worker:once`를 쓰거나, 다른 사람이 같은 저장소를 편집 중인지 먼저 확인하라.
 - **공통 작성 원칙(`domains.common_principles`)은 프롬프트에 들어가지만 어떤 게이트도 검증하지 않는다.** `buildPrompt`가 `공통원칙:` 한 줄로 주입하며(Legacy Plus도 `buildPrompt` 위에 얹히므로 동일 적용) 지침 텍스트의 15% 안팎을 차지한다. 기본값은 `DEFAULT_DRIVING_COMMON_PRINCIPLES`다. **여기에 「절대 원칙」·아키타입 `writing_guide`·「필수 출력 구조」·품질 게이트가 이미 강제하는 내용을 재서술하지 마라** — 강제력은 안 생기고 여기서만 전달되는 톤·태도 지시만 희석된다. 입력칸 안내·placeholder는 2026-07-28 기준 이 방향으로 정정됐고(`8a1134a`), **투어 문구 한 곳(`DomainClient.tsx:368`)만 아직 "안전·데이터 원칙을 정하라"는 옛 안내로 남아 같은 화면 안에서 모순이다.**
 - **관리자 UI 안내멘트 242건 중 67건은 코드가 강제하는 사실의 사본이다 — 코드를 고치면 같이 썩는다.** 역참조표가 `docs/ui-copy-inventory.md`에 있다(`npm run copy:inventory`로 재생성, 분류는 `scripts/ui-copy-classification.json`에서 사람이 지정). **`apps/api-nest/src`의 상수·게이트·프롬프트를 바꿨으면 이 표에서 종속 문장을 먼저 찾아라.** A급(11건)은 상수에서 계산 가능한데 손으로 적은 값이라 값에서 렌더하면 드리프트가 사라지고, B급(56건)은 파생이 불가능해 사람이 같이 고쳐야 한다. 안내멘트를 새로 쓸 땐 `npm run copy:untagged`로 사실을 주장하는 문장이 분류 없이 남았는지 확인한다(현재 미분류 0).
-- **`verify:copy-sync`(pre-commit)가 차단하는 것과 못 하는 것을 구분하라.** 차단: 분류 overlay 해석 실패(문구를 고쳤는데 `match`를 안 고침), 손으로 적은 숫자가 코드값과 불일치, 생성 문서가 낡음. 경고만: B급 종속 코드가 바뀌었는데 문구는 그대로인 경우 — **파생이 불가능해 기계가 판정할 수 없다.** B급을 차단하지 않는 것은 의도적이다. `worker.service.ts`처럼 자주 바뀌는 파일에 매달린 문장이 많아 차단하면 매 커밋이 걸리고, 그러면 `--no-verify`가 습관이 돼 게이트 전체가 죽는다. **경고가 뜨면 나열된 문장이 여전히 맞는 말인지 직접 읽어라.**
+- **`verify:copy-sync`(pre-commit)가 차단하는 것과 못 하는 것을 구분하라.** 차단: 분류 overlay 해석 실패(문구를 고쳤는데 `match`를 안 고침), 손으로 적은 숫자가 코드값과 불일치, 생성 문서가 낡음. 경고만: B급 종속 코드가 바뀌었는데 문구는 그대로인 경우 — **파생이 불가능해 기계가 판정할 수 없다.** B급을 차단하지 않는 것은 의도적이다. `worker.service.ts`처럼 자주 바뀌는 파일에 매달린 문장이 많아 차단하면 매 커밋이 걸리고, 그러면 `--no-verify`가 습관이 돼 게이트 전체가 죽는다. **경고가 뜨면 나열된 문장이 여전히 맞는 말인지 직접 읽어라.** 커밋까지 기다리지 않도록 `.claude/settings.json`의 `PostToolUse` 훅(`scripts/copy-deps-hook.mjs`)이 **파일을 고친 직후** 매달린 안내멘트를 알린다 — 매달린 게 없으면 아무 말도 하지 않는다.
 
 ## 환경 변수
 

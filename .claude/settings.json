@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/copy-deps-hook.mjs 2>/dev/null || true",
+            "timeout": 15,
+            "statusMessage": "안내멘트 종속 확인"
+          }
+        ]
+      }
+    ]
+  }
+}

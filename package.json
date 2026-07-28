@@ -15,6 +15,7 @@
     "copy:inventory": "node scripts/copy-inventory.mjs",
     "copy:untagged": "node scripts/copy-inventory.mjs --untagged",
     "verify:copy-sync": "node scripts/verify-copy-sync.mjs",
+    "hooks:install": "sh scripts/install-git-hooks.sh",
     "test": "npm --prefix apps/api-nest run test",
     "test:golden": "npm --prefix apps/api-nest run test:golden",
     "lint": "biome lint",
