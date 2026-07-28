@@ -106,12 +106,12 @@
 | `apps/admin-next/components/DomainClient.tsx:2164` | field:help | 조사값을 글에 전혀 쓰지 않습니다. 글은 원천 동기화로 받은 학원 자료(주소·전화·수강료·셔틀·영업시간·운영 과정·운영 형태·사진 등)와 자체 수강생 후기만 근거로 씁니다.<br>_정책 자체가 아직 생성에 연결되지 않았지만, 같은 패널 바로 아래 ⚠️ 경고가 그 사실을 밝히므로 문구는 그대로 둔다. 연결되는 순간 세 문장이 동시에 검증 대상이 된다._ | `조사값 사용 게이트(미구현)` |
 | `apps/admin-next/components/DomainClient.tsx:2169` | field:help | 위 원천 자료·후기에 더해, 조사값 중에서는 사람이 학원 상세 화면에서 「검증완료」로 올린 것만 씁니다. AI가 조사한 채로 둔 값은 쓰지 않습니다. | `조사값 사용 게이트(미구현)` |
 | `apps/admin-next/components/DomainClient.tsx:2174` | field:help | 위 원천 자료·후기에 더해, 사람이 확인하지 않은 AI 조사값까지 씁니다. 검사에 걸리지 않았을 뿐 사실 확인은 안 된 값입니다. | `조사값 사용 게이트(미구현)` |
-| `apps/admin-next/components/DomainClient.tsx:2201` | muted-p | 원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다. 조사는 학원 단위라 도메인마다 따로 돌리지 않습니다 — 실행은 자료관리에서 합니다. | `academy-research 저장소` |
-| `apps/admin-next/components/DomainClient.tsx:2245` | muted-p | 어느 설정에서도 「검토 필요」(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와 「웹조사 차단」 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다. 합격률과 원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번)은 검증완료로 올려도 글… | `apps/api-nest/src/academy-research-usage.ts`<br>`apps/api-nest/src/academy-research-article-fields.ts`<br>`apps/api-nest/src/academy-link.service.ts#researchValuesFor` |
-| `apps/admin-next/components/DomainClient.tsx:2251` | muted-p | 이 설정은 어느 정도 확인된 값까지 믿을 것인가만 정합니다. 틀린 값은 어느 글유형에서든 똑같이 틀리므로 도메인 단위로 한 번만 정합니다. 어느 글에 실제로 쓰이는지는 글유형이 정합니다 — 조사값은 학원 자료에 얹혀 들어가므로, 글유형의 「학원 타입 필터」가 비어 학원 자료를 쓰지 않는 글유형(면허 제도·시험 가이드 등)… | `apps/api-nest/src/worker.service.ts#resolveAcademyTypes` |
-| `apps/admin-next/components/DomainClient.tsx:2256` | muted-p | ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.<br>_구현되면 이 경고를 지워야 한다. 지우는 것을 잊으면 반대 방향으로 거짓이 된다._ | `조사값 사용 게이트(미구현)` |
-| `apps/admin-next/components/DomainClient.tsx:2301` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
-| `apps/admin-next/components/DomainClient.tsx:2326` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료를 가져오는 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계 「학원자료 연결」을 다시 눌러야 반영됩니다. | `셔틀 지역 판정` |
+| `apps/admin-next/components/DomainClient.tsx:2201` | muted-p | 원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다. 조사 결과는 학원 1곳에 하나로 저장되며 도메인 사본이 아닙니다 — 여기 숫자는 「이 도메인에 연결된 학원 중 몇 곳이 조사됐나」를 대조해 보여주는 것입니다. 그래서 실행은 자료관리에서 한 번만 하고, 결과는 그 학원을 연결한 모… | `apps/api-nest/src/academy-research-db.service.ts#academy_research`<br>`apps/api-nest/src/admin.controller.ts#researchSummary`<br>`academy-research 저장소` |
+| `apps/admin-next/components/DomainClient.tsx:2247` | muted-p | 어느 설정에서도 「검토 필요」(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와 「웹조사 차단」 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다. 합격률과 원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번)은 검증완료로 올려도 글… | `apps/api-nest/src/academy-research-usage.ts`<br>`apps/api-nest/src/academy-research-article-fields.ts`<br>`apps/api-nest/src/academy-link.service.ts#researchValuesFor` |
+| `apps/admin-next/components/DomainClient.tsx:2253` | muted-p | 이 설정은 어느 정도 확인된 값까지 믿을 것인가만 정합니다. 틀린 값은 어느 글유형에서든 똑같이 틀리므로 도메인 단위로 한 번만 정합니다. 어느 글에 실제로 쓰이는지는 글유형이 정합니다 — 조사값은 학원 자료에 얹혀 들어가므로, 글유형의 「학원 타입 필터」가 비어 학원 자료를 쓰지 않는 글유형(면허 제도·시험 가이드 등)… | `apps/api-nest/src/worker.service.ts#resolveAcademyTypes` |
+| `apps/admin-next/components/DomainClient.tsx:2258` | muted-p | ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.<br>_구현되면 이 경고를 지워야 한다. 지우는 것을 잊으면 반대 방향으로 거짓이 된다._ | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/DomainClient.tsx:2303` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
+| `apps/admin-next/components/DomainClient.tsx:2328` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료를 가져오는 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계 「학원자료 연결」을 다시 눌러야 반영됩니다. | `셔틀 지역 판정` |
 | `apps/admin-next/components/DraftsClient.tsx:81` | muted-p | 품질 게이트를 통과하지 못한 글이 생기면 버려지지 않고 여기에 자동으로 보관됩니다. 지금 비어 있는 이유는 보통 둘 중 하나입니다. | `draft 격리 훅` |
 | `apps/admin-next/components/DraftsClient.tsx:86` | jsx-text | 실패한 글은 소급 보관되지 않습니다. 당시에는 본문이 그대로 폐기됐기 때문입니다. | `draft 격리 훅` |
 | `apps/admin-next/components/DraftsClient.tsx:176` | muted-p | 품질 게이트에 걸려 발행되지 못한 글입니다. B(안전·사실) 이슈가 있으면 발행할 수 없고, 본문을 수정해 재검증해야 합니다. A(구조/문체)만 남으면 사유를 확인한 뒤 발행할 수 있습니다. | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
@@ -290,11 +290,11 @@
 | `apps/admin-next/components/DomainClient.tsx:2023` | muted-p | 도메인 목록·상단 전환 메뉴에서 이 도메인을 구분하는 이름입니다. 글에는 나오지 않으니 운영 편한 대로 적어도 됩니다. | — |
 | `apps/admin-next/components/DomainClient.tsx:2023` | muted-p | 미리보기·발행 글·외부 사이트 CTA에 이 색이 반영됩니다. 저장 후 글 유형/디자인 탭에서도 확인하세요. | — |
 | `apps/admin-next/components/DomainClient.tsx:2023` | muted-p | 이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:2209` | muted-p | 조사 현황을 불러오지 못했습니다. | — |
-| `apps/admin-next/components/DomainClient.tsx:2219` | muted-p | {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."} {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).t… | — |
-| `apps/admin-next/components/DomainClient.tsx:2307` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
-| `apps/admin-next/components/DomainClient.tsx:2315` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:2319` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:2211` | muted-p | 조사 현황을 불러오지 못했습니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:2221` | muted-p | {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."} {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).t… | — |
+| `apps/admin-next/components/DomainClient.tsx:2309` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
+| `apps/admin-next/components/DomainClient.tsx:2317` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:2321` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:67` | muted-p | 검수 대기 목록에서 반려한 글이 여기에 모입니다. 반려해도 본문은 지워지지 않아 나중에 다시 열어볼 수 있습니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:74` | muted-p | 검수 후 발행한 글이 여기에 기록됩니다. 발행된 글 자체는 검수·내보내기 화면에서 확인합니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:85` | jsx-text | 최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다.<br>_빈 상태 해석._ | — |

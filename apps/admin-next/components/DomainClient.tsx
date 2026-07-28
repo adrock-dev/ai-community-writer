@@ -2200,7 +2200,9 @@ function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; 
           <h3 style={{ margin: 0 }}>심층조사 현황</h3>
           <p className="muted small">
             원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다.
-            조사는 학원 단위라 도메인마다 따로 돌리지 않습니다 — 실행은 자료관리에서 합니다.
+            조사 결과는 <b>학원 1곳에 하나</b>로 저장되며 도메인 사본이 아닙니다 — 여기 숫자는
+            「이 도메인에 연결된 학원 중 몇 곳이 조사됐나」를 대조해 보여주는 것입니다.
+            그래서 실행은 자료관리에서 한 번만 하고, 결과는 그 학원을 연결한 모든 도메인이 함께 씁니다.
           </p>
         </div>
         <Link className="btn" href="/academies">자료관리로 이동</Link>
@@ -2211,7 +2213,7 @@ function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; 
           ? <p className="muted small">불러오는 중...</p>
           : <>
               <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-                <span className="badge info">이 도메인 학원 {total.toLocaleString()}곳</span>
+                <span className="badge info">이 도메인에 연결된 학원 {total.toLocaleString()}곳</span>
                 <span className="badge">조사 완료 {researched.toLocaleString()}곳 ({percent}%)</span>
                 <span className="badge">미조사 {(total - researched).toLocaleString()}곳</span>
                 {summary.needs_review > 0 && <span className="badge warn">검토 필요 {summary.needs_review.toLocaleString()}건</span>}
