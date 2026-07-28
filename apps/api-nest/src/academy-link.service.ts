@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { DbService } from "./db.service.js";
 import { parseResearchUsage, researchValueUsable } from "./academy-research-usage.js";
+import { usableInArticle } from "./academy-research-article-fields.js";
 
 /**
  * 조사 DB(운전학원 자료) → admin.db(도메인 원천 데이터) 연결.
@@ -152,9 +153,16 @@ export class AcademyLinkService {
   /**
    * 이 학원의 조사값 중 **글에 쓸 수 있는 것만** 추린다.
    *
-   * 관문은 도메인 설정(research_usage) × 필드 검증상태다 — off 면 아무것도 넘기지 않고,
-   * verified 면 사람이 승인한 값만, draft 면 AI 초안까지. 검토 필요·웹조사 차단·미확인은
-   * 어느 설정에서도 빠진다. 연결이 관문을 우회하는 뒷문이 되면 안 된다.
+   * 관문은 **두 겹**이다.
+   *
+   * 1) 필드 자체가 글에 실릴 수 있는가(usableInArticle) — 허용 목록이다. 합격률처럼 절대 안 되는
+   *    항목과 원천 교차검증용 항목이 여기서 걸린다. 검증상태와 무관하게 나가지 않는다.
+   * 2) 값을 믿을 수 있는가 — 도메인 설정(research_usage) × 필드 검증상태. off 면 아무것도,
+   *    verified 면 사람이 승인한 값만, draft 면 AI 초안까지. 검토 필요·웹조사 차단·미확인은
+   *    어느 설정에서도 빠진다.
+   *
+   * 1번을 프롬프트 지시로 대신하지 않는 이유: 강제력이 없다는 것을 블로그리뷰에서 확인했다.
+   * 연결이 관문을 우회하는 뒷문이 되면 안 된다.
    */
   private researchValuesFor(externalId: string, usage: string): Record<string, string> {
     if (usage === "off") return {};
@@ -166,6 +174,7 @@ export class AcademyLinkService {
     const out: Record<string, string> = {};
     for (const [key, value] of Object.entries(row)) {
       if (value == null || String(value).trim() === "") continue;
+      if (!usableInArticle(key)) continue;
       if (!researchValueUsable(usage as never, status.get(key))) continue;
       out[key] = String(value);
     }

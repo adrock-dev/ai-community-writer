@@ -274,7 +274,9 @@
       "match": "어느 설정에서도 「검토 필요」",
       "class": "B",
       "depends": [
-        "조사값 사용 게이트(미구현)"
+        "apps/api-nest/src/academy-research-usage.ts",
+        "apps/api-nest/src/academy-research-article-fields.ts",
+        "apps/api-nest/src/academy-link.service.ts#researchValuesFor"
       ]
     },
     {
