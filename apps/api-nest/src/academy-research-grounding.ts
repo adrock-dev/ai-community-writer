@@ -148,10 +148,10 @@ export function isClaimGrounded(claim: NumericClaim, haystack: string): boolean 
 // 한계는 분명하다 — 소스에 "야간반 운영" 이 학원 홍보 문구로 적혀 있으면 통과한다.
 // 그건 필드 타입 검사(광고 표현 차단)가 맡는 몫이고, 여기서는 날조만 잡는다.
 const EVIDENCE_KEYWORDS: Record<string, string[]> = {
-  night_class: ["야간", "야간반", "새벽", "심야", "저녁반"],
+  night_class: ["야간", "야간반", "새벽", "심야", "저녁", "교시", "시간표", "부"],
   weekend: ["주말", "토요일", "일요일", "토·일", "휴무"],
   closed_days: ["휴무", "휴일", "쉬는", "정기휴"],
-  self_test: ["자체시험", "자체 시험", "장내기능", "기능시험", "검정"],
+  self_test: ["자체시험", "자체 시험", "자체 코스", "장내기능", "기능시험", "검정", "채점", "실격", "응시"],
   shuttle_summary: ["셔틀", "통학", "통근", "버스"],
   shuttle_available: ["셔틀", "통학", "통근", "버스"],
   facilities: ["시설", "주차", "휴게", "화장실", "편의", "인터넷", "차량", "코스"],
@@ -165,6 +165,17 @@ const EVIDENCE_KEYWORDS: Record<string, string[]> = {
 /** 이 필드가 서술형 근거 검사 대상인지. */
 export function hasEvidenceRule(field: string): boolean {
   return Boolean(EVIDENCE_KEYWORDS[field]?.length);
+}
+
+/**
+ * 값이 주장이 아니라 "모름·없음" 인 경우. 근거를 요구할 대상이 아니다.
+ * 스키마가 "yes"|"no"|"unknown" 을 허용하는 필드가 있어 실제로 이런 값이 들어온다.
+ */
+const NON_CLAIM_VALUES = new Set(["unknown", "no", "none", "n/a", "-", "없음", "미확인", "해당없음", "확인불가"]);
+
+export function isNonClaimValue(value: string | null | undefined): boolean {
+  const text = String(value ?? "").trim().toLowerCase();
+  return !text || NON_CLAIM_VALUES.has(text);
 }
 
 /**
@@ -233,8 +244,15 @@ export function inspectResearchValue(field: string, value: string | null | undef
   const ungrounded = claims.filter((c) => !isClaimGrounded(c, sourceText));
   const typeIssues = fieldTypeIssues(field, value);
   // 숫자가 하나도 없는 서술형 값은 위 대조를 그냥 통과한다. 근거 낱말로 한 번 더 본다.
-  const text = String(value ?? "").trim();
-  if (text && !hasEvidenceKeyword(field, sourceText)) {
+  //
+  // 두 경우는 면제한다. 실측 5건이 전부 여기 걸렸는데, 하필 **모델이 가장 신중하게 답한 값**이었다.
+  //  - 주장이 아닌 값("unknown"·"no"): 근거를 요구할 대상이 아니다.
+  //  - 숫자 클레임이 이미 전부 소스에서 확인된 값: 근거가 이미 붙어 있다. 예를 들어
+  //    night_class 에 "교육시간표 11부 18:10~19:00" 이라 적고 야간반이라 단정하지 않은 값은,
+  //    시각이 소스에 있으니 근거가 있는 것이다. "야간" 이라는 낱말이 없다고 지적하면
+  //    정직하게 답할수록 걸리는 규칙이 된다.
+  const claimsAllGrounded = claims.length > 0 && ungrounded.length === 0;
+  if (!isNonClaimValue(value) && !claimsAllGrounded && !hasEvidenceKeyword(field, sourceText)) {
     typeIssues.push(`수집 소스에 ${field} 근거가 없음(관련 낱말이 소스에 나오지 않음)`);
   }
   return { field, ungrounded, grounded: claims.length - ungrounded.length, typeIssues };

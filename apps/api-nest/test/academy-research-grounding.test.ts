@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  extractClaims, fieldTypeIssues, findingNote, hasEvidenceRule, hasFinding, inspectResearchValue, isClaimGrounded,
+  extractClaims, fieldTypeIssues, findingNote, hasEvidenceRule, hasFinding, inspectResearchValue, isClaimGrounded, isNonClaimValue,
 } from "../src/academy-research-grounding.js";
 
 // 조사값은 여러 출처가 섞인 서술문이라 값 전체를 소스와 대조할 수 없다.
@@ -163,5 +163,30 @@ describe("서술형 근거 검사 — 숫자가 없는 값도 검사한다", () 
     expect(hasEvidenceRule("booking_channel")).toBe(true);
     expect(inspectResearchValue("booking_channel", "온라인 예약 가능", "홈페이지에서 온라인 예약 신청").typeIssues).toEqual([]);
     expect(inspectResearchValue("booking_channel", "온라인 예약 가능", "학원 소개와 오시는 길").typeIssues.length).toBe(1);
+  });
+});
+
+describe("서술형 검사 면제 — 실측 오탐 5건에서 나온 규칙", () => {
+  // 첫 실전 투입에서 5건이 걸렸는데 전부 오탐이었고, 하필 모델이 가장 신중하게 답한 값이었다.
+  it("주장이 아닌 값은 근거를 요구하지 않는다", () => {
+    // 스키마가 "yes"|"no"|"unknown" 을 허용해 실제로 이런 값이 들어온다.
+    for (const value of ["unknown", "no", "없음", "미확인", "-"]) {
+      expect(isNonClaimValue(value)).toBe(true);
+      expect(inspectResearchValue("shuttle_available", value, "관련 없는 본문").typeIssues).toEqual([]);
+    }
+  });
+
+  it("숫자 근거가 이미 확인된 값은 낱말을 다시 묻지 않는다", () => {
+    // "야간반" 이라 단정하지 않고 시간표 근거만 댄 값. 시각이 소스에 있으므로 근거가 있다.
+    // 낱말이 없다고 지적하면 정직하게 답할수록 걸리는 규칙이 된다.
+    const value = "교육시간표에 11부 18:10~19:00, 12부 19:10~20:00 시간대가 편성되어 있음";
+    const source = "교육 시간표 11부 18:10~19:00 / 12부 19:10~20:00";
+    expect(inspectResearchValue("night_class", value, source).typeIssues).toEqual([]);
+  });
+
+  it("숫자가 소스에 없으면 면제되지 않는다", () => {
+    const report = inspectResearchValue("night_class", "야간 19:00~22:00 운영", "학원 소개와 오시는 길");
+    expect(report.ungrounded.length).toBeGreaterThan(0);
+    expect(hasFinding(report)).toBe(true);
   });
 });
