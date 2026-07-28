@@ -367,7 +367,15 @@ export class AcademyResearchDbService implements OnModuleInit {
     return Number(this.get("SELECT COUNT(*) AS n FROM academy_base WHERE active = 0")?.n ?? 0);
   }
 
-  listBase(opts: { region?: string; q?: string; limit?: number; includeInactive?: boolean; onlyUnresearched?: boolean } = {}): Row[] {
+  listBase(opts: {
+    region?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+    includeInactive?: boolean;
+    onlyUnresearched?: boolean;
+    oldestResearchFirst?: boolean;
+  } = {}): Row[] {
     const where: string[] = [];
     const params: any[] = [];
     // 기본은 최신 동기화에 포함된 학원만. 원천에서 내려간 행은 보관만 하고 쓰지 않는다.
@@ -378,10 +386,16 @@ export class AcademyResearchDbService implements OnModuleInit {
     if (opts.region) { where.push("(region = ? OR address LIKE ?)"); params.push(opts.region, `%${opts.region}%`); }
     if (opts.q) { where.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${opts.q}%`, `%${opts.q}%`); }
     const limit = Math.max(1, Math.min(5000, Math.trunc(opts.limit ?? 1000)));
+    const offset = Math.max(0, Math.trunc(opts.offset ?? 0));
+    // 재조사를 허용한 배치는, 미조사 → 가장 오래 전에 조사한 순으로 고른다.
+    // 성공 저장된 항목은 최신 시각으로 밀려, 같은 limit 연속 실행이 다음 묶음으로 진행된다.
+    const orderBy = opts.oldestResearchFirst
+      ? "CASE WHEN r.researched_at IS NULL THEN 0 ELSE 1 END ASC, r.researched_at ASC, b.external_id ASC"
+      : "b.name ASC";
     const sql = `SELECT b.*, r.researched_at, r.research_engine
        FROM academy_base b LEFT JOIN academy_research r ON r.external_id = b.external_id
        ${where.length ? "WHERE " + where.join(" AND ") : ""}
-       ORDER BY b.name ASC LIMIT ${limit}`;
+       ORDER BY ${orderBy} LIMIT ${limit} OFFSET ${offset}`;
     return this.all(sql, params);
   }
 

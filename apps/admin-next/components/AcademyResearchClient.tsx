@@ -23,6 +23,7 @@ export default function AcademyResearchClient() {
   const [researchLimit, setResearchLimit] = useState(30);
   // 기본은 아직 조사하지 않은 곳만. 중단돼도 다시 눌러 이어서 진행하기 위함이다.
   const [refreshAll, setRefreshAll] = useState(false);
+  const [researchOffset, setResearchOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
   // 수집 스위치 상태. 서버가 최종 판단하므로 화면은 받아서 표시만 한다.
@@ -119,13 +120,15 @@ export default function AcademyResearchClient() {
   async function onResearchAll() {
     const scope = refreshAll ? "이미 조사한 곳까지 다시" : "아직 조사하지 않은 곳만";
     const size = researchLimit ? `최대 ${researchLimit}곳` : "전체";
+    const offset = refreshAll && researchLimit > 0 ? researchOffset : undefined;
     if (!confirm(`${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요?`)) return;
     setBusy("research");
     setError("");
     setNotice("");
     try {
-      const res = await researchRegion(researchProvider, { refreshAll, limit: researchLimit || undefined });
+      const res = await researchRegion(researchProvider, { refreshAll, limit: researchLimit || undefined, offset });
       if (!res.ok) throw new Error(res.error || "시작 실패");
+      if (refreshAll && researchLimit > 0) setResearchOffset((current) => current + researchLimit);
       if (res.run_id) watchedRunRef.current = res.run_id;
       setNotice(`조사 시작 — 대상 ${res.count}곳. 창을 닫아도 계속 진행됩니다. 중단되면 다시 눌러 이어서 진행할 수 있습니다.`);
       await loadRuns();
@@ -275,7 +278,11 @@ export default function AcademyResearchClient() {
                 <input
                   type="checkbox"
                   checked={refreshAll}
-                  onChange={(e) => setRefreshAll(e.target.checked)}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRefreshAll(checked);
+                    if (!checked) setResearchOffset(0);
+                  }}
                   disabled={busy === "research" || Boolean(activeResearchRun)}
                 />
                 조사한 곳도 다시
@@ -288,6 +295,7 @@ export default function AcademyResearchClient() {
           {/* 배치는 API 프로세스 안의 루프라 재시작되면 사라진다. 다시 눌러 이어서 진행한다. */}
           <div className="muted small" style={{ paddingLeft: 96 }}>
             기본은 아직 조사하지 않은 곳만 대상입니다. 중단되면 다시 눌러 이어서 진행할 수 있습니다.
+            {refreshAll && researchLimit > 0 ? ` 현재 다음 배치 시작 위치: ${researchOffset}번째.` : ""}
           </div>
         </div>
       </div>

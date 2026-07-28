@@ -119,10 +119,10 @@ export const syncOneAcademy = (externalId: string) => api<{ external_id: string;
 export const researchOneAcademy = (externalId: string, provider: ResearchProvider = "auto") => api<{ ok: boolean; external_id: string; provider?: string; error?: string; no_sources?: boolean; sources?: number }>(`/academy-research/${encodeURIComponent(externalId)}/research`, { method: "POST", body: JSON.stringify({ provider }) });
 // 기본은 아직 조사되지 않은 학원만 대상으로 한다. 배치가 중단돼도 다시 눌러 이어서
 // 진행하기 위함이다. limit 은 이번 실행의 상한(학원 1곳이 1분 안팎이라 나눠 돌린다).
-export const researchRegion = (provider: ResearchProvider = "auto", opts: { refreshAll?: boolean; limit?: number } = {}) =>
+export const researchRegion = (provider: ResearchProvider = "auto", opts: { refreshAll?: boolean; limit?: number; offset?: number } = {}) =>
   api<{ ok: boolean; run_id?: string; count?: number; error?: string }>("/academy-research/research/region", {
     method: "POST",
-    body: JSON.stringify({ provider, refresh_all: opts.refreshAll === true, limit: opts.limit }),
+    body: JSON.stringify({ provider, refresh_all: opts.refreshAll === true, limit: opts.limit, offset: opts.offset }),
   });
 export const updateResearchField = (externalId: string, field: string, value: unknown) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field`, { method: "PATCH", body: JSON.stringify({ field, value }) });
 export const setResearchFieldMeta = (externalId: string, body: { field_key: string; status?: string; source_url?: string; note?: string }) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field-meta`, { method: "PATCH", body: JSON.stringify(body) });

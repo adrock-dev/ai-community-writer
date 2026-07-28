@@ -87,6 +87,7 @@ export class AcademyResearchController {
       provider,
       refreshAll: body?.refresh_all === true,
       limit: parseLimit(body?.limit),
+      offset: parseOffset(body?.offset),
     });
     if (!result.ok) throw new HttpException(result.error || "failed", 409);
     return result;
@@ -178,6 +179,13 @@ function parseLimit(value: unknown): number | undefined {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 1) throw new HttpException("limit must be a positive number", 400);
   return Math.min(5000, Math.trunc(n));
+}
+
+function parseOffset(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new HttpException("offset must be zero or positive number", 400);
+  return Math.trunc(n);
 }
 
 // raw_json 은 TEXT 라 문자열로 온다. 손상된 값이 상세 조회를 막지 않게 한다.

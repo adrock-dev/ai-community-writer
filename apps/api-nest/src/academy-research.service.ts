@@ -295,12 +295,20 @@ export class AcademyResearchService {
   // 이미 조사한 곳을 갱신하려면 refreshAll 을 켠다.
   async startRegionResearch(
     region?: string,
-    opts: { provider?: ResearchProviderPreference; refreshAll?: boolean; limit?: number } = {},
+    opts: { provider?: ResearchProviderPreference; refreshAll?: boolean; limit?: number; offset?: number } = {},
   ): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
     if (this.db.findRunningRun("all")) return { ok: false, error: "이미 진행 중인 전체 조사가 있습니다." };
     const providers = await this.resolveProviders(opts.provider);
     if (!providers.length) return { ok: false, error: "claude/codex CLI를 찾을 수 없습니다." };
-    const targets = this.db.listBase({ region, limit: opts.limit ?? 5000, onlyUnresearched: !opts.refreshAll });
+    const targets = this.db.listBase({
+      region,
+      limit: opts.limit ?? 5000,
+      onlyUnresearched: !opts.refreshAll,
+      offset: opts.offset,
+      // 재조사도 허용할 때는 아직 조사하지 않은 곳부터, 그다음 가장 오래된 조사부터 갱신한다.
+      // 따라서 성공한 30곳씩 연달아 실행하면 직전 묶음 대신 다음 묶음으로 진행된다.
+      oldestResearchFirst: opts.refreshAll === true,
+    });
     if (!targets.length) {
       return {
         ok: false,
