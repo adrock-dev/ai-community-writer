@@ -1291,6 +1291,23 @@ export class DbService implements OnModuleInit {
     return this.run("DELETE FROM academy_exclusions WHERE domain=? AND external_id=?", [domain, externalId]).changes ?? 0;
   }
 
+  /** 이 도메인 학원의 external_id 목록. 원천 목록과 대조해 내려간 학원을 찾는 데 쓴다. */
+  academyExternalIds(domain: string): string[] {
+    return this.all("SELECT external_id FROM academies WHERE domain=? AND external_id IS NOT NULL AND external_id!=''", [domain])
+      .map((r) => String(r.external_id));
+  }
+
+  deleteAcademiesByExternalIds(domain: string, externalIds: string[]): number {
+    let removed = 0;
+    // SQLite 변수 상한(기본 999)을 넘기지 않도록 나눠 지운다.
+    for (let i = 0; i < externalIds.length; i += 500) {
+      const chunk = externalIds.slice(i, i + 500);
+      const marks = chunk.map(() => "?").join(",");
+      removed += this.run(`DELETE FROM academies WHERE domain=? AND external_id IN (${marks})`, [domain, ...chunk]).changes ?? 0;
+    }
+    return removed;
+  }
+
   deleteAcademy(domain: string, id: string): number { return this.run("DELETE FROM academies WHERE id=? AND domain=?", [id, domain]).changes ?? 0; }
   deleteAcademies(domain: string, region?: string): number {
     return this.run(`DELETE FROM academies WHERE domain=?${region ? " AND region=?" : ""}`, region ? [domain, region] : [domain]).changes ?? 0;

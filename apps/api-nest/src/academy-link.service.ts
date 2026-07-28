@@ -28,7 +28,7 @@ export class AcademyLinkService {
   ) {}
 
   linkToDomain(domain: string): {
-    linked: number; skipped: number; excluded: number; reviews: number; blog_reviews: number;
+    linked: number; skipped: number; removed: number; excluded: number; reviews: number; blog_reviews: number;
     research_applied: number; research_usage: string; warnings: string[];
   } {
     const usage = parseResearchUsage(this.db.getDomain(domain)?.research_usage);
@@ -54,9 +54,11 @@ export class AcademyLinkService {
     }
 
     const result = this.db.upsertDrivingplusAcademies(domain, rows, { blogReviewsAttempted: blogCount > 0, applyResearch: true });
+    const removed = this.removeStale(domain, rows, result.warnings);
     return {
       linked: result.upserted,
       skipped: result.skipped,
+      removed,
       excluded: excludedCount,
       reviews: result.review_count,
       blog_reviews: result.blog_review_count,
@@ -84,6 +86,37 @@ export class AcademyLinkService {
       applyResearch: true,
     });
     return result.upserted > 0 ? { linked: true } : { linked: false, reason: result.warnings[0] ?? "연결하지 못했습니다." };
+  }
+
+  /**
+   * 원천 목록에서 내려간 학원을 이 도메인에서 지운다.
+   *
+   * upsert 는 더하기만 한다 — 이번 연결에 없는 학원은 admin.db 에 영원히 남아 폐업한 학원이
+   * 계속 글 후보로 쓰인다. 그래서 연결이 곧 "원천 목록과 맞추기"가 되도록 여기서 정리한다.
+   *
+   * 다만 **한 번에 대량으로 사라지면 지우지 않고 경고만 남긴다.** 원천이 일시적으로 부실한
+   * 목록을 내려주는 날 학원이 통째로 증발하는 사고를 막기 위함이다(블로그리뷰에서 같은 유형의
+   * 사고를 겪었다 — 원천 장애를 정상 응답으로 오인해 후기를 전멸시킬 뻔했다).
+   * 진짜로 많이 줄어든 것이라면 운영자가 확인하고 「제외」로 하나씩 판단하면 된다.
+   */
+  private removeStale(domain: string, rows: Array<Record<string, unknown>>, warnings: string[]): number {
+    const keep = new Set(rows.map((r) => String(r.id ?? "").trim()).filter(Boolean));
+    // external_id 가 없는 행은 원천과 대조할 열쇠가 없다. 판단할 수 없는 것은 건드리지 않는다.
+    const stale = this.db.academyExternalIds(domain).filter((id) => !keep.has(id));
+    if (!stale.length) return 0;
+
+    const total = keep.size + stale.length;
+    const limit = Math.max(5, Math.floor(total * 0.1));
+    if (stale.length > limit) {
+      warnings.unshift(
+        `원천 목록에서 ${stale.length}곳이 빠졌습니다(전체 ${total}곳 중). 한 번에 사라진 수가 많아 자동 삭제하지 않았습니다 — 원천 자료가 정상인지 확인한 뒤 「제외」로 정리하세요.`,
+      );
+      this.logger.warn(`${domain}: 원천 이탈 ${stale.length}/${total}곳 — 안전장치로 삭제 보류`);
+      return 0;
+    }
+    const removed = this.db.deleteAcademiesByExternalIds(domain, stale);
+    if (removed > 0) warnings.push(`원천 목록에서 내려간 학원 ${removed}곳을 이 도메인에서 정리했습니다.`);
+    return removed;
   }
 
   /** 조사 DB 한 행을 원천 응답 형태로 되돌린다(upsert 가 그 형태를 기대한다). */

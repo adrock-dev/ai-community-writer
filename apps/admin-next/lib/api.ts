@@ -166,7 +166,7 @@ export const getResearchSummary = (domain: string) =>
  * 타입에서 빼 두면 되살리려는 순간 컴파일이 막는다.
  */
 export interface AcademyLinkResult {
-  linked: number; skipped: number; excluded: number; reviews: number; blog_reviews: number;
+  linked: number; skipped: number; removed: number; excluded: number; reviews: number; blog_reviews: number;
   research_applied: number; research_usage: string; warnings: string[];
 }
 

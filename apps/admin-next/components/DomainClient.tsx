@@ -1463,8 +1463,13 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       const research = res.research_usage === "off"
         ? "조사값은 사용 안 함 설정이라 제외됐습니다"
         : `조사값 ${res.research_applied}곳 적용(${res.research_usage === "verified" ? "검증완료만" : "AI 초안까지"})`;
-      setAcademyMsg(`학원 ${res.linked}곳 연결 · 후기 ${res.reviews}건 · 블로그 ${res.blog_reviews}건 · ${research}${res.warnings.length ? ` · 경고 ${res.warnings.length}건` : ""}`);
-      await onRefresh(); await loadAcademies();
+      // 정리·제외는 0이면 적지 않는다. 늘 0으로 붙어 있으면 실제로 지워진 날에도 눈에 안 띈다.
+      const removed = res.removed ? ` · 원천에서 내려간 ${res.removed}곳 정리` : "";
+      const excluded = res.excluded ? ` · 제외 ${res.excluded}곳 건너뜀` : "";
+      setAcademyMsg(`학원 ${res.linked}곳 연결${removed}${excluded} · 후기 ${res.reviews}건 · 블로그 ${res.blog_reviews}건 · ${research}`);
+      // 경고는 건수만 세면 아무도 안 읽는다. 대량 이탈 보류 같은 건 내용을 봐야 한다.
+      setSyncWarning(res.warnings[0] ?? "");
+      await onRefresh(); await loadAcademies(); await loadExclusions();
     } catch (e) {
       setAcademyMsg(e instanceof Error ? e.message : String(e));
     } finally { setSyncBusy(""); }
