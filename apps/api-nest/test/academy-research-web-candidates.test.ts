@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  extractSearchCandidates, feeSubpageUrls, homepageUrlsFromPlaceText, limitPerHost, structuredFactsFromSources,
+  extractSearchCandidates, feeSubpageUrls, gatherSources, homepageUrlsFromPlaceText, limitPerHost, sourceUrlsFromRaw, structuredFactsFromSources,
 } from "../src/academy-research-web.js";
 
 // 검색 HTML 에서 후보 URL 을 뽑을 때, 화면 동작용 네이버 인프라 URL 이 한도를 먼저
@@ -20,6 +20,8 @@ const SEARCH_HTML = `
 </script>
 </head><body>
   <a href="https://m.search.naver.com/search.naver?query=test">검색</a>
+  <a href="https://msearch.shopping.naver.com/search/all?query=test">쇼핑</a>
+  <a href="https://m.help.naver.com/support/contents/contentsView.help?serviceNo=1">고객센터</a>
   <a href="https://m.place.naver.com/place/123456/home">플레이스</a>
   <a href="http://bbdrive.co.kr/">구포북부운전전문학원</a>
   <a href="http://bbdrive.co.kr/bbs/board.php?bo_table=08&amp;page=2">수강료 안내</a>
@@ -53,6 +55,8 @@ describe("extractSearchCandidates — href 링크만, 인프라 제외", () => {
     expect(urls.some((u) => u.includes("search.naver"))).toBe(false);
     expect(urls.some((u) => u.includes("youtube.com"))).toBe(false);
     expect(urls.some((u) => u.includes("google.com"))).toBe(false);
+    expect(urls.some((u) => u.includes("shopping.naver.com"))).toBe(false);
+    expect(urls.some((u) => u.includes("help.naver.com"))).toBe(false);
   });
 
   it("한도를 넘겨 수집하지 않는다", () => {
@@ -61,6 +65,50 @@ describe("extractSearchCandidates — href 링크만, 인프라 제외", () => {
 
   it("링크가 없으면 빈 배열", () => {
     expect(extractSearchCandidates("<html><body>없음</body></html>")).toEqual([]);
+  });
+});
+
+describe("sourceUrlsFromRaw — 원천이 이미 확인한 URL", () => {
+  it("홈페이지·셔틀·수강료 관측 URL만 안정된 순서로 후보화한다", () => {
+    expect(sourceUrlsFromRaw({
+      homepageUrl: "https://academy.example.test/",
+      shuttleBusUrl: "https://academy.example.test/shuttle",
+      priceObservations: [
+        { sourceUrl: "https://academy.example.test/tuition" },
+        { sourceUrl: "https://academy.example.test/tuition" },
+      ],
+      reviews: [{ sourceUrl: "https://blog.example.test/review" }],
+    })).toEqual([
+      "https://academy.example.test/",
+      "https://academy.example.test/shuttle",
+      "https://academy.example.test/tuition",
+    ]);
+  });
+
+  it("원천 URL을 검색보다 먼저 검증해 검색이 실패해도 조사 소스를 확보한다", async () => {
+    const official = "https://academy.example.test/tuition";
+    const originalFetch = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === official) {
+        const text = `테스트자동차운전전문학원 서울특별시 강남구 테헤란로 1 수강료 ${"안내 ".repeat(260)}`;
+        return new Response(`<html><title>테스트자동차운전전문학원</title><body>${text}</body></html>`, {
+          status: 200, headers: { "content-type": "text/html" },
+        });
+      }
+      throw new Error("search unavailable");
+    }) as typeof fetch;
+    try {
+      const sources = await gatherSources({
+        external_id: "1", name: "테스트자동차운전전문학원", address: "서울특별시 강남구 테헤란로 1",
+      }, { preferredUrls: [official], maxSources: 1 });
+      expect(sources.map((source) => source.url)).toEqual([official]);
+      expect(calls).toEqual([official]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

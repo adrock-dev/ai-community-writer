@@ -5,7 +5,7 @@ import {
   detectResearchProviders, parseResearchJson, runResearchCli,
   type ResearchProvider, type ResearchProviderPreference, type ResearchResult,
 } from "./academy-research-llm.js";
-import { buildExtractionPrompt, gatherSources, structuredFactsFromSources, type WebSource } from "./academy-research-web.js";
+import { buildExtractionPrompt, gatherSources, sourceUrlsFromRaw, structuredFactsFromSources, type WebSource } from "./academy-research-web.js";
 import { baseKnownFacts, knownFactsFromSource, type KnownFacts } from "./academy-research-known-facts.js";
 import { findingNote, hasFinding, inspectResearchValue, sourceHaystack } from "./academy-research-grounding.js";
 import { blogReviewSyncEnabled } from "./runtime-config.js";
@@ -236,9 +236,10 @@ export class AcademyResearchService {
     if (!providers.length) return { ok: false, external_id: externalId, error: "claude/codex CLI를 찾을 수 없습니다." };
     const method = opts.method ?? "b_single";
     const ref = { external_id: externalId, name: base.name, address: base.address, phone: base.phone, vphone: base.vphone, region: base.region };
+    const raw = safeJsonParse(base.raw_json);
 
-    // 1) 공개 소스 수집(검색 → 페이지 fetch)
-    const sources = await gatherSources(ref);
+    // 1) 원천이 이미 확인한 URL을 먼저 검증하고, 부족할 때만 검색으로 보완한다.
+    const sources = await gatherSources(ref, { preferredUrls: sourceUrlsFromRaw(raw) });
     if (sources.length === 0) {
       const error = "공개 소스를 찾지 못했습니다(검색/페치 실패). 값은 저장하지 않았습니다.";
       this.db.recordResearchAttempt(externalId, "no_sources", error);
@@ -250,7 +251,7 @@ export class AcademyResearchService {
     // 원천이 이미 준 필드는 스키마에서 빼고 [이미 확정된 사실]로 넘긴다 — 겹치는 영역에서는
     // 웹 조사가 원천을 이기지 못하는데(파일럿 실측: 수강료 23% vs 87%), 그걸 다시 캐느라
     // 학원당 1분을 쓰고 있었다.
-    const known = knownFactsFromSource(safeJsonParse(base.raw_json));
+    const known = knownFactsFromSource(raw);
     const prompt = buildExtractionPrompt(ref, sources, known);
     let lastError = "";
     for (const provider of providers) {

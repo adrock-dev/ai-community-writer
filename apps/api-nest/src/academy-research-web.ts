@@ -15,11 +15,28 @@ const MAX_CHARS_PER_SOURCE = 3500;
 const NEEDLE_FIELDS = ["셔틀", "노선", "운행", "시간", "가격", "수강료", "교육비", "주말", "야간"];
 
 // 학원 하나에 대해 후보 URL을 찾아 페이지 본문까지 수집.
-export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: number; timeoutMs?: number } = {}): Promise<WebSource[]> {
+export async function gatherSources(
+  base: ResearchBaseRef,
+  opts: { maxSources?: number; timeoutMs?: number; preferredUrls?: string[] } = {},
+): Promise<WebSource[]> {
   const maxSources = opts.maxSources ?? MAX_SOURCES;
   const timeoutMs = opts.timeoutMs ?? 12000;
   const name = String(base.name ?? "").trim();
   if (!name) return [];
+
+  const sources: WebSource[] = [];
+
+  // 원천이 이미 확보한 URL은 검색 결과보다 먼저 확인한다. 단, 원천 URL도 오래됐거나
+  // 다른 업체 URL일 수 있으므로 주소·전화가 맞는 페이지일 때만 조사 근거로 쓴다.
+  // priceObservations.sourceUrl처럼 수강료 하위 페이지인 경우도 있어, 홈페이지뿐 아니라
+  // 원천이 준 모든 검증 가능한 URL을 이 경로로 받는다.
+  const preferredUrls = limitPerHost(dedupe(opts.preferredUrls ?? []).filter(isEvidenceCandidate));
+  for (const url of preferredUrls) {
+    if (sources.length >= maxSources) return sources;
+    await collectTargetPage(base, url, timeoutMs, maxSources, sources, false);
+  }
+  // 원천 URL만으로 목표 소스 수를 채웠으면 검색 요청 자체가 불필요하다.
+  if (sources.length >= maxSources) return sources;
 
   const queries = dedupe([
     `${name} ${base.region ?? ""}`.trim(),
@@ -40,8 +57,6 @@ export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: 
     } catch { /* 무시 */ }
   }
 
-  const sources: WebSource[] = [];
-
   // 2) 플레이스 먼저. 영업시간·전화·주소·편의시설이 구조화돼 있어 사실 밀도가 가장 높다.
   for (const placeId of dedupe(placeIds).slice(0, MAX_PLACE_SOURCES)) {
     try {
@@ -56,34 +71,42 @@ export async function gatherSources(base: ResearchBaseRef, opts: { maxSources?: 
   // 주소·편의시설만 있고 수강료·셔틀·합격률이 없는데, 그 셋이 학원별 차별화의 재료다.
   // 검색 결과 파싱에 기대지 않고 확보할 수 있는 가장 확실한 경로다.
   const homepages = new Set(sources.flatMap((s) => homepageUrlsFromPlaceText(s.text)));
-  const candidates = limitPerHost(dedupe([...homepages, ...rankCandidates(dedupe(urls))])).slice(0, maxSources);
+  const candidates = limitPerHost(dedupe([...homepages, ...rankCandidates(dedupe(urls))]))
+    .filter((url) => !preferredUrls.includes(url))
+    .slice(0, maxSources);
   for (const url of candidates) {
     if (sources.length >= maxSources) break;
-    try {
-      const fetched = await fetchReadable(url, timeoutMs);
-      let page: WebSource | null = fetched;
-      if (shouldTryRenderedFetch(page)) {
-        page = await fetchRenderedReadable(url, timeoutMs).catch(() => page);
-      }
-      if (!page || page.text.length < 200) continue;
-      // 플레이스가 그 업체의 홈페이지로 지목한 주소는 신원이 이미 확인된 것이다
-      // (플레이스 자체를 sourceMatchesTarget 으로 대조한 뒤에만 여기 온다).
-      // 공식 홈페이지는 주소·전화를 이미지로만 싣는 경우가 많아, 다시 대조하면
-      // 정작 수강료가 있는 진짜 근거가 탈락한다(목포: 홈페이지 확보 실패 확인).
-      const trusted = homepages.has(url);
-      if (!trusted && !sourceMatchesTarget(base, page)) continue;
-      sources.push({ url: page.url, title: page.title, text: page.text });
-
-      // 신원이 확인된 사이트라면 수강료·셔틀 서브페이지까지 따라간다.
-      if (!fetched?.html) continue;
-      for (const subUrl of feeSubpageUrls(fetched.html, url, maxSources - sources.length)) {
-        if (sources.length >= maxSources) break;
-        const sub = await fetchReadable(subUrl, timeoutMs).catch(() => null);
-        if (sub && sub.text.length >= 200) sources.push({ url: sub.url, title: sub.title, text: sub.text });
-      }
-    } catch { /* 무시 */ }
+    // 플레이스가 해당 업체의 홈페이지라고 알려준 URL은 플레이스 자체를 검증한 뒤에만
+    // 여기 들어온다. 주소·전화를 이미지로만 싣는 공식 홈페이지를 다시 탈락시키지 않는다.
+    await collectTargetPage(base, url, timeoutMs, maxSources, sources, homepages.has(url));
   }
   return sources;
+}
+
+async function collectTargetPage(
+  base: ResearchBaseRef,
+  url: string,
+  timeoutMs: number,
+  maxSources: number,
+  sources: WebSource[],
+  trusted: boolean,
+): Promise<void> {
+  try {
+    const fetched = await fetchReadable(url, timeoutMs);
+    let page: WebSource | null = fetched;
+    if (shouldTryRenderedFetch(page)) page = await fetchRenderedReadable(url, timeoutMs).catch(() => page);
+    if (!page || page.text.length < 200) return;
+    if (!trusted && !sourceMatchesTarget(base, page)) return;
+    sources.push({ url: page.url, title: page.title, text: page.text });
+
+    // 신원이 확인된 사이트라면 수강료·셔틀 서브페이지까지 따라간다.
+    if (!fetched?.html) return;
+    for (const subUrl of feeSubpageUrls(fetched.html, url, maxSources - sources.length)) {
+      if (sources.length >= maxSources) return;
+      const sub = await fetchReadable(subUrl, timeoutMs).catch(() => null);
+      if (sub && sub.text.length >= 200) sources.push({ url: sub.url, title: sub.title, text: sub.text });
+    }
+  } catch { /* 다음 후보 */ }
 }
 
 // 네이버 모바일 검색으로 후보 수집. DuckDuckGo(html·lite 모두)는 봇 차단으로
@@ -94,6 +117,9 @@ const NAVER_SKIP = /naver\.net|pstatic|nstatic|ader\.naver|naver\.com\/(v1|adcr|
 // 받아봐야 HTTP 500·캡차 이미지다. 이것들이 후보 한도를 먼저 채워 실제 근거 페이지를
 // 밀어내고 있었다(구포 북부: 후보 31개 전부 인프라, 공식 홈페이지 0개).
 const NAVER_INFRA = /^(?:apis|gw\.in|cr|nid|captcha\.nid|soundcaptcha\.nid|help|policy|about|siape|ssl|ocr|dict|shopping|order|pay|search)\.naver\.com$|^(?:m|www)\.naver\.com$|^gw\.in\.naver\.com$/i;
+// 네이버의 실제 콘텐츠(블로그·카페) 외 하위 도메인은 검색 화면·쇼핑·고객센터 등이라
+// 학원 근거가 될 수 없다. 후보 4개 한도를 이런 링크가 차지하면 공식 홈페이지가 밀린다.
+const NAVER_CONTENT_HOST = /^(?:m\.)?(?:blog|cafe|post|talk)\.naver\.com$/i;
 // 검색 결과에 섞이지만 학원 사실 근거가 될 수 없는 곳.
 const NON_EVIDENCE_HOST = /^(?:www\.)?(?:google\.[a-z.]+|maps\.google\.[a-z.]+|youtu\.be|bing\.com|daum\.net)$/i;
 // 업체가 아닌 지물 POI 분류(정류장·교차로 등). 학원 앞 정류장이 학원으로 잡히는 걸 막는다.
@@ -141,6 +167,7 @@ function isEvidenceCandidate(url: string): boolean {
     host = parsed.host;
   } catch { return false; }
   if (NAVER_INFRA.test(host) || NON_EVIDENCE_HOST.test(host)) return false;
+  if (/(?:^|\.)naver\.com$/i.test(host) && !NAVER_CONTENT_HOST.test(host)) return false;
   if (NAVER_SKIP.test(url)) return false;
   // 플레이스는 placeIds 경로로 이미 다룬다. 여기서 또 담으면 같은 곳을 두 번 수집하는데,
   // 일반 페이지 경로로 읽으면 스크립트가 걷혀 품질만 나빠진다.
@@ -282,6 +309,26 @@ function collectUrls(value: unknown, acc: string[] = []): string[] {
   if (Array.isArray(value)) { for (const item of value) collectUrls(item, acc); return acc; }
   if (typeof value === "object") { for (const item of Object.values(value as Record<string, unknown>)) collectUrls(item, acc); }
   return acc;
+}
+
+// 원천 응답에는 일반 홈페이지 필드가 없더라도 가격·셔틀 관측의 sourceUrl이 남는다.
+// 무관한 후기·이미지 URL까지 재조사 후보가 되지 않도록, 조사 근거가 될 수 있는
+// 명시적 URL 필드만 읽는다.
+export function sourceUrlsFromRaw(raw: unknown): string[] {
+  if (!raw || typeof raw !== "object") return [];
+  const academy = raw as Record<string, unknown>;
+  const urls: string[] = [];
+  for (const key of ["homepage", "homePage", "homepageUrl", "website", "websiteUrl", "shuttleBusUrl"]) {
+    if (typeof academy[key] === "string") urls.push(academy[key]);
+  }
+  if (Array.isArray(academy.priceObservations)) {
+    for (const observation of academy.priceObservations) {
+      if (!observation || typeof observation !== "object") continue;
+      const sourceUrl = (observation as Record<string, unknown>).sourceUrl;
+      if (typeof sourceUrl === "string") urls.push(sourceUrl);
+    }
+  }
+  return dedupe(urls).filter(isEvidenceCandidate);
 }
 
 // 네이버는 '전남광주' 처럼 두 시·도를 붙인 자체 표기를 쓴다. 그대로 두면 조사 결과에
