@@ -49,7 +49,10 @@ for (;;) {
   if (done !== lastDone) {
     lastDone = done;
     const tally = (() => { try { return JSON.parse(String(run.result ?? "{}")); } catch { return {}; } })();
-    console.log(`  ${done}/${run.count_total} — 저장 ${tally.saved ?? 0} · 소스없음 ${tally.no_sources ?? 0} · 실패 ${tally.failed ?? 0}`);
+    // 실패가 있으면 사유를 함께 찍는다. 곳수만 보이면 왜 무너졌는지 알 수 없어
+    // 100곳 중 56곳이 연속 실패했을 때 원인을 사후에 추적할 수 없었다.
+    const reason = Number(tally.failed ?? 0) > 0 && tally.last_error ? `  ← ${String(tally.last_error).slice(0, 90)}` : "";
+    console.log(`  ${done}/${run.count_total} — 저장 ${tally.saved ?? 0} · 소스없음 ${tally.no_sources ?? 0} · 실패 ${tally.failed ?? 0}${reason}`);
   }
   if (run.status !== "running") {
     console.log(`\n${run.status === "done" ? "완료" : run.status === "cancelled" ? "취소됨" : "중단"} — ${done}/${run.count_total}${run.error ? ` (${run.error})` : ""}`);

@@ -335,8 +335,10 @@ export class AcademyResearchService {
   // "done 380/380" 으로 끝나 운영자는 성공으로 읽는다. 실제로 검색이 막혔던 동안
   // 그렇게 돌고 있었다.
   private async runRegionBatch(runId: string, externalIds: string[], provider: ResearchProviderPreference): Promise<void> {
-    const tally = { done: 0, saved: 0, no_sources: 0, failed: 0 };
-    let lastError = "";
+    // last_error 를 집계에 함께 싣는다. 예전에는 부분 실패일 때 사유가 버려져,
+    // 100곳 중 56곳이 연속 실패해도(2026-07-28, 토큰 한도 추정) 원인이 어디에도 남지 않았다.
+    // 실패 곳수만 보이고 왜인지 모르면 "조용한 실패" 를 숫자로 바꾼 것에 지나지 않는다.
+    const tally = { done: 0, saved: 0, no_sources: 0, failed: 0, last_error: "" };
     let cancelled = false;
     for (const externalId of externalIds) {
       if (this.db.isCancelRequested(runId)) { cancelled = true; break; }
@@ -344,11 +346,16 @@ export class AcademyResearchService {
         const result = await this.researchOne(externalId, { method: "a_batch", provider });
         if (result.ok) tally.saved += 1;
         else if (result.no_sources) tally.no_sources += 1;
-        else { tally.failed += 1; lastError = result.error || lastError; }
+        else {
+          tally.failed += 1;
+          tally.last_error = result.error || tally.last_error;
+          // CLI(research:once) 로그에 그대로 찍힌다. 배치가 왜 무너졌는지 그 자리에서 보여야 한다.
+          this.logger.warn(`researchOne(${externalId}) 실패: ${result.error ?? "사유 없음"}`);
+        }
       } catch (error: any) {
         tally.failed += 1;
-        lastError = String(error?.message || error);
-        this.logger.warn(`researchOne(${externalId}) 실패: ${lastError}`);
+        tally.last_error = String(error?.message || error);
+        this.logger.warn(`researchOne(${externalId}) 예외: ${tally.last_error}`);
       }
       tally.done += 1;
       this.db.updateRun(runId, { count_done: tally.done, result: tally });
@@ -358,7 +365,7 @@ export class AcademyResearchService {
     this.db.updateRun(runId, {
       status: cancelled ? "cancelled" : barren ? "error" : "done",
       result: tally,
-      error: barren ? `${tally.done}곳 모두 저장 실패(소스 없음 ${tally.no_sources} · 조사 실패 ${tally.failed})${lastError ? ` — ${lastError}` : ""}` : undefined,
+      error: barren ? `${tally.done}곳 모두 저장 실패(소스 없음 ${tally.no_sources} · 조사 실패 ${tally.failed})${tally.last_error ? ` — ${tally.last_error}` : ""}` : undefined,
       finished: true,
     });
   }
