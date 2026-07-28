@@ -11,6 +11,7 @@
     "qa:posts:all": "node scripts/qa-posts.mjs --all",
     "worker:once": "npm --prefix apps/api-nest run worker:once",
     "research:once": "npm --prefix apps/api-nest run research:once --",
+    "research:recheck": "npm --prefix apps/api-nest run research:recheck --",
     "verify:company-clean": "node scripts/verify-company-clean.mjs",
     "copy:inventory": "node scripts/copy-inventory.mjs",
     "copy:untagged": "node scripts/copy-inventory.mjs --untagged",
