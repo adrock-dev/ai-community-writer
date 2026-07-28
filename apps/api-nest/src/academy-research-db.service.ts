@@ -464,6 +464,8 @@ export class AcademyResearchDbService implements OnModuleInit {
     offset?: number;
     includeInactive?: boolean;
     onlyUnresearched?: boolean;
+    /** 이미 시도했지만 다시 확인할 상태만 고른다. */
+    attemptOutcomes?: Array<"failed" | "no_sources">;
     oldestResearchFirst?: boolean;
   } = {}): Row[] {
     const where: string[] = [];
@@ -473,6 +475,11 @@ export class AcademyResearchDbService implements OnModuleInit {
     // 기본 배치는 한 번도 시도하지 않았거나 실행 자체가 실패한 학원만 이어서 처리한다.
     // 공개 근거가 없어 저장하지 않은 `no_sources`는 정상 시도이므로 재조사 옵션에서만 다시 다룬다.
     if (opts.onlyUnresearched) where.push("(r.last_attempt_outcome IS NULL OR r.last_attempt_outcome = 'failed')");
+    if (opts.attemptOutcomes?.length) {
+      const outcomes = [...new Set(opts.attemptOutcomes)];
+      where.push(`r.last_attempt_outcome IN (${outcomes.map(() => "?").join(",")})`);
+      params.push(...outcomes);
+    }
     if (opts.region) { where.push("(region = ? OR address LIKE ?)"); params.push(opts.region, `%${opts.region}%`); }
     if (opts.q) { where.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${opts.q}%`, `%${opts.q}%`); }
     const limit = Math.max(1, Math.min(5000, Math.trunc(opts.limit ?? 1000)));

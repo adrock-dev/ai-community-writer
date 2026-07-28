@@ -173,17 +173,25 @@ export class AcademyResearchService {
   }
 
   // 단건(외부 id) 동기화 — 기본정보/리뷰/블로그리뷰 전부 새로고침. 한 곳뿐이라 블로그 10초를 감수한다.
-  async syncOne(externalId: string, opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): Promise<{ external_id: string; found: boolean; reviews: number }> {
+  async syncOne(externalId: string, opts: { reviewLimit?: number; blogReviewLimit?: number } = {}): Promise<{
+    external_id: string; found: boolean; reviews: number; student_reviews: number; blog_reviews: number;
+  }> {
     const all = await this.drivingplus.fetchAcademies();
     const academy = all.find((a) => String(a.id) === String(externalId));
-    if (!academy) return { external_id: externalId, found: false, reviews: 0 };
+    if (!academy) return { external_id: externalId, found: false, reviews: 0, student_reviews: 0, blog_reviews: 0 };
     const id = this.upsertBaseRow(academy);
     const [reviewPage, blogPage] = await Promise.all([
       this.pullReviews(academy.id, opts.reviewLimit ?? 5),
       this.pullBlogReviews(academy.id, opts.blogReviewLimit ?? 5),
     ]);
-    const reviews = this.storeReviewPlatform(id, reviewPage).stored + this.storeBlogPlatform(id, blogPage).stored;
-    return { external_id: externalId, found: true, reviews };
+    const studentReviews = this.storeReviewPlatform(id, reviewPage).stored;
+    const blogReviews = this.storeBlogPlatform(id, blogPage).stored;
+    return {
+      external_id: externalId, found: true,
+      reviews: studentReviews + blogReviews,
+      student_reviews: studentReviews,
+      blog_reviews: blogReviews,
+    };
   }
 
   private upsertBaseRow(academy: DrivingplusAcademy): string {
@@ -297,10 +305,11 @@ export class AcademyResearchService {
   //
   // 기본은 아직 조사되지 않은 학원만 대상으로 한다. 배치는 API 프로세스 안의 루프라
   // 파일 저장 한 번에 사라지는데, 그때 다시 실행하면 이어서 진행되게 하려는 것이다.
-  // 이미 조사한 곳을 갱신하려면 refreshAll 을 켠다.
+  // 근거 없음은 정상 시도라 기본에서는 건너뛰며, 필요하면 실패와 함께 재시도 대상으로만 고른다.
+  // 이미 조사한 곳까지 갱신하려면 refreshAll 을 켠다.
   async startRegionResearch(
     region?: string,
-    opts: { provider?: ResearchProviderPreference; refreshAll?: boolean; limit?: number; offset?: number } = {},
+    opts: { provider?: ResearchProviderPreference; refreshAll?: boolean; retryOnly?: boolean; limit?: number; offset?: number } = {},
   ): Promise<{ ok: boolean; run_id?: string; error?: string; count?: number }> {
     if (this.db.findRunningRun("all")) return { ok: false, error: "이미 진행 중인 전체 조사가 있습니다." };
     const providers = await this.resolveProviders(opts.provider);
@@ -308,7 +317,8 @@ export class AcademyResearchService {
     const targets = this.db.listBase({
       region,
       limit: opts.limit ?? 5000,
-      onlyUnresearched: !opts.refreshAll,
+      onlyUnresearched: !opts.refreshAll && !opts.retryOnly,
+      attemptOutcomes: opts.retryOnly && !opts.refreshAll ? ["failed", "no_sources"] : undefined,
       offset: opts.offset,
       // 재조사도 허용할 때는 아직 조사하지 않은 곳부터, 그다음 가장 오래된 조사부터 갱신한다.
       // 따라서 성공한 30곳씩 연달아 실행하면 직전 묶음 대신 다음 묶음으로 진행된다.

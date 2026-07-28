@@ -64,4 +64,15 @@ describe("startRegionResearch 재조사 배치 대상 선정", () => {
     ]);
     expect(new Set([...selectedBatches[0], ...selectedBatches[1]]).size).toBe(60);
   });
+
+  it("실패·근거 없음만 재시도 대상으로 고르고, 미시도·저장 성공은 건드리지 않는다", async () => {
+    db.recordResearchAttempt("academy-02", "failed", "CLI 실패");
+    db.recordResearchAttempt("academy-03", "no_sources", "공개 근거 없음");
+    db.upsertResearch("academy-04", { name_researched: "저장 성공" }, { engine: "codex", method: "a_batch" });
+
+    const started = await service.startRegionResearch("서울", { retryOnly: true, provider: "codex" });
+
+    expect(started).toMatchObject({ ok: true, count: 2 });
+    expect(selectedBatches).toEqual([["academy-02", "academy-03"]]);
+  });
 });

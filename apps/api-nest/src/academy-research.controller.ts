@@ -87,6 +87,7 @@ export class AcademyResearchController {
     const result = await this.service.startRegionResearch(undefined, {
       provider,
       refreshAll: body?.refresh_all === true,
+      retryOnly: body?.retry_only === true,
       limit: parseLimit(body?.limit),
       offset: parseOffset(body?.offset),
     });

@@ -154,7 +154,9 @@ export const syncRegion = () => api<{ ok: boolean; run_id?: string; error?: stri
 // 블로그리뷰는 원천 조회가 느려 별도 실행으로 분리돼 있다. 현재 수집은 중단 상태라 서버가 거부한다
 // (원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞인다). 검증 방식이 정해지면 다시 켠다.
 export const syncBlogReviews = () => api<{ ok: boolean; run_id?: string; error?: string }>("/academy-research/sync/blog-reviews", { method: "POST", body: JSON.stringify({}) });
-export const syncOneAcademy = (externalId: string) => api<{ external_id: string; found: boolean; reviews: number }>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });
+export const syncOneAcademy = (externalId: string) => api<{
+  external_id: string; found: boolean; reviews: number; student_reviews: number; blog_reviews: number;
+}>(`/academy-research/${encodeURIComponent(externalId)}/sync`, { method: "POST" });
 // 단건 조사도 백그라운드다 — 학원 1곳이 평균 85초, 길면 388초 걸려 요청 안에서 기다리면
 // 관리자 프록시의 fetch(기본 300초)에 끊긴다. run_id 로 진행을 폴링한다.
 export const researchOneAcademy = (externalId: string, provider: ResearchProvider = "auto") =>
@@ -162,10 +164,10 @@ export const researchOneAcademy = (externalId: string, provider: ResearchProvide
 export const getResearchRun = (runId: string) => api<ResearchRun>(`/academy-research/runs/${encodeURIComponent(runId)}`);
 // 기본은 아직 조사되지 않은 학원만 대상으로 한다. 배치가 중단돼도 다시 눌러 이어서
 // 진행하기 위함이다. limit 은 이번 실행의 상한(학원 1곳이 1분 안팎이라 나눠 돌린다).
-export const researchRegion = (provider: ResearchProvider = "auto", opts: { refreshAll?: boolean; limit?: number; offset?: number } = {}) =>
+export const researchRegion = (provider: ResearchProvider = "auto", opts: { refreshAll?: boolean; retryOnly?: boolean; limit?: number; offset?: number } = {}) =>
   api<{ ok: boolean; run_id?: string; count?: number; error?: string }>("/academy-research/research/region", {
     method: "POST",
-    body: JSON.stringify({ provider, refresh_all: opts.refreshAll === true, limit: opts.limit, offset: opts.offset }),
+    body: JSON.stringify({ provider, refresh_all: opts.refreshAll === true, retry_only: opts.retryOnly === true, limit: opts.limit, offset: opts.offset }),
   });
 export const updateResearchField = (externalId: string, field: string, value: unknown) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field`, { method: "PATCH", body: JSON.stringify({ field, value }) });
 export const setResearchFieldMeta = (externalId: string, body: { field_key: string; status?: string; source_url?: string; note?: string }) => api<{ ok: boolean }>(`/academy-research/${encodeURIComponent(externalId)}/field-meta`, { method: "PATCH", body: JSON.stringify(body) });

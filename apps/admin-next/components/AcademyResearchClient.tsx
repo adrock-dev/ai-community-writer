@@ -22,8 +22,9 @@ export default function AcademyResearchClient() {
   const [researchProvider, setResearchProvider] = useState<ResearchProvider>("auto");
   // 조사는 학원 1곳당 1분 안팎이라 나눠 돌린다. 0이면 전체.
   const [researchLimit, setResearchLimit] = useState(30);
-  // 기본은 미시도·실패만. 근거 없음은 정상 시도로 남겨 무한 재시도를 막는다.
-  const [refreshAll, setRefreshAll] = useState(false);
+  // 기본은 미시도·실패만. 근거 없음은 정상 시도로 남겨 무한 재시도를 막되,
+  // 운영자가 필요할 때 실패와 함께 골라 재시도할 수 있다.
+  const [researchTarget, setResearchTarget] = useState<"pending" | "retry" | "all">("pending");
   const [researchOffset, setResearchOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState("");
@@ -119,7 +120,9 @@ export default function AcademyResearchClient() {
   }
 
   async function onResearchAll() {
-    const scope = refreshAll ? "이미 조사한 곳까지 다시" : "미시도·실패 학원만";
+    const refreshAll = researchTarget === "all";
+    const retryOnly = researchTarget === "retry";
+    const scope = refreshAll ? "이미 조사한 곳까지 다시" : retryOnly ? "실패·근거 없음 학원만" : "미시도·실패 학원만";
     const size = researchLimit ? `최대 ${researchLimit}곳` : "전체";
     const offset = refreshAll && researchLimit > 0 ? researchOffset : undefined;
     if (!confirm(`${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요?`)) return;
@@ -127,7 +130,7 @@ export default function AcademyResearchClient() {
     setError("");
     setNotice("");
     try {
-      const res = await researchRegion(researchProvider, { refreshAll, limit: researchLimit || undefined, offset });
+      const res = await researchRegion(researchProvider, { refreshAll, retryOnly, limit: researchLimit || undefined, offset });
       if (!res.ok) throw new Error(res.error || "시작 실패");
       if (refreshAll && researchLimit > 0) setResearchOffset((current) => current + researchLimit);
       if (res.run_id) watchedRunRef.current = res.run_id;
@@ -289,19 +292,22 @@ export default function AcademyResearchClient() {
                 <option value="100">100곳</option>
                 <option value="0">전체</option>
               </select>
-              <label className="muted small" style={{ display: "inline-flex", gap: 4, alignItems: "center", whiteSpace: "nowrap" }}>
-                <input
-                  type="checkbox"
-                  checked={refreshAll}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setRefreshAll(checked);
-                    if (!checked) setResearchOffset(0);
-                  }}
-                  disabled={busy === "research" || Boolean(activeResearchRun)}
-                />
-                조사한 곳도 다시
-              </label>
+              <select
+                className="select"
+                value={researchTarget}
+                onChange={(e) => {
+                  const target = e.target.value as "pending" | "retry" | "all";
+                  setResearchTarget(target);
+                  if (target !== "all") setResearchOffset(0);
+                }}
+                disabled={busy === "research" || Boolean(activeResearchRun)}
+                aria-label="AI 조사 대상"
+                style={{ width: "auto", minWidth: 148 }}
+              >
+                <option value="pending">미시도·실패</option>
+                <option value="retry">실패·근거 없음만</option>
+                <option value="all">조사한 곳도 다시</option>
+              </select>
               <button className="btn" onClick={onResearchAll} disabled={busy === "research" || Boolean(activeResearchRun)} style={{ whiteSpace: "nowrap" }}>
                 {activeResearchRun ? "조사 진행 중…" : "AI 조사 실행"}
               </button>
@@ -309,8 +315,8 @@ export default function AcademyResearchClient() {
           </div>
           {/* 배치는 API 프로세스 안의 루프라 재시작되면 사라진다. 다시 눌러 이어서 진행한다. */}
           <div className="muted small" style={{ paddingLeft: 96 }}>
-            기본은 미시도·실패 학원만 대상입니다. 공개 근거가 없었던 학원은 <b>근거 없음</b>으로 남고, 다시 조사하려면 체크박스를 켜세요.
-            {refreshAll && researchLimit > 0 ? ` 현재 다음 배치 시작 위치: ${researchOffset}번째.` : ""}
+            기본은 미시도·실패 학원만 대상입니다. <b>실패·근거 없음만</b>을 고르면 이미 시도했지만 결과가 없던 학원만 다시 조사합니다.
+            {researchTarget === "all" && researchLimit > 0 ? ` 현재 다음 배치 시작 위치: ${researchOffset}번째.` : ""}
           </div>
         </div>
       </div>

@@ -107,4 +107,28 @@ describe("syncBlogReviews 원천 과부하 방어", () => {
     expect(res.with_data).toBe(1);
     expect(storedBlogReviews()).toHaveLength(1);
   });
+
+  it("단건 원천 재수집 결과는 일반 후기와 블로그 후기를 나눠 돌려준다", async () => {
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("get-all-academy")) {
+        return new Response(JSON.stringify({ code: 200, data: [{
+          id: ACADEMY_ID, title: "테스트자동차운전전문학원", roadAddress: "서울특별시 강남구 테헤란로 1",
+        }] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/review/list/")) {
+        return new Response(JSON.stringify({ code: 200, data: { reviews: [
+          { id: 1, content: "강사님이 친절하게 설명해 주셔서 만족했습니다.", point: 5 },
+          { id: 2, content: "연습 과정이 체계적이라 편하게 배웠습니다.", point: 4 },
+        ] } }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ code: 200, data: { reviews: [
+        { title: "친절한 강사님 덕분에 만족한 후기", content: "교육 과정 설명이 자세해서 좋았습니다.", link: "https://blog.example.test/1", postdate: "20260102" },
+      ] } }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+
+    await expect(service.syncOne(String(ACADEMY_ID))).resolves.toMatchObject({
+      found: true, reviews: 3, student_reviews: 2, blog_reviews: 1,
+    });
+  });
 });

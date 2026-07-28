@@ -50,7 +50,9 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
     setBusy("sync"); setError(""); setNotice("");
     try {
       const r = await syncOneAcademy(externalId);
-      setNotice(r.found ? `원천에서 다시 받았습니다 · 후기 ${r.reviews}건` : "원천 목록에서 이 학원을 찾지 못했습니다.");
+      setNotice(r.found
+        ? `원천 데이터를 다시 받았습니다 · 일반 후기 ${r.student_reviews}건 · 블로그 후기 ${r.blog_reviews}건`
+        : "원천 목록에서 이 학원을 찾지 못했습니다.");
       await load();
     } catch (e: any) { setError(e?.message || "동기화 실패"); }
     finally { setBusy(""); }
