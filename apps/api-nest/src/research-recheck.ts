@@ -72,6 +72,10 @@ if (hits.length > 30) console.log(`  … 외 ${hits.length - 30}건`);
  */
 function releaseStaleFindings(): void {
   const released: Array<{ externalId: string; field: string; note: string }> = [];
+  // 값이 사라졌는데 지적만 남은 자리. 재조사가 근거를 못 찾아 비운 경우다.
+  // 화면에 「(빈 값) · 검토 필요」라는 모순이 뜨고 승인할 값도 없다. AI 초안이라 부를 값이
+  // 없으므로 「미확인」(조사가 채우지 않은 자리)으로 되돌린다.
+  const emptied: Array<{ externalId: string; field: string; note: string }> = [];
   for (const row of db.all("SELECT external_id, field_key, note FROM academy_field_meta WHERE status='needs_review'")) {
     const field = String(row.field_key);
     const note = String(row.note ?? "");
@@ -85,21 +89,22 @@ function releaseStaleFindings(): void {
     //     예: night_class 에 "야간" 이라 단정하지 않고 "교육시간표 11부 18:10~19:00" 이라 적은 값.
     //     시각이 소스에 있으니 근거가 있는 것인데, "야간" 이 없다고 지적하면 정직하게 답할수록
     //     걸리는 규칙이 된다.
+    if (!value) { emptied.push({ externalId: String(row.external_id), field, note }); continue; }
     const groundedClaimExempt = extractClaims(value).length > 0 && !note.includes("소스에서 확인 안 됨");
     if (note.includes("소스") && !isNonClaimValue(value) && !groundedClaimExempt) continue;
-    // 값이 비었으면 지적할 대상 자체가 없다(재조사에서 지워진 자리).
-    if (value && fieldTypeIssues(field, value).length) continue;
+    if (fieldTypeIssues(field, value).length) continue;
     released.push({ externalId: String(row.external_id), field, note });
   }
+  console.log(`\n값이 사라졌는데 지적이 남은 자리 ${emptied.length}건 → 「미확인」`);
+  for (const x of emptied) console.log(`  #${x.externalId} ${x.field} — 옛 사유: ${x.note || "(없음)"}`);
   console.log(`\n지금 규칙으로는 걸리지 않는 needs_review ${released.length}건`);
   for (const x of released.slice(0, 30)) console.log(`  #${x.externalId} ${x.field} — 옛 사유: ${x.note || "(없음)"}`);
   if (released.length > 30) console.log(`  … 외 ${released.length - 30}건`);
-  if (!released.length) return;
-  if (!apply) { console.log("\n검사만 했습니다. 실제로 풀려면 --apply 를 함께 붙이세요."); return; }
-  for (const x of released) {
-    db.setFieldMeta(x.externalId, x.field, { status: "ai_draft", note: "" });
-  }
-  console.log(`\n${released.length}건을 「AI 초안」으로 되돌렸습니다. 검토 대기에서 다시 보입니다.`);
+  if (!released.length && !emptied.length) return;
+  if (!apply) { console.log("\n검사만 했습니다. 실제로 되돌리려면 --apply 를 함께 붙이세요."); return; }
+  for (const x of emptied) db.setFieldMeta(x.externalId, x.field, { status: "unverified", note: "" });
+  for (const x of released) db.setFieldMeta(x.externalId, x.field, { status: "ai_draft", note: "" });
+  console.log(`\n미확인 ${emptied.length}건 · AI 초안 ${released.length}건으로 되돌렸습니다.`);
 }
 
 if (release) releaseStaleFindings();
