@@ -11,6 +11,8 @@
     "qa:posts:all": "node scripts/qa-posts.mjs --all",
     "worker:once": "npm --prefix apps/api-nest run worker:once",
     "verify:company-clean": "node scripts/verify-company-clean.mjs",
+    "copy:inventory": "node scripts/copy-inventory.mjs",
+    "copy:untagged": "node scripts/copy-inventory.mjs --untagged",
     "test": "npm --prefix apps/api-nest run test",
     "test:golden": "npm --prefix apps/api-nest run test:golden",
     "lint": "biome lint",
