@@ -320,9 +320,10 @@ export default function AcademyResearchClient() {
 
       {/* 조사 실행과 검토를 같은 화면에서 잇는다. 대기 목록이 없으면 「검증완료만」 설정은
           380곳을 하나씩 열어야 해서 실질적으로 쓸 수 없다. */}
-      <div className="row" style={{ gap: 6, margin: "18px 0 0" }}>
-        <button className={`btn${tab === "list" ? " primary" : ""}`} onClick={() => setTab("list")}>학원 목록</button>
-        <button className={`btn${tab === "review" ? " primary" : ""}`} onClick={() => setTab("review")}>검토 대기</button>
+      <div className="tabs" style={{ marginTop: 18 }}>
+        {([["list", "학원 목록"], ["review", "검토 대기"]] as const).map(([id, label]) => (
+          <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>
+        ))}
       </div>
 
       {tab === "review" ? <ReviewQueue /> : null}
