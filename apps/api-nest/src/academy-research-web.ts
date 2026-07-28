@@ -551,6 +551,8 @@ const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
   { key: "homepage_url", text: `"homepage_url": string|null` },
   { key: "naver_place_url", text: `"naver_place_url": string|null` },
   { key: "kakao_url", text: `"kakao_url": string|null` },
+  { key: "enrollment_prep", text: `"enrollment_prep": string|null` },
+  { key: "booking_channel", text: `"booking_channel": string|null` },
 ];
 
 const COURSES_LINE = `"courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}]`;

@@ -136,6 +136,48 @@ export function isClaimGrounded(claim: NumericClaim, haystack: string): boolean 
   }
 }
 
+// --- 서술형 근거 검사 -----------------------------------------------------
+//
+// 숫자 대조만으로는 학원별 특징이 통째로 무검증이다. 실측(34곳): self_test 13곳 중 11곳,
+// facilities 27곳 중 25곳, shuttle_summary 15곳 중 14곳에 숫자가 아예 없다.
+// 정작 그 값들이 글의 강조점으로 쓰이고, 틀리면 독자가 헛걸음한다("야간반 운영" 을 믿고 갔는데 없음).
+//
+// 그래서 필드마다 "이 값이 참이면 수집 소스에 반드시 있어야 할 낱말" 을 정해 대조한다.
+// 소스에 그 낱말조차 없으면 모델이 근거 없이 지어낸 것으로 본다.
+//
+// 한계는 분명하다 — 소스에 "야간반 운영" 이 학원 홍보 문구로 적혀 있으면 통과한다.
+// 그건 필드 타입 검사(광고 표현 차단)가 맡는 몫이고, 여기서는 날조만 잡는다.
+const EVIDENCE_KEYWORDS: Record<string, string[]> = {
+  night_class: ["야간", "야간반", "새벽", "심야", "저녁반"],
+  weekend: ["주말", "토요일", "일요일", "토·일", "휴무"],
+  closed_days: ["휴무", "휴일", "쉬는", "정기휴"],
+  self_test: ["자체시험", "자체 시험", "장내기능", "기능시험", "검정"],
+  shuttle_summary: ["셔틀", "통학", "통근", "버스"],
+  shuttle_available: ["셔틀", "통학", "통근", "버스"],
+  facilities: ["시설", "주차", "휴게", "화장실", "편의", "인터넷", "차량", "코스"],
+  enrollment_prep: ["준비", "지참", "신분증", "사진", "접수", "등록", "구비"],
+  booking_channel: ["예약", "상담", "신청", "문의", "접수"],
+  licenses: ["종", "면허", "원동기", "견인", "대형"],
+  established_year: ["설립", "개원", "창립", "년"],
+  scale: ["면적", "규모", "정원", "㎡", "평"],
+};
+
+/** 이 필드가 서술형 근거 검사 대상인지. */
+export function hasEvidenceRule(field: string): boolean {
+  return Boolean(EVIDENCE_KEYWORDS[field]?.length);
+}
+
+/**
+ * 값이 주장하는 사실의 근거 낱말이 소스에 있는지.
+ * 규칙이 없는 필드는 검사하지 않는다(true 를 돌려 통과시킨다).
+ */
+export function hasEvidenceKeyword(field: string, haystack: string): boolean {
+  const keywords = EVIDENCE_KEYWORDS[field];
+  if (!keywords?.length) return true;
+  const text = String(haystack ?? "");
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
 // --- 필드 타입 검증 -------------------------------------------------------
 // 그라운딩과 별개 축이다. "소스에 있는가"가 아니라 "이 필드에 들어올 수 있는 값인가"를 본다.
 // 소스에 광고 문구가 실제로 적혀 있으면 그라운딩은 통과하지만, 그 문구를 합격률 필드에
@@ -189,12 +231,13 @@ export interface GroundingReport {
 export function inspectResearchValue(field: string, value: string | null | undefined, sourceText: string): GroundingReport {
   const claims = extractClaims(value);
   const ungrounded = claims.filter((c) => !isClaimGrounded(c, sourceText));
-  return {
-    field,
-    ungrounded,
-    grounded: claims.length - ungrounded.length,
-    typeIssues: fieldTypeIssues(field, value),
-  };
+  const typeIssues = fieldTypeIssues(field, value);
+  // 숫자가 하나도 없는 서술형 값은 위 대조를 그냥 통과한다. 근거 낱말로 한 번 더 본다.
+  const text = String(value ?? "").trim();
+  if (text && !hasEvidenceKeyword(field, sourceText)) {
+    typeIssues.push(`수집 소스에 ${field} 근거가 없음(관련 낱말이 소스에 나오지 않음)`);
+  }
+  return { field, ungrounded, grounded: claims.length - ungrounded.length, typeIssues };
 }
 
 /** 수집 소스 여러 건을 한 덩어리 본문으로 합친다(어느 소스든 근거가 있으면 통과). */

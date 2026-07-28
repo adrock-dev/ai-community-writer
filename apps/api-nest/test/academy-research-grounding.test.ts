@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  extractClaims, fieldTypeIssues, findingNote, hasFinding, inspectResearchValue, isClaimGrounded,
+  extractClaims, fieldTypeIssues, findingNote, hasEvidenceRule, hasFinding, inspectResearchValue, isClaimGrounded,
 } from "../src/academy-research-grounding.js";
 
 // 조사값은 여러 출처가 섞인 서술문이라 값 전체를 소스와 대조할 수 없다.
@@ -128,5 +128,40 @@ describe("inspectResearchValue — 두 축을 함께 본 결과", () => {
   it("소스가 비면 모든 숫자가 근거 없음이 된다", () => {
     const report = inspectResearchValue("fee_summary", "680,010원", "");
     expect(report.ungrounded).toHaveLength(1);
+  });
+});
+
+describe("서술형 근거 검사 — 숫자가 없는 값도 검사한다", () => {
+  // 실측(34곳): self_test 13곳 중 11곳, facilities 27곳 중 25곳, shuttle_summary 15곳 중 14곳에
+  // 숫자가 아예 없어 그라운딩을 그냥 통과했다. 정작 그 값들이 글의 강조점으로 쓰인다.
+  const source = "학원 안내: 야간반 운영, 셔틀버스 매일 운행, 자체시험 실시. 주차 가능.";
+
+  it("근거 낱말이 소스에 있으면 통과한다", () => {
+    for (const [field, value] of [["night_class", "야간반/새벽반 운영중"], ["self_test", "yes"], ["shuttle_summary", "셔틀 운행"]] as const) {
+      expect(inspectResearchValue(field, value, source).typeIssues).toEqual([]);
+    }
+  });
+
+  it("근거 낱말이 소스에 없으면 지적한다 — 모델이 지어낸 값", () => {
+    const report = inspectResearchValue("night_class", "야간반 운영", "학원 안내: 주차 가능, 자체시험 실시.");
+    expect(report.typeIssues.some((i) => i.includes("근거가 없음"))).toBe(true);
+    expect(hasFinding(report)).toBe(true);
+  });
+
+  it("값이 비어 있으면 검사하지 않는다", () => {
+    expect(inspectResearchValue("night_class", "", "관련 없는 본문").typeIssues).toEqual([]);
+    expect(inspectResearchValue("night_class", null, "관련 없는 본문").typeIssues).toEqual([]);
+  });
+
+  it("규칙 없는 필드는 서술형 검사를 하지 않는다", () => {
+    expect(hasEvidenceRule("gu")).toBe(false);
+    expect(inspectResearchValue("gu", "북구", "아무 관련 없는 본문").typeIssues).toEqual([]);
+  });
+
+  it("새로 추가한 등록 준비물·예약 경로도 검사 대상이다", () => {
+    expect(hasEvidenceRule("enrollment_prep")).toBe(true);
+    expect(hasEvidenceRule("booking_channel")).toBe(true);
+    expect(inspectResearchValue("booking_channel", "온라인 예약 가능", "홈페이지에서 온라인 예약 신청").typeIssues).toEqual([]);
+    expect(inspectResearchValue("booking_channel", "온라인 예약 가능", "학원 소개와 오시는 길").typeIssues.length).toBe(1);
   });
 });

@@ -120,6 +120,7 @@ describe("buildExtractionPrompt — 뺀 필드는 스키마에서 사라진다",
       "name_researched", "address_researched", "phone_researched", "gu", "dong", "jibun_address",
       "night_class", "self_test", "facilities",
       "established_year", "scale", "homepage_url", "naver_place_url",
+      "enrollment_prep", "booking_channel",
     ]) {
       everything.skipFields.add(key);
     }

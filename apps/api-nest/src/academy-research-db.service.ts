@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS academy_research (
   homepage_url TEXT,
   naver_place_url TEXT,
   kakao_url TEXT,
+  enrollment_prep TEXT,
+  booking_channel TEXT,
   research_engine TEXT,
   research_method TEXT,
   researched_at TEXT,
@@ -188,6 +190,7 @@ const RESEARCH_FIELDS = new Set<string>([
   "hours", "night_class", "weekend", "closed_days", "shuttle_available", "shuttle_summary",
   "licenses", "self_test", "facilities", "fee_summary", "price_disclosed", "pass_rate",
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
+  "enrollment_prep", "booking_channel",
 ]);
 
 export interface BaseAcademyInput {
@@ -274,6 +277,12 @@ export class AcademyResearchDbService implements OnModuleInit {
     if (!runCols.has("result")) this.db.exec("ALTER TABLE research_runs ADD COLUMN result TEXT");
     // 취소 요청 플래그. 실행 루프가 매 항목마다 읽어 스스로 멈춘다(중간에 끊지 않으므로 데이터가 깨지지 않는다).
     if (!runCols.has("cancel_requested")) this.db.exec("ALTER TABLE research_runs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0");
+
+    // 학원 홈페이지 표본 조사(2026-07-28)에서 공통으로 나왔는데 스키마에 자리가 없던 항목.
+    // "입학안내·준비사항" 5곳 · "온라인 예약·상담신청" 4곳. 원천은 둘 다 주지 않는다.
+    const researchCols = new Set(this.all("PRAGMA table_info(academy_research)").map((r) => r.name));
+    if (!researchCols.has("enrollment_prep")) this.db.exec("ALTER TABLE academy_research ADD COLUMN enrollment_prep TEXT");
+    if (!researchCols.has("booking_channel")) this.db.exec("ALTER TABLE academy_research ADD COLUMN booking_channel TEXT");
   }
 
   // 실행은 전부 API 프로세스 메모리 안에서만 돈다. 기동 시점에 'running' 인 행은

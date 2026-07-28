@@ -43,6 +43,10 @@ export interface ResearchResult {
   homepage_url?: string | null;
   naver_place_url?: string | null;
   kakao_url?: string | null;
+  /** 등록 시 준비물·절차(신분증·사진·수수료 등). 원천에 없고 홈페이지 "입학안내" 에만 있다. */
+  enrollment_prep?: string | null;
+  /** 온라인 예약·상담 신청 경로가 있는지. */
+  booking_channel?: string | null;
   courses?: Array<{ course_name?: string; price?: string; exam_fee_included?: string; extra_costs?: string; note?: string; source_url?: string }>;
   shuttle_routes?: Array<{ route_name?: string; waypoints?: unknown; coverage?: unknown; interval_text?: string; source_url?: string }>;
   sources?: Record<string, string>;

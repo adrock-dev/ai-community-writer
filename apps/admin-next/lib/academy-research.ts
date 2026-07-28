@@ -153,4 +153,6 @@ export const RESEARCH_FIELD_LABELS: Array<{ key: string; label: string }> = [
   { key: "homepage_url", label: "홈페이지" },
   { key: "naver_place_url", label: "네이버플레이스" },
   { key: "kakao_url", label: "카카오맵" },
+  { key: "enrollment_prep", label: "등록 준비물" },
+  { key: "booking_channel", label: "예약·상담 경로" },
 ];
