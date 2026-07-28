@@ -208,8 +208,10 @@ export default function AcademyResearchClient() {
       </div>
 
       <p className="muted">
-        기본정보·리뷰 원문과 AI 심층조사 데이터는 <b>별도 DB(academy_research.db)</b>에 저장됩니다.
-        admin.db와 분리되어 초기화되지 않습니다.
+        여기서 받은 기본정보·후기 원문·AI 심층조사는 <b>학원 자료 전용 DB</b>에 모입니다.
+        도메인은 이 자료를 <b>연결해서</b> 쓰므로, 도메인에서 「연결 끊기」를 하거나 도메인을 지워도
+        원본과 조사 결과는 그대로 남고 다시 연결하면 복구됩니다.
+        다만 글 생성이 읽는 것은 연결된 사본이라, 자료를 갱신했으면 도메인에서 다시 연결해야 반영됩니다.
       </p>
 
       <div className="card card-pad grid" style={{ gap: 14, margin: "16px 0" }}>

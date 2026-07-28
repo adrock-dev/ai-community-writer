@@ -535,14 +535,6 @@
       ]
     },
     {
-      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
-      "match": "별도 DB(academy_research.db)",
-      "class": "B",
-      "depends": [
-        "academy-research 저장소"
-      ]
-    },
-    {
       "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "DrivingPlus 원천 API의 지역·학원 데이터",
       "class": "B",
@@ -946,6 +938,15 @@
       "class": "B",
       "depends": [
         "apps/api-nest/src/academy-link.service.ts#researchValuesFor"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/AcademyResearchClient.tsx",
+      "match": "원본과 조사 결과는 그대로 남고",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-research-db.service.ts",
+        "apps/api-nest/src/academy-link.service.ts#linkToDomain"
       ]
     }
   ]
