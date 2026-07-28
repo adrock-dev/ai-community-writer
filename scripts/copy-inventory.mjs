@@ -105,24 +105,37 @@ const inventory = raw.map((r) => {
   return { ...r, class: tag?.class ?? "C", reviewed: Boolean(tag), depends: tag?.depends ?? [], defect: tag?.defect ?? false, note: tag?.note ?? "" };
 });
 
-if (unresolved.length) {
+// verify-copy-sync.mjs 가 같은 인벤토리를 다시 계산하지 않도록 내보낸다. import 만으로는
+// 아무것도 실행되지 않는다(문서 생성·경고 출력은 아래 CLI 분기에서만) — qa-posts.mjs 와 같은 규약.
+export { inventory, unresolved };
+
+const isCli = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isCli && unresolved.length) {
   console.error(`\n⚠ 분류 overlay 해석 실패 ${unresolved.length}건 — 안내멘트가 바뀌었거나 사라졌다. 분류를 다시 확인하라.`);
   for (const u of unresolved) console.error(`   ${u.file} :: "${u.match}" → ${u.why}`);
   console.error("");
 }
 
 // process.exit() 를 쓰지 않는다 — 파이프로 나가는 stdout 이 flush 전에 잘린다.
-if (process.argv.includes("--json")) {
+if (!isCli) {
+  // import 경로: 부수효과 없음.
+} else if (process.argv.includes("--json")) {
   console.log(JSON.stringify(inventory, null, 2));
 } else if (process.argv.includes("--untagged")) {
   const suspicious = inventory.filter((r) => !r.reviewed && /(게이트|프롬프트|강제|자동|적용됩니다|쓰입니다|제외됩니다|건너뜁니다|[0-9]+(개|초|분|곳|km|회))/.test(r.text));
   console.log(`아직 분류하지 않았는데 사실을 서술하는 것으로 보이는 항목 ${suspicious.length}건 — A/B/C 판정 필요\n`);
   for (const r of suspicious) console.log(`  ${r.id}  ${r.file}:${r.line}\n      ${r.text.slice(0, 160)}`);
 } else {
-  writeDoc();
+  writeFileSync(OUT_DOC, renderDoc());
+  const byClass = { A: 0, B: 0, C: 0 };
+  for (const r of inventory) byClass[r.class] += 1;
+  console.log(`총 ${inventory.length}건 — A ${byClass.A} · B ${byClass.B} · C ${byClass.C} · 어긋남 ${inventory.filter((r) => r.defect).length}`);
+  console.log(`문서: ${OUT_DOC.replace(`${ROOT}/`, "")}`);
 }
 
-function writeDoc() {
+// 문서를 문자열로 만든다. verify-copy-sync.mjs 가 파일과 대조해 "생성물이 최신인가"를 검사한다.
+export function renderDoc() {
 
 // ── 문서 생성 ────────────────────────────────────────────────────────────
 const byClass = { A: [], B: [], C: [] };
@@ -189,7 +202,5 @@ ${table(byClass.C)}
 </details>
 `;
 
-writeFileSync(OUT_DOC, doc);
-console.log(`총 ${inventory.length}건 — A ${byClass.A.length} · B ${byClass.B.length} · C ${byClass.C.length} · 어긋남 ${defects.length}`);
-console.log(`문서: ${OUT_DOC.replace(`${ROOT}/`, "")}`);
+return doc;
 }
