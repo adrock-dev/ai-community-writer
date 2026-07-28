@@ -59,8 +59,6 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   { key: "shuttle_summary", label: "셔틀(조사)", sourceWins: true },
   { key: "shuttle_available", label: "셔틀 유무(조사)", sourceWins: true },
   { key: "licenses", label: "면허 과정(조사)", sourceWins: true },
-  { key: "fee_summary", label: "수강료(조사)", sourceWins: true },
-  { key: "price_disclosed", label: "가격 공개 여부(조사)", sourceWins: true },
 ];
 
 /**
@@ -77,7 +75,17 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
  *
  * 셋 다 조사 DB 에는 그대로 남아 학원 상세 화면에서 검수 근거로 쓰인다.
  */
-export const EXCLUDED_FROM_ARTICLE = new Set(["booking_channel", "naver_place_url", "homepage_url"]);
+export const EXCLUDED_FROM_ARTICLE = new Set([
+  "booking_channel", "naver_place_url", "homepage_url",
+  // 금액은 원천만 쓴다. 파일럿 실측에서 수강료 채움률이 원천 87% vs 조사 23% 였고,
+  // 무엇보다 **게이트가 조사 금액을 가격 근거로 인정하지 않는다** — hasVerifiedPriceFacts 는
+  // `수강료:` 를 찾는데 라벨이 `수강료(조사):` 라 걸리지 않는다. 그런데 fabricatedPriceAmounts
+  // 는 facts 원문에서 금액을 긁어 허용해 버린다. 두 검사가 어긋나 있어, 모델이 조사 금액을
+  // 쓰면 unverified_specific_price_claim 으로 차단된다 — 값을 주고 쓰지 말라는 덫이다.
+  // 라벨을 `수강료:` 로 바꿔 게이트를 통과시키는 방향은 택하지 않았다. 사람이 확인하지 않은
+  // AI 금액을 원천 금액과 같은 자격으로 올리는 셈이라, 게이트가 막으려던 바로 그것이 된다.
+  "fee_summary", "price_disclosed",
+]);
 
 /**
  * 사람이 읽을 문장이 아닌 기계값. "yes" 를 그대로 실으면 모델이 문장으로 못 만든다

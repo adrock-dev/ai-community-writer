@@ -24,12 +24,18 @@ it("라벨에 (조사)를 달아 원천 사실과 구분한다", () => {
 });
 
 it("원천이 답을 가진 항목은 조사값을 넘기지 않는다", () => {
-  const withSource = researchFactParts(FULL, { sourceHas: new Set(["fee_summary", "hours"]) });
-  expect(withSource.some((p) => p.startsWith("수강료(조사)"))).toBe(false);
+  const withSource = researchFactParts(FULL, { sourceHas: new Set(["hours", "shuttle_summary"]) });
   expect(withSource.some((p) => p.startsWith("영업시간(조사)"))).toBe(false);
   // 원천이 없으면 그대로 나간다(빈 자리만 메우는 역할)
   const withoutSource = researchFactParts(FULL);
-  expect(withoutSource.some((p) => p.startsWith("수강료(조사)"))).toBe(true);
+  expect(withoutSource.some((p) => p.startsWith("영업시간(조사)"))).toBe(true);
+});
+
+it("금액은 조사값을 쓰지 않는다 — 게이트가 가격 근거로 인정하지 않기 때문", () => {
+  // hasVerifiedPriceFacts 는 `수강료:` 를 찾는데 라벨이 `수강료(조사):` 라 걸리지 않는다.
+  // 그대로 두면 모델이 받아 쓰고 unverified_specific_price_claim 으로 차단된다.
+  const parts = researchFactParts({ fee_summary: "1종 보통 70만원대", price_disclosed: "yes", facilities: "휴게실" });
+  expect(parts).toEqual(["편의시설(조사): 휴게실"]);
 });
 
 it("후보가 여럿이면 중요도 상위만 싣는다", () => {
@@ -37,7 +43,7 @@ it("후보가 여럿이면 중요도 상위만 싣는다", () => {
   expect(capped).toHaveLength(4);
   // 원천이 0%인 항목이 앞에 온다 — 잘려도 조사의 존재 이유가 남아야 한다
   expect(capped[0]).toContain("편의시설");
-  expect(capped.some((p) => p.startsWith("수강료(조사)"))).toBe(false);
+  expect(capped.some((p) => p.startsWith("영업시간(조사)"))).toBe(false);
   // 단독 소개형은 상한 없이 전부(허용 목록에 남은 것만)
   const allowed = Object.keys(FULL).filter((k) => !EXCLUDED_FROM_ARTICLE.has(k));
   expect(researchFactParts(FULL).length).toBe(allowed.length);
