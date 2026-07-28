@@ -38,9 +38,16 @@ integration/
 # 1. 환경 변수 준비
 cp .env.example .env        # 필요한 값만 수정 (로컬은 ADMIN_PASSWORD 비워도 됨)
 
-# 2. API(+워커) + 관리자 동시 기동
+# 2. 커밋 게이트 설치 (클론 직후 한 번)
+npm run hooks:install
+
+# 3. API(+워커) + 관리자 동시 기동
 ./dev.sh
 ```
+
+> **`npm run hooks:install`을 건너뛰지 마세요.** git 훅은 저장소에 따라오지 않습니다(`.git/hooks`는
+> 버전 관리 대상이 아님). 안 심으면 커밋 게이트가 **조용히 사라지고**, 있다고 믿는 채로 없는 상태가
+> 됩니다. 클론할 때마다·장비를 옮길 때마다 한 번씩 실행하세요.
 
 `dev.sh`는 `.env`를 자동 로드하고, `node_modules`가 없으면 각 앱에 의존성을 설치하며,
 포트가 사용 중이면 자동으로 다음 빈 포트로 옮깁니다. 종료는 `Ctrl-C`.
@@ -130,10 +137,24 @@ npm run typecheck           # API + 관리자 타입체크(tsc). 린트/포맷 �
 npm run lint                # Biome 린트  (자동수정: npm run lint:fix)
 npm run qa:posts            # 발행된 글 품질 감사 (전체: npm run qa:posts:all)
 npm run verify:company-clean # 회사 제출용 금지 용어 스캔
+npm run verify:copy-sync    # 화면 안내 문구가 코드와 어긋났는지 검사
 npm run build               # API(tsc) + 관리자(next build) 빌드
 ```
 
-커밋·제출 전에는 `verify:company-clean` + `typecheck` + `qa:posts`를 통과시킵니다.
+커밋·제출 전에는 `verify:company-clean` + `verify:copy-sync` + `typecheck` + `qa:posts`를 통과시킵니다.
+앞의 둘은 `npm run hooks:install`로 심은 pre-commit 훅이 자동 실행해 실패 시 커밋을 막습니다.
+
+### 안내 문구가 코드와 어긋나는 문제
+
+화면 안내 문구의 3분의 1 이상은 코드가 정한 사실을 사람이 옮겨 적은 것입니다(반경·개수·강제되는
+규칙 등). 원본이 바뀌면 문구만 옛말로 남습니다. 어떤 문구가 어떤 코드에 매달려 있는지는
+[`docs/ui-copy-inventory.md`](./docs/ui-copy-inventory.md)에 있고, `npm run copy:inventory`로 다시
+만듭니다.
+
+`verify:copy-sync`가 **막는 것**은 기계가 판정할 수 있는 것뿐입니다 — 손으로 적은 숫자가 코드값과
+다를 때, 분류가 문구 변경으로 끊겼을 때, 위 문서가 낡았을 때. **막지 못하는 것**은 "이 규칙 설명이
+아직 맞는가" 같은 판단이라, 그런 항목은 경고로만 나열합니다. **경고가 뜨면 나열된 문장을 직접
+읽으세요.** 경고를 넘기고 `--no-verify`로 커밋하는 습관이 들면 이 장치는 없는 것과 같습니다.
 
 ---
 

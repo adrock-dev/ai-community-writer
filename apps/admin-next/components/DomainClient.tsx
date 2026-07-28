@@ -19,6 +19,13 @@ import { createPortal } from "react-dom";
 // 동기화 상태 폴링이 연속으로 이만큼 실패하면 화면 갱신을 포기한다(동기화 자체는 서버에서 계속된다).
 const POLL_MAX_ERRORS_IN_A_ROW = 10;
 
+// 「현재 검색 N개 / 전국 골고루 M개」 작성 규모. 버튼 라벨·큐 요청 수·추천 순서 안내·투어 문구가
+// 이 하나를 같이 읽는다 — 각자 적어 두면 개수를 바꿀 때 문구만 옛 숫자로 남는다.
+const WRITE_BATCH_SEARCH = 10;
+const WRITE_BATCH_NATIONWIDE = 100;
+const WRITE_BATCH_SEARCH_LABEL = `현재 검색 ${WRITE_BATCH_SEARCH}개 작성`;
+const WRITE_BATCH_NATIONWIDE_LABEL = `전국 골고루 ${WRITE_BATCH_NATIONWIDE}개 작성`;
+
 /**
  * 동기화가 "성공"으로 끝났어도 운영자가 알아야 하는 것을 문장으로 만든다.
  *
@@ -392,7 +399,7 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     action: "버튼을 누르면 작업 큐 탭에서 진행 상태를 확인합니다.",
   };
   const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 검수·내보내기 탭에서 결과를 검수합니다." };
-  const postsReview: TourStep = { focus: "posts", tab: "posts", target: "posts-actions", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: "이 흐름이 안정적이면 현재 검색 10개, 이후 100개로 확장하세요." };
+  const postsReview: TourStep = { focus: "posts", tab: "posts", target: "posts-actions", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: `이 흐름이 안정적이면 현재 검색 ${WRITE_BATCH_SEARCH}개, 이후 ${WRITE_BATCH_NATIONWIDE}개로 확장하세요.` };
 
   if (mode === "review") {
     return [jobsBoard, postsReview];
@@ -1851,8 +1858,8 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         </div>
         <div className="row">
           <button className="btn primary" data-tour="slots-test" disabled={queueBusy || busy} onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>{queueBusy ? "큐 등록 중..." : "1개 테스트 작성"}</button>
-          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue("현재 검색 10개 작성", { max: 10, q, template })}>현재 검색 10개 작성</button>
-          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue("전국 골고루 100개 작성", { max: 100, balanced: true })}>전국 골고루 100개 작성</button>
+          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue(WRITE_BATCH_SEARCH_LABEL, { max: WRITE_BATCH_SEARCH, q, template })}>{WRITE_BATCH_SEARCH_LABEL}</button>
+          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue(WRITE_BATCH_NATIONWIDE_LABEL, { max: WRITE_BATCH_NATIONWIDE, balanced: true })}>{WRITE_BATCH_NATIONWIDE_LABEL}</button>
         </div>
         <div className="row">
           <label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label>
@@ -1860,7 +1867,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
         </div>
         <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>제한 {effectiveTimeout}초</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
-        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 10개 → 전국 골고루 100개. 작성 대상은 무작위가 아니라 우선순위(검색량·경쟁도·weight) 상위 N개를 고르며, 전국 작성은 지역을 라운드로빈으로 섞습니다.</p>
+        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 {WRITE_BATCH_SEARCH}개 → 전국 골고루 {WRITE_BATCH_NATIONWIDE}개. 작성 대상은 무작위가 아니라 우선순위(검색량·경쟁도·weight) 상위 N개를 고르며, 전국 작성은 지역을 라운드로빈으로 섞습니다.</p>
       </div>
 
       <div className="card card-pad grid" data-tour="slots-list">

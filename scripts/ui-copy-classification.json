@@ -51,11 +51,13 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "현재 검색 10개, 이후 100개로 확장",
+      "match": "이 흐름이 안정적이면 현재 검색",
       "class": "A",
       "depends": [
-        "apps/admin-next/components/DomainClient.tsx 작성 버튼 개수"
-      ]
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_SEARCH",
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_NATIONWIDE"
+      ],
+      "note": "2026-07-28 수정. 버튼 개수를 손으로 적고 있었다. WRITE_BATCH_SEARCH/NATIONWIDE 상수에서 렌더한다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
@@ -244,10 +246,12 @@
       "match": "우선순위(검색량·경쟁도·weight) 상위 N개",
       "class": "B",
       "depends": [
-        "apps/api-nest/src/slot.service.ts 선별·라운드로빈",
-        "apps/admin-next/components/DomainClient.tsx 작성 버튼 개수"
+        "apps/admin-next/components/DomainClient.tsx 작성 버튼 개수",
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_NATIONWIDE",
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_SEARCH",
+        "apps/api-nest/src/slot.service.ts 선별·라운드로빈"
       ],
-      "note": "같은 문장이 「현재 검색 10개 → 전국 골고루 100개」라는 버튼 개수까지 손으로 적는다(A 성격). 버튼을 바꾸면 이 문장도 거짓이 된다."
+      "note": "같은 문장이 작성 규모(현재 검색 N개 → 전국 M개)도 말한다. 2026-07-28 그 숫자는 상수 렌더로 바꿨고, 남은 종속은 선별·라운드로빈 규칙 쪽이다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
