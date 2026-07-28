@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
-import { fieldTypeIssues } from "./academy-research-grounding.js";
+import { fieldTypeIssues, isNonClaimValue } from "./academy-research-grounding.js";
 import { usableInArticle } from "./academy-research-article-fields.js";
 
 /**
@@ -22,6 +22,8 @@ import { usableInArticle } from "./academy-research-article-fields.js";
  * 사람이 「검토 필요」로 판단해 둔 것까지 되돌아간다 — 승인은 언제나 사람의 몫이다.
  */
 const apply = process.argv.includes("--apply");
+// 반대 방향: 옛 규칙에 걸려 needs_review 로 굳은 값을 지금 규칙으로 다시 봐 풀어 준다.
+const release = process.argv.includes("--release");
 
 const db = new AcademyResearchDbService();
 await db.onModuleInit();
@@ -55,6 +57,45 @@ for (const [issue, n] of [...byIssue.entries()].sort((a, b) => b[1] - a[1])) con
 if (hits.length) console.log("");
 for (const h of hits.slice(0, 30)) console.log(`  #${h.externalId} ${h.field} [${h.status}] ${h.issue}\n      "${h.value}"`);
 if (hits.length > 30) console.log(`  … 외 ${hits.length - 30}건`);
+
+/**
+ * needs_review 를 되돌린다 — 단, **지금 규칙으로 다시 판정할 수 있는 지적만.**
+ *
+ * 규칙은 오탐을 고치며 느슨해지기도 한다("최대 수용 가능 인원 4명" 을 광고로 잡던 것을
+ * 2026-07-28 에 풀었다). 그런데 그 전에 조사된 값은 사유만 낡은 채 needs_review 로 굳어
+ * 승인 대상에서 빠져 있다.
+ *
+ * 소스에 근거가 있는지 보는 지적(「수집 소스에 …」·「소스에서 확인 안 됨」)은 건드리지 않는다.
+ * 수집한 소스 원문을 저장하지 않기 때문에 지금 다시 판정할 방법이 없다 — 그건 재조사해야
+ * 다시 판정된다. 사람이 needs_review 로 내린 것도 마찬가지로 두어야 하는데, 현재 그 구분이
+ * 없으므로(verified_by 가 비어 있다) 소스 무관 지적만 푸는 것이 그 대용이기도 하다.
+ */
+function releaseStaleFindings(): void {
+  const released: Array<{ externalId: string; field: string; note: string }> = [];
+  for (const row of db.all("SELECT external_id, field_key, note FROM academy_field_meta WHERE status='needs_review'")) {
+    const field = String(row.field_key);
+    const note = String(row.note ?? "");
+    const value = String(db.getResearch(String(row.external_id))?.[field] ?? "").trim();
+    // 소스를 봐야 판정되는 지적은 재평가 불가 — 단, "모름·없음" 값은 애초에 근거를 요구할
+    // 대상이 아니다(isNonClaimValue). 그 예외가 생기기 전에 걸린 값이 남아 있고,
+    // 이 판정에는 소스가 필요 없다.
+    if (note.includes("소스") && !isNonClaimValue(value)) continue;
+    // 값이 비었으면 지적할 대상 자체가 없다(재조사에서 지워진 자리).
+    if (value && fieldTypeIssues(field, value).length) continue;
+    released.push({ externalId: String(row.external_id), field, note });
+  }
+  console.log(`\n지금 규칙으로는 걸리지 않는 needs_review ${released.length}건`);
+  for (const x of released.slice(0, 30)) console.log(`  #${x.externalId} ${x.field} — 옛 사유: ${x.note || "(없음)"}`);
+  if (released.length > 30) console.log(`  … 외 ${released.length - 30}건`);
+  if (!released.length) return;
+  if (!apply) { console.log("\n검사만 했습니다. 실제로 풀려면 --apply 를 함께 붙이세요."); return; }
+  for (const x of released) {
+    db.setFieldMeta(x.externalId, x.field, { status: "ai_draft", note: "" });
+  }
+  console.log(`\n${released.length}건을 「AI 초안」으로 되돌렸습니다. 검토 대기에서 다시 보입니다.`);
+}
+
+if (release) releaseStaleFindings();
 
 if (!hits.length) {
   console.log("\n내릴 것이 없습니다.");
