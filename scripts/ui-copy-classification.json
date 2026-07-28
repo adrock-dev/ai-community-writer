@@ -954,6 +954,14 @@
       "depends": [
         "apps/api-nest/src/academy-link.service.ts#linkToDomain"
       ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "어느 글에 실제로 쓰이는지는 글유형이 정합니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/worker.service.ts#resolveAcademyTypes"
+      ]
     }
   ]
 }

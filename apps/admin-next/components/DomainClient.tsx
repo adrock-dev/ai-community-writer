@@ -2224,7 +2224,7 @@ function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; 
       {/* 사용 여부는 이 도메인이 정한다(자료는 업종 자산, 사용 결정은 도메인).
           승인 도구를 새로 만들지 않고 필드 검증상태를 그대로 관문으로 쓴다. */}
       <div className="grid" style={{ gap: 6, borderTop: "1px solid var(--line, #e5e7eb)", paddingTop: 10 }}>
-        <b className="small">글 생성에 사용</b>
+        <b className="small">조사값 신뢰 기준</b>
         <div className="row" style={{ gap: 14, flexWrap: "wrap" }}>
           {RESEARCH_USAGE_CHOICES.map((choice) => (
             <label key={choice.value} className="row small" style={{ gap: 4, alignItems: "center" }}>
@@ -2245,6 +2245,11 @@ function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; 
         <p className="muted small" style={{ margin: 0 }}>
           어느 설정에서도 <b>「검토 필요」</b>(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와
           <b> 「웹조사 차단」</b> 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다.
+        </p>
+        <p className="muted small" style={{ margin: 0 }}>
+          이 설정은 <b>어느 정도 확인된 값까지 믿을 것인가</b>만 정합니다. 틀린 값은 어느 글유형에서든 똑같이 틀리므로 도메인 단위로 한 번만 정합니다.
+          <b> 어느 글에 실제로 쓰이는지는 글유형이 정합니다</b> — 조사값은 학원 자료에 얹혀 들어가므로,
+          글유형의 「학원 타입 필터」가 비어 학원 자료를 쓰지 않는 글유형(면허 제도·시험 가이드 등)에는 조사값도 들어가지 않습니다.
         </p>
         <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
           ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.
