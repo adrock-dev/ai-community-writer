@@ -462,8 +462,6 @@ export class AcademyResearchService {
     for (const key of known.skipFields) if (SCALAR_KEY_SET.has(key)) scalar[key] = null;
     this.db.upsertResearch(externalId, scalar, { engine: meta.engine, method: meta.method });
 
-    // 그라운딩 대조용 소스 본문. 지금 이 자리에서만 원문을 볼 수 있다 — 수집 결과는
-    // 저장하지 않고, 나중에 다시 수집하면 다른 페이지가 나온다(실측: 3건 → 0건).
     const haystack = sourceHaystack(collected);
 
     // 원천이 수강료·노선을 가진 학원은 배열도 비운다(요구하지 않았으므로 예전 행이 남는다).
@@ -479,6 +477,8 @@ export class AcademyResearchService {
     const fallbackUrl = collected[0]?.url;
     let checked = 0;
     let flagged = 0;
+    // 어느 소스가 무엇을 뒷받침했는지. 검수 화면에서 "이 페이지가 이 값의 근거" 를 보여준다.
+    const usedFor = new Map<string, string[]>();
     for (const key of known.skipFields) {
       // 조사 대상이 아니었음을 남긴다 — 값이 빈 것과 "원천이 답을 가졌다"는 다르다.
       if (SCALAR_KEY_SET.has(key)) {
@@ -499,6 +499,7 @@ export class AcademyResearchService {
       }
       if (value === undefined) continue;
       const sourceUrl = sources[key as string] ?? fallbackUrl;
+      if (sourceUrl) usedFor.set(sourceUrl, [...(usedFor.get(sourceUrl) ?? []), key as string]);
       const report = inspectResearchValue(key as string, String(value), haystack);
       checked += 1;
       if (hasFinding(report)) flagged += 1;
@@ -516,6 +517,9 @@ export class AcademyResearchService {
         note: findingNote(report) ?? "",
       });
     }
+    // 수집한 소스를 그대로 남긴다. 이게 없으면 검사 규칙을 고쳐도 이미 저장된 값을 다시
+    // 판정할 방법이 없어 재조사(학원당 30~45초 + LLM)밖에 선택지가 없다.
+    this.db.replaceSources(externalId, collected, usedFor);
     return { checked, flagged };
   }
 

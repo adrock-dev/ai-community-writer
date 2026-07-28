@@ -172,6 +172,30 @@ CREATE TABLE IF NOT EXISTS academy_field_meta (
   FOREIGN KEY (external_id) REFERENCES academy_base(external_id) ON DELETE CASCADE
 );
 
+-- 조사에 쓴 공개 소스(수집 당시 본문). **최신 1회분만** 보관한다.
+--
+-- 없던 시절의 대가: 검사 규칙을 고쳐도 이미 저장된 값을 다시 판정할 방법이 없었다.
+-- 2026-07-28 에 needs_review 22건 중 17건이 "그때 본 소스가 없어 재판정 불가" 라
+-- codex 재조사 16곳(9분)을 돌려야 했다. 소스가 있었으면 몇 초짜리 재검사였다.
+--
+-- URL 만 남기고 본문을 버리면 소용이 없다. 같은 URL 도 다시 받으면 내용이 달라진다
+-- (실측: 같은 학원이 한 번은 소스 0건, 한 번은 4건). 검수자가 "이 값이 어디서 왔나" 를
+-- 확인하려면 **그 시점 본문**이 필요하다.
+--
+-- 이력은 쌓지 않는다. 재조사마다 5MB 씩 늘어나는데 얻는 것은 "예전엔 뭐가 있었나" 뿐이고,
+-- 필요한 것은 "지금 값의 근거" 다.
+CREATE TABLE IF NOT EXISTS academy_sources (
+  external_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT,
+  text TEXT NOT NULL,
+  -- 이 소스를 근거로 삼은 필드들(JSON 배열). 검수 화면에서 "이 페이지가 무엇을 뒷받침했나".
+  used_for TEXT,
+  collected_at TEXT NOT NULL,
+  PRIMARY KEY (external_id, url),
+  FOREIGN KEY (external_id) REFERENCES academy_base(external_id) ON DELETE CASCADE
+);
+
 -- 조사 실행 이력(a=전체 배치 / b=단건)
 CREATE TABLE IF NOT EXISTS research_runs (
   id TEXT PRIMARY KEY,
@@ -679,6 +703,42 @@ export class AcademyResearchDbService implements OnModuleInit {
   }
 
   getResearch(externalId: string): Row | undefined { return this.get("SELECT * FROM academy_research WHERE external_id = ?", [externalId]); }
+
+  /**
+   * 이 학원의 조사 소스를 통째로 교체한다. 조사 1회 = 소스 1벌이므로 누적하지 않는다.
+   *
+   * @param usedFor URL → 그 소스를 근거로 삼은 필드 목록.
+   */
+  replaceSources(
+    externalId: string,
+    sources: Array<{ url: string; title?: string | null; text: string }>,
+    usedFor: Map<string, string[]> = new Map(),
+  ): void {
+    const now = nowIso();
+    this.transaction(() => {
+      this.run("DELETE FROM academy_sources WHERE external_id = ?", [externalId]);
+      for (const source of sources) {
+        const url = String(source?.url ?? "").trim();
+        const text = String(source?.text ?? "");
+        if (!url || !text) continue;
+        this.run(
+          `INSERT INTO academy_sources (external_id, url, title, text, used_for, collected_at) VALUES (?,?,?,?,?,?)
+           ON CONFLICT(external_id, url) DO UPDATE SET
+            title=excluded.title, text=excluded.text, used_for=excluded.used_for, collected_at=excluded.collected_at`,
+          [externalId, url, source.title ?? null, text, jsonOrNull(usedFor.get(url) ?? []), now],
+        );
+      }
+    });
+  }
+
+  listSources(externalId: string): Row[] {
+    return this.all("SELECT url, title, text, used_for, collected_at FROM academy_sources WHERE external_id = ? ORDER BY url", [externalId]);
+  }
+
+  /** 근거 검사를 소급 적용할 때 쓰는 원문 뭉치. 소스가 없으면 빈 문자열(=판정 불가). */
+  sourceTextFor(externalId: string): string {
+    return this.listSources(externalId).map((row) => String(row.text ?? "")).join("\n");
+  }
 
   // 값이 저장되지 않아도 시도 사실은 남긴다. 다음 기본 배치가 같은 학원을 무한 반복하지 않고,
   // 화면도 "미조사" 대신 "근거 없음"으로 설명할 수 있다.

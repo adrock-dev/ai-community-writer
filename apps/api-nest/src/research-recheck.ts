@@ -1,6 +1,6 @@
 import "reflect-metadata";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
-import { extractClaims, fieldTypeIssues, isNonClaimValue } from "./academy-research-grounding.js";
+import { extractClaims, fieldTypeIssues, inspectResearchValue, isNonClaimValue } from "./academy-research-grounding.js";
 import { usableInArticle } from "./academy-research-article-fields.js";
 
 /**
@@ -29,6 +29,11 @@ const db = new AcademyResearchDbService();
 await db.onModuleInit();
 
 const rows = db.all("SELECT * FROM academy_research WHERE researched_at IS NOT NULL");
+// 학원별 소스 원문. 보관하기 시작한 뒤 조사한 학원만 들어 있다.
+const sourceText = new Map<string, string>();
+for (const row of db.all("SELECT DISTINCT external_id FROM academy_sources")) {
+  sourceText.set(String(row.external_id), db.sourceTextFor(String(row.external_id)));
+}
 const status = new Map<string, string>();
 for (const m of db.all("SELECT external_id, field_key, status FROM academy_field_meta")) {
   status.set(`${m.external_id}|${m.field_key}`, String(m.status ?? ""));
@@ -44,7 +49,13 @@ for (const row of rows) {
     const current = status.get(`${row.external_id}|${field}`) ?? "";
     // 이미 검토 필요·차단이면 글에 안 나간다. 문제는 통과 상태로 남은 값이다.
     if (current !== "ai_draft" && current !== "verified") continue;
-    for (const issue of fieldTypeIssues(field, String(value))) {
+    // 소스를 보관한 학원은 근거 검사까지 다시 돈다. 없으면 필드 타입 검사만 할 수 있다
+    // (소스 보관은 2026-07-28 부터라, 그 전 조사분은 재조사해야 근거 검사가 다시 붙는다).
+    const haystack = sourceText.get(String(row.external_id)) ?? "";
+    const issues = haystack
+      ? inspectResearchValue(field, String(value), haystack).typeIssues
+      : fieldTypeIssues(field, String(value));
+    for (const issue of issues) {
       hits.push({ externalId: String(row.external_id), field, status: current, issue, value: String(value).slice(0, 100) });
     }
   }
@@ -90,6 +101,13 @@ function releaseStaleFindings(): void {
     //     시각이 소스에 있으니 근거가 있는 것인데, "야간" 이 없다고 지적하면 정직하게 답할수록
     //     걸리는 규칙이 된다.
     if (!value) { emptied.push({ externalId: String(row.external_id), field, note }); continue; }
+    // 소스를 보관했다면 근거 검사까지 지금 규칙으로 다시 판정할 수 있다 — 이게 이 테이블의 목적이다.
+    const haystack = sourceText.get(String(row.external_id));
+    if (haystack) {
+      if (inspectResearchValue(field, value, haystack).typeIssues.length) continue;
+      released.push({ externalId: String(row.external_id), field, note });
+      continue;
+    }
     const groundedClaimExempt = extractClaims(value).length > 0 && !note.includes("소스에서 확인 안 됨");
     if (note.includes("소스") && !isNonClaimValue(value) && !groundedClaimExempt) continue;
     if (fieldTypeIssues(field, value).length) continue;
