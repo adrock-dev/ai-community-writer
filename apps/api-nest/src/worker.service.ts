@@ -16,6 +16,7 @@ import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-g
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
 import { studentReviewFactLines } from "./academy-review-evidence.js";
 import { formatExtraCourseFeeFact } from "./drivingplus-academy-facts.js";
+import { researchFactParts } from "./academy-research-article-fields.js";
 import { courseFactText } from "./academy-course-evidence.js";
 import { normalizeImageSlotMarkup } from "./post-rendering.js";
 import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
@@ -452,6 +453,23 @@ export class WorkerService {
             // 라벨에 "수강료" 를 넣는다 — 게이트의 hasPriceFact 가 수강료·가격·비용 라벨만 가격으로
       // 인정해서, "요금" 이라고 쓰면 공식 수강료가 없는 학원에서 본문 금액이 근거 없는 주장으로 걸린다.
       if (extraFees) parts.push(`추가 과정 수강료: ${extraFees}`);
+      // 조사값(원천에 없는 편의시설·자체 시험장·야간반 등). 도메인의 「조사값 신뢰 기준」과
+      // 필드 검증상태를 통과한 것만 여기까지 온다(AcademyLinkService 가 관문). 라벨에 「(조사)」를
+      // 달아 원천 사실과 구분한다 — 모델이 출처를 구분해야 단정 강도를 조절할 수 있다.
+      //
+      // 원천이 답을 가진 항목은 넘기지 않는다. 두 값을 다 보내면 모델이 둘을 병기한다
+      // (전화번호에서 겪었다: 발행 글 20편 중 9편이 실번호와 안심번호를 나란히 적었다).
+      const sourceHas = new Set<string>();
+      if (a.price) { sourceHas.add("fee_summary"); sourceHas.add("price_disclosed"); }
+      if (a.shuttle) { sourceHas.add("shuttle_summary"); sourceHas.add("shuttle_available"); }
+      if (a.hours) sourceHas.add("hours");
+      if (courses) sourceHas.add("licenses");
+      // 단독 소개형(후보 1곳)은 그 학원만 깊게 다루므로 전부 싣는다. 후보가 여럿이면
+      // 학원마다 10줄씩 붙어 프롬프트가 부풀고 카드가 산만해지므로 중요도 상위만 쓴다.
+      parts.push(...researchFactParts(extra.research as Record<string, unknown> | null, {
+        sourceHas,
+        limit: academies.length <= 1 ? undefined : 4,
+      }));
       // 후기 근거는 자체 수강생 리뷰만 쓴다. 블로그리뷰(academies.blog_reviews)는 프롬프트에
       // 넣지 않는다 — 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 오배정이 섞인다
       // (2026-07-27 실측: 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이
@@ -830,6 +848,18 @@ function normalizeKoreanSpacing(text: string): string {
     .replace(/비교추천/g, "비교 추천");
 }
 
+/**
+ * 페르소나가 이동 조건(통학·출퇴근 등)을 가진 독자인가. 그렇다면 셔틀 지침을 "확인된 운행 지역과
+ * 연결해도 된다"는 쪽으로 바꾼다(그 외에는 셔틀을 사실 그대로만 쓰게 둔다).
+ *
+ * buildPrompt·buildRepairPrompt 가 이 판정을 공유한다 — 각자 정규식을 들고 있던 시절 재작성 쪽
+ * 사본에서 `\s` 의 백슬래시가 빠져("이동s*제약") "이동 제약" 계열 페르소나가 재작성 때만 감지되지
+ * 않았다. 판정은 한 곳에 두고 지침 문구만 각자 다르게 쓴다.
+ */
+export function personaHasMobilityConstraint(slot: Row): boolean {
+  return /(?:출퇴근|통학|직장|학교|생활권|이동\s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
+}
+
 function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplateId: string, markdown: string, issues: string[], archetype: Archetype | undefined, direction: string, forcedTitle?: string | null, options?: GenerationPromptOptions): string {
   const brand = publicBrandName(domain);
   const isT01AcademyComparison = isT01AcademyComparisonPrompt(slot, true, options);
@@ -843,8 +873,7 @@ function buildRepairPrompt(domain: Row, slot: Row, facts: string, designTemplate
       ? "이 글은 학원을 하나씩 소개·안내하는 글이다. 시험 접수·응시·면허 발급·준비 서류 같은 일반 제도 안내나 외부 공식 절차 링크는 본문·FAQ·체크리스트·CTA에 넣지 않는다. 학원별로 확인된 사실과 선택에 필요한 질문만 남긴다."
       : "이 글은 학원 비교글이다. 시험 접수·응시·면허 발급·준비 서류 같은 일반 제도 안내나 외부 공식 절차 링크는 본문·FAQ·체크리스트·CTA에 넣지 않는다. 학원별로 확인된 사실과 선택에 필요한 질문만 남긴다.";
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
-  const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
-  const personaMobilityGuide = personaHasMobilityConstraint
+  const personaMobilityGuide = personaHasMobilityConstraint(slot)
     ? "페르소나의 이동 조건을 확인된 셔틀 운행 지역과 연결해 자연스럽게 쓸 수 있다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다."
     : "확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
   const candidateRepairGuide = options?.readerFlow
@@ -1010,8 +1039,7 @@ export function buildPrompt(domain: Row, slot: Row, facts: string, designTemplat
       ? "가격·셔틀·합격률·후기는 검증된 자료가 있을 때만 단정한다. 자료가 없는 항목은 본문을 일반 상담 가이드로 채우지 말고, 후보 소개에 꼭 필요한 경우에만 짧은 공통 확인 행동으로 남긴다. 준비 서류·시험 접수·면허 발급 같은 일반 절차는 넣지 않는다."
       : "가격·셔틀·합격률·후기는 검증된 자료가 있을 때만 단정한다. 자료가 없는 항목은 본문을 일반 상담 가이드로 채우지 말고, 후보별 비교에 꼭 필요한 경우에만 짧은 공통 확인 행동으로 남긴다. 준비 서류·시험 접수·면허 발급 같은 일반 절차는 넣지 않는다.";
   const customDesignGuide = designTemplateId === "custom" ? String(domain.custom_design_templates || "").trim() : "";
-  const personaHasMobilityConstraint = /(?:출퇴근|통학|직장|학교|생활권|이동\s*제약|대중교통|교통)/u.test(String(slot.persona || ""));
-  const personaMobilityGuide = personaHasMobilityConstraint
+  const personaMobilityGuide = personaHasMobilityConstraint(slot)
     ? "페르소나에 명시된 이동 조건을 확인된 셔틀 운행 지역과 연결해 독자가 판단할 수 있게 쓴다. 확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다."
     : "확인된 셔틀 운행 지역·경유지·이용 조건은 그 학원의 사실이므로 그대로 쓴다. 다만 셔틀 자료가 없는 학원의 운행 범위를 추측하거나, 주소만으로 통학 편의·접근성·가까움을 단정하지 않는다.";
   // 카드를 사실의 차이로 여는 모드(T16). 후기는 카드 맨 아래 인용에만 남는다.

@@ -54,7 +54,6 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   { key: "established_year", label: "설립연도(조사)" },
   { key: "scale", label: "규모(조사)" },
   { key: "enrollment_prep", label: "등록 준비물(조사)" },
-  { key: "booking_channel", label: "예약 방법(조사)" },
   { key: "homepage_url", label: "홈페이지(조사)" },
   // 원천이 이기는 항목. 원천이 그 학원 값을 안 줄 때만 빈 자리를 메운다.
   { key: "hours", label: "영업시간(조사)", sourceWins: true },
@@ -63,8 +62,23 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   { key: "licenses", label: "면허 과정(조사)", sourceWins: true },
   { key: "fee_summary", label: "수강료(조사)", sourceWins: true },
   { key: "price_disclosed", label: "가격 공개 여부(조사)", sourceWins: true },
-  { key: "naver_place_url", label: "네이버 플레이스(조사)" },
 ];
+
+/**
+ * 글에 넣지 않기로 한 필드와 그 이유. 지웠다가 "왜 뺐더라" 로 되돌아오는 것을 막는다.
+ *
+ * - booking_channel: 189건 중 48건이 값이 그냥 "예약" 이고 6자 이하가 73건(39%)이다.
+ *   네이버 플레이스의 편의 태그를 그대로 가져온 탓이라 독자에게 알려줄 내용이 없다.
+ * - naver_place_url: 제3자 목록 페이지다. 글에 링크하면 독자를 밖으로 내보내는 셈이고,
+ *   학원 자체 정보도 아니다. 검수자가 근거를 확인하는 용도로 학원 상세 화면에는 남는다.
+ */
+export const EXCLUDED_FROM_ARTICLE = new Set(["booking_channel", "naver_place_url"]);
+
+/**
+ * 사람이 읽을 문장이 아닌 기계값. "yes" 를 그대로 실으면 모델이 문장으로 못 만든다
+ * (self_test 에 "yes" 가 3건 있었다).
+ */
+const MACHINE_VALUES = new Set(["yes", "no", "true", "false", "unknown", "n/a", "na", "-"]);
 
 const BY_KEY = new Map(ARTICLE_RESEARCH_FIELDS.map((f) => [f.key, f]));
 
@@ -75,4 +89,35 @@ export function articleResearchField(key: string): ArticleResearchField | undefi
 /** 이 필드를 글로 내보낼 수 있는가. 목록에 없으면 무조건 false(허용 목록 방식). */
 export function usableInArticle(key: string): boolean {
   return !NEVER_IN_ARTICLE.has(key) && !CROSS_CHECK_ONLY.has(key) && BY_KEY.has(key);
+}
+
+/**
+ * 학원 1곳의 조사값을 facts 줄로 만든다.
+ *
+ * 원천 사실과 섞지 않고 라벨에 「(조사)」를 달아 내보낸다. 모델이 출처를 구분할 수 있어야
+ * "학원 홈페이지에 게시된 바로는" 같은 표현을 고를 수 있고, 검수자도 어디서 온 값인지 안다.
+ *
+ * @param sourceHas 원천이 이미 답을 가진 필드(수강료·셔틀·영업시간 등)의 키. 그쪽이 이긴다 —
+ *   두 값을 다 보내면 모델이 둘을 병기한다(전화번호에서 겪었다: 20편 중 9편이 병기).
+ * @param limit 실을 항목 수 상한. 후보가 많은 글유형(비교형 5곳)에서 학원마다 10줄씩 붙으면
+ *   프롬프트가 부풀고 카드가 산만해진다. 단독 소개형은 전부 싣는다.
+ */
+export function researchFactParts(
+  research: Record<string, unknown> | null | undefined,
+  opts: { sourceHas?: Set<string>; limit?: number } = {},
+): string[] {
+  if (!research || typeof research !== "object") return [];
+  const sourceHas = opts.sourceHas ?? new Set<string>();
+  const limit = opts.limit ?? Number.POSITIVE_INFINITY;
+  const parts: string[] = [];
+  // ARTICLE_RESEARCH_FIELDS 순서 = 중요도 순. 잘릴 때 뒤쪽부터 빠진다.
+  for (const field of ARTICLE_RESEARCH_FIELDS) {
+    if (parts.length >= limit) break;
+    const value = String(research[field.key] ?? "").trim();
+    if (!value) continue;
+    if (MACHINE_VALUES.has(value.toLowerCase())) continue;
+    if (field.sourceWins && sourceHas.has(field.key)) continue;
+    parts.push(`${field.label}: ${value}`);
+  }
+  return parts;
 }
