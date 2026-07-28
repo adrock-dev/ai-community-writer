@@ -79,8 +79,10 @@ describe("fieldTypeIssues — 소스에 있어도 그 필드에 담기면 안 �
   });
 
   it("규모에 들어온 과장 표현을 잡는다", () => {
+    // "최대" 는 정원 표기에도 쓰여 낱말 목록에서 뺐다(아래 오탐 3종 참고).
+    // 이 값은 "제일" 로 잡히고, "전국 최대규모" 는 문맥 패턴으로도 잡힌다.
     expect(fieldTypeIssues("scale", "전국 최대규모 운전학원, 서울/수도권 지역 제일 큰 규모라고 주장"))
-      .toEqual(["광고성 주장 표현 포함(최대)"]);
+      .toEqual(["광고성 주장 표현 포함(제일)"]);
   });
 
   it("요금에 섞인 개인 거래 플랫폼 가격을 잡는다", () => {
@@ -188,5 +190,38 @@ describe("서술형 검사 면제 — 실측 오탐 5건에서 나온 규칙", (
     const report = inspectResearchValue("night_class", "야간 19:00~22:00 운영", "학원 소개와 오시는 길");
     expect(report.ungrounded.length).toBeGreaterThan(0);
     expect(hasFinding(report)).toBe(true);
+  });
+});
+
+describe("오탐 3종 — 조사 164곳 실측에서 나온 규칙", () => {
+  it("URL 필드는 숫자 대조를 하지 않는다", () => {
+    // 퍼센트 인코딩(%EA·%B0)을 퍼센트 수치로 읽어 "소스에 없는 95%·82%" 를 지적했다(11건).
+    const url = "https://www.drivingzone.co.kr/branch/%EA%B0%95%EB%82%A8%EB%A9%B4%ED%97%88";
+    for (const field of ["homepage_url", "naver_place_url", "kakao_url"]) {
+      expect(inspectResearchValue(field, url, "관련 없는 본문").typeIssues).toEqual([]);
+      expect(inspectResearchValue(field, url, "관련 없는 본문").ungrounded).toEqual([]);
+    }
+  });
+
+  it("'최대' 는 문맥으로 가른다 — 정원 표기는 광고가 아니다", () => {
+    // "최대 수용 가능 인원 4명" 같은 사실이 광고로 잡혔다(13건).
+    expect(fieldTypeIssues("scale", "최대 수용 가능 인원 4명, 직영점")).toEqual([]);
+    expect(fieldTypeIssues("scale", "총부지 6,661㎡, 정원 560명")).toEqual([]);
+    // 규모·순위 주장은 그대로 잡는다.
+    expect(fieldTypeIssues("scale", "전국 최대규모 운전학원").length).toBe(1);
+    expect(fieldTypeIssues("scale", "수도권 최대 시설").length).toBe(1);
+  });
+
+  it("금액이 없다고 보고한 값은 결함이 아니다", () => {
+    // 모델이 정확히 답한 것을 지적하면 정직할수록 걸리는 규칙이 된다.
+    for (const value of [
+      "요금안내 페이지에 구체 금액 표기 없음. 모든 이용금액 부가세 별도",
+      "결제 수단만 확인됨: 신용카드, 현금. 요금 금액은 소스에 없음",
+      "수강료 미공개",
+    ]) {
+      expect(fieldTypeIssues("fee_summary", value)).toEqual([]);
+    }
+    // 금액도 없고 부재 보고도 아니면 여전히 지적한다.
+    expect(fieldTypeIssues("fee_summary", "학원 소개와 시설 안내만 확인됨").length).toBe(1);
   });
 });

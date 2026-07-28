@@ -195,8 +195,18 @@ export function hasEvidenceKeyword(field: string, haystack: string): boolean {
 // 담으면 안 된다. 두 모델을 붙여도 이건 잡히지 않는다(둘 다 같은 문구를 옮겨 적는다).
 
 const AD_CLAIM_WORDS = [
-  "최고", "최대", "최상", "제일", "최단", "가장", "1위", "no.1", "넘버원",
+  "최고", "최상", "제일", "최단", "가장", "1위", "no.1", "넘버원",
   "보장", "100%", "타사보다", "업계 최",
+];
+
+/**
+ * "최대" 는 통째로 막을 수 없다. 정원 표기에도 쓰인다 —
+ * "최대 수용 가능 인원 4명" 같은 사실이 광고로 잡혔다(실측 13건).
+ * 규모·순위를 주장할 때만 걸러낸다.
+ */
+const AD_CLAIM_PATTERNS: Array<[RegExp, string]> = [
+  [/최대\s*(규모|크기|면적|시설)/u, "최대 규모"],
+  [/(전국|지역|수도권|시내|업계)\s*최대/u, "최대 주장"],
 ];
 
 /** 개인 거래·중고 플랫폼 가격은 학원 공식 요금이 아니다. */
@@ -211,13 +221,20 @@ export function fieldTypeIssues(field: string, value: string | null | undefined)
   if (!text) return [];
   const lower = text.toLowerCase();
   const issues: string[] = [];
-  const adWord = AD_CLAIM_WORDS.find((w) => lower.includes(w));
+  const adWord = AD_CLAIM_WORDS.find((w) => lower.includes(w))
+    ?? AD_CLAIM_PATTERNS.find(([re]) => re.test(text))?.[1];
 
   if (field === "pass_rate" && !/\d/.test(text)) {
     issues.push("합격률에 수치가 없음(서술만)");
   }
   if (field === "fee_summary") {
-    if (!/\d/.test(text)) issues.push("요금 요약에 금액이 없음");
+    // "구체 금액이 공개돼 있지 않음" 은 모델의 정직한 보고다. 결함으로 잡으면
+    // 정확히 답할수록 걸리는 규칙이 된다(night_class 에서 겪은 것과 같은 패턴).
+    // "금액이 없다" 는 여러 갈래로 적힌다 — "공개돼 있지 않음"·"표기 없음"·"소스에 없음"·"미공개".
+    const reportsAbsence = /(금액|가격|요금)[^.]{0,16}(없|미공개|비공개|확인\s*불가|않)/u.test(text)
+      || /(공개|표기|게시|명시)[^.]{0,10}(없|않)/u.test(text)
+      || /미공개|비공개/u.test(text);
+    if (!/\d/.test(text) && !reportsAbsence) issues.push("요금 요약에 금액이 없음");
     const market = PERSONAL_MARKET_WORDS.find((w) => text.includes(w));
     if (market) issues.push(`개인 거래 플랫폼 가격이 섞임(${market})`);
   }
@@ -239,7 +256,14 @@ export interface GroundingReport {
   typeIssues: string[];
 }
 
+/**
+ * 값 자체가 URL 인 필드. 숫자 대조를 하면 안 된다 —
+ * 퍼센트 인코딩(%EA·%B0)을 퍼센트 수치로 읽어 "소스에 없는 95%·82%" 를 지적한다(실측 11건).
+ */
+const URL_FIELDS = new Set(["homepage_url", "naver_place_url", "kakao_url"]);
+
 export function inspectResearchValue(field: string, value: string | null | undefined, sourceText: string): GroundingReport {
+  if (URL_FIELDS.has(field)) return { field, ungrounded: [], grounded: 0, typeIssues: [] };
   const claims = extractClaims(value);
   const ungrounded = claims.filter((c) => !isClaimGrounded(c, sourceText));
   const typeIssues = fieldTypeIssues(field, value);
