@@ -339,7 +339,7 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "셔틀 운행 지역은 학원자료 동기화 시점에 계산",
+      "match": "셔틀 운행 지역은 학원자료를 가져오는 시점에 계산",
       "class": "B",
       "depends": [
         "셔틀 지역 판정"
@@ -472,7 +472,7 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "각 지역의 학원 상세",
+      "match": "가 원천에서 받아 둔 학원 상세",
       "class": "B",
       "depends": [
         "apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG",

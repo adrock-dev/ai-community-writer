@@ -1439,15 +1439,19 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
   async function add(form: HTMLFormElement) { const fd = Object.fromEntries(new FormData(form).entries()); await api(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "POST", body: JSON.stringify(fd) }); form.reset(); await onRefresh(); }
   async function bulk(form: HTMLFormElement) { const text = String(new FormData(form).get("json") || ""); await api(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "POST", body: text }); form.reset(); await onRefresh(); }
   async function del(id: string) { if (!confirm("삭제할까요?")) return; await api(`/domains/${encodeURIComponent(domain.domain)}/academies/${id}`, { method: "DELETE" }); await onRefresh(); await loadAcademies(); }
-  async function delAll() {
-    if (!confirm("이 도메인의 학원 자료를 전부 삭제할까요? (검색/지역 필터와 무관하게 모두 삭제) 되돌릴 수 없습니다.")) return;
-    setSyncBusy("academies");
+  // 연결 끊기 — 이 도메인의 학원 자료를 비운다. 「운전학원 자료」의 원본·조사값은 그대로 남고,
+  // 「학원자료 연결」을 다시 누르면 복구된다. 그래서 되돌릴 수 없는 삭제가 아니다.
+  async function unlinkAcademies() {
+    if (!confirm("이 도메인에서 학원 자료를 비웁니다.\n「운전학원 자료」의 원본과 조사값은 그대로 남고, 다시 연결하면 복구됩니다. 진행할까요?")) return;
+    setSyncBusy("unlink");
+    setAcademyMsg("");
     try {
       const res = await api<{ deleted: number }>(`/domains/${encodeURIComponent(domain.domain)}/academies`, { method: "DELETE" });
-      setAcademyMsg(`학원 자료 ${Number(res.deleted ?? 0).toLocaleString()}개를 모두 삭제했습니다.`);
+      setAcademyMsg(`학원 ${Number(res.deleted ?? 0).toLocaleString()}곳 연결을 끊었습니다. 「학원자료 연결」로 다시 가져올 수 있습니다.`);
       await onRefresh(); await loadAcademies();
-    } catch (e) { alert((e as Error).message); }
-    finally { setSyncBusy(""); }
+    } catch (e) {
+      setAcademyMsg(e instanceof Error ? e.message : String(e));
+    } finally { setSyncBusy(""); }
   }
   /**
    * 학원 동기화. 서버가 백그라운드로 돌리고 run_id 만 주므로 여기서 진행률을 폴링한다.
@@ -1466,40 +1470,12 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         ? "조사값은 사용 안 함 설정이라 제외됐습니다"
         : `조사값 ${res.research_applied}곳 적용(${res.research_usage === "verified" ? "검증완료만" : "AI 초안까지"})`;
       setAcademyMsg(`학원 ${res.linked}곳 연결 · 후기 ${res.reviews}건 · 블로그 ${res.blog_reviews}건 · ${research}${res.warnings.length ? ` · 경고 ${res.warnings.length}건` : ""}`);
-      await onRefresh();
+      await onRefresh(); await loadAcademies();
     } catch (e) {
       setAcademyMsg(e instanceof Error ? e.message : String(e));
     } finally { setSyncBusy(""); }
   }
 
-  async function syncAcademies() {
-    setSyncBusy("academies");
-    setSyncWarning("");
-    try {
-      // 블로그 수집 여부는 보내지 않는다. 서버가 스위치로 판단하므로(설정 → 환경변수 → 꺼짐),
-      // 화면이 아직 상태를 못 읽은 시점에 false 를 보내면 켜져 있는데도 수집을 건너뛰게 된다.
-      const started = await syncDrivingplusAcademies(domain.domain, { include_reviews: true, review_limit: 5, review_sort: "point", blog_review_limit: 3 });
-      setSyncRunId(started.run_id);
-      // 요청과 달리 안내 문구는 수집 여부를 알아야 쓸 수 있다. 새로고침 직후처럼 아직 못 읽었으면
-      // 여기서 한 번 더 읽는다 — 모르는 채로 "후기를 받습니다"(1~2분) 라고 쓰면 실제로는 블로그리뷰까지
-      // 받는 10분 이상짜리 동기화를 짧은 작업으로 안내하게 된다. 그래도 못 읽으면 단정하지 않는다.
-      let on = blogSyncOn;
-      if (on === null) {
-        on = await getRuntimeApis()
-          .then((payload) => { setRuntimeApis(payload); return payload.sync_defaults.include_blog_reviews; })
-          .catch(() => null);
-      }
-      setAcademyMsg(on === null
-        ? `동기화를 시작했습니다. 블로그 리뷰 수집 설정을 확인하지 못해 소요 시간은 설정에 따라 ${ACADEMY_SYNC_DURATION} 또는 ${ACADEMY_SYNC_DURATION_WITH_BLOG}입니다.`
-        : on
-          ? `동기화를 시작했습니다. 블로그 리뷰까지 받으므로 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.`
-          : "동기화를 시작했습니다. 학원 기본 정보와 수강생 후기를 받습니다.");
-      await pollSyncRun(started.run_id);
-    } catch (e) {
-      alert((e as Error).message);
-      setSyncBusy("");
-    }
-  }
 
   async function pollSyncRun(runId: string) {
     // 연속 조회 실패 상한. 일시적인 통신 오류로 진행 중인 동기화를 실패로 단정하면 안 되지만,
@@ -1544,10 +1520,6 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     }
   }
 
-  async function cancelAcademySync() {
-    if (!syncRunId) return;
-    try { await cancelSyncRun(domain.domain, syncRunId); } catch (e) { alert((e as Error).message); }
-  }
 
   // 동기화는 서버에서 도는 작업이라 화면을 새로 열어도 계속된다. 진행 중이면 다시 붙어 진행률을 보여준다
   // (안 하면 버튼이 눌리는 것처럼 보이는데 서버는 409 로 거절한다).
@@ -1661,9 +1633,9 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     <div className="card card-pad grid">
       <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 가져오기</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
       <p className="muted small">
-        <b>「학원자료 연결」이 기본입니다</b> — 「운전학원 자료」가 이미 원천에서 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다(수십 초).
-        「학원 동기화」는 원천 API 를 직접 다시 호출하는 예전 경로로, 조사 쪽 자료가 오래됐을 때만 씁니다.
-        각 지역의 학원 상세(사진·별점리뷰{blogSyncOn === true ? "·블로그 리뷰" : ""} 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.
+        「운전학원 자료」가 원천에서 받아 둔 학원 상세(사진·별점리뷰{blogSyncOn === true ? "·블로그 리뷰" : ""} 포함)와 조사값을 이 도메인으로 가져옵니다.
+        <b>원천 API 를 다시 호출하지 않아 수십 초면 끝납니다.</b> 원천 자료 자체를 새로 받으려면 「운전학원 자료」 화면에서 동기화하고 여기서 다시 연결하세요.
+        지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.
         {/* 상태를 못 읽은 동안 어느 쪽으로도 단정하지 않는다 — 위 배너·버튼 툴팁과 같은 기준(239f4a1). */}
         {blogSyncOn === null
           ? " 블로그 리뷰 수집 여부는 확인 중입니다."
@@ -1671,7 +1643,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
             ? ` 블로그 리뷰도 받도록 설정돼 있어 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다(설정에서 끌 수 있습니다).`
             : " 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다."}
       </p>
-      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)} title="「운전학원 자료」가 이미 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다.">{syncBusy === "link" ? "연결 중..." : "학원자료 연결"}</button><button className="btn" onClick={syncAcademies} disabled={Boolean(syncBusy)} title={blogSyncOn === null ? `학원 목록과 수강생 후기를 원천에서 받아옵니다. 블로그 리뷰 수집 설정에 따라 ${ACADEMY_SYNC_DURATION} 또는 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : blogSyncOn ? `학원 목록·수강생 후기·블로그 리뷰를 받아옵니다. 블로그 리뷰는 한 곳씩 받아야 해 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : `학원 목록과 수강생 후기를 원천에서 받아옵니다(${ACADEMY_SYNC_DURATION}). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다.`}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)} title="「운전학원 자료」가 이미 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다.">{syncBusy === "link" ? "연결 중..." : "학원자료 연결"}</button><button className="btn danger" type="button" onClick={unlinkAcademies} disabled={Boolean(syncBusy)} title="이 도메인에서 학원 자료를 비웁니다. 「운전학원 자료」의 원본과 조사값은 그대로 남고, 다시 연결하면 복구됩니다.">연결 끊기</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
       <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>
@@ -2349,7 +2321,7 @@ function RegionDirectoryCard({ domain }: { domain: string }) {
       </div>
       <p className="muted small">
         갱신해도 <b>지역 축·학원 지역 배정은 바뀌지 않습니다</b>(1·2단계와 별도 표를 씁니다).
-        셔틀 운행 지역은 학원자료 동기화 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계를 다시 실행해야 반영됩니다.
+        셔틀 운행 지역은 학원자료를 가져오는 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계 「학원자료 연결」을 다시 눌러야 반영됩니다.
       </p>
     </div>
   );
