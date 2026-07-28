@@ -329,6 +329,8 @@ export interface AdminOptions {
   generation_models?: Record<string, { id: string; label: string }[]>;
   preset_options: string[];
   indexing: { has_key: boolean; url_template: string };
+  /** 이미 모든 글에 강제되는 규칙(읽기 전용 안내용). absolute=전 글, academy=학원 후보를 다루는 글. */
+  enforced_principles?: { absolute: string; academy: string };
   // 전역 빌트인 노출 허용 id 목록(검증용 임시). null/undefined = 전체 노출.
   exposed_builtin_template_ids?: string[] | null;
 }

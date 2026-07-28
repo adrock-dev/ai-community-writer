@@ -59,6 +59,10 @@ export class AdminController {
       generation_models: GENERATION_MODEL_OPTIONS,
       preset_options: [DEFAULT_DRIVING_VERTICAL],
       indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() },
+      // 이미 모든 글에 강제되는 규칙(읽기 전용). 관리자가 볼 화면이 없어 "가격 안내를 어디 적지?"
+      // 처럼 이미 적혀 있는 것을 다시 묻게 됐고, 공통 원칙 칸에 중복해서 적으면 그 칸에서만
+      // 전달되는 말투 지시가 묻힌다. 상수를 그대로 내려 화면과 실제가 어긋날 수 없게 한다.
+      enforced_principles: { absolute: DRIVING_ABSOLUTE_PRINCIPLES, academy: DRIVING_ACADEMY_PRINCIPLES },
       // 전역 빌트인 노출 허용 목록(검증용 임시). null = 전체 노출. 카탈로그/커스텀 시작점/아키타입 목록에서 필터.
       exposed_builtin_template_ids: this.exposedBuiltinIds()
     };
