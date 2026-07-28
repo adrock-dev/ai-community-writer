@@ -1654,11 +1654,13 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
       <p className="muted small">최근 연결: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳` : "아직 연결한 학원이 없습니다"}</p>
       {!loading && remoteTotal === 0 && (
-        <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
-          ⚠️ 이 도메인에 연결된 학원이 없습니다. 학원 자료 없이 생성하면 실제 후보를 인용하지 못하고
-          지역 가이드·체크리스트 위주로만 쓰입니다. 위 <b>「학원자료 연결」</b>을 누르세요 —
-          「운전학원 자료」가 이미 받아 둔 자료를 가져오므로 원천 API 를 다시 호출하지 않고 수십 초면 끝납니다.
-        </p>
+        <div className="action-hint">
+          <span>
+            연결된 학원이 없습니다. 학원 자료 없이 생성하면 실제 후보를 인용하지 못하고 지역 가이드·체크리스트 위주로만 쓰입니다.
+            「운전학원 자료」가 이미 받아 둔 자료를 가져오므로 원천 API 를 다시 호출하지 않습니다.
+          </span>
+          <button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)}>{syncBusy === "link" ? "연결 중…" : "학원자료 연결"}</button>
+        </div>
       )}
       <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={onSave} onLink={linkFromResearch} linkBusy={syncBusy === "link"} />
       <div className="spread"><div><h3 style={{ margin: 0 }}>현재 연결 학원 목록</h3><p className="muted small">이 도메인에 연결된 학원입니다. 검색·지역으로 찾고, 쓰지 않을 학원은 제외합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p></div><span className="badge info">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
@@ -1680,10 +1682,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           ? <p className="muted small">불러오는 중...</p>
           : (q || region || academyType || hasPhotos)
             ? <p className="muted small">검색 조건에 맞는 학원이 없습니다. 조건을 바꿔보세요.</p>
-            : <div className="action-hint">
-                <span>연결된 학원이 없습니다. 「운전학원 자료」가 받아 둔 자료를 가져오세요.</span>
-                <button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)}>{syncBusy === "link" ? "연결 중…" : "학원자료 연결"}</button>
-              </div>}
+            : <p className="muted small">연결된 학원이 없습니다. 위 안내의 「학원자료 연결」을 누르세요.</p>}
       {exclusions.length > 0 && <details className="card card-pad grid compact-pad" style={{ background: "#fffbeb" }}>
         <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>제외한 학원</h3><p className="muted small">이 도메인에서만 빼 둔 학원입니다. 「학원자료 연결」이 이 목록을 건너뜁니다. 해제하면 그 자리에서 다시 연결됩니다. 자료 원본과 조사값은 「운전학원 자료」에 그대로 남아 다른 도메인에는 영향이 없습니다.</p></div><span className="badge info">{exclusions.length}곳</span></div></summary>
         <div className="table-wrap" style={{ maxHeight: 240, overflow: "auto" }}><table><thead><tr><th>학원명</th><th>제외 시각</th><th></th></tr></thead><tbody>{exclusions.map((x) => (
