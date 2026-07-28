@@ -15,6 +15,7 @@ import { seededCandidateSample, selectAcademiesByDistance, selectAcademiesForReg
 import { buildT01DataGatedContext, type T01DataGatedContext } from "./t01-data-gated.js";
 import { buildT01LegacyPlusContext, finalizeLegacyPlusMarkdown, isLockedLegacyPlusReviewOnlyClicheIssue, isT01LegacyPlusMode, isT01TemplateFamily, legacyPlusAcademyPrinciples, legacyPlusArticlePatternGuide, legacyPlusDesignGuide, legacyPlusFactsForPrompt, legacyPlusFaqPromptInstruction, legacyPlusReviewPromptInstruction, legacyPlusStructureGuide, legacyPlusTemplateDirection, legacyPlusWritingGuide, resolveT01GenerationMode, shouldUseT01LegacyPlusMode, T01_LEGACY_PLUS_MODE, t01LegacyPlusPromptContract, t01LegacyPlusQualityIssues, type T01LegacyPlusContext } from "./t01-legacy-plus.js";
 import { studentReviewFactLines } from "./academy-review-evidence.js";
+import { formatExtraCourseFeeFact } from "./drivingplus-academy-facts.js";
 import { courseFactText } from "./academy-course-evidence.js";
 import { normalizeImageSlotMarkup } from "./post-rendering.js";
 import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
@@ -444,6 +445,13 @@ export class WorkerService {
       // 다시 파싱하지 않아도 되고(단일 출처), 자동·수동 구분이 그대로 살아 있다.
       const courses = courseFactText(a);
       if (courses) parts.push(`운영 과정: ${courses}`);
+      // 공식 수강료(educationPerformance)는 1·2종 보통만 덮어, 대형·특수·소형·원동기·도로연수
+      // 가격이 글에 들어갈 길이 없었다. 원천이 주는 관측 가격에서 그 종류만 골라 넘긴다.
+      const extra = safeJson(a.extra, {}) as Record<string, unknown>;
+      const extraFees = formatExtraCourseFeeFact(extra.price_observations as any, extra.education_performance as any);
+            // 라벨에 "수강료" 를 넣는다 — 게이트의 hasPriceFact 가 수강료·가격·비용 라벨만 가격으로
+      // 인정해서, "요금" 이라고 쓰면 공식 수강료가 없는 학원에서 본문 금액이 근거 없는 주장으로 걸린다.
+      if (extraFees) parts.push(`추가 과정 수강료: ${extraFees}`);
       // 후기 근거는 자체 수강생 리뷰만 쓴다. 블로그리뷰(academies.blog_reviews)는 프롬프트에
       // 넣지 않는다 — 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 오배정이 섞인다
       // (2026-07-27 실측: 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이
