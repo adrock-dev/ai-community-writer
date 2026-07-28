@@ -2255,8 +2255,8 @@ function ResearchSummaryCard({ domain, usage, busy, onSave }: { domain: string; 
           <b> 어느 글에 실제로 쓰이는지는 글유형이 정합니다</b> — 조사값은 학원 자료에 얹혀 들어가므로,
           글유형의 「학원 타입 필터」가 비어 학원 자료를 쓰지 않는 글유형(면허 제도·시험 가이드 등)에는 조사값도 들어가지 않습니다.
         </p>
-        <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
-          ⚠️ 조사값은 아직 글 생성에 연결되지 않았습니다. 이 설정은 연결되는 시점부터 적용됩니다.
+        <p className="muted small" style={{ margin: 0 }}>
+          설정을 바꾼 뒤에는 위 <b>「학원자료 연결」</b>을 다시 눌러야 반영됩니다 — 조사값은 연결할 때 학원 자료에 함께 실립니다.
         </p>
       </div>
     </div>
