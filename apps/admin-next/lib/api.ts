@@ -165,6 +165,14 @@ export const getResearchSummary = (domain: string) =>
  * 아직 상태를 못 읽은 시점에 false 가 나가 스위치가 켜져 있어도 수집을 건너뛴다(239f4a1 회귀).
  * 타입에서 빼 두면 되살리려는 순간 컴파일이 막는다.
  */
+export interface AcademyLinkResult {
+  linked: number; skipped: number; reviews: number; blog_reviews: number;
+  research_applied: number; research_usage: string; warnings: string[];
+}
+// 학원자료 연결 — 원천 API 를 다시 치지 않고, 「운전학원 자료」가 이미 받아 둔 자료를 가져온다.
+export const linkAcademies = (domain: string) =>
+  api<AcademyLinkResult>(`/domains/${encodeURIComponent(domain)}/academies/link`, { method: "POST" });
+
 export const syncDrivingplusAcademies = (domain: string, body: { include_reviews?: boolean; review_limit?: number; review_sort?: "new" | "point"; blog_review_limit?: number } = { include_reviews: true, review_limit: 5, review_sort: "point" }) =>
   api<{ ok: true; run_id: string }>(`/domains/${encodeURIComponent(domain)}/sync/drivingplus/academies`, { method: "POST", body: JSON.stringify(body) });
 

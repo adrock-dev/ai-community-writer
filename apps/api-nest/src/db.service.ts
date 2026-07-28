@@ -1051,7 +1051,7 @@ export class DbService implements OnModuleInit {
    *   false 면(수집 스위치가 꺼진 평소 상태) 기존 값을 그대로 이어받되 "못 가져왔다" 로 세지 않는다.
    *   안 그러면 의도적으로 안 받은 것이 전 학원 미조회 경고로 뜬다.
    */
-  upsertDrivingplusAcademies(domain: string, rows: Row[], opts: { blogReviewsAttempted?: boolean } = {}): { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] } {
+  upsertDrivingplusAcademies(domain: string, rows: Row[], opts: { blogReviewsAttempted?: boolean; applyResearch?: boolean } = {}): { fetched: number; upserted: number; skipped: number; review_count: number; blog_review_count: number; blog_review_preserved: number; warnings: string[] } {
     const blogReviewsAttempted = opts.blogReviewsAttempted !== false;
     let upserted = 0, skipped = 0;
     let reviewCount = 0, blogReviewCount = 0;
@@ -1096,8 +1096,15 @@ export class DbService implements OnModuleInit {
         const hours = formatOperatingHoursFact((row.operateHour ?? null) as DrivingplusOperateHour | null);
         // extra 는 원천 응답을 손실 없이 보관하는 자리다(컬럼으로 승격한 값 외 전부).
         // 새 키를 읽어 facts/프롬프트로 올릴지는 별도 판단이며, 여기서는 저장만 한다.
+        // 조사값은 "학원자료 연결"(AcademyLinkService)로 들어올 때만 갱신한다. 원천 동기화 경로가
+        // 이 키를 건드리면 애써 승인한 값이 통째로 지워진다 — 그쪽은 조사값을 모른다.
+        const researchExtra = opts.applyResearch
+          ? ((row.__research as Record<string, unknown> | undefined) ?? null)
+          : (decodeJsonObject(existing?.extra)?.research ?? null);
         const extra = JSON.stringify({
           drivingplus_id: externalId,
+          // 원천이 준 값과 섞지 않는다. 화면·글에서 "원천 확인" 과 "조사값" 을 구분해야 한다.
+          research: researchExtra,
           review_count: reviews.length,
           blog_review_count: blogReviews.length,
           // 동기화 레이어로 들어온 개수(API 레이어 긍정 필터 통과분). 원천 총량은 review_stats 를 본다.

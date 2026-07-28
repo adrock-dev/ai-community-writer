@@ -4,6 +4,7 @@ import { AcademyResearchController } from "./academy-research.controller.js";
 import { PublicController } from "./public.controller.js";
 import { DbService } from "./db.service.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
+import { AcademyLinkService } from "./academy-link.service.js";
 import { AcademyResearchService } from "./academy-research.service.js";
 import { DrivingplusApiService } from "./drivingplus-api.service.js";
 import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
@@ -14,6 +15,6 @@ import { ImageGenerationService } from "./image-generation.service.js";
 
 @Module({
   controllers: [AdminController, AcademyResearchController, PublicController],
-  providers: [DbService, AcademyResearchDbService, AcademyResearchService, DrivingplusApiService, DrivingplusSyncService, RegionDirectoryService, SlotService, WorkerService, ImageGenerationService],
+  providers: [AcademyLinkService, DbService, AcademyResearchDbService, AcademyResearchService, DrivingplusApiService, DrivingplusSyncService, RegionDirectoryService, SlotService, WorkerService, ImageGenerationService],
 })
 export class AppModule {}

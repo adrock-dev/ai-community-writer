@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, linkAcademies, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
@@ -1454,6 +1454,24 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
    * 지금은 자체 후기만 받아 1~2분이면 끝나지만, 백그라운드 구조는 그대로 둔다 — 블로그리뷰
    * 수집을 다시 켜면 학원 1곳당 2.6초라 380곳에 12분이 넘고, 창을 닫아도 서버는 계속 돈다.
    */
+  // 원천 API 를 다시 치지 않고, 「운전학원 자료」가 이미 받아 둔 학원·후기·조사값을 가져온다.
+  // 같은 목록을 두 경로가 각각 받던 중복을 없애는 쪽이다.
+  async function linkFromResearch() {
+    if (!confirm("「운전학원 자료」에 이미 받아 둔 학원 자료를 이 도메인으로 가져옵니다.\n원천 API 는 호출하지 않아 수십 초면 끝납니다. 진행할까요?")) return;
+    setSyncBusy("link");
+    setAcademyMsg("");
+    try {
+      const res = await linkAcademies(domain.domain);
+      const research = res.research_usage === "off"
+        ? "조사값은 사용 안 함 설정이라 제외됐습니다"
+        : `조사값 ${res.research_applied}곳 적용(${res.research_usage === "verified" ? "검증완료만" : "AI 초안까지"})`;
+      setAcademyMsg(`학원 ${res.linked}곳 연결 · 후기 ${res.reviews}건 · 블로그 ${res.blog_reviews}건 · ${research}${res.warnings.length ? ` · 경고 ${res.warnings.length}건` : ""}`);
+      await onRefresh();
+    } catch (e) {
+      setAcademyMsg(e instanceof Error ? e.message : String(e));
+    } finally { setSyncBusy(""); }
+  }
+
   async function syncAcademies() {
     setSyncBusy("academies");
     setSyncWarning("");
@@ -1641,8 +1659,10 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     </div>
     {/* 묶음 3 — 학원자료 동기화 */}
     <div className="card card-pad grid">
-      <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 동기화</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
+      <div className="spread"><h3 style={{ margin: 0 }}>2단계 · 학원자료 가져오기</h3><span className="badge">학원 상세 · 사진 · 리뷰</span></div>
       <p className="muted small">
+        <b>「학원자료 연결」이 기본입니다</b> — 「운전학원 자료」가 이미 원천에서 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다(수십 초).
+        「학원 동기화」는 원천 API 를 직접 다시 호출하는 예전 경로로, 조사 쪽 자료가 오래됐을 때만 씁니다.
         각 지역의 학원 상세(사진·별점리뷰{blogSyncOn === true ? "·블로그 리뷰" : ""} 포함)를 가져옵니다. 지역 동기화 이후 실행을 권장하며, 위 지역 옵션은 여기에 영향을 주지 않습니다.
         {/* 상태를 못 읽은 동안 어느 쪽으로도 단정하지 않는다 — 위 배너·버튼 툴팁과 같은 기준(239f4a1). */}
         {blogSyncOn === null
@@ -1651,7 +1671,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
             ? ` 블로그 리뷰도 받도록 설정돼 있어 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다(설정에서 끌 수 있습니다).`
             : " 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다."}
       </p>
-      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncAcademies} disabled={Boolean(syncBusy)} title={blogSyncOn === null ? `학원 목록과 수강생 후기를 원천에서 받아옵니다. 블로그 리뷰 수집 설정에 따라 ${ACADEMY_SYNC_DURATION} 또는 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : blogSyncOn ? `학원 목록·수강생 후기·블로그 리뷰를 받아옵니다. 블로그 리뷰는 한 곳씩 받아야 해 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : `학원 목록과 수강생 후기를 원천에서 받아옵니다(${ACADEMY_SYNC_DURATION}). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다.`}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
+      <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)} title="「운전학원 자료」가 이미 받아 둔 학원·후기·조사값을 이 도메인으로 가져옵니다. 원천 API 를 다시 호출하지 않아 수십 초면 끝납니다.">{syncBusy === "link" ? "연결 중..." : "학원자료 연결"}</button><button className="btn" onClick={syncAcademies} disabled={Boolean(syncBusy)} title={blogSyncOn === null ? `학원 목록과 수강생 후기를 원천에서 받아옵니다. 블로그 리뷰 수집 설정에 따라 ${ACADEMY_SYNC_DURATION} 또는 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : blogSyncOn ? `학원 목록·수강생 후기·블로그 리뷰를 받아옵니다. 블로그 리뷰는 한 곳씩 받아야 해 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다.` : `학원 목록과 수강생 후기를 원천에서 받아옵니다(${ACADEMY_SYNC_DURATION}). 블로그 리뷰는 받지 않습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문입니다.`}>{syncBusy === "academies" ? "학원 동기화 중..." : "학원 동기화"}</button>{syncRunId ? <button className="btn" type="button" onClick={cancelAcademySync} title="지금까지 받은 내용을 저장하지 않고 멈춥니다. 기존 자료는 그대로 남습니다.">동기화 취소</button> : null}<button className="btn danger" type="button" onClick={delAll} disabled={Boolean(syncBusy)} title="이 도메인의 학원 자료를 전부 삭제합니다(되돌릴 수 없음)">전체 학원 삭제</button></div>
       {academyMsg && <p className="small badge success" style={{ width: "fit-content" }}>{academyMsg}</p>}
       {syncWarning && <p className="small badge warn" style={{ width: "fit-content" }}>⚠ {syncWarning}</p>}
       <p className="muted small">최근 동기화: {academySyncedAt ? `${formatDateTime(academySyncedAt)} · 현재 ${remoteTotal.toLocaleString()}곳${lastSync.academies?.detail && !academyAttemptUnapplied ? ` (${lastSync.academies.detail})` : ""}` : "아직 반영된 학원이 없습니다"}</p>

@@ -6,6 +6,7 @@ import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.se
 import { RegionDirectoryService } from "./region-directory.service.js";
 import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
+import { AcademyLinkService } from "./academy-link.service.js";
 import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
@@ -37,6 +38,7 @@ export class AdminController {
     @Inject(RegionDirectoryService) private readonly regionDirectory: RegionDirectoryService,
     @Inject(DrivingplusSyncService) private readonly drivingplusSync: DrivingplusSyncService,
     @Inject(AcademyResearchDbService) private readonly researchDb: AcademyResearchDbService,
+    @Inject(AcademyLinkService) private readonly academyLink: AcademyLinkService,
   ) {}
 
   @Get("options")
@@ -648,6 +650,19 @@ export class AdminController {
    * 블로그리뷰를 포함하면 12분 넘게 걸리는데 Node fetch 가 300초에 끊어버려, 응답을 기다리는
    * 구조로는 관리자 UI 에서 절대 완주할 수 없다. 진행 상황은 sync/runs/:runId 로 조회한다.
    */
+  /**
+   * 학원자료 연결 — 이미 받아 둔 조사 DB 자료를 이 도메인의 원천 데이터로 가져온다.
+   *
+   * 원천 API 를 다시 치지 않는다. 수집은 「운전학원 자료」 한 곳에서만 하고, 도메인은 연결만
+   * 한다(같은 목록을 두 경로가 각각 받던 중복 제거). 조사값은 도메인 설정과 필드 검증상태를
+   * 통과한 것만 함께 실린다.
+   */
+  @Post("domains/:domain/academies/link")
+  linkAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.academyLink.linkToDomain(domain);
+  }
+
   @Post("domains/:domain/sync/drivingplus/academies")
   syncDrivingplusAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row = {}) {
     checkAuth(req, headers); this.requireDomain(domain);
