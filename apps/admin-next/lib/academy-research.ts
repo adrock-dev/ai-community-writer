@@ -104,13 +104,19 @@ export interface ReviewQueueRow {
 }
 // 검토 대기 — 학원을 가로질러 필드 단위로 모은다. 사용 관문이 "사람이 검증완료로 올린 값만
 // 쓴다" 인데 대기 중인 필드를 찾을 화면이 없으면 380곳을 하나씩 열어야 한다.
-export const listReviewQueue = (opts: { status?: string; q?: string; limit?: number } = {}) => {
+export const listReviewQueue = (opts: { status?: string; field?: string; allFields?: boolean; q?: string; limit?: number } = {}) => {
   const search = new URLSearchParams();
   if (opts.status) search.set("status", opts.status);
+  if (opts.field) search.set("field", opts.field);
+  // 기본은 글에 나갈 수 있는 항목만 본다(원천 교차검증용 항목은 승인해도 글에 못 쓰인다).
+  if (opts.allFields) search.set("all_fields", "1");
   if (opts.q) search.set("q", opts.q);
   if (opts.limit) search.set("limit", String(opts.limit));
-  return api<{ items: ReviewQueueRow[]; total: number }>(`/academy-research/review-queue?${search.toString()}`);
+  return api<{ items: ReviewQueueRow[]; total: number; fields: Array<{ field_key: string; n: number }> }>(`/academy-research/review-queue?${search.toString()}`);
 };
+// 일괄 승인. 한 줄씩 누르는 구조로는 조사 375곳 × 항목 10개를 감당할 수 없어 verified 가 0건이었다.
+export const bulkFieldMeta = (items: Array<{ external_id: string; field_key: string }>, status: string) =>
+  api<{ ok: boolean; changed: number }>("/academy-research/field-meta/bulk", { method: "POST", body: JSON.stringify({ items, status }) });
 /** 원천에 없는 학원을 직접 등록한다. 지역·이름 외에는 아는 것만 채우면 된다. */
 export interface ManualAcademyInput {
   name: string;

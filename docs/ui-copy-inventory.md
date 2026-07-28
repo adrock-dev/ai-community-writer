@@ -11,11 +11,11 @@
 | 급 | 뜻 | 처방 | 건수 |
 | --- | --- | --- | --- |
 | **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 11 |
-| **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 88 |
-| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 166 |
-| | | **합계** | **265** |
+| **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 89 |
+| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 167 |
+| | | **합계** | **267** |
 
-파일별: `apps/admin-next/components/DomainClient.tsx` 195 · `apps/admin-next/components/AcademyResearchClient.tsx` 13 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 10 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/lib/domain-gate.ts` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/JobsClient.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/components/PostDetailClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
+파일별: `apps/admin-next/components/DomainClient.tsx` 195 · `apps/admin-next/components/AcademyResearchClient.tsx` 15 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 10 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/lib/domain-gate.ts` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/JobsClient.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/components/PostDetailClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
 
 ## 지금 이미 어긋난 것 (0건)
 
@@ -41,7 +41,7 @@
 | `apps/admin-next/components/DomainClient.tsx:2023` | muted-p | 생성 글 본문·CTA·HTML 내보내기·공개 API에 나가는 이름입니다. 마지막 섹션 CTA에서 3~7회 언급되므로 독자가 브랜드로 읽을 수 있는 고유명이어야 합니다. 비워 두면 표시 이름({effectiveBrand})이 그대로 쓰입니다.<br>_현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다._ | `apps/api-nest/src/brand.ts`<br>`apps/api-nest/src/worker.service.ts:1105 CTA 지침` |
 | `apps/admin-next/components/SettingsClient.tsx:237` | muted-p | 켜면 학원 동기화가 {ACADEMY_SYNC_DURATION}에서 {ACADEMY_SYNC_DURATION_WITH_BLOG}으로 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다). 이미 수집된 자료는 끄더라도 지워지지 않고 학원 상세에 남습니다.<br>_2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION`<br>`apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG` |
 
-## B — 동작 계약 (88건)
+## B — 동작 계약 (89건)
 
 코드가 강제하는 규칙을 문장으로 다시 설명한다. 파생이 불가능하므로 **종속 대상이 바뀌면 사람이 같이 고쳐야 한다.**
 
@@ -53,7 +53,8 @@
 | `apps/admin-next/components/AcademyResearchClient.tsx:210` | muted-p | 여기서 받은 기본정보·후기 원문·AI 심층조사는 학원 자료 전용 DB에 모입니다. 도메인은 이 자료를 연결해서 쓰므로, 도메인에서 「연결 끊기」를 하거나 도메인을 지워도 원본과 조사 결과는 그대로 남고 다시 연결하면 복구됩니다. 다만 글 생성이 읽는 것은 연결된 사본이라, 자료를 갱신했으면 도메인에서 다시 연결해야 반영됩… | `apps/api-nest/src/academy-research-db.service.ts`<br>`apps/api-nest/src/academy-link.service.ts#linkToDomain` |
 | `apps/admin-next/components/AcademyResearchClient.tsx:334` | muted-p | {run!.cancel_requested ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다." : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."}<br>_「창을 닫아도 계속·다시 들어오면 진행률이 이어짐」이 백그라운드 run 구현에 종속._ | `apps/api-nest/src/academy-research.service.ts 백그라운드 실행` |
 | `apps/admin-next/components/AcademyResearchClient.tsx:469` | muted-p | ⚠️ 수강료·셔틀·운영시간은 원천이 그 학원 값을 주지 않을 때만 쓰입니다. 원천에 구조화된 값이 있으면 그쪽이 이깁니다. | `apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies __manual 폴백` |
-| `apps/admin-next/components/AcademyResearchClient.tsx:640` | muted-p | 조사값은 아직 글 생성에 연결되지 않았습니다. 연결되면 도메인 설정이 「검증완료만」일 때 여기서 승인한 값만 쓰입니다. 값을 고치거나 승인을 되돌리려면 학원 상세로 가세요. 상태를 검증완료로 두면 연결 시점에 글에 쓰일 값을 미리 볼 수 있습니다.<br>_2026-07-28 수정. 조사값이 아직 생성에 닿지 않는데 이미 쓰이는 것처럼 단정하고 있었다(worker.service.ts 에 조사값 참조 없음). 도메인 설정 화면과 같은 기준으로 맞췄다._ | `조사값 사용 게이트(미구현)` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:670` | muted-p | 도메인의 「조사값 신뢰 기준」이 「검증완료만」일 때, 여기서 승인한 값만 글에 쓰입니다. 항목을 하나 골라 값을 나란히 훑고 이상한 것만 체크를 푼 뒤 일괄 승인하세요 — 기본은 전체 선택입니다. 값을 고치거나 승인을 되돌리려면 학원 상세로 갑니다. | `apps/api-nest/src/academy-research-usage.ts`<br>`apps/api-nest/src/academy-link.service.ts#researchValuesFor` |
+| `apps/admin-next/components/AcademyResearchClient.tsx:699` | tooltip | 원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번 등)까지 봅니다. 승인해도 글에는 쓰이지 않습니다. | `apps/api-nest/src/academy-research-article-fields.ts`<br>`apps/api-nest/src/academy-research.controller.ts#reviewQueue` |
 | `apps/admin-next/components/DashboardClient.tsx:144` | muted-p | 운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 도메인이 있어야 도메인 관리, 글 생성, 검수·보내기 메뉴를 사용할 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/admin.controller.ts 도메인 생성` |
 | `apps/admin-next/components/DomainClient.tsx:378` | field:body | 이 사이트만의 말투·태도, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 확인된 데이터만 사용·날조 금지 같은 안전·데이터 규칙은 이미 강제되니 여기 적지 않아도 됩니다. 지금 건너뛰고 나중에 정해도 됩니다.<br>_2026-07-28 수정. 투어가 「안전·데이터 원칙을 정하라」고 안내해 바로 아래 입력칸 안내(「이미 강제되니 적지 마라」)와 모순이었다. 입력칸과 같은 기준으로 맞췄다._ | `apps/api-nest/src/worker.service.ts#buildPrompt 공통원칙 주입` |
 | `apps/admin-next/components/DomainClient.tsx:379` | field:body | 글 유형마다 기본 디자인이 자동 적용됩니다. 대부분 그대로 두면 되고, 특별한 레이아웃이 필요할 때만 커스텀 디자인 메모나 커스텀 글유형 복제로 조정합니다.<br>_투어 문구. 아래 디자인 탭 안내와 같은 사실을 말한다 — 한쪽만 고치면 어긋난다._ | `apps/api-nest/src/constants.ts default_design`<br>`docs/design-template-mapping.md` |
@@ -136,12 +137,12 @@
 | `apps/api-nest/src/admin.controller.ts:1003` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 | `apps/api-nest/src/admin.controller.ts:1005` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 
-## C — 순수 안내 (166건)
+## C — 순수 안내 (167건)
 
 흐름 설명·투어 문구·빈 상태 문구. 사실을 주장하지 않으므로 코드 변경과 무관하다.
 새로 추가된 문장이 사실을 주장하는데 C 로 남아 있는지는 `node scripts/copy-inventory.mjs --untagged` 로 점검한다.
 
-<details><summary>전체 166건 펼치기</summary>
+<details><summary>전체 167건 펼치기</summary>
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
@@ -153,6 +154,7 @@
 | `apps/admin-next/components/AcademyResearchClient.tsx:378` | tooltip | 원천 동기화가 아니라 사람이 직접 등록한 학원입니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:396` | jsx-text | 동기화된 학원이 없습니다. 위 | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:465` | muted-p | 원천 동기화 목록에 없는 학원을 직접 넣습니다. 필수는 이름 하나이며, 나머지는 근거로 확인한 것만 채우세요. 여기 등록한 학원은 동기화를 다시 돌려도 사라지지 않고, AI 조사 대상에도 함께 들어갑니다. | — |
+| `apps/admin-next/components/AcademyResearchClient.tsx:639` | confirm | ${label} ${selected.length}건을 「검증완료」로 올립니다.\n체크를 푼 ${unchecked.size}건은 그대로 둡니다. 진행할까요? | — |
 | `apps/admin-next/components/DashboardClient.tsx:97` | muted-p | 운전면허·운전학원 도메인의 콘텐츠 생성·발행 작업을 운영하는 내부 관리자 화면입니다. | — |
 | `apps/admin-next/components/DashboardClient.tsx:103` | muted-p | ℹ️ 현재 범위 — 이 관리자는 운전면허·운전학원(driving) 글 생성에 특화되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 이 주제 기준이라, 다른 주제의 글은 생성되더라도 품질을 보장할 수 없습니다. (업종은 추가할 수 있으나 전용 프리셋·품질은 아직 운전면허·운전학원에만 적용) | — |
 | `apps/admin-next/components/DashboardClient.tsx:115` | muted-p | 생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다. | — |
@@ -309,7 +311,7 @@
 | `apps/admin-next/lib/domain-gate.ts:11` | lib-string | 글 생성을 하려면 운영 도메인이 필요합니다<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:16` | lib-string | 검수·보내기를 하려면 운영 도메인이 필요합니다<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:17` | lib-string | 도메인을 만든 뒤 생성된 글을 미리보기, export, 색인 요청으로 마무리할 수 있습니다.<br>_빈 화면 안내._ | — |
-| `apps/api-nest/src/academy-research.controller.ts:140` | api-error | 수동 등록한 학원만 삭제할 수 있습니다. | — |
+| `apps/api-nest/src/academy-research.controller.ts:170` | api-error | 수동 등록한 학원만 삭제할 수 있습니다. | — |
 | `apps/api-nest/src/admin.controller.ts:700` | api-error | 실행 이력을 찾을 수 없습니다.<br>_단순 404 안내._ | — |
 
 </details>

@@ -97,6 +97,9 @@ CREATE TABLE IF NOT EXISTS academy_research (
   research_engine TEXT,
   research_method TEXT,
   researched_at TEXT,
+  last_attempted_at TEXT,
+  last_attempt_outcome TEXT,
+  last_attempt_error TEXT,
   updated_at TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (external_id) REFERENCES academy_base(external_id) ON DELETE CASCADE
@@ -312,6 +315,19 @@ export class AcademyResearchDbService implements OnModuleInit {
     // 유령 여부를 판단할 수 없다(아래 recoverStaleRuns 주석).
     if (!runCols.has("heartbeat_at")) this.db.exec("ALTER TABLE research_runs ADD COLUMN heartbeat_at TEXT");
 
+    // `researched_at`은 실제 조사값을 저장한 시각이다. 공개 근거를 못 찾아 값을
+    // 비워 둔 정상적인 시도까지 미조사로 보이지 않도록 마지막 시도 결과를 따로 둔다.
+    const researchAttemptCols = new Set(this.all("PRAGMA table_info(academy_research)").map((r) => r.name));
+    const addedAttemptOutcome = !researchAttemptCols.has("last_attempt_outcome");
+    if (!researchAttemptCols.has("last_attempted_at")) this.db.exec("ALTER TABLE academy_research ADD COLUMN last_attempted_at TEXT");
+    if (addedAttemptOutcome) this.db.exec("ALTER TABLE academy_research ADD COLUMN last_attempt_outcome TEXT");
+    if (!researchAttemptCols.has("last_attempt_error")) this.db.exec("ALTER TABLE academy_research ADD COLUMN last_attempt_error TEXT");
+    if (addedAttemptOutcome) {
+      // 기존에 값이 저장된 행은 이미 성공 시도였으므로 상태만 안전하게 이관한다.
+      this.run("UPDATE academy_research SET last_attempted_at=COALESCE(last_attempted_at, researched_at), last_attempt_outcome='saved' WHERE researched_at IS NOT NULL AND last_attempt_outcome IS NULL");
+      this.recoverLegacyNoSourceAttempts();
+    }
+
     // 학원 홈페이지 표본 조사(2026-07-28)에서 공통으로 나왔는데 스키마에 자리가 없던 항목.
     // "입학안내·준비사항" 5곳 · "온라인 예약·상담신청" 4곳. 원천은 둘 다 주지 않는다.
     const researchCols = new Set(this.all("PRAGMA table_info(academy_research)").map((r) => r.name));
@@ -351,6 +367,11 @@ export class AcademyResearchDbService implements OnModuleInit {
   all(sql: string, params: any[] = []): Row[] { return this.db.prepare(sql).all(...params) as Row[]; }
   get(sql: string, params: any[] = []): Row | undefined { return this.db.prepare(sql).get(...params) as Row | undefined; }
   run(sql: string, params: any[] = []): any { return this.db.prepare(sql).run(...params); }
+  transaction<T>(fn: () => T): T {
+    this.db.exec("BEGIN");
+    try { const result = fn(); this.db.exec("COMMIT"); return result; }
+    catch (error) { this.db.exec("ROLLBACK"); throw error; }
+  }
 
   // ---- 검증상태 정의 ----
   listStatusDefs(): Row[] { return this.all("SELECT code, label, rank FROM field_status_defs ORDER BY rank ASC"); }
@@ -681,12 +702,18 @@ export class AcademyResearchDbService implements OnModuleInit {
    * 값은 academy_research 의 컬럼이라 field_key 로 동적 접근이 필요하다. 컬럼명을 SQL 에
    * 끼워 넣지 않고 행을 통째로 읽어 코드에서 고른다(임의 컬럼 주입 차단).
    */
-  listReviewQueue(opts: { statuses?: string[]; q?: string; limit?: number } = {}): { items: Row[]; total: number } {
+  listReviewQueue(opts: { statuses?: string[]; field?: string; fieldKeys?: string[]; q?: string; limit?: number } = {}): { items: Row[]; total: number; fields: Row[] } {
     const statuses = (opts.statuses ?? ["needs_review", "ai_draft"]).filter((s) => typeof s === "string" && s.trim());
-    if (!statuses.length) return { items: [], total: 0 };
+    if (!statuses.length) return { items: [], total: 0, fields: [] };
     const limit = Math.max(1, Math.min(1000, Math.trunc(opts.limit ?? 200)));
     const where = [`m.status IN (${statuses.map(() => "?").join(",")})`, "b.active = 1"];
     const params: any[] = [...statuses];
+    // 항목 하나만 골라 보면 같은 종류의 값이 나란히 서서 이상한 것이 눈에 띈다.
+    // 학원 하나씩 열어 10개 항목을 보면 매번 판단 기준이 바뀐다.
+    if (opts.field) { where.push("m.field_key = ?"); params.push(opts.field); }
+    // 글에 나갈 수 없는 항목(원천 교차검증용·합격률·안 쓰기로 한 것)은 승인해도 소용이 없다.
+    // 걸러내지 않으면 검토할 것이 3,704건으로 보이는데 실제로 값이 있는 건 793건이다.
+    else if (opts.fieldKeys?.length) { where.push(`m.field_key IN (${opts.fieldKeys.map(() => "?").join(",")})`); params.push(...opts.fieldKeys); }
     if (opts.q) { where.push("(b.name LIKE ? OR b.address LIKE ?)"); params.push(`%${opts.q}%`, `%${opts.q}%`); }
     const clause = `FROM academy_field_meta m JOIN academy_base b ON b.external_id = m.external_id WHERE ${where.join(" AND ")}`;
 
@@ -709,7 +736,40 @@ export class AcademyResearchDbService implements OnModuleInit {
       ...r,
       value: RESEARCH_FIELDS.has(String(r.field_key)) ? (research.get(String(r.external_id))?.[String(r.field_key)] ?? null) : null,
     }));
-    return { items, total };
+    // 항목별 남은 건수. 어느 항목부터 훑을지 고르는 데 쓴다(항목 필터는 이 목록에서 고른다).
+    const fieldWhere = [`m.status IN (${statuses.map(() => "?").join(",")})`, "b.active = 1"];
+    const fieldParams: any[] = [...statuses];
+    if (opts.fieldKeys?.length) { fieldWhere.push(`m.field_key IN (${opts.fieldKeys.map(() => "?").join(",")})`); fieldParams.push(...opts.fieldKeys); }
+    if (opts.q) { fieldWhere.push("(b.name LIKE ? OR b.address LIKE ?)"); fieldParams.push(`%${opts.q}%`, `%${opts.q}%`); }
+    const fields = this.all(
+      `SELECT m.field_key, COUNT(*) AS n
+       FROM academy_field_meta m JOIN academy_base b ON b.external_id = m.external_id
+       WHERE ${fieldWhere.join(" AND ")}
+       GROUP BY m.field_key ORDER BY n DESC`,
+      fieldParams,
+    );
+    return { items, total, fields };
+  }
+
+  /**
+   * 여러 항목의 검증상태를 한 번에 바꾼다.
+   *
+   * 승인은 한 줄씩 누르는 구조였는데, 조사 375곳 × 항목 10개면 클릭이 수천 번이라 아무도 하지
+   * 않았다(verified 0건). 그러면 안전한 설정(「검증완료만」)이 아무것도 못 쓰는 설정이 되고,
+   * 실제로 쓰려면 검증 안 된 값을 통째로 여는 수밖에 없어진다 — 관문이 있으나 마나가 된다.
+   */
+  setFieldMetaBulk(items: Array<{ external_id: string; field_key: string }>, patch: { status: string; note?: string }): number {
+    let changed = 0;
+    this.transaction(() => {
+      for (const item of items) {
+        const externalId = String(item?.external_id ?? "").trim();
+        const fieldKey = String(item?.field_key ?? "").trim();
+        if (!externalId || !fieldKey) continue;
+        this.setFieldMeta(externalId, fieldKey, patch);
+        changed += 1;
+      }
+    });
+    return changed;
   }
 
   // 재조사 시 이전 'web_blocked' 흔적을 정리(자체 fetch 방식에선 발생하지 않음).

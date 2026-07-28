@@ -4,6 +4,7 @@ import { checkAuth } from "./admin.controller.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyResearchService } from "./academy-research.service.js";
 import { knownFactsFromSource } from "./academy-research-known-facts.js";
+import { ARTICLE_RESEARCH_FIELDS } from "./academy-research-article-fields.js";
 import type { ResearchProviderPreference } from "./academy-research-llm.js";
 
 type Row = Record<string, any>;
@@ -99,12 +100,41 @@ export class AcademyResearchController {
     @Req() req: Request,
     @Headers() headers: Record<string, string>,
     @Query("status") status?: string,
+    @Query("field") field?: string,
+    @Query("all_fields") allFields?: string,
     @Query("q") q?: string,
     @Query("limit") limit?: string,
   ) {
     checkAuth(req, headers);
     const statuses = String(status || "needs_review,ai_draft").split(",").map((s) => s.trim()).filter(Boolean);
-    return this.db.listReviewQueue({ statuses, q: q || undefined, limit: Number(limit) || 200 });
+    // 기본은 글에 나갈 수 있는 항목만. 나머지는 승인해도 글에 못 쓰이므로 검토 노동만 늘린다.
+    const includeAll = allFields === "1" || allFields === "true";
+    return this.db.listReviewQueue({
+      statuses,
+      field: field || undefined,
+      fieldKeys: includeAll ? undefined : ARTICLE_RESEARCH_FIELDS.map((f) => f.key),
+      q: q || undefined,
+      limit: Number(limit) || 500,
+    });
+  }
+
+  /**
+   * 여러 항목을 한 번에 승인(또는 되돌리기).
+   *
+   * 한 줄씩 누르는 구조로는 조사 375곳 × 항목 10개를 감당할 수 없어 실제로 verified 가 0건이었다.
+   * 그러면 안전한 설정(「검증완료만」)이 아무것도 못 쓰는 설정이 되고, 쓰려면 검증 안 된 값을
+   * 통째로 여는 수밖에 없어져 관문이 무의미해진다.
+   */
+  @Post("field-meta/bulk")
+  bulkFieldMeta(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const status = String(body?.status ?? "").trim();
+    if (!status) throw new HttpException("status is required", 400);
+    const items = Array.isArray(body?.items) ? body.items : [];
+    if (!items.length) throw new HttpException("items is required", 400);
+    if (items.length > 2000) throw new HttpException("한 번에 2000건까지 처리합니다.", 400);
+    const changed = this.db.setFieldMetaBulk(items, { status, note: body?.note ? String(body.note) : undefined });
+    return { ok: true, changed };
   }
 
   /**

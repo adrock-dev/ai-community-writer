@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AcademyBaseRow, type ResearchProvider, type ResearchRun,
   type ManualAcademyInput, type ReviewQueueRow,
-  cancelResearchRun, createManualAcademy, deleteManualAcademy,
+  bulkFieldMeta, cancelResearchRun, createManualAcademy, deleteManualAcademy,
   listAcademyResearch, listResearchRuns, listReviewQueue, researchRegion,
   setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS,
 } from "@/lib/academy-research";
@@ -596,27 +596,59 @@ const STATUS_LABEL: Record<string, string> = {
 function ReviewQueue() {
   const [rows, setRows] = useState<ReviewQueueRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [fields, setFields] = useState<Array<{ field_key: string; n: number }>>([]);
   const [status, setStatus] = useState("needs_review,ai_draft");
+  const [field, setField] = useState("");
+  // 기본은 글에 나갈 수 있는 항목만. 켜면 원천 교차검증용 항목까지 보인다(승인해도 글엔 안 쓰인다).
+  const [allFields, setAllFields] = useState(false);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busyKey, setBusyKey] = useState("");
+  // 승인에서 뺀 항목. 기본은 전체 선택이고 **체크를 푸는 것이 판단**이다 —
+  // 대부분이 멀쩡한데 하나씩 체크하게 하면 217건짜리 항목은 아무도 끝내지 못한다.
+  const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await listReviewQueue({ status, q: q.trim() || undefined, limit: 200 });
+      const res = await listReviewQueue({ status, field: field || undefined, allFields, q: q.trim() || undefined, limit: 500 });
       setRows(res.items);
       setTotal(res.total);
+      setFields(res.fields ?? []);
+      setUnchecked(new Set());
     } catch (e: any) {
       setError(e?.message || "검토 대기 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
-  }, [status, q]);
+  }, [status, field, allFields, q]);
 
   useEffect(() => { void load(); }, [load]);
+
+  const rowKey = (r: ReviewQueueRow) => `${r.external_id}:${r.field_key}`;
+  // 이미 승인된 것은 일괄 대상이 아니다(되돌리기는 학원 상세에서 한다).
+  const selectable = rows.filter((r) => r.status !== "verified");
+  const selected = selectable.filter((r) => !unchecked.has(rowKey(r)));
+
+  async function approveSelected() {
+    if (!selected.length) return;
+    const label = field ? (FIELD_LABEL.get(field) ?? field) : "선택한 항목";
+    if (!confirm(`${label} ${selected.length}건을 「검증완료」로 올립니다.\n체크를 푼 ${unchecked.size}건은 그대로 둡니다. 진행할까요?`)) return;
+    setBusyKey("bulk");
+    setError(""); setNotice("");
+    try {
+      const res = await bulkFieldMeta(selected.map((r) => ({ external_id: r.external_id, field_key: r.field_key })), "verified");
+      setNotice(`${res.changed}건을 검증완료로 올렸습니다. 도메인의 「조사값 신뢰 기준」이 「검증완료만」이면 이 값들이 글에 쓰입니다(도메인에서 「학원자료 연결」을 다시 눌러야 반영).`);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || "일괄 승인에 실패했습니다.");
+    } finally {
+      setBusyKey("");
+    }
+  }
 
   async function approve(row: ReviewQueueRow) {
     const key = `${row.external_id}:${row.field_key}`;
@@ -635,11 +667,10 @@ function ReviewQueue() {
 
   return (
     <div className="grid" style={{ gap: 10, marginTop: 14 }}>
-      {/* 아직 쓰이지 않는 것을 쓰인다고 적지 않는다 — 도메인 설정 화면은 「조사값은 아직 글 생성에
-          연결되지 않았습니다」라고 안내하는데 여기만 이미 쓰이는 것처럼 단정하고 있었다. */}
       <p className="muted small" style={{ margin: 0 }}>
-        조사값은 <b>아직 글 생성에 연결되지 않았습니다.</b> 연결되면 도메인 설정이 <b>「검증완료만」</b>일 때 여기서 승인한 값만 쓰입니다.
-        값을 고치거나 승인을 되돌리려면 학원 상세로 가세요. 상태를 <b>검증완료</b>로 두면 연결 시점에 글에 쓰일 값을 미리 볼 수 있습니다.
+        도메인의 <b>「조사값 신뢰 기준」이 「검증완료만」</b>일 때, 여기서 승인한 값만 글에 쓰입니다.
+        항목을 하나 골라 값을 나란히 훑고 <b>이상한 것만 체크를 푼 뒤</b> 일괄 승인하세요 — 기본은 전체 선택입니다.
+        값을 고치거나 승인을 되돌리려면 학원 상세로 갑니다.
       </p>
       <div className="row" style={{ alignItems: "flex-end", gap: 8 }}>
         <label style={{ display: "grid", gap: 4 }}>
@@ -652,9 +683,21 @@ function ReviewQueue() {
             <option value="verified">검증완료(승인된 값)</option>
           </select>
         </label>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="muted small">항목</span>
+          <select className="select" value={field} onChange={(e) => setField(e.target.value)} style={{ width: "auto", maxWidth: 240 }}>
+            <option value="">전체 항목</option>
+            {fields.map((f) => (
+              <option key={f.field_key} value={f.field_key}>{(FIELD_LABEL.get(f.field_key) ?? f.field_key)} ({f.n})</option>
+            ))}
+          </select>
+        </label>
         <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 160 }}>
           <span className="muted small">학원 검색</span>
           <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
+        </label>
+        <label className="row small" style={{ gap: 4, alignItems: "center", paddingBottom: 10 }} title="원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번 등)까지 봅니다. 승인해도 글에는 쓰이지 않습니다.">
+          <input type="checkbox" checked={allFields} onChange={(e) => { setField(""); setAllFields(e.target.checked); }} /> 글에 안 쓰는 항목까지
         </label>
         <button className="btn" onClick={() => void load()} disabled={loading}>새로고침</button>
         <span className="muted small" style={{ paddingBottom: 10 }}>
@@ -663,10 +706,30 @@ function ReviewQueue() {
         </span>
       </div>
       {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
+      {notice && <p className="small badge success" style={{ width: "fit-content" }}>{notice}</p>}
+      {selectable.length > 0 && (
+        <div className="row" style={{ alignItems: "center", gap: 10, padding: "8px 10px", background: "#f8fafc", border: "1px solid var(--line, #e5e7eb)", borderRadius: 8 }}>
+          <button className="btn primary" onClick={() => void approveSelected()} disabled={busyKey === "bulk" || !selected.length}>
+            {busyKey === "bulk" ? "승인 중…" : `선택한 ${selected.length}건 검증완료로`}
+          </button>
+          <button className="btn" onClick={() => setUnchecked(new Set(selectable.map(rowKey)))} disabled={busyKey === "bulk"}>전체 해제</button>
+          <button className="btn" onClick={() => setUnchecked(new Set())} disabled={busyKey === "bulk"}>전체 선택</button>
+          <span className="muted small">체크를 푼 {unchecked.size}건은 그대로 남습니다.</span>
+        </div>
+      )}
       <div className="review-queue-table">
         <table>
           <thead>
             <tr>
+              <th style={{ width: 34 }}>
+                <input
+                  type="checkbox"
+                  checked={selectable.length > 0 && unchecked.size === 0}
+                  ref={(el) => { if (el) el.indeterminate = unchecked.size > 0 && unchecked.size < selectable.length; }}
+                  onChange={(e) => setUnchecked(e.target.checked ? new Set() : new Set(selectable.map(rowKey)))}
+                  aria-label="전체 선택"
+                />
+              </th>
               <th className="review-queue-school" style={{ width: 160 }}>학원</th>
               <th className="review-queue-field" style={{ width: 100 }}>항목</th>
               <th>값</th>
@@ -679,7 +742,21 @@ function ReviewQueue() {
             {rows.map((r) => {
               const key = `${r.external_id}:${r.field_key}`;
               return (
-                <tr key={key}>
+                <tr key={key} style={r.status !== "verified" && unchecked.has(key) ? { opacity: 0.5 } : undefined}>
+                  <td>
+                    {r.status === "verified"
+                      ? <span className="muted small">-</span>
+                      : <input
+                          type="checkbox"
+                          checked={!unchecked.has(key)}
+                          onChange={(e) => setUnchecked((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.delete(key); else next.add(key);
+                            return next;
+                          })}
+                          aria-label="승인 대상"
+                        />}
+                  </td>
                   <td className="review-queue-school">
                     <Link href={`/academies/${encodeURIComponent(r.external_id)}`}>{r.name || r.external_id}</Link>
                     {r.address ? <span className="review-queue-address" title={r.address}>{compactReviewQueueAddress(r.address)}</span> : null}
