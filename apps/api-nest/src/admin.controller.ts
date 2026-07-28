@@ -7,6 +7,7 @@ import { RegionDirectoryService } from "./region-directory.service.js";
 import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyLinkService } from "./academy-link.service.js";
+import { parseResearchUsage } from "./academy-research-usage.js";
 import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
@@ -155,8 +156,18 @@ export class AdminController {
     if (Array.isArray(fields.templates_enabled)) fields.templates_enabled = JSON.stringify(fields.templates_enabled);
     if (fields.design_template_overrides && typeof fields.design_template_overrides === "object") fields.design_template_overrides = JSON.stringify(normalizeDesignOverrides(fields.design_template_overrides));
     if (fields.template_overrides && typeof fields.template_overrides === "object") fields.template_overrides = JSON.stringify(safeTemplateOverrides(fields.template_overrides));
+    // 조사값 신뢰 기준은 연결 시점에 academies.extra.research 로 구워진다. 설정만 바꾸면
+    // 아무 일도 일어나지 않아, 운영자는 바꿨다고 생각하는데 글은 옛 값으로 나간다.
+    // 연결은 원천 API 를 치지 않고 이미 받아 둔 자료만 옮겨 380곳에 0.5초라, 여기서 바로 반영한다.
+    const usageBefore = parseResearchUsage(this.requireDomain(domain).research_usage);
     this.db.updateDomain(domain, fields);
-    return { ok: true, domain: domainOut(this.requireDomain(domain)) };
+    const usageAfter = parseResearchUsage(this.requireDomain(domain).research_usage);
+    let relinked: { linked: number; research_applied: number } | undefined;
+    if (usageAfter !== usageBefore && this.db.listAcademies(domain, { limit: 1 }).length) {
+      const result = this.academyLink.linkToDomain(domain);
+      relinked = { linked: result.linked, research_applied: result.research_applied };
+    }
+    return { ok: true, domain: domainOut(this.requireDomain(domain)), relinked };
   }
 
   // 글유형 목록: 빌트인(TEMPLATE_SPECS) + 도메인 커스텀(custom_templates).

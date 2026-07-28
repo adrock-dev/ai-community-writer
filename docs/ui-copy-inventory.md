@@ -109,9 +109,9 @@
 | `apps/admin-next/components/DomainClient.tsx:2201` | muted-p | 원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다. 조사 결과는 학원 1곳에 하나로 저장되며 도메인 사본이 아닙니다 — 여기 숫자는 「이 도메인에 연결된 학원 중 몇 곳이 조사됐나」를 대조해 보여주는 것입니다. 그래서 실행은 자료관리에서 한 번만 하고, 결과는 그 학원을 연결한 모… | `apps/api-nest/src/academy-research-db.service.ts#academy_research`<br>`apps/api-nest/src/admin.controller.ts#researchSummary`<br>`academy-research 저장소` |
 | `apps/admin-next/components/DomainClient.tsx:2247` | muted-p | 어느 설정에서도 「검토 필요」(수집한 근거에서 확인되지 않았거나 그 항목에 담기면 안 되는 값)와 「미확인」 값은 쓰이지 않습니다. 조사 대상이 아니었던 항목(원천 자료가 이미 있는 수강료·셔틀 등)도 마찬가지입니다. 합격률과 원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번)은 검증완료로 올려도 글에 나… | `apps/api-nest/src/academy-research-usage.ts`<br>`apps/api-nest/src/academy-research-article-fields.ts`<br>`apps/api-nest/src/academy-link.service.ts#researchValuesFor` |
 | `apps/admin-next/components/DomainClient.tsx:2253` | muted-p | 이 설정은 어느 정도 확인된 값까지 믿을 것인가만 정합니다. 틀린 값은 어느 글유형에서든 똑같이 틀리므로 도메인 단위로 한 번만 정합니다. 어느 글에 실제로 쓰이는지는 글유형이 정합니다 — 조사값은 학원 자료에 얹혀 들어가므로, 글유형의 「학원 타입 필터」가 비어 학원 자료를 쓰지 않는 글유형(면허 제도·시험 가이드 등)… | `apps/api-nest/src/worker.service.ts#resolveAcademyTypes` |
-| `apps/admin-next/components/DomainClient.tsx:2258` | muted-p | 설정을 바꾼 뒤에는 위 「학원자료 연결」을 다시 눌러야 반영됩니다 — 조사값은 연결할 때 학원 자료에 함께 실립니다. | `apps/api-nest/src/academy-link.service.ts#researchValuesFor` |
-| `apps/admin-next/components/DomainClient.tsx:2303` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
-| `apps/admin-next/components/DomainClient.tsx:2328` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료를 가져오는 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계 「학원자료 연결」을 다시 눌러야 반영됩니다. | `셔틀 지역 판정` |
+| `apps/admin-next/components/DomainClient.tsx:2258` | muted-p | 바꾸면 곧바로 이 도메인에 다시 연결해 반영합니다(원천 API 를 호출하지 않아 1초 안에 끝납니다). 조사값 자체를 새로 받으려면 「운전학원 자료」에서 조사를 돌린 뒤 「학원자료 연결」을 누르세요. | `apps/api-nest/src/admin.controller.ts#updateDomain 자동 재연결`<br>`apps/api-nest/src/academy-link.service.ts#linkToDomain` |
+| `apps/admin-next/components/DomainClient.tsx:2304` | muted-p | 읍·면·동 단위 행정구역 목록입니다. 셔틀 안내문·정류장명에서 어느 지역까지 셔틀이 오는지 판별하는 데 씁니다. 도메인과 무관한 공용 자료라 한 번 받으면 모든 도메인에 적용되고, 도메인을 만들 때 자동으로 준비됩니다. 아래 버튼은 행정구역이 개편됐을 때처럼 다시 받아야 할 때만 쓰면 됩니다. | `apps/api-nest/src/admin.controller.ts 도메인 생성` |
+| `apps/admin-next/components/DomainClient.tsx:2329` | muted-p | 갱신해도 지역 축·학원 지역 배정은 바뀌지 않습니다(1·2단계와 별도 표를 씁니다). 셔틀 운행 지역은 학원자료를 가져오는 시점에 계산되므로, 사전을 새로 받은 뒤에는 2단계 「학원자료 연결」을 다시 눌러야 반영됩니다. | `셔틀 지역 판정` |
 | `apps/admin-next/components/DraftsClient.tsx:81` | muted-p | 품질 게이트를 통과하지 못한 글이 생기면 버려지지 않고 여기에 자동으로 보관됩니다. 지금 비어 있는 이유는 보통 둘 중 하나입니다. | `draft 격리 훅` |
 | `apps/admin-next/components/DraftsClient.tsx:86` | jsx-text | 실패한 글은 소급 보관되지 않습니다. 당시에는 본문이 그대로 폐기됐기 때문입니다. | `draft 격리 훅` |
 | `apps/admin-next/components/DraftsClient.tsx:176` | muted-p | 품질 게이트에 걸려 발행되지 못한 글입니다. B(안전·사실) 이슈가 있으면 발행할 수 없고, 본문을 수정해 재검증해야 합니다. A(구조/문체)만 남으면 사유를 확인한 뒤 발행할 수 있습니다. | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
@@ -125,17 +125,17 @@
 | `apps/admin-next/components/SettingsClient.tsx:251` | jsx-text | 서버에 저장되어 즉시 반영됩니다(재시작 불필요). | `apps/api-nest/src/admin.controller.ts settings/verticals` |
 | `apps/admin-next/lib/api.ts:23` | lib-string | 콘텐츠 API에 연결할 수 없습니다<br>_프록시·base URL 설정에 매달린 진단 문구다._ | `apps/admin-next/app/api/admin/[...path]/route.ts`<br>`SEO_API_BASE_URL` |
 | `apps/admin-next/lib/domain-gate.ts:12` | lib-string | 도메인을 만든 뒤 원천 데이터 동기화 → 후보 생성 → 테스트 작성 순서로 진행하세요.<br>_권장 순서를 단정한다 — 후보 생성이 선행 조건이라는 사실에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
-| `apps/api-nest/src/admin.controller.ts:118` | api-error | 등록되지 않은 업종입니다. 작업환경에서 먼저 추가하세요.<br>_업종 레지스트리 검증 결과를 사용자에게 설명한다._ | `apps/api-nest/src/admin.controller.ts 업종 검증`<br>`apps/api-nest/src/db.service.ts getVerticals` |
-| `apps/api-nest/src/admin.controller.ts:285` | api-error | LLM 호출 실패: ${result.error \|\| "빈 응답"} (codex/claude CLI 설치·인증 확인)<br>_LLM 실행 경로가 CLI 서브프로세스라는 사실에 매달린다. 프로바이더 방식이 바뀌면 안내가 거짓이 된다._ | `apps/api-nest/src/worker.service.ts runLlm` |
-| `apps/api-nest/src/admin.controller.ts:287` | api-error | LLM 응답에서 축 값을 추출하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 축 제안` |
-| `apps/api-nest/src/admin.controller.ts:301` | api-error | 검증할 방향성(direction)을 입력하세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
-| `apps/api-nest/src/admin.controller.ts:312` | api-error | LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
-| `apps/api-nest/src/admin.controller.ts:566` | api-error | 안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다. 본문을 수정해 재검증하세요.<br>_DraftsClient 의 같은 규칙 설명 2건과 한 몸이다 — 등급 기준이 바뀌면 세 곳을 같이 고쳐야 한다._ | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
-| `apps/api-nest/src/admin.controller.ts:814` | api-error | 작성할 planned 후보가 없습니다. 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)<br>_후보가 없을 때의 대처(‘재료로 글 후보 만들기’)를 안내하므로 화면 흐름·버튼 이름에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
-| `apps/api-nest/src/admin.controller.ts:990` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
-| `apps/api-nest/src/admin.controller.ts:1001` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
-| `apps/api-nest/src/admin.controller.ts:1003` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
-| `apps/api-nest/src/admin.controller.ts:1005` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:119` | api-error | 등록되지 않은 업종입니다. 작업환경에서 먼저 추가하세요.<br>_업종 레지스트리 검증 결과를 사용자에게 설명한다._ | `apps/api-nest/src/admin.controller.ts 업종 검증`<br>`apps/api-nest/src/db.service.ts getVerticals` |
+| `apps/api-nest/src/admin.controller.ts:296` | api-error | LLM 호출 실패: ${result.error \|\| "빈 응답"} (codex/claude CLI 설치·인증 확인)<br>_LLM 실행 경로가 CLI 서브프로세스라는 사실에 매달린다. 프로바이더 방식이 바뀌면 안내가 거짓이 된다._ | `apps/api-nest/src/worker.service.ts runLlm` |
+| `apps/api-nest/src/admin.controller.ts:298` | api-error | LLM 응답에서 축 값을 추출하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 축 제안` |
+| `apps/api-nest/src/admin.controller.ts:312` | api-error | 검증할 방향성(direction)을 입력하세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
+| `apps/api-nest/src/admin.controller.ts:323` | api-error | LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
+| `apps/api-nest/src/admin.controller.ts:577` | api-error | 안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다. 본문을 수정해 재검증하세요.<br>_DraftsClient 의 같은 규칙 설명 2건과 한 몸이다 — 등급 기준이 바뀌면 세 곳을 같이 고쳐야 한다._ | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
+| `apps/api-nest/src/admin.controller.ts:825` | api-error | 작성할 planned 후보가 없습니다. 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)<br>_후보가 없을 때의 대처(‘재료로 글 후보 만들기’)를 안내하므로 화면 흐름·버튼 이름에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
+| `apps/api-nest/src/admin.controller.ts:1001` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
+| `apps/api-nest/src/admin.controller.ts:1012` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
+| `apps/api-nest/src/admin.controller.ts:1014` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:1016` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 
 ## C — 순수 안내 (168건)
 
@@ -293,9 +293,9 @@
 | `apps/admin-next/components/DomainClient.tsx:2023` | muted-p | 이 도메인과 모든 후보·글 데이터가 함께 삭제됩니다. 되돌릴 수 없습니다. | — |
 | `apps/admin-next/components/DomainClient.tsx:2211` | muted-p | 조사 현황을 불러오지 못했습니다. | — |
 | `apps/admin-next/components/DomainClient.tsx:2221` | muted-p | {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."} {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).t… | — |
-| `apps/admin-next/components/DomainClient.tsx:2309` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
-| `apps/admin-next/components/DomainClient.tsx:2317` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
-| `apps/admin-next/components/DomainClient.tsx:2321` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
+| `apps/admin-next/components/DomainClient.tsx:2310` | muted-p | 시·군·구 {sigungu.toLocaleString()} · 읍·면·동 {submunicipal.toLocaleString()} {status.synced_at ? ` · 최근 ${formatDateTime(status.synced_at)}` : ""} {shuttle && shuttle.with_shuttle > 0 … | — |
+| `apps/admin-next/components/DomainClient.tsx:2318` | muted-p | 사전 상태를 불러오지 못했습니다. 갱신을 눌러 다시 받아보세요. | — |
+| `apps/admin-next/components/DomainClient.tsx:2322` | jsx-text | 만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:67` | muted-p | 검수 대기 목록에서 반려한 글이 여기에 모입니다. 반려해도 본문은 지워지지 않아 나중에 다시 열어볼 수 있습니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:74` | muted-p | 검수 후 발행한 글이 여기에 기록됩니다. 발행된 글 자체는 검수·내보내기 화면에서 확인합니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:85` | jsx-text | 최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다.<br>_빈 상태 해석._ | — |
@@ -313,6 +313,6 @@
 | `apps/admin-next/lib/domain-gate.ts:16` | lib-string | 검수·보내기를 하려면 운영 도메인이 필요합니다<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:17` | lib-string | 도메인을 만든 뒤 생성된 글을 미리보기, export, 색인 요청으로 마무리할 수 있습니다.<br>_빈 화면 안내._ | — |
 | `apps/api-nest/src/academy-research.controller.ts:170` | api-error | 수동 등록한 학원만 삭제할 수 있습니다. | — |
-| `apps/api-nest/src/admin.controller.ts:700` | api-error | 실행 이력을 찾을 수 없습니다.<br>_단순 404 안내._ | — |
+| `apps/api-nest/src/admin.controller.ts:711` | api-error | 실행 이력을 찾을 수 없습니다.<br>_단순 404 안내._ | — |
 
 </details>
