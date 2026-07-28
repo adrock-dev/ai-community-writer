@@ -464,6 +464,13 @@ function fmtDate(iso?: string | null): string {
 }
 
 const FIELD_LABEL = new Map(RESEARCH_FIELD_LABELS.map((f) => [f.key, f.label]));
+const STATUS_LABEL: Record<string, string> = {
+  needs_review: "검토 필요",
+  ai_draft: "AI 초안",
+  verified: "검증완료",
+  web_blocked: "웹조사 차단",
+  unverified: "미확인",
+};
 
 // 검토 대기 — 학원을 가로질러 필드 단위로 모은다.
 // 값을 고치는 곳은 학원 상세다. 여기서는 "검증완료로 올린다"만 한다(승인 도구를 새로 만들지 않는다).
@@ -510,7 +517,8 @@ function ReviewQueue() {
   return (
     <div className="grid" style={{ gap: 10, marginTop: 14 }}>
       <p className="muted small" style={{ margin: 0 }}>
-        도메인 설정이 <b>「검증완료만」</b>이면 여기서 승인한 값만 글에 쓰입니다. 값을 고치려면 학원 상세로 가세요.
+        도메인 설정이 <b>「검증완료만」</b>이면 여기서 승인한 값만 글에 쓰입니다. 값을 고치거나 승인을 되돌리려면 학원 상세로 가세요.
+        상태를 <b>검증완료</b>로 두면 지금 글에 쓰이는 조사값을 그대로 볼 수 있습니다.
       </p>
       <div className="row" style={{ alignItems: "flex-end", gap: 8 }}>
         <label style={{ display: "grid", gap: 4 }}>
@@ -520,6 +528,7 @@ function ReviewQueue() {
             <option value="needs_review">검토 필요만</option>
             <option value="ai_draft">AI 초안만</option>
             <option value="web_blocked">웹조사 차단</option>
+            <option value="verified">검증완료(승인된 값)</option>
           </select>
         </label>
         <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 160 }}>
@@ -551,13 +560,18 @@ function ReviewQueue() {
                       {r.status === "needs_review" ? "⚠️ " : ""}{r.note}
                     </p> : null}
                   </td>
-                  <td><span className={`badge${r.status === "needs_review" ? " warn" : ""}`}>{r.status === "needs_review" ? "검토 필요" : r.status === "ai_draft" ? "AI 초안" : r.status}</span></td>
+                  <td><span className={`badge${r.status === "needs_review" ? " warn" : r.status === "verified" ? " success" : ""}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
                   <td>{r.source_url ? <a href={r.source_url} target="_blank" rel="noreferrer" className="badge">링크</a> : <span className="muted">-</span>}</td>
                   <td>
-                    {/* 빈 값을 검증완료로 올리면 "사람이 확인한 값" 이 비어 있게 된다. 값이 있을 때만 승인한다. */}
-                    <button className="btn" onClick={() => void approve(r)} disabled={busyKey === key || !r.value} title={r.value ? "이 값을 글에 쓸 수 있게 승인합니다" : "값이 비어 있어 승인할 수 없습니다"}>
-                      {busyKey === key ? "처리 중…" : "검증완료"}
-                    </button>
+                    {/* 승인 해제는 학원 상세에서 한다. 목록에서 되돌리기까지 두면 실수로 누르기 쉽다. */}
+                    {r.status === "verified"
+                      ? <span className="muted small">승인됨</span>
+                      : (
+                        // 빈 값을 검증완료로 올리면 "사람이 확인한 값" 이 비어 있게 된다. 값이 있을 때만 승인한다.
+                        <button className="btn" onClick={() => void approve(r)} disabled={busyKey === key || !r.value} title={r.value ? "이 값을 글에 쓸 수 있게 승인합니다" : "값이 비어 있어 승인할 수 없습니다"}>
+                          {busyKey === key ? "처리 중…" : "검증완료"}
+                        </button>
+                      )}
                   </td>
                 </tr>
               );
