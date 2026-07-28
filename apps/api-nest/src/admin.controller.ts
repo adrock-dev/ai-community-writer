@@ -771,11 +771,13 @@ export class AdminController {
     return { count: items.length, items };
   }
 
-  /** 제외 해제. 목록에서 빠질 뿐 학원이 곧바로 돌아오지는 않는다 — 「학원자료 연결」을 다시 눌러야 한다. */
+  /** 제외 해제 — 그 자리에서 학원을 다시 연결한다(해제만 하고 안 돌아오면 고장으로 보인다). */
   @Delete("domains/:domain/academy-exclusions/:externalId")
   unexcludeAcademy(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("externalId") externalId: string) {
     checkAuth(req, headers); this.requireDomain(domain);
-    return { ok: true, removed: this.db.unexcludeAcademy(domain, externalId) };
+    const removed = this.db.unexcludeAcademy(domain, externalId);
+    const relink = this.academyLink.linkOneToDomain(domain, externalId);
+    return { ok: true, removed, relinked: relink.linked, reason: relink.reason };
   }
 
   // 학원 자료 일괄 삭제. region 쿼리가 있으면 그 지역만, 없으면 도메인 전체.

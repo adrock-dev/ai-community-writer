@@ -69,8 +69,14 @@ it("제외한 학원은 다시 연결해도 돌아오지 않는다", () => {
   // 조사 DB 원본은 남아 있어야 한다 — 제외는 도메인별 결정이다
   expect(rdb.getBase("src-2")).toBeTruthy();
 
-  // 해제하면 다음 연결에 돌아온다
+  // 해제는 그 자리에서 되돌린다 — 「학원자료 연결」을 다시 누르지 않아도 된다
   expect(db.unexcludeAcademy("manual.test", "src-2")).toBe(1);
-  link.linkToDomain("manual.test");
+  expect(link.linkOneToDomain("manual.test", "src-2")).toEqual({ linked: true });
   expect(db.listAcademies("manual.test", { limit: 10 }).some((r: any) => r.name === "뺄학원")).toBe(true);
+
+  // 제외 목록에 남아 있으면 1곳 연결도 거부한다(뒷문이 되면 안 된다)
+  const again = db.listAcademies("manual.test", { limit: 10 }).find((r: any) => r.name === "뺄학원");
+  db.excludeAcademy("manual.test", again.id);
+  expect(link.linkOneToDomain("manual.test", "src-2").linked).toBe(false);
+  db.unexcludeAcademy("manual.test", "src-2");
 });

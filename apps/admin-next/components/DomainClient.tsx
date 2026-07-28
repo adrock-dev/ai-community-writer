@@ -1435,14 +1435,15 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
    * 그래서 서버가 제외 목록에 기록하고, 연결이 그 목록을 건너뛴다. 자료 원본은 그대로 남는다.
    */
   async function exclude(id: string, name: string) {
-    if (!confirm(`「${name}」을(를) 이 도메인에서 뺄까요?\n다시 연결해도 돌아오지 않습니다. 아래 「제외한 학원」에서 언제든 되돌릴 수 있고, 자료 원본은 「운전학원 자료」에 그대로 남습니다.`)) return;
+    if (!confirm(`「${name}」을(를) 이 도메인에서 뺄까요?\n다시 연결해도 돌아오지 않습니다. 아래 「제외한 학원」에서 해제하면 곧바로 되돌아오고, 자료 원본은 「운전학원 자료」에 그대로 남습니다.`)) return;
     await api(`/domains/${encodeURIComponent(domain.domain)}/academies/${id}`, { method: "DELETE" });
     await onRefresh(); await loadAcademies(); await loadExclusions();
   }
   async function restore(externalId: string, name: string) {
-    if (!confirm(`「${name}」의 제외를 해제할까요?\n목록에서 빠질 뿐 학원이 바로 돌아오지는 않습니다 — 위 「학원자료 연결」을 다시 눌러야 들어옵니다.`)) return;
-    await unexcludeAcademy(domain.domain, externalId);
-    await loadExclusions();
+    if (!confirm(`「${name}」의 제외를 해제할까요?\n곧바로 이 도메인에 다시 연결됩니다.`)) return;
+    const res = await unexcludeAcademy(domain.domain, externalId);
+    setAcademyMsg(res.relinked ? `「${name}」을(를) 다시 연결했습니다.` : `제외는 해제했지만 연결하지 못했습니다 — ${res.reason ?? "원인 미상"}`);
+    await loadExclusions(); await onRefresh(); await loadAcademies();
   }
   // 연결 끊기 — 이 도메인의 학원 자료를 비운다. 「운전학원 자료」의 원본·조사값은 그대로 남고,
   // 「학원자료 연결」을 다시 누르면 복구된다. 그래서 되돌릴 수 없는 삭제가 아니다.
@@ -1677,7 +1678,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           })}</tbody></table></div>
         : <p className="muted small">{loading ? "불러오는 중..." : "연결된 학원이 없습니다. 위 「학원자료 연결」로 가져오거나 검색 조건을 바꿔보세요."}</p>}
       {exclusions.length > 0 && <details className="card card-pad grid compact-pad" style={{ background: "#fffbeb" }}>
-        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>제외한 학원</h3><p className="muted small">이 도메인에서만 빼 둔 학원입니다. 「학원자료 연결」이 이 목록을 건너뜁니다. 자료 원본과 조사값은 「운전학원 자료」에 그대로 남아 다른 도메인에는 영향이 없습니다.</p></div><span className="badge info">{exclusions.length}곳</span></div></summary>
+        <summary className="template-subsection-summary"><div className="template-subsection-head"><div><h3 style={{ margin: 0 }}>제외한 학원</h3><p className="muted small">이 도메인에서만 빼 둔 학원입니다. 「학원자료 연결」이 이 목록을 건너뜁니다. 해제하면 그 자리에서 다시 연결됩니다. 자료 원본과 조사값은 「운전학원 자료」에 그대로 남아 다른 도메인에는 영향이 없습니다.</p></div><span className="badge info">{exclusions.length}곳</span></div></summary>
         <div className="table-wrap" style={{ maxHeight: 240, overflow: "auto" }}><table><thead><tr><th>학원명</th><th>제외 시각</th><th></th></tr></thead><tbody>{exclusions.map((x) => (
           <tr key={x.external_id}><td><b>{x.name || x.external_id}</b><p className="muted small">#{x.external_id}</p></td><td className="muted small">{x.created_at ? formatDateTime(x.created_at) : "-"}</td><td><button className="btn" onClick={() => restore(x.external_id, x.name || x.external_id)}>제외 해제</button></td></tr>
         ))}</tbody></table></div>
