@@ -341,6 +341,8 @@ export interface AdminOptions {
   enforced_principles?: { absolute: string; academy: string };
   // 전역 빌트인 노출 허용 id 목록(검증용 임시). null/undefined = 전체 노출.
   exposed_builtin_template_ids?: string[] | null;
+  /** 폐기된 빌트인 글유형. 서버가 노출 저장에서 걸러내므로 화면은 취소선·비활성 표시만 한다. */
+  deprecated_builtin_template_ids?: string[] | null;
 }
 
 export interface RuntimeApis {

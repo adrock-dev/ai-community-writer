@@ -9,7 +9,7 @@ import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyLinkService } from "./academy-link.service.js";
 import { parseResearchUsage } from "./academy-research-usage.js";
 import { isAheadOfLink } from "./link-freshness.js";
-import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
+import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEPRECATED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
@@ -99,7 +99,9 @@ export class AdminController {
       // 상수를 그대로 내려 안내멘트가 값에서 렌더되게 한다(docs/ui-copy-inventory.md A급).
       candidate_rules: { nearby_km: ACADEMY_NEARBY_MAX_KM, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, used_per_post: ACADEMY_USED_PER_POST },
       // 전역 빌트인 노출 허용 목록(검증용 임시). null = 전체 노출. 카탈로그/커스텀 시작점/아키타입 목록에서 필터.
-      exposed_builtin_template_ids: this.exposedBuiltinIds()
+      exposed_builtin_template_ids: this.exposedBuiltinIds(),
+      // 폐기된 빌트인(다시 켤 수 없음). 화면은 이 목록으로 취소선·비활성 표시만 한다 — 판정은 서버가 한다.
+      deprecated_builtin_template_ids: [...DEPRECATED_BUILTIN_TEMPLATE_IDS]
     };
   }
 
@@ -998,12 +1000,15 @@ export class AdminController {
     checkAuth(req, headers);
     const exposed = body.exposed;
     if (exposed === null || exposed === undefined) {
-      this.db.setSetting("exposed_builtin_template_ids", null); // 설정 삭제 → 기본값(T01)으로 복귀
+      this.db.setSetting("exposed_builtin_template_ids", null); // 설정 삭제 → 기본값으로 복귀
     } else {
       if (!Array.isArray(exposed)) throw new HttpException("exposed must be an array or null", 400);
       const valid = new Set(Object.keys(TEMPLATE_SPECS));
-      const ids = [...new Set(exposed.map((x: unknown) => String(x)).filter((x: string) => valid.has(x)))];
-      // 명시 목록을 그대로 저장(전부 노출도 명시 저장). 저장 안 하면 기본값 T01 만 노출된다.
+      const deprecated = new Set(DEPRECATED_BUILTIN_TEMPLATE_IDS);
+      // 폐기된 유형은 요청에 담겨 와도 저장하지 않는다. 화면의 「전체 노출」 버튼과 API 직접 호출이
+      // 같은 경로를 타므로, 여기서 걸러야 되살아나지 않는다(UI 비활성만으로는 못 막는다).
+      const ids = [...new Set(exposed.map((x: unknown) => String(x)).filter((x: string) => valid.has(x) && !deprecated.has(x)))];
+      // 명시 목록을 그대로 저장(전부 노출도 명시 저장). 저장 안 하면 기본값만 노출된다.
       this.db.setSetting("exposed_builtin_template_ids", JSON.stringify(ids));
     }
     return { ok: true, exposed_builtin_template_ids: this.exposedBuiltinIds() };

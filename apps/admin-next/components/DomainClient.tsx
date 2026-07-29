@@ -673,7 +673,7 @@ function EnforcedPrinciples({ principles }: { principles?: { absolute: string; a
         {lines(principles.academy).map((line, i) => <li key={i} style={{ marginBottom: 4 }}>{line}</li>)}
       </ul>
       <p className="muted small" style={{ margin: "10px 0 0" }}>
-        글유형에 따라 일부 규칙은 그 유형의 지침이 대신합니다(예: T01 계열은 학원 원칙을 자체 지침으로 덮어씁니다).
+        글유형에 따라 일부 규칙은 그 유형의 지침이 대신할 수 있습니다.
       </p>
     </details>
   );
@@ -2092,15 +2092,19 @@ function Posts({ domain, posts, onRefresh }: { domain: DomainConfig; posts: Post
 // 전역 빌트인 노출 편집(검증용 임시). 체크한 빌트인만 카탈로그/시작점/아키타입 목록에 노출. 모든 도메인 공통.
 function BuiltinVisibilityCard({ options, onRefresh }: { options: AdminOptions; onRefresh: () => Promise<void> }) {
   const allIds = useMemo(() => Object.keys(options.template_specs), [options.template_specs]);
-  const [visible, setVisible] = useState<Set<string>>(() => new Set(options.exposed_builtin_template_ids ?? allIds));
+  // 폐기된 유형은 체크할 수 없고 「전체 노출」에서도 빠진다. 서버가 저장에서 걸러내므로 여기 표시는
+  // 그 규칙을 보여주는 것일 뿐이다(화면만 막으면 API 직접 호출·기본값 복귀로 되살아난다).
+  const deprecated = useMemo(() => new Set(options.deprecated_builtin_template_ids ?? []), [options.deprecated_builtin_template_ids]);
+  const selectableIds = useMemo(() => allIds.filter((id) => !deprecated.has(id)), [allIds, deprecated]);
+  const [visible, setVisible] = useState<Set<string>>(() => new Set(options.exposed_builtin_template_ids ?? selectableIds));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  useEffect(() => { setVisible(new Set(options.exposed_builtin_template_ids ?? allIds)); }, [options.exposed_builtin_template_ids, allIds]);
+  useEffect(() => { setVisible(new Set(options.exposed_builtin_template_ids ?? selectableIds)); }, [options.exposed_builtin_template_ids, selectableIds]);
   const toggle = (id: string) => setVisible((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   async function save() {
     setBusy(true); setErr("");
     try {
-      const ids = allIds.filter((id) => visible.has(id));
+      const ids = selectableIds.filter((id) => visible.has(id));
       // 명시 목록을 그대로 저장(전부 체크도 명시 저장). 저장 안 하면 기본값 T01 만 노출.
       await setBuiltinVisibility(ids);
       await onRefresh();
@@ -2108,12 +2112,14 @@ function BuiltinVisibilityCard({ options, onRefresh }: { options: AdminOptions; 
     finally { setBusy(false); }
   }
   return <div className="card card-pad grid">
-    <div className="spread"><div><h2>빌트인 글유형 노출 <span className="badge info">전역 · 임시</span></h2><p className="muted small">체크한 빌트인만 「글유형/디자인」 탭의 <b>빌트인 추가</b> 카탈로그·커스텀 <b>시작점</b>·<b>참조 아키타입</b> 목록에 노출됩니다. <b>모든 도메인 공통</b>이며, 이미 켜 둔 유형의 생성에는 영향이 없습니다(노출만 제어). 유형 검증이 끝나면 제거할 임시 기능입니다.</p></div><span className="badge info">{visible.size}/{allIds.length}</span></div>
+    <div className="spread"><div><h2>빌트인 글유형 노출 <span className="badge info">전역 · 임시</span></h2><p className="muted small">체크한 빌트인만 「글유형/디자인」 탭의 <b>빌트인 추가</b> 카탈로그·커스텀 <b>시작점</b>·<b>참조 아키타입</b> 목록에 노출됩니다. <b>모든 도메인 공통</b>이며, 이미 켜 둔 유형의 생성에는 영향이 없습니다(노출만 제어). 유형 검증이 끝나면 제거할 임시 기능입니다. <b>사용 중단</b>으로 표시된 유형은 켤 수 없습니다(요청이 와도 서버가 걸러냅니다).</p></div><span className="badge info">{visible.size}/{selectableIds.length}</span></div>
     <div className="grid grid-2" style={{ gap: 6 }}>
-      {allIds.map((id) => <label key={id} className="row small" style={{ gap: 8, cursor: "pointer" }}><input type="checkbox" checked={visible.has(id)} onChange={() => toggle(id)} /><span className="badge">{id}</span> <span>{options.template_specs[id]?.name}</span></label>)}
+      {allIds.map((id) => deprecated.has(id)
+        ? <label key={id} className="row small muted" style={{ gap: 8, cursor: "not-allowed" }} title="더 이상 쓰지 않는 글유형이라 켤 수 없습니다."><input type="checkbox" checked={false} disabled readOnly /><span className="badge" style={{ textDecoration: "line-through" }}>{id}</span> <span style={{ textDecoration: "line-through" }}>{options.template_specs[id]?.name}</span> <span className="badge warn">사용 중단</span></label>
+        : <label key={id} className="row small" style={{ gap: 8, cursor: "pointer" }}><input type="checkbox" checked={visible.has(id)} onChange={() => toggle(id)} /><span className="badge">{id}</span> <span>{options.template_specs[id]?.name}</span></label>)}
     </div>
     {err && <p className="toast-warn small">{err}</p>}
-    <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "노출 저장"}</button><button className="btn" disabled={busy} onClick={() => setVisible(new Set(allIds))}>전체 노출</button></div>
+    <div className="row"><button className="btn primary" disabled={busy} onClick={save}>{busy ? "저장 중..." : "노출 저장"}</button><button className="btn" disabled={busy} onClick={() => setVisible(new Set(selectableIds))}>전체 노출</button></div>
   </div>;
 }
 

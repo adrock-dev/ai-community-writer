@@ -107,7 +107,7 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "T01 계열은 학원 원칙을 자체 지침으로 덮어씁니다",
+      "match": "글유형에 따라 일부 규칙은 그 유형의 지침이 대신할 수 있습니다",
       "class": "B",
       "depends": [
         "apps/api-nest/src/constants.ts 아키타입 writing_guide"

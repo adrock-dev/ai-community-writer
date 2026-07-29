@@ -90,9 +90,20 @@ export const DRIVING_ORIGINAL_TEMPLATE_IDS = [
 // 새 도메인은 글유형이 아무것도 켜지지 않은 빈 상태로 시작한다(운영자가 「글유형/디자인」 탭에서 직접 켠다).
 export const DEFAULT_DRIVING_TEMPLATE_IDS: readonly string[] = [];
 
+/**
+ * 더 이상 쓰지 않는 빌트인 글유형. 노출 목록에 넣어도 서버가 걸러내므로 다시 켤 수 없다.
+ *
+ * T01(지역 학원 BEST 비교)은 학원 소개·안내 글의 정본이 T16(local_axis)으로 넘어가면서 폐기됐다.
+ * 코드는 남겨 둔다 — 과거 발행 글·슬롯이 참조할 수 있고, 지우면 그 이력이 끊긴다.
+ *
+ * **UI 에서만 막으면 세 경로로 되살아난다**: 「전체 노출」 버튼, 노출 설정 삭제 시의 기본값 복귀,
+ * API 직접 호출. 그래서 판정을 서버에 두고 화면은 이 목록을 읽어 취소선으로만 표시한다.
+ */
+export const DEPRECATED_BUILTIN_TEMPLATE_IDS: readonly string[] = ["T01"];
+
 // 전역 빌트인 노출 기본값(검증용 임시): 노출 설정이 없을 때 카탈로그/시작점/아키타입에 보일 빌트인.
-// 검증된 T01 만 기본 노출하고, 나머지는 「설정」 탭에서 검증 후 하나씩 연다.
-export const DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS: readonly string[] = ["T01", "T16"];
+// 학원 소개 글의 정본인 T16 만 기본 노출하고, 나머지는 「설정」 탭에서 검증 후 하나씩 연다.
+export const DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS: readonly string[] = ["T16"];
 
 // 학원 인근 보강 최대 반경(km). 직접(지역 문자열) 매칭이 부족할 때 이 반경 내 학원만 '인근 후보'로 채운다.
 // 생성(worker.pickAcademiesForRegion)과 정합성 미리보기(slot.analyzeCoherence/academyCoverage)가 공유한다.
