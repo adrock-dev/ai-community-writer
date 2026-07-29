@@ -122,7 +122,15 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
         </Link>
 
         <nav className="side-nav" aria-label="관리 메뉴">
-          <p>콘텐츠 운영</p>
+          {/*
+            대시보드는 어느 그룹에도 넣지 않는다. 아래 그룹은 소유 단위로 나뉘는데(콘텐츠=운영 대상,
+            작업=워커, 자료=업종) 대시보드는 그 전부를 가로질러 본다. 특히 「콘텐츠 운영」 안에 두면
+            바로 위 「운영 대상」이 적용되는 것처럼 읽히지만 실제로는 모든 도메인을 나열한다 —
+            작업 큐가 같은 이유로 오해를 샀다. 밖으로 빼면 「콘텐츠 운영」은 선택기와 그 아래 세
+            메뉴만 남아 그룹 이름이 문자 그대로 참이 되고, 설명 문장을 붙일 필요가 없어진다.
+          */}
+          <SidebarLink href="/" active={pathname === "/"} tabIndex={sidebarOpen ? 0 : -1}>대시보드</SidebarLink>
+          <p style={{ marginTop: 12 }}>콘텐츠 운영</p>
           <div className="side-domain in-nav">
             <p><span aria-hidden style={{ color: domains.length ? activeDomainColor : "#cbd5e1" }}>●</span> 운영 대상</p>
             <select
@@ -138,7 +146,6 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
                 : domains.map((d) => <option key={d.domain} value={d.domain}>{d.display_name || d.domain}</option>)}
             </select>
           </div>
-          <SidebarLink href="/" active={pathname === "/"} tabIndex={sidebarOpen ? 0 : -1}>대시보드</SidebarLink>
           <SidebarLink href={manageHref} active={onDomainOverview || (onNeedDomainPage && menuFrom === "manage")} tabIndex={sidebarOpen ? 0 : -1}>도메인 관리</SidebarLink>
           <SidebarLink href={generationHref} active={onGenerate || (onNeedDomainPage && menuFrom === "generate")} tabIndex={sidebarOpen ? 0 : -1}>글 생성</SidebarLink>
           <SidebarLink href={reviewHref} active={onReview || (onNeedDomainPage && menuFrom === "review")} tabIndex={sidebarOpen ? 0 : -1}>검수·보내기</SidebarLink>
