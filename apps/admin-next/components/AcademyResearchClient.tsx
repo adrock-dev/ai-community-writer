@@ -203,6 +203,10 @@ export default function AcademyResearchClient() {
   // 끝난 동기화 중 가장 최근 것 — 진행 중이 아닐 때도 "언제 받아온 자료인지" 알 수 있어야 한다.
   const lastSyncRun = runs.find((r) => r.scope === "sync" && r.status !== "running");
   const lastBlogRun = runs.find((r) => r.scope === "sync_blog" && r.status !== "running");
+  // 끝난 조사 중 가장 최근 것. 동기화에는 「최근 동기화」가 있는데 조사에는 없어서,
+  // 터미널(research:once)로 돌리거나 창을 닫았다 오면 **어떻게 끝났는지 볼 데가 없었다**.
+  // 완료 통보(watchedRunRef)는 그 브라우저에서 시작한 실행에만 붙는다.
+  const lastResearchRun = runs.find((r) => r.scope !== "sync" && r.scope !== "sync_blog" && r.status !== "running");
   // 두 동기화는 같은 원천을 두드려 서버가 동시 실행을 막는다. 버튼도 같이 잠근다.
   const syncBusy = Boolean(activeSyncRun || activeBlogRun);
   // 이미 받아 둔 블로그리뷰가 있는지만 본다(수집은 중단했고, 뒤처짐 비교는 의미가 없어졌다).
@@ -318,6 +322,7 @@ export default function AcademyResearchClient() {
             기본은 미시도·실패 학원만 대상입니다. <b>실패·근거 없음만</b>을 고르면 이미 시도했지만 결과가 없던 학원만 다시 조사합니다.
             {researchTarget === "all" && researchLimit > 0 ? ` 현재 다음 배치 시작 위치: ${researchOffset}번째.` : ""}
           </div>
+          <div className="muted small" style={{ paddingLeft: 96 }}>{lastResearchLabel(lastResearchRun, Boolean(activeResearchRun))}</div>
         </div>
       </div>
 
@@ -524,6 +529,21 @@ function ResearchAttemptStatus({ academy }: { academy: AcademyBaseRow }) {
   return <span className="muted">미시도</span>;
 }
 // 마지막 동기화 시각 + 결과. 중단된 실행은 "일부만 갱신됨"이 드러나야 한다.
+/**
+ * 마지막 조사가 어떻게 끝났는지. 진행 카드는 도는 동안에만 뜨므로, 끝나고 나면 결과를 볼 데가
+ * 없었다 — 터미널로 돌리면 완료 통보도 안 붙는다(그 브라우저가 시작한 실행이 아니라서).
+ */
+function lastResearchLabel(run: ResearchRun | undefined, running: boolean): string {
+  if (running) return "진행 중";
+  if (!run) return "조사 실행 기록이 없습니다.";
+  const when = formatDateTime(run.finished_at || run.started_at);
+  const scope = run.scope === "single" ? `단건(#${run.external_id ?? "?"})` : "전체";
+  const partial = `${run.count_done}/${run.count_total || "?"}곳`;
+  if (run.status === "cancelled") return `마지막 조사 ${when} · ${scope} 중단됨 — ${partial}까지 저장 (${runSummary(run)})`;
+  if (run.status !== "done") return `마지막 조사 ${when} · ${scope} 실패 — ${run.error || "원인 미상"} (${partial}까지 저장)`;
+  return `마지막 조사 ${when} · ${scope} 완료 — ${runSummary(run)}`;
+}
+
 function lastSyncLabel(run: ResearchRun | undefined, running: boolean): string {
   if (running) return "진행 중";
   if (!run) return "동기화 기록 없음";
