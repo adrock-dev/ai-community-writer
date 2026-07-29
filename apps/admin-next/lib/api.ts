@@ -213,6 +213,17 @@ export const listSyncRuns = (domain: string, limit = 20) =>
   api<{ items: SyncRun[] }>(`/domains/${encodeURIComponent(domain)}/sync/runs?limit=${limit}`);
 export const cancelSyncRun = (domain: string, runId: string) =>
   api<{ ok: boolean }>(`/domains/${encodeURIComponent(domain)}/sync/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
+// 원천 표를 학원 행보다 나중에 받았는지. 학원의 지역 배정·셔틀 운행 지역은 「학원자료 연결」
+// 시점에 계산되므로, 사전·지역 목록만 새로 받으면 학원 행이 옛 값으로 남는다.
+export type SourceFreshness = {
+  academies_synced_at: string | null;
+  region_directory_synced_at: string | null;
+  seo_regions_synced_at: string | null;
+  region_directory_ahead: boolean;
+  seo_regions_ahead: boolean;
+};
+export const getSourceFreshness = (domain: string) =>
+  api<SourceFreshness>(`/domains/${encodeURIComponent(domain)}/source-freshness`);
 // 전역 행정구역 사전(region_directory). 도메인별이 아니라 모든 도메인이 같은 표를 본다.
 // domain 을 넘기면 그 도메인에서 사전이 실제로 얼마나 쓰이는지(셔틀 운행 지역 매칭) 함께 받는다.
 export type RegionDirectoryStatus = {

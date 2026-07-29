@@ -1257,6 +1257,39 @@ export class DbService implements OnModuleInit {
     );
     return { with_shuttle: Number(row?.n ?? 0), with_region: Number(row?.r ?? 0) };
   }
+  /**
+   * 원천 표들과 학원 행의 최신 시각.
+   *
+   * 학원의 지역 배정(bestRegionForAddress)과 셔틀 운행 지역(formatShuttleFact)은 둘 다
+   * upsertDrivingplusAcademies 안, 즉 「학원자료 연결」 시점에 계산해 academies 에 굽는다.
+   * 그래서 사전이나 지역 목록만 새로 받으면 학원 행은 옛 값 그대로 남는다. 화면이 그 어긋남을
+   * 알릴 수 있도록 시각을 준다.
+   *
+   * 알 수 있는 것은 "다시 받았다" 까지다. upsert 가 값이 같아도 synced_at 을 올리므로
+   * "내용이 바뀌었다" 는 판정할 수 없다 — 안내 문구도 거기에 맞춰야 한다.
+   */
+  sourceFreshness(domain: string): {
+    academies_synced_at: string | null;
+    region_directory_synced_at: string | null;
+    seo_regions_synced_at: string | null;
+    region_directory_ahead: boolean;
+    seo_regions_ahead: boolean;
+  } {
+    const maxSyncedAt = (sql: string, args: unknown[] = []): string | null => (this.get(sql, args)?.s as string) ?? null;
+    const academies = maxSyncedAt("SELECT MAX(synced_at) s FROM academies WHERE domain=?", [domain]);
+    const directory = maxSyncedAt("SELECT MAX(synced_at) s FROM region_directory");
+    const regions = maxSyncedAt("SELECT MAX(synced_at) s FROM seo_regions WHERE domain=?", [domain]);
+    // 아직 학원을 연결하지 않았으면 어긋남이 아니다(연결 0건 안내가 따로 있다).
+    // 두 시각 모두 nowSql() 형식이라 문자열 비교로 순서가 맞는다.
+    const ahead = (source: string | null): boolean => Boolean(academies && source && source > academies);
+    return {
+      academies_synced_at: academies,
+      region_directory_synced_at: directory,
+      seo_regions_synced_at: regions,
+      region_directory_ahead: ahead(directory),
+      seo_regions_ahead: ahead(regions),
+    };
+  }
   regionDirectoryStatus(): { total: number; by_level: Record<string, number>; synced_at: string | null } {
     const total = Number(this.get("SELECT COUNT(*) n FROM region_directory")?.n ?? 0);
     const by_level: Record<string, number> = {};

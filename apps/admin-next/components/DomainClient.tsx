@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getSourceFreshness, type SourceFreshness, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
@@ -1391,6 +1391,18 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       .catch(() => { if (!cancelled) setRuntimeApis(null); });
     return () => { cancelled = true; };
   }, []);
+  /*
+    학원의 지역 배정과 셔틀 운행 지역은 「학원자료 연결」 시점에 계산돼 academies 에 박힌다.
+    그래서 지역 목록·지역 사전만 새로 받으면 학원 자료는 옛 값 그대로인데, 화면에 아무 표시가
+    없으면 운영자는 반영된 줄 안다. 늘 "다시 누르세요" 를 띄우면 읽지 않으므로, 실제로 어긋난
+    동안에만 세운다(서버가 synced_at 을 비교해 판정한다).
+  */
+  const [freshness, setFreshness] = useState<SourceFreshness | null>(null);
+  const loadFreshness = useCallback(async () => {
+    try { setFreshness(await getSourceFreshness(domain.domain)); }
+    catch { /* 조회 실패는 화면을 막지 않는다 — 경고만 안 뜬다 */ }
+  }, [domain.domain]);
+  useEffect(() => { void loadFreshness(); }, [loadFreshness]);
   // 제외한 학원 목록. 연결이 이 목록을 건너뛰므로, 보이지 않는 규칙이 되지 않게 화면에도 드러낸다.
   const loadExclusions = useCallback(async () => {
     try { setExclusions((await listAcademyExclusions(domain.domain)).items); }
@@ -1476,7 +1488,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       setAcademyMsg(`학원 ${res.linked}곳 연결${removed}${excluded} · 후기 ${res.reviews}건 · 블로그 ${res.blog_reviews}건 · ${research}`);
       // 경고는 건수만 세면 아무도 안 읽는다. 대량 이탈 보류 같은 건 내용을 봐야 한다.
       setSyncWarning(res.warnings[0] ?? "");
-      await onRefresh(); await loadAcademies(); await loadExclusions();
+      await onRefresh(); await loadAcademies(); await loadExclusions(); await loadFreshness();
     } catch (e) {
       setAcademyMsg(e instanceof Error ? e.message : String(e));
     } finally { setSyncBusy(""); }
@@ -1553,6 +1565,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       setRegionMsg(`지역 ${res.fetched}개 조회 · ${res.upserted}개 반영${res.axis_replaced ? " · region 축 교체" : ""}`);
       setLastSync(recordSync(domain.domain, "regions", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개${res.axis_replaced ? " · region 축 교체" : ""}` }));
       await onRefresh();
+      // 방금 받은 지역 목록은 학원 행보다 최신이 됐다 — 아래 재연결 안내를 즉시 세운다.
+      await loadFreshness();
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
@@ -1604,8 +1618,15 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         {runtimeApis && <span className="muted small">{runtimeApis.sync_defaults.review_source_note}</span>}
       </div>
     </div>
-    {/* 묶음 1.5 — 전역 지역 사전. 1·2단계와 달리 도메인별이 아니라 전역 공용이라 번호를 붙이지 않는다. */}
-    <RegionDirectoryCard domain={domain.domain} />
+    {/*
+      묶음 1.5 — 전역 지역 사전. 1·2단계와 달리 도메인별이 아니라 전역 공용이라 번호를 붙이지 않는다.
+
+      제자리는 자료관리다(전역 자료이고 조사값과 같은 이유). 그런데 옮기면 아래 2단계 버튼을
+      가리키는 안내가 화면 밖을 가리키게 되고, 사전이 실제로 먹히는지 보여주는 셔틀 커버리지도
+      도메인 지표라 따라갈 수 없다. 도메인이 1개인 동안은 "전역인데 도메인 화면에 있다" 는 혼동이
+      비용보다 작아 여기 둔다. 두 번째 도메인이 트리거다(조사 자료의 업종 스코프 전환과 동일).
+    */}
+    <RegionDirectoryCard domain={domain.domain} stale={freshness?.region_directory_ahead ?? false} freshness={freshness} onSynced={loadFreshness} />
     {/* 묶음 2 — 지역자료 동기화 */}
     <div className="card card-pad grid">
       <div className="spread"><h3 style={{ margin: 0 }}>1단계 · 지역자료 동기화</h3><span className="badge">지역 데이터 · region 축</span></div>
@@ -1616,6 +1637,21 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       </div>
       <div className="row" style={{ gap: 8 }}><button className="btn primary" onClick={syncRegions} disabled={Boolean(syncBusy)}>{syncBusy === "regions" ? "지역 동기화 중..." : "지역 동기화"}</button><button className="btn" type="button" onClick={resetRegions} disabled={Boolean(syncBusy)} title="지역 축을 운전 프리셋 기본값으로 되돌립니다(테스트용 baseline)">기본값으로 초기화</button></div>
       {regionMsg && <p className="small badge success" style={{ width: "fit-content" }}>{regionMsg}</p>}
+      {/*
+        지역 목록은 학원 주소를 어느 지역으로 배정할지 정하는 기준표다(db.bestRegionForAddress).
+        그 배정은 「학원자료 연결」 때 계산돼 academies 에 박히므로, 목록만 새로 받으면 이미 연결된
+        학원은 옛 지역에 남는다. 서버가 synced_at 을 비교해 어긋난 동안에만 이 안내를 세운다.
+        "바뀌었다" 가 아니라 "받은 뒤 연결하지 않았다" 로 적는다 — 값이 같아도 synced_at 은 오른다.
+      */}
+      {freshness?.seo_regions_ahead && (
+        <p className="uploaded-notice" style={{ padding: "8px 12px", margin: 0 }}>
+          ⚠️ 지역 목록을 받은 뒤 <b>「학원자료 연결」을 실행하지 않았습니다</b>
+          {freshness.seo_regions_synced_at ? ` (지역 ${formatDateTime(freshness.seo_regions_synced_at)}` : ""}
+          {freshness.seo_regions_synced_at && freshness.academies_synced_at ? ` · 학원 자료 ${formatDateTime(freshness.academies_synced_at)})` : freshness.seo_regions_synced_at ? ")" : ""}.
+          학원의 지역 배정은 연결 시점에 계산되므로, 아래 <b>2단계 「학원자료 연결」</b>을 눌러야 새 지역 목록이 반영됩니다.
+          내용이 실제로 달라졌는지까지는 알 수 없어, 다시 받은 뒤 연결하지 않은 상태면 표시됩니다.
+        </p>
+      )}
       {/* 지역은 화면에 DB 기준 개수가 없어 브라우저 기록만 남긴다. 학원 쪽처럼 DB 와 대조할 수 없으므로
           '이 브라우저 기록'임을 문구로 밝혀, 실패한 시도를 서버 상태로 오해하지 않게 한다. */}
       <p className="muted small">최근 지역 동기화(이 브라우저 기록): {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
@@ -2306,7 +2342,7 @@ function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy }: 
   );
 }
 
-function RegionDirectoryCard({ domain }: { domain: string }) {
+function RegionDirectoryCard({ domain, stale, freshness, onSynced }: { domain: string; stale: boolean; freshness: SourceFreshness | null; onSynced: () => Promise<void> }) {
   const [status, setStatus] = useState<RegionDirectoryStatus | null>(null);
   // 아직 못 읽은 것과 못 읽힌 것은 다르다. 하나로 뭉치면 첫 렌더에서 실패하지도 않았는데
   // "불러오지 못했습니다" 라고 단정한다(심층조사 현황 카드와 같은 기준).
@@ -2328,6 +2364,8 @@ function RegionDirectoryCard({ domain }: { domain: string }) {
       const next = await syncRegionDirectory(domain);
       setStatus(next);
       setMsg(`${next.total.toLocaleString()}개 반영`);
+      // 사전이 학원 행보다 최신이 됐다 — 재연결 안내를 즉시 세운다.
+      await onSynced();
     } catch (error) {
       setMsg(error instanceof Error ? error.message : "동기화에 실패했습니다.");
     } finally { setBusy(false); }
@@ -2362,6 +2400,19 @@ function RegionDirectoryCard({ domain }: { domain: string }) {
       {status && status.total === 0 && (
         <p className="uploaded-notice" style={{ padding: "8px 12px", margin: 0 }}>
           ⚠️ 사전이 비어 있습니다. 셔틀 <b>운행 지역</b>만 빠지고 경유지·이용 조건은 그대로 나갑니다. 글 생성은 계속됩니다.
+        </p>
+      )}
+      {/*
+        아래 문단이 "갱신하면 다시 연결해야 한다" 는 규칙을 설명한다. 이 경고는 지금 그 상태라는
+        사실을 세운다 — 규칙만 적어두면 해당되는 순간에 읽히지 않는다.
+      */}
+      {stale && (
+        <p className="uploaded-notice" style={{ padding: "8px 12px", margin: 0 }}>
+          ⚠️ 사전을 받은 뒤 <b>「학원자료 연결」을 실행하지 않았습니다</b>
+          {freshness?.region_directory_synced_at ? ` (사전 ${formatDateTime(freshness.region_directory_synced_at)}` : ""}
+          {freshness?.region_directory_synced_at && freshness.academies_synced_at ? ` · 학원 자료 ${formatDateTime(freshness.academies_synced_at)})` : freshness?.region_directory_synced_at ? ")" : ""}.
+          지금 학원에 붙어 있는 셔틀 운행 지역은 그 이전 사전으로 계산된 값입니다. 아래 <b>2단계 「학원자료 연결」</b>을 누르면 다시 계산됩니다.
+          내용이 실제로 달라졌는지까지는 알 수 없어, 다시 받은 뒤 연결하지 않은 상태면 표시됩니다.
         </p>
       )}
       <div className="row">

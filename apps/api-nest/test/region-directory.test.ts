@@ -59,6 +59,51 @@ describe("region_directory 적재", () => {
     expect(status.synced_at).toBeTruthy();
   });
 
+  /*
+    학원의 지역 배정(bestRegionForAddress)과 셔틀 운행 지역(formatShuttleFact)은 둘 다
+    upsertDrivingplusAcademies, 즉 「학원자료 연결」 시점에 계산돼 academies 에 박힌다.
+    그래서 사전·지역 목록만 새로 받으면 학원 행은 옛 값으로 남는데, 화면에 표시가 없으면
+    운영자는 반영된 줄 안다. 그 경고를 띄우는 판정이라 여기서 잠근다.
+  */
+  const seedAcademy = (domain: string, syncedAt: string) => {
+    db.run("DELETE FROM academies WHERE domain=?", [domain]);
+    db.run("INSERT INTO academies (id, domain, region, name, synced_at) VALUES (?, ?, ?, ?, ?)",
+      [`a-${domain}`, domain, "경기도 남양주시", "테스트학원", syncedAt]);
+  };
+
+  it("학원을 아직 연결하지 않았으면 어긋남이 아니다", () => {
+    db.createDomain({ domain: "f0", display_name: "f0", vertical: "driving" });
+    const fresh = db.sourceFreshness("f0");
+    expect(fresh.academies_synced_at).toBeNull();
+    expect(fresh.region_directory_ahead).toBe(false);
+    expect(fresh.seo_regions_ahead).toBe(false);
+  });
+
+  it("원천 표를 학원 행보다 나중에 받았으면 어긋남으로 본다", () => {
+    db.createDomain({ domain: "f1", display_name: "f1", vertical: "driving" });
+    db.upsertSeoRegions("f1", [{ level: 2, region: "경기도 남양주시", latitude: 37.63, longitude: 127.21 }]);
+    seedAcademy("f1", "2000-01-01 00:00:00");
+    const fresh = db.sourceFreshness("f1");
+    expect(fresh.seo_regions_ahead).toBe(true);
+    expect(fresh.region_directory_ahead).toBe(true);
+  });
+
+  it("연결이 더 나중이면 어긋남이 아니다", () => {
+    db.createDomain({ domain: "f2", display_name: "f2", vertical: "driving" });
+    db.upsertSeoRegions("f2", [{ level: 2, region: "경기도 남양주시", latitude: 37.63, longitude: 127.21 }]);
+    seedAcademy("f2", "2999-01-01 00:00:00");
+    const fresh = db.sourceFreshness("f2");
+    expect(fresh.seo_regions_ahead).toBe(false);
+    expect(fresh.region_directory_ahead).toBe(false);
+  });
+
+  it("도메인별로 따로 본다(다른 도메인의 연결 시각에 영향받지 않는다)", () => {
+    const stale = db.sourceFreshness("f1");
+    const fresh = db.sourceFreshness("f2");
+    expect(stale.seo_regions_ahead).toBe(true);
+    expect(fresh.seo_regions_ahead).toBe(false);
+  });
+
   it("seo_regions 를 오염시키지 않는다(분리 보장)", () => {
     db.createDomain({ domain: "t", display_name: "t", vertical: "driving" });
     db.upsertSeoRegions("t", [{ level: 2, region: "경기도 남양주시", latitude: 37.63, longitude: 127.21 }]);

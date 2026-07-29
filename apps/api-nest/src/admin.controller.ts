@@ -725,6 +725,16 @@ export class AdminController {
     return { ok: this.db.requestSyncCancel(runId) };
   }
 
+  /**
+   * 원천 표(지역 사전·지역 목록)를 학원 행보다 나중에 받았는지. 화면이 "연결을 다시 누르라" 는
+   * 안내를 실제로 어긋났을 때만 띄우기 위해 쓴다. 계산 시점 설명은 db.sourceFreshness 주석에 있다.
+   */
+  @Get("domains/:domain/source-freshness")
+  sourceFreshness(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.db.sourceFreshness(domain);
+  }
+
   @Post("domains/:domain/sync/drivingplus/regions")
   async syncDrivingplusRegions(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
