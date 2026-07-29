@@ -9,6 +9,7 @@ import { parseExclusionTerms, slotExclusionSql } from "./exclusions.js";
 import { drivingplusApiBaseUrl } from "./runtime-config.js";
 import { formatOperatingHoursFact, formatTuitionFact } from "./drivingplus-academy-facts.js";
 import { formatShuttleFact, type RegionDirectoryEntry } from "./drivingplus-shuttle-facts.js";
+import { isAheadOfLink } from "./link-freshness.js";
 import type { DrivingplusEducationPerformance, DrivingplusOperateHour, DrivingplusShuttleBus } from "./drivingplus-api.service.js";
 
 // node:sqlite is available in the project's Node 25 runtime and keeps the Nest port dependency-light.
@@ -1279,9 +1280,9 @@ export class DbService implements OnModuleInit {
     const academies = maxSyncedAt("SELECT MAX(synced_at) s FROM academies WHERE domain=?", [domain]);
     const directory = maxSyncedAt("SELECT MAX(synced_at) s FROM region_directory");
     const regions = maxSyncedAt("SELECT MAX(synced_at) s FROM seo_regions WHERE domain=?", [domain]);
-    // 아직 학원을 연결하지 않았으면 어긋남이 아니다(연결 0건 안내가 따로 있다).
-    // 두 시각 모두 nowSql() 형식이라 문자열 비교로 순서가 맞는다.
-    const ahead = (source: string | null): boolean => Boolean(academies && source && source > academies);
+    // 판정은 link-freshness 한 곳에서만 한다. 조사 축(조사값·승인 상태)은 다른 DB 라
+    // 여기서 못 읽고 admin.controller 가 같은 함수로 이어 붙인다.
+    const ahead = (source: string | null): boolean => isAheadOfLink(source, academies);
     return {
       academies_synced_at: academies,
       region_directory_synced_at: directory,

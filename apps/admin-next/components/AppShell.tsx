@@ -30,6 +30,11 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
 
   useEffect(() => { setRecentDomain(getRecentDomain()); }, [pathname]);
 
+  // 화면을 옮길 때마다 도메인 상태를 다시 읽는다. 배너(pending_link)가 이 목록에 실려 오므로,
+  // 이벤트를 못 받은 경로(다른 탭에서 승인 등)로 바뀐 상태도 이동 한 번이면 따라잡는다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (domainsReady) void loadDomains(); }, [pathname]);
+
   async function loadDomains() {
     try {
       const res = await listDomains();
@@ -78,7 +83,18 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
   const onDomainOverview = domainSubPath === "";
   const onGenerate = domainSubPath === "/generate";
   const onReview = domainSubPath === "/posts" || (domainSubPath?.startsWith("/post/") ?? false);
-  const activeDomainColor = domains.find((d) => d.domain === activeDomain)?.brand_color ?? "var(--primary)";
+  const activeDomainRow = domains.find((d) => d.domain === activeDomain);
+  const activeDomainColor = activeDomainRow?.brand_color ?? "var(--primary)";
+  /*
+    조사 자료가 마지막 「학원자료 연결」보다 새로우면 그 도메인 글은 아직 옛 값으로 나간다.
+    자료를 승인하는 화면(자료관리)은 도메인을 모르는 전역 화면이라 거기서는 알릴 수 없다 —
+    도메인을 아는 것은 운영 대상 선택기를 가진 이 셸이다. 그래서 배너의 주인은 셸이다.
+
+    닫기 버튼은 두지 않는다. 닫고 잊으면 놓치는 것과 같고, 대기가 풀리면 스스로 사라진다.
+    실행(연결)은 여기서 하지 않는다 — 연결은 원천에서 내려간 학원 정리까지 하므로 결과를
+    보여줄 화면이 필요하다. 원천 데이터 탭으로 보내고 실행은 거기 안내가 맡는다.
+  */
+  const pendingLinkDomain = activeDomainRow?.pending_link ? activeDomainRow : null;
   function switchDomain(next: string) {
     if (!next || next === activeDomain) return;
     rememberDomain(next);
@@ -139,7 +155,18 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           <code>{apiBase}</code>
         </div>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">
+        {pendingLinkDomain && (
+          <div className="action-hint" style={{ marginBottom: 16 }}>
+            <span>
+              <span>선택된 운영 대상에 원천 자료가 아직 반영되지 않았습니다. 조사값 승인·지역 사전 갱신·지역 목록 동기화는 「학원자료 연결」을 눌러야 그 도메인 글에 반영됩니다.</span>
+              <span style={{ fontWeight: 400 }}>{` (${pendingLinkDomain.display_name || pendingLinkDomain.domain})`}</span>
+            </span>
+            <Link className="btn primary" href={`/t/${encodeURIComponent(pendingLinkDomain.domain)}?tab=academies`}>연결하러 가기</Link>
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

@@ -159,6 +159,8 @@ export interface ResearchSummary {
   last_researched_at: string | null;
   /** 조사값·검증상태가 마지막으로 바뀐 시각. linked_at 보다 새로우면 아직 도메인에 반영되지 않았다. */
   last_changed_at: string | null;
+  /** 위 두 시각의 판정 결과. 두 DB 의 시각 형식이 달라 화면이 직접 견주지 않는다(서버 link-freshness). */
+  pending_link: boolean;
   /** 이 도메인에 마지막으로 연결한 시각(academies.synced_at 최댓값). */
   linked_at: string | null;
 }

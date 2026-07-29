@@ -8,6 +8,7 @@ import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyLinkService } from "./academy-link.service.js";
 import { parseResearchUsage } from "./academy-research-usage.js";
+import { isAheadOfLink } from "./link-freshness.js";
 import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
@@ -41,6 +42,33 @@ export class AdminController {
     @Inject(AcademyResearchDbService) private readonly researchDb: AcademyResearchDbService,
     @Inject(AcademyLinkService) private readonly academyLink: AcademyLinkService,
   ) {}
+
+  /**
+   * 이 도메인의 조사 자료가 마지막 연결보다 새로운가.
+   *
+   * 두 DB 에 걸친 판정이라 여기서 잇는다 — 조사 DB 는 도메인을 모르고, admin.db 는 조사 DB 를
+   * 모른다. 비교 자체는 link-freshness 한 곳에서만 한다(화면이 따로 계산하지 않는다).
+   */
+  private researchPendingLink(domain: string): boolean {
+    const linkedAt = this.db.get("SELECT MAX(synced_at) s FROM academies WHERE domain=?", [domain])?.s as string | undefined;
+    if (!linkedAt) return false;
+    const externalIds = this.db.academyExternalIds(domain);
+    return isAheadOfLink(this.researchDb.lastChangedAtForExternalIds(externalIds), linkedAt);
+  }
+
+  /**
+   * 「학원자료 연결」을 다시 눌러야 하는가 — **축 무관**.
+   *
+   * 연결 시점에 굽는 것이 조사값만이 아니다. 지역 배정(seo_regions)과 셔틀 운행 지역
+   * (region_directory)도 같은 함수에서 계산된다. 셸 배너는 운영자가 어느 화면에 있든
+   * 「눌러야 한다」만 알리면 되므로 셋을 OR 로 묶는다. 어느 축이 왜 대기인지는 도메인
+   * 원천 데이터 탭의 축별 안내가 설명한다.
+   */
+  private pendingLinkFor(domain: string): boolean {
+    if (this.researchPendingLink(domain)) return true;
+    const freshness = this.db.sourceFreshness(domain);
+    return freshness.region_directory_ahead || freshness.seo_regions_ahead;
+  }
 
   @Get("options")
   options(@Req() req: Request, @Headers() headers: Record<string, string>) {
@@ -103,7 +131,9 @@ export class AdminController {
   @Get("domains")
   listDomains(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers);
-    const items = this.db.listDomains().map(domainOut);
+    // pending_link 는 셸 배너가 쓴다 — 어느 화면에 있든 「연결해야 반영된다」를 알리려면
+    // 목록을 이미 읽는 셸이 판정을 함께 받아야 왕복이 늘지 않는다.
+    const items = this.db.listDomains().map((row) => ({ ...domainOut(row), pending_link: this.pendingLinkFor(String(row.domain)) }));
     return { count: items.length, items };
   }
 
@@ -665,7 +695,9 @@ export class AdminController {
       const at = row.synced_at ? String(row.synced_at) : "";
       return at && (!max || at > max) ? at : max;
     }, null);
-    return { domain, total: externalIds.length, linked_at: linkedAt, ...summary };
+    // 판정은 서버에서만 한다. 예전에는 화면이 last_changed_at 과 linked_at 을 직접 견줬는데,
+    // 두 DB 의 시각 형식이 달라 파싱 규칙까지 화면이 알아야 했다(link-freshness 주석 참조).
+    return { domain, total: externalIds.length, linked_at: linkedAt, pending_link: isAheadOfLink(summary.last_changed_at, linkedAt), ...summary };
   }
 
   /**

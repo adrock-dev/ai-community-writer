@@ -681,6 +681,28 @@ export class AcademyResearchDbService implements OnModuleInit {
       last_researched_at: last, last_changed_at: changed,
     };
   }
+  /**
+   * 이 학원들의 조사 자료가 마지막으로 바뀐 시각.
+   *
+   * summarizeByExternalIds 도 같은 값을 내지만 그쪽은 배지 숫자까지 세느라 무겁다. 도메인
+   * 목록처럼 「반영 대기인가」만 알면 되는 자리를 위해 시각 하나만 뽑는다.
+   *
+   * 조사값이 새로 들어온 것뿐 아니라 **사람이 승인한 것**도 다시 연결해야 도메인에 닿는다 —
+   * researched_at 만 보면 승인이 잡히지 않아 field_meta 까지 함께 본다.
+   */
+  lastChangedAtForExternalIds(externalIds: string[]): string | null {
+    const ids = [...new Set(externalIds.map((id) => String(id)).filter(Boolean))];
+    if (!ids.length) return null;
+    let changed: string | null = null;
+    const bump = (value: unknown) => { const v = value ? String(value) : ""; if (v && (!changed || v > changed)) changed = v; };
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const marks = chunk.map(() => "?").join(",");
+      bump(this.get(`SELECT MAX(updated_at) AS last FROM academy_research WHERE external_id IN (${marks})`, chunk)?.last);
+      bump(this.get(`SELECT MAX(updated_at) AS last FROM academy_field_meta WHERE external_id IN (${marks})`, chunk)?.last);
+    }
+    return changed;
+  }
   countBase(opts: { region?: string; includeInactive?: boolean } = {}): number {
     const where: string[] = [];
     const params: any[] = [];

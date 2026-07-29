@@ -10,6 +10,7 @@ import {
   setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS,
 } from "@/lib/academy-research";
 import { getBlogReviewSync } from "@/lib/api";
+import { notifyDomainsChanged } from "@/lib/domain-events";
 import { ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
 
@@ -702,6 +703,9 @@ function ReviewQueue() {
     try {
       const res = await bulkFieldMeta(selected.map((r) => ({ external_id: r.external_id, field_key: r.field_key })), "verified");
       setNotice(`${res.changed}건을 검증완료로 올렸습니다. 도메인의 「조사값 신뢰 기준」이 「검증완료만」이면 이 값들이 글에 쓰입니다(도메인에서 「학원자료 연결」을 다시 눌러야 반영).`);
+      // 이 화면은 도메인을 모르지만, 승인은 도메인의 「반영 대기」 상태를 바꾼다. 셸이 그 판정을
+      // 다시 읽어 배너를 세우도록 알린다 — 토스트는 지나가면 끝이라 이것만으로는 놓친다.
+      notifyDomainsChanged();
       await load();
     } catch (e: any) {
       setError(e?.message || "일괄 승인에 실패했습니다.");
@@ -718,6 +722,7 @@ function ReviewQueue() {
       // 승인한 행만 걷어낸다. 전체를 다시 불러오면 검토 중이던 위치를 잃는다.
       setRows((prev) => prev.filter((r) => `${r.external_id}:${r.field_key}` !== key));
       setTotal((n) => Math.max(0, n - 1));
+      notifyDomainsChanged(); // 한 건 승인도 도메인의 「반영 대기」를 켠다(위 일괄 승인과 같은 이유).
     } catch (e: any) {
       setError(e?.message || "검증완료 처리에 실패했습니다.");
     } finally {

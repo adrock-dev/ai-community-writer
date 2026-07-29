@@ -122,6 +122,12 @@ export interface DomainConfig {
   monitored_phrases?: string | null;
   /** 조사값을 글 생성 근거로 쓸지: off(기본) / verified(검증완료만) / draft(AI 초안까지). */
   research_usage?: "off" | "verified" | "draft";
+  /**
+   * 원천 자료가 마지막 「학원자료 연결」보다 새로운가 — **축 무관**(조사값·지역 사전·지역 목록
+   * 중 하나라도). 판정은 서버(link-freshness)에서만 한다. 셸 배너가 이 값으로 「선택된 운영
+   * 대상에 아직 반영되지 않았습니다」를 띄우고, 어느 축인지는 도메인 원천 데이터 탭이 설명한다.
+   */
+  pending_link?: boolean;
   daily_limit: number;
   created_at: string;
   slot_count?: number;

@@ -3,7 +3,8 @@
 import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getSourceFreshness, type SourceFreshness, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
-import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
+import { formatDateTime } from "@/lib/date";
+import { notifyDomainsChanged } from "@/lib/domain-events";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
@@ -1499,6 +1500,8 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       // 경고는 건수만 세면 아무도 안 읽는다. 대량 이탈 보류 같은 건 내용을 봐야 한다.
       setSyncWarning(res.warnings[0] ?? "");
       await onRefresh(); await loadAcademies(); await loadExclusions(); await afterLink();
+      // 연결로 「반영 대기」가 풀렸다. 셸 배너가 그 판정을 다시 읽게 알린다(안 쏘면 그대로 남는다).
+      notifyDomainsChanged();
     } catch (e) {
       setAcademyMsg(e instanceof Error ? e.message : String(e));
     } finally { setSyncBusy(""); }
@@ -1575,8 +1578,9 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       setRegionMsg(`지역 ${res.fetched}개 조회 · ${res.upserted}개 반영${res.axis_replaced ? " · region 축 교체" : ""}`);
       setLastSync(recordSync(domain.domain, "regions", { count: res.upserted, at: new Date().toISOString(), detail: `조회 ${res.fetched}개${res.axis_replaced ? " · region 축 교체" : ""}` }));
       await onRefresh();
-      // 방금 받은 지역 목록은 학원 행보다 최신이 됐다 — 아래 재연결 안내를 즉시 세운다.
+      // 방금 받은 지역 목록은 학원 행보다 최신이 됐다 — 아래 재연결 안내와 셸 배너를 즉시 세운다.
       await loadFreshness();
+      notifyDomainsChanged();
     } catch (e) { alert((e as Error).message); }
     finally { setSyncBusy(""); }
   }
@@ -2263,21 +2267,14 @@ function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy, re
   // 항목만 채워진 학원까지 세서, 조사값을 켰을 때 실제로 실리는 양보다 후하게 보인다.
   const articleReady = summary?.article_ready ?? 0;
   const percent = total ? Math.round((articleReady / total) * 100) : 0;
-  // 조사 자료(값 또는 검증상태)가 마지막 연결보다 새로우면 아직 이 도메인 글에 닿지 않았다.
-  // 한 번도 연결한 적이 없으면(linked_at 없음) 그 자체가 연결이 필요하다는 뜻이다.
-  //
-  // 두 시각은 저장 형식이 다르다 — academies.synced_at 은 nowSql()("2026-07-28 07:40:46"),
-  // 조사 DB 는 nowIso()("2026-07-28T07:36:26.128Z"). 문자열로 비교하면 공백(0x20) < "T"(0x54)
-  // 라 **연결 시각이 언제나 더 작게** 나와 안내가 영영 꺼지지 않는다. 반드시 파싱해서 견준다.
-  const pendingLink = useMemo(() => {
-    const changed = parseUtcTimestamp(summary?.last_changed_at)?.getTime();
-    if (!changed) return false;
-    const linked = parseUtcTimestamp(summary?.linked_at)?.getTime();
-    if (!linked) return true;
-    // synced_at 은 초 단위라 밀리초가 잘린다. 같은 초에 연결했는데 변경 쪽에 .276 이 붙어 있으면
-    // 반영이 끝났는데도 안내가 켜진 채로 남는다. 1초는 같은 시점으로 본다.
-    return changed > linked + 1000;
-  }, [summary?.last_changed_at, summary?.linked_at]);
+  /*
+    조사 자료(값 또는 검증상태)가 마지막 연결보다 새로우면 아직 이 도메인 글에 닿지 않았다.
+
+    판정은 서버가 한다. 예전에는 여기서 두 시각을 직접 견줬는데, 두 DB 의 저장 형식이 달라
+    (admin.db 는 nowSql, 조사 DB 는 nowIso) 파싱 규칙과 1초 허용 오차까지 화면이 알아야 했다.
+    같은 판정을 셸 배너·원천 데이터 탭도 쓰므로 구현이 흩어지면 서로 어긋난다 — link-freshness 참조.
+  */
+  const pendingLink = summary?.pending_link ?? false;
 
   return (
     <div className="card card-pad grid compact-pad" style={{ background: "#f8fafc" }}>
@@ -2407,8 +2404,9 @@ function RegionDirectoryCard({ domain, stale, freshness, onSynced, onLink, linkB
       const next = await syncRegionDirectory(domain);
       setStatus(next);
       setMsg(`${next.total.toLocaleString()}개 반영`);
-      // 사전이 학원 행보다 최신이 됐다 — 재연결 안내를 즉시 세운다.
+      // 사전이 학원 행보다 최신이 됐다 — 재연결 안내와 셸 배너를 즉시 세운다.
       await onSynced();
+      notifyDomainsChanged();
     } catch (error) {
       setMsg(error instanceof Error ? error.message : "동기화에 실패했습니다.");
     } finally { setBusy(false); }
