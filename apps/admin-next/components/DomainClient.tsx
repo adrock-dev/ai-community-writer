@@ -4,7 +4,7 @@ import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport,
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime } from "@/lib/date";
-import { notifyDomainsChanged } from "@/lib/domain-events";
+import { DOMAIN_TAB_REQUEST_EVENT, notifyDomainsChanged } from "@/lib/domain-events";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
 import { recommendedGenerationTimeoutSec, getGenerationDefaults } from "@/lib/generation-defaults";
 import { rememberDomain } from "@/lib/recent-domain";
@@ -226,6 +226,38 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
     setTab(initialTab);
   }, [initialTab]);
 
+  /*
+    탭을 손으로 바꾸면 주소의 ?tab 도 같이 맞춘다.
+
+    위 효과는 initialTab(=주소의 ?tab) 이 **바뀔 때만** 돈다. 주소가 ?tab=academies 인 채로
+    다른 탭을 보다가 셸 배너의 「연결하러 가기」(같은 주소)를 누르면 주소가 그대로여서 아무
+    일도 일어나지 않았다. 주소를 탭과 일치시켜 두면 그 링크가 실제로 다른 주소가 된다.
+
+    router 로 이동하지 않고 history 만 고친다(Next 15 가 지원하는 방식). 탭을 누를 때마다
+    서버 왕복을 만들면 전환이 느려진다. ?tab 을 읽는 것은 개요 라우트뿐이라 거기서만 쓴다.
+  */
+  const selectTab = (id: string) => {
+    setTab(id);
+    if (view !== "overview" || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", id);
+    window.history.replaceState(null, "", url);
+  };
+
+  // 화면 밖(셸 배너)에서 온 탭 열기 요청. 링크만으로는 이미 그 주소에 있을 때 이동이 없어
+  // 아무 일도 일어나지 않는다 — domain-events 주석 참조.
+  useEffect(() => {
+    const onRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ domain?: string; tab?: string }>).detail;
+      if (!detail || detail.domain !== domain) return;
+      if (!detail.tab || !TABS.some(([id]) => id === detail.tab)) return;
+      selectTab(detail.tab);
+    };
+    window.addEventListener(DOMAIN_TAB_REQUEST_EVENT, onRequest);
+    return () => window.removeEventListener(DOMAIN_TAB_REQUEST_EVENT, onRequest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [domain, view]);
+
   useEffect(() => {
     handledFlowParam.current = false;
     setPayload(null);
@@ -321,7 +353,7 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
       {!focusedPage && <Workflow domain={domainConfig} counts={counts} active={tab} onTab={setTab} />}
 
       {!focusedPage && <div className="tabs">
-        {TABS.map(([id, label]) => <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>)}
+        {TABS.map(([id, label]) => <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => selectTab(id)}>{label}</button>)}
       </div>}
 
       {view === "generate" && <div className="grid">

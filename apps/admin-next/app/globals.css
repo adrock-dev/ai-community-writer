@@ -173,6 +173,11 @@ details[open].template-advanced > .template-subsection-summary .template-subsect
    배경 설명과 똑같이 보였다. 문제가 아니라 다음 단계로 읽히도록 파란 계열로 둔다. */
 .action-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; background: #eff6ff; border: 1px solid #bfdbfe; border-left: 4px solid #2563eb; color: #1e3a8a; padding: 10px 12px; border-radius: 10px; font-size: 13px; font-weight: 600; }
 .action-hint .btn { margin-left: auto; }
+/* 반영 대기 배너. 스크롤해도 남는다 — 승인·동기화는 긴 목록의 아래쪽에서 하는 작업이라
+   문서 맨 위에만 두면 정작 그 일을 하는 위치에서는 보이지 않는다. 음수 마진은 .main 의
+   padding(30px) 을 상쇄해 화면 폭을 꽉 채우기 위한 것이다(같이 바뀌어야 한다). */
+.pending-banner { position: sticky; top: 0; z-index: 20; margin: -30px -30px 18px; padding: 14px 30px; background: rgba(255,255,255,.92); backdrop-filter: blur(18px); border-bottom: 1px solid var(--line); }
+.pending-banner .action-hint { margin: 0; }
 .toast-info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; padding: 16px; border-radius: 14px; }
 .gate-card { max-width: 720px; margin: 0 auto; padding: 36px; }
 .gate-card h1 { margin: 8px 0 12px; font-size: 28px; }

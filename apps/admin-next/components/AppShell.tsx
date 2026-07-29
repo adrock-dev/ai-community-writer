@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { listDomains } from "@/lib/api";
-import { DOMAINS_CHANGED_EVENT } from "@/lib/domain-events";
+import { DOMAINS_CHANGED_EVENT, requestDomainTab } from "@/lib/domain-events";
 import { isDomainMenuFrom, needDomainHref } from "@/lib/domain-gate";
 import { pickDefaultDomain } from "@/lib/domains";
 import { getRecentDomain, rememberDomain } from "@/lib/recent-domain";
@@ -157,12 +157,22 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
       </aside>
       <main className="main">
         {pendingLinkDomain && (
-          <div className="action-hint" style={{ marginBottom: 16 }}>
-            <span>
-              <span>선택된 운영 대상에 원천 자료가 아직 반영되지 않았습니다. 조사값 승인·지역 사전 갱신·지역 목록 동기화는 「학원자료 연결」을 눌러야 그 도메인 글에 반영됩니다.</span>
-              <span style={{ fontWeight: 400 }}>{` (${pendingLinkDomain.display_name || pendingLinkDomain.domain})`}</span>
-            </span>
-            <Link className="btn primary" href={`/t/${encodeURIComponent(pendingLinkDomain.domain)}?tab=academies`}>연결하러 가기</Link>
+          <div className="pending-banner">
+            <div className="action-hint">
+              <span>
+                <span style={{ fontWeight: 400 }}>{`선택된 운영 대상 「${pendingLinkDomain.display_name || pendingLinkDomain.domain}」 — `}</span>
+                <span>원천 자료가 아직 반영되지 않았습니다. 「학원자료 연결」을 눌러야 글에 쓰입니다.</span>
+              </span>
+              {/* 이동이 필요하면 Link 가 하고, 이미 그 도메인 화면이면 이벤트가 탭을 연다.
+                  둘 중 하나만 두면 다른 쪽 경우에 버튼이 죽은 것처럼 보인다. */}
+              <Link
+                className="btn primary"
+                href={`/t/${encodeURIComponent(pendingLinkDomain.domain)}?tab=academies`}
+                onClick={() => requestDomainTab(pendingLinkDomain.domain, "academies")}
+              >
+                연결하러 가기
+              </Link>
+            </div>
           </div>
         )}
         {children}
