@@ -8,6 +8,7 @@ import {
   setResearchFieldMeta, syncOneAcademy, updateResearchField,
 } from "@/lib/academy-research";
 import { formatDateTime } from "@/lib/date";
+import { notifyDomainsChanged } from "@/lib/domain-events";
 
 export default function AcademyDetailClient({ externalId }: { externalId: string }) {
   const [data, setData] = useState<AcademyFull | null>(null);
@@ -100,14 +101,29 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
       .catch(() => undefined);
     return () => { cancelled = true; };
   }, [externalId, watchRun]);
+  /*
+    저장 뒤 notifyDomainsChanged 를 쏘는 이유: 조사값과 검증상태는 「학원자료 연결」 시점에
+    도메인으로 구워지므로, 여기서 고치면 그 도메인은 「반영 대기」가 된다. 셸 배너는 도메인
+    목록을 다시 읽을 때만 그 판정을 보는데, 이 화면은 한 자리에 머물며 저장하므로 화면 이동도
+    일어나지 않는다 — 안 쏘면 목록으로 돌아갈 때까지 배너가 안 뜬다.
+
+    이 화면 자체는 도메인을 계속 모른다(조사는 도메인을 몰라야 한다). 알리는 것은 셸의 몫이다.
+  */
   async function saveValue(field: string) {
     setError(""); setNotice("");
-    try { await updateResearchField(externalId, field, values[field] ?? ""); setNotice(`저장됨: ${field}`); }
+    try {
+      await updateResearchField(externalId, field, values[field] ?? "");
+      setNotice(`저장됨: ${field}`);
+      notifyDomainsChanged();
+    }
     catch (e: any) { setError(e?.message || "저장 실패"); }
   }
   async function changeStatus(field: string, status: string) {
     setStatuses((s) => ({ ...s, [field]: status }));
-    try { await setResearchFieldMeta(externalId, { field_key: field, status }); }
+    try {
+      await setResearchFieldMeta(externalId, { field_key: field, status });
+      notifyDomainsChanged();
+    }
     catch (e: any) { setError(e?.message || "상태 변경 실패"); }
   }
 

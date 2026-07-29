@@ -47,8 +47,8 @@
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
-| `apps/admin-next/components/AcademyDetailClient.tsx:63` | confirm | ${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다.\n1~2분 걸리며 창을 닫아도 서버에서 계속 진행됩니다. 진행할까요? | `apps/api-nest/src/academy-research.service.ts#startSingleResearch` |
-| `apps/admin-next/components/AcademyDetailClient.tsx:170` | muted-p | 아래 항목은 원천 동기화로 이미 확인돼 조사 대상에서 빠집니다. 글 생성도 이 값을 씁니다. | `조사 항목 정의`<br>`docs/source-field-usage.md` |
+| `apps/admin-next/components/AcademyDetailClient.tsx:64` | confirm | ${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다.\n1~2분 걸리며 창을 닫아도 서버에서 계속 진행됩니다. 진행할까요? | `apps/api-nest/src/academy-research.service.ts#startSingleResearch` |
+| `apps/admin-next/components/AcademyDetailClient.tsx:186` | muted-p | 아래 항목은 원천 동기화로 이미 확인돼 조사 대상에서 빠집니다. 글 생성도 이 값을 씁니다. | `조사 항목 정의`<br>`docs/source-field-usage.md` |
 | `apps/admin-next/components/AcademyResearchClient.tsx:165` | confirm | ${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.<br>_「1곳 마친 뒤 중단·여기까지 저장 유지」는 취소 구현에 직접 매달린 약속이다._ | `apps/api-nest/src/academy-research.service.ts 취소 처리` |
 | `apps/admin-next/components/AcademyResearchClient.tsx:225` | muted-p | 여기서 받은 기본정보·후기 원문·AI 심층조사는 학원 자료 전용 DB에 모입니다. 도메인은 이 자료를 연결해서 쓰므로, 도메인에서 「연결 끊기」를 하거나 도메인을 지워도 원본과 조사 결과는 그대로 남고 다시 연결하면 복구됩니다. 다만 글 생성이 읽는 것은 연결된 사본이라, 자료를 갱신했으면 도메인에서 다시 연결해야 반영됩… | `apps/api-nest/src/academy-research-db.service.ts`<br>`apps/api-nest/src/academy-link.service.ts#linkToDomain` |
 | `apps/admin-next/components/AcademyResearchClient.tsx:353` | muted-p | {run!.cancel_requested ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다." : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."}<br>_「창을 닫아도 계속·다시 들어오면 진행률이 이어짐」이 백그라운드 run 구현에 종속._ | `apps/api-nest/src/academy-research.service.ts 백그라운드 실행` |
@@ -157,8 +157,8 @@
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
-| `apps/admin-next/components/AcademyDetailClient.tsx:243` | muted-p | 조사된 셔틀 노선이 없습니다. | — |
-| `apps/admin-next/components/AcademyDetailClient.tsx:259` | jsx-text | 수집된 후기가 없습니다. 원천에서 이 학원만 다시 받아 볼 수 있습니다. | — |
+| `apps/admin-next/components/AcademyDetailClient.tsx:259` | muted-p | 조사된 셔틀 노선이 없습니다. | — |
+| `apps/admin-next/components/AcademyDetailClient.tsx:275` | jsx-text | 수집된 후기가 없습니다. 원천에서 이 학원만 다시 받아 볼 수 있습니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:106` | confirm | DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요? | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:150` | confirm | 직접 등록한 「${row.name \|\| row.external_id}」을(를) 삭제할까요?\n조사 결과와 검토 상태도 함께 지워집니다. 되돌릴 수 없습니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:322` | jsx-text | 기본은 미시도·실패 학원만 대상입니다. | — |
