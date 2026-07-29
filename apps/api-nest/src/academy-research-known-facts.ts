@@ -54,6 +54,46 @@ export function baseKnownFacts(): KnownFacts {
 
 
 /**
+ * 학원 전용 항목 — 시험장에는 물을 이유가 없다.
+ *
+ * 조사 스키마는 운전전문학원 기준으로 만들었는데 목록에는 운전면허시험장(관공서)도 섞여
+ * 있다. 시험장에 "자체 시험장이 있나" 를 묻는 것은 동어반복이고, 수강료·야간반·셔틀·
+ * 면허 과정은 해당이 없다.
+ *
+ * 실측(2026-07-29, 시험장 27곳): 이 항목들은 모두 빈칸으로 돌아왔다 — 모델이 지어내지
+ * 않았다. 다만 묻는 값이 그만큼 낭비이고, 엉뚱하게 채워진 것도 있었다:
+ *   enrollment_prep = "해외 체류 운전면허(갱신) 적성검사 연기 신청, 갱신 절차, 수수료…"
+ *   → 시험장 민원 안내를 학원 등록 준비물로 오해한 값이다.
+ *
+ * 편의시설·영업시간·휴무일·홈페이지는 시험장에도 뜻이 통하므로 그대로 묻는다.
+ */
+const ACADEMY_ONLY_FIELDS: Array<{ key: string; reason: string }> = [
+  { key: "self_test", reason: "시험장이라 조사 대상이 아님 — 시험장 자체가 시험을 시행한다" },
+  { key: "night_class", reason: "시험장이라 조사 대상이 아님 — 학원 교육 과정 개념이다" },
+  { key: "weekend", reason: "시험장이라 조사 대상이 아님 — 학원 교육 과정 개념이다(운영 요일은 영업시간이 답한다)" },
+  { key: "fee_summary", reason: "시험장이라 조사 대상이 아님 — 학원 수강료 개념이다" },
+  { key: "price_disclosed", reason: "시험장이라 조사 대상이 아님 — 학원 수강료 개념이다" },
+  { key: "shuttle_summary", reason: "시험장이라 조사 대상이 아님 — 학원 셔틀 개념이다" },
+  { key: "shuttle_available", reason: "시험장이라 조사 대상이 아님 — 학원 셔틀 개념이다" },
+  { key: "licenses", reason: "시험장이라 조사 대상이 아님 — 학원 교육 과정 개념이다" },
+  { key: "enrollment_prep", reason: "시험장이라 조사 대상이 아님 — 학원 등록 준비물 개념이다(시험장 민원 안내와 혼동된다)" },
+];
+
+/** 운전면허시험장·면허센터. 학원이 아니라 응시·민원 기관이다. */
+const TEST_COURSE_TYPES = new Set(["license_test_course", "license_center"]);
+
+function skipFieldsForType(out: KnownFacts, academyType: string): void {
+  if (!TEST_COURSE_TYPES.has(academyType)) return;
+  for (const { key, reason } of ACADEMY_ONLY_FIELDS) {
+    out.skipFields.add(key);
+    out.skipReasons.set(key, reason);
+  }
+  // 학원 과정·셔틀 노선 배열도 묻지 않는다.
+  out.skipCourses = true;
+  out.skipShuttleRoutes = true;
+}
+
+/**
  * academy_base.raw_json(정규화된 원천 응답)에서 이미 확정된 사실을 뽑는다.
  *
  * 조사 모듈이 admin.db 를 보지 않아도 되게 조사 DB 안에서 해결한다 — 조사는 도메인을
@@ -63,6 +103,7 @@ export function knownFactsFromSource(raw: unknown): KnownFacts {
   const out = baseKnownFacts();
   if (!raw || typeof raw !== "object") return out;
   const academy = raw as Partial<DrivingplusAcademy>;
+  skipFieldsForType(out, String(academy.type ?? ""));
 
   const tuition = formatTuitionFact(academy.educationPerformance ?? null);
   if (tuition) {
