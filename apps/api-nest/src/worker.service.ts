@@ -382,7 +382,12 @@ export class WorkerService {
           // 프롬프트로 나간 학원 근거를 그대로 남긴다. 재계산으로는 그때를 알 수 없다 —
           // 조사값·승인 상태·원천이 계속 바뀌기 때문이다(오늘 부산 글을 다시 뽑기 전후로
           // self_test 한 줄이 사라졌다). "이 글이 무엇을 근거로 썼나" 는 그 시점 값이라야 답이 된다.
-          facts_snapshot: factsText || null
+          //
+          // factsText 가 아니라 promptFactsText 다. 둘은 다르다 — T16 은 후보 대조로 계산한
+          // 「이 학원이 두드러지는 점」이 더해지고, Legacy Plus 는 SEO 설명·키워드·좌표·리뷰가
+          // 빠진다. 원본을 저장하면 「이 글의 근거」가 실제로 보내지 않은 값을 "보냈는데 안 쓴
+          // 값"으로 보여주고, 실제로 보낸 차별점은 아예 감춘다(이 화면을 만든 뒤 실측으로 확인).
+          facts_snapshot: promptFactsText || null
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);
