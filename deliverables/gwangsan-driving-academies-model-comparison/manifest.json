@@ -1,0 +1,194 @@
+{
+  "generatedAt": "2026-07-21T05:01:14.457Z",
+  "source": {
+    "database": "data/admin.db",
+    "domain": "app.drivingplus.me",
+    "syncedAt": "2026-07-20",
+    "sourceName": "DrivingPlus"
+  },
+  "selection": {
+    "target": {
+      "region": "광주광역시 광산구",
+      "latitude": 35.139524,
+      "longitude": 126.793688
+    },
+    "radiusKm": 20,
+    "fallbackRadiusKm": 50,
+    "candidateCount": 15,
+    "seed": "gwangsan-gu|driving-academy|2026-07-21",
+    "algorithm": "20km 이내 exam_academy 후보를 직선거리·이름 순으로 정렬한 뒤 FNV-1a + Mulberry32로 5곳을 표본 추출",
+    "academies": [
+      {
+        "external_id": "88",
+        "name": "영진자동차운전전문학원",
+        "region": "광주광역시 광산구",
+        "address": "광주광역시 광산구 목련로 372-19",
+        "latitude": 35.1808735,
+        "longitude": 126.8345288,
+        "distance_km": 5.9,
+        "academy_type": "exam_academy",
+        "phone": "062-951-5100",
+        "course_summary": "1종·2종 보통, 1종 대형, 2종 소형, 원동기",
+        "reviews": [
+          {
+            "date": "2026-02-03",
+            "point": 5,
+            "content": "학원 접수 도와드렸던 직원 분 너무너무 친절하시구 웃으면서 이야기 해주셔서 벌써부터 긴장했던 마음이 확 가라앉았는데 학과 교육 3시간 강의해주셨던 여자 강사선생님께서 이해하기 쉽도록 설명 해주신 덕분에 필기 한번에 합격 했어요!!🥹❤️ 장내 교육 도와주신 선생님께서도 제 실력이 많이 부족한데도 불구하고 얼어붙었던 긴장감 풀어주시면서 실수해도 괜찮다며 잘하고 있다구 칭찬 해주시고 재밌게 교육 받으며 무사히 합격 했어요 별 5개도 부족해요 1만개 더 드리고 싶을 정도에요 모든 게 완벽한 운전전문학원 영진 강추 드립니다 😍😍😍"
+          },
+          {
+            "date": "2026-01-11",
+            "point": 5,
+            "content": "모두 친절하셨어요 덕분에 한번에 취득했습니다."
+          },
+          {
+            "date": "2025-12-12",
+            "point": 5,
+            "content": "데스크에 있는 남성분 친절하게 잘 알려주시고 운전 알려주시는 강사님분들도 쉽게쉽게 알려줘서 좋습니다"
+          }
+        ]
+      },
+      {
+        "external_id": "94",
+        "name": "상무자동차운전전문학원",
+        "region": "광주광역시 서구",
+        "address": "광주광역시 서구 하남대로550번길 19-27",
+        "latitude": 35.172101,
+        "longitude": 126.855525,
+        "distance_km": 6.7,
+        "academy_type": "exam_academy",
+        "phone": "062-606-7114",
+        "course_summary": "1종·2종 보통, 1종 대형, 특수(대형견인/소형견인/구난)",
+        "reviews": [
+          {
+            "date": "2024-05-31",
+            "point": 5,
+            "content": "대체로 친절하고 저를 합격시키기위해 노력하시는게 느껴집니다"
+          },
+          {
+            "date": "2022-06-09",
+            "point": 5,
+            "content": "1종 면허도 여기서 따고 대형도 따려고 접수했는데 역시 만족합니다 강사 선생님들도 잘 가르쳐주시고 한번에 따고 갑니다 감사해욤"
+          },
+          {
+            "date": "2022-06-09",
+            "point": 5,
+            "content": "친철하게 잘 알려주셔어 합격했어요! 감사합니다."
+          }
+        ]
+      },
+      {
+        "external_id": "84",
+        "name": "삼성자동차운전전문학원",
+        "region": "전라남도 나주시",
+        "address": "전라남도 나주시 산포면 산남로 131",
+        "latitude": 35.0455401,
+        "longitude": 126.8275168,
+        "distance_km": 10.9,
+        "academy_type": "exam_academy",
+        "phone": "061-337-6663",
+        "course_summary": "1종·2종 보통",
+        "reviews": [
+          {
+            "date": "2026-02-25",
+            "point": 5,
+            "content": "후기가 낮아서 처음에는 걱정했습니다만 운전 1도 모르는 저도 쉽게 알아차릴수 있도록 설명해주시고 친절하셔서 덕분에 한 번에 합격했습니다 감사드립니다"
+          },
+          {
+            "date": "2025-02-06",
+            "point": 5,
+            "content": "특히 감독관님(정**)께서 너무 친절하셔서 눈물 흘릴 정도였다...."
+          },
+          {
+            "date": "2025-02-04",
+            "point": 5,
+            "content": "감점안되게 팁도 잘 알려주십니다. 셔틀도 있고 주행코스도 타지에 비해 비교적 쉽습니다. 한번에 합격하고 갑니다. 추천드립니다^^!!"
+          }
+        ]
+      },
+      {
+        "external_id": "108",
+        "name": "일곡금호자동차운전전문학원",
+        "region": "광주광역시 북구",
+        "address": "광주광역시 북구 모룡대길 26",
+        "latitude": 35.217217,
+        "longitude": 126.8981072,
+        "distance_km": 12.8,
+        "academy_type": "exam_academy",
+        "phone": "062-576-9400",
+        "course_summary": "1종·2종 보통",
+        "reviews": [
+          {
+            "date": "2026-02-20",
+            "point": 5,
+            "content": "김 병 옥 감독관님 정말 감사합니다! 덕분에 잘 배우고 합격합니다~!"
+          },
+          {
+            "date": "2026-01-31",
+            "point": 5,
+            "content": "운전면허 학원 다니면서 성종환 강사님께 수업 들었는데 정말 만족스러웠어요. 친절하고 유쾌하게 알려주셔서 긴장이 많이 풀렸고 설명도 이해하기 쉬웠습니다."
+          },
+          {
+            "date": "2026-01-20",
+            "point": 5,
+            "content": "잘하면 농담도 해주시고 다정합니다"
+          }
+        ]
+      },
+      {
+        "external_id": "587",
+        "name": "신세계자동차운전전문학원",
+        "region": "전라남도 화순군",
+        "address": "전라남도 화순군 화순읍 정곡로 65",
+        "latitude": 35.0459749,
+        "longitude": 126.9560594,
+        "distance_km": 18.1,
+        "academy_type": "exam_academy",
+        "phone": "061-375-2020",
+        "course_summary": "1종·2종 보통",
+        "reviews": [
+          {
+            "date": "2026-04-06",
+            "point": 5,
+            "content": "연습 많이 할 수 있어서 좋고 친절하게 여러번 설명해주셔서 좋았어요!"
+          },
+          {
+            "date": "2025-07-17",
+            "point": 5,
+            "content": "친절하고 좋네요 집앞까지 셔틀운행도 해주고.."
+          },
+          {
+            "date": "2024-12-31",
+            "point": 5,
+            "content": "차도 많고 연습 여러번 할 수 있어서 좋음"
+          }
+        ]
+      }
+    ]
+  },
+  "models": [
+    "gpt-5.6-luna",
+    "gpt-5.5"
+  ],
+  "angles": [
+    {
+      "slug": "01-distance-and-commute",
+      "focus": "거리와 생활 동선을 우선하는 초보자의 선택 가이드"
+    },
+    {
+      "slug": "02-license-course",
+      "focus": "1종·2종 보통부터 대형·2종 소형까지 필요한 면허 과정을 확인하는 가이드"
+    },
+    {
+      "slug": "03-first-lesson-anxiety",
+      "focus": "첫 수업의 긴장과 강습 방식이 걱정되는 초보자를 위한 가이드"
+    },
+    {
+      "slug": "04-registration-checklist",
+      "focus": "등록 전 전화로 확인할 항목과 일정 계획을 중심으로 한 가이드"
+    },
+    {
+      "slug": "05-compare-and-decide",
+      "focus": "다섯 곳을 비교한 뒤 내 상황에 맞는 최종 선택을 돕는 가이드"
+    }
+  ]
+}

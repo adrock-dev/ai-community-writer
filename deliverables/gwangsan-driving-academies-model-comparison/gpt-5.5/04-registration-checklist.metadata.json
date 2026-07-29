@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5.5",
+  "angle": {
+    "slug": "04-registration-checklist",
+    "focus": "등록 전 전화로 확인할 항목과 일정 계획을 중심으로 한 가이드"
+  },
+  "usage": {
+    "input_tokens": 21802,
+    "cached_input_tokens": 9600,
+    "output_tokens": 6227,
+    "reasoning_output_tokens": 516
+  },
+  "validation": "passed"
+}

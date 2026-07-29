@@ -1,0 +1,83 @@
+당신은 초보 운전자에게 친절하게 설명하는 한국 지역 블로그 에디터입니다. 아래 사실만 사용하여 완전한 HTML 블로그 게시글 한 편을 작성하세요.
+
+글의 중심: 처음 등록하기 전 전화로 확인할 항목과 일정 계획
+생성 모델 식별: gpt-5.6-luna
+
+필수 형식:
+- 응답은 <!doctype html>로 시작하는 완전한 HTML만 출력합니다. 코드펜스나 작성 설명은 절대 넣지 마세요.
+- <h1>은 정확히 "광주광역시 광산구 운전면허학원 BEST5"입니다.
+- <head>에는 고유한 title, meta description, canonical, Open Graph 태그를 넣습니다. canonical은 https://example.com/gwangsan-driving-academies/02-registration-checklist 입니다.
+- JSON-LD Article과 ItemList를 포함합니다. 이 데이터는 head에만 두고, 본문에서는 기술 메타데이터를 설명하지 마세요.
+- 본문에는 아래 다섯 학원 모두를 비교표와 개별 설명에 넣습니다.
+- 글 마지막에는 <section id="comparison-criteria"><h2>비교 기준</h2>을 넣고, 독자 관점의 세 항목만 자연스럽게 정리합니다: 생활 동선, 필요한 면허 과정, 등록 전 전화 확인.
+
+독자 경험 규칙:
+- 독자가 알아야 할 정보만 씁니다. "원천 데이터", "고정 시드", "후보 수", "표본", "생성 기준", "모델", "위도", "경도", "알고리즘"이라는 말과 정확한 기준 좌표는 본문에 절대 쓰지 마세요.
+- 거리는 "광산구 생활권 기준 약 Nkm 직선거리"처럼 간단히 쓰고, 실제 도로 거리·이동 시간과 다를 수 있으니 지도 앱으로 확인하라고 한 번만 안내하세요.
+- 수강료, 운영시간, 현재 셔틀, 예약 가능 여부, 합격률, 합격 보장은 확인하지 못한 사실이므로 만들거나 단정하지 마세요. 대신 독자가 전화로 무엇을 물어볼지 알려주세요.
+- 일부 후기 내용은 "후기 일부에서는"처럼 제한해 표현하고, 평가 점수나 특정 경험을 전체 서비스 품질로 일반화하지 마세요.
+- 순위처럼 단정하지 말고, 어떤 생활 동선·면허 과정에 맞는지 비교하세요.
+
+확인된 학원 정보:
+[
+  {
+    "external_id": "88",
+    "name": "영진자동차운전전문학원",
+    "region": "광주광역시 광산구",
+    "address": "광주광역시 광산구 목련로 372-19",
+    "latitude": 35.1808735,
+    "longitude": 126.8345288,
+    "distance_km": 5.9,
+    "academy_type": "exam_academy",
+    "phone": "062-951-5100",
+    "course_summary": "1종·2종 보통, 1종 대형, 2종 소형, 원동기"
+  },
+  {
+    "external_id": "94",
+    "name": "상무자동차운전전문학원",
+    "region": "광주광역시 서구",
+    "address": "광주광역시 서구 하남대로550번길 19-27",
+    "latitude": 35.172101,
+    "longitude": 126.855525,
+    "distance_km": 6.7,
+    "academy_type": "exam_academy",
+    "phone": "062-606-7114",
+    "course_summary": "1종·2종 보통, 1종 대형, 특수(대형견인/소형견인/구난)"
+  },
+  {
+    "external_id": "84",
+    "name": "삼성자동차운전전문학원",
+    "region": "전라남도 나주시",
+    "address": "전라남도 나주시 산포면 산남로 131",
+    "latitude": 35.0455401,
+    "longitude": 126.8275168,
+    "distance_km": 10.9,
+    "academy_type": "exam_academy",
+    "phone": "061-337-6663",
+    "course_summary": "1종·2종 보통"
+  },
+  {
+    "external_id": "108",
+    "name": "일곡금호자동차운전전문학원",
+    "region": "광주광역시 북구",
+    "address": "광주광역시 북구 모룡대길 26",
+    "latitude": 35.217217,
+    "longitude": 126.8981072,
+    "distance_km": 12.8,
+    "academy_type": "exam_academy",
+    "phone": "062-576-9400",
+    "course_summary": "1종·2종 보통"
+  },
+  {
+    "external_id": "587",
+    "name": "신세계자동차운전전문학원",
+    "region": "전라남도 화순군",
+    "address": "전라남도 화순군 화순읍 정곡로 65",
+    "latitude": 35.0459749,
+    "longitude": 126.9560594,
+    "distance_km": 18.1,
+    "academy_type": "exam_academy",
+    "phone": "061-375-2020",
+    "course_summary": "1종·2종 보통"
+  }
+]

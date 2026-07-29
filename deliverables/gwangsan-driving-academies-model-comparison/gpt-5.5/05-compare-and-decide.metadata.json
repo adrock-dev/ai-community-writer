@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5.5",
+  "angle": {
+    "slug": "05-compare-and-decide",
+    "focus": "다섯 곳을 비교한 뒤 내 상황에 맞는 최종 선택을 돕는 가이드"
+  },
+  "usage": {
+    "input_tokens": 20952,
+    "cached_input_tokens": 9600,
+    "output_tokens": 8182,
+    "reasoning_output_tokens": 516
+  },
+  "validation": "passed"
+}

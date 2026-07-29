@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5.6-luna",
+  "angle": {
+    "slug": "04-registration-checklist",
+    "focus": "등록 전 전화로 확인할 항목과 일정 계획을 중심으로 한 가이드"
+  },
+  "usage": {
+    "input_tokens": 19914,
+    "cached_input_tokens": 19200,
+    "output_tokens": 5014,
+    "reasoning_output_tokens": 516
+  },
+  "validation": "passed"
+}

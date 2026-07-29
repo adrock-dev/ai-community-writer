@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5.6-luna",
+  "angle": {
+    "slug": "03-first-lesson-anxiety",
+    "focus": "첫 수업의 긴장과 강습 방식이 걱정되는 초보자를 위한 가이드"
+  },
+  "usage": {
+    "input_tokens": 19920,
+    "cached_input_tokens": 8960,
+    "output_tokens": 5852,
+    "reasoning_output_tokens": 784
+  },
+  "validation": "passed"
+}

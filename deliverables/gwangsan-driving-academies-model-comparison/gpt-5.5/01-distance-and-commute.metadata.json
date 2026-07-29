@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5.5",
+  "angle": {
+    "slug": "01-distance-and-commute",
+    "focus": "거리와 생활 동선을 우선하는 초보자의 선택 가이드"
+  },
+  "usage": {
+    "input_tokens": 20944,
+    "cached_input_tokens": 20864,
+    "output_tokens": 5965,
+    "reasoning_output_tokens": 516
+  },
+  "validation": "passed"
+}

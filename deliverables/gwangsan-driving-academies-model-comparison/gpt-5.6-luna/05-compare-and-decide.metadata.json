@@ -1,0 +1,14 @@
+{
+  "model": "gpt-5.6-luna",
+  "angle": {
+    "slug": "05-compare-and-decide",
+    "focus": "다섯 곳을 비교한 뒤 내 상황에 맞는 최종 선택을 돕는 가이드"
+  },
+  "usage": {
+    "input_tokens": 19921,
+    "cached_input_tokens": 19200,
+    "output_tokens": 5602,
+    "reasoning_output_tokens": 516
+  },
+  "validation": "passed"
+}

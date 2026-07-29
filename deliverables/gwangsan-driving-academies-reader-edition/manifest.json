@@ -1,0 +1,81 @@
+{
+  "version": "reader-edition-v1",
+  "createdAt": "2026-07-21T05:46:39.616Z",
+  "sourceManifest": "../gwangsan-driving-academies-model-comparison/manifest.json",
+  "models": [
+    "gpt-5.6-luna",
+    "gpt-5.5"
+  ],
+  "articles": [
+    {
+      "slug": "01-distance-and-commute",
+      "focus": "생활 동선과 실제 이동 확인을 중심으로 학원을 고르는 방법"
+    },
+    {
+      "slug": "02-registration-checklist",
+      "focus": "처음 등록하기 전 전화로 확인할 항목과 일정 계획"
+    }
+  ],
+  "selectedAcademies": [
+    {
+      "external_id": "88",
+      "name": "영진자동차운전전문학원",
+      "region": "광주광역시 광산구",
+      "address": "광주광역시 광산구 목련로 372-19",
+      "latitude": 35.1808735,
+      "longitude": 126.8345288,
+      "distance_km": 5.9,
+      "academy_type": "exam_academy",
+      "phone": "062-951-5100",
+      "course_summary": "1종·2종 보통, 1종 대형, 2종 소형, 원동기"
+    },
+    {
+      "external_id": "94",
+      "name": "상무자동차운전전문학원",
+      "region": "광주광역시 서구",
+      "address": "광주광역시 서구 하남대로550번길 19-27",
+      "latitude": 35.172101,
+      "longitude": 126.855525,
+      "distance_km": 6.7,
+      "academy_type": "exam_academy",
+      "phone": "062-606-7114",
+      "course_summary": "1종·2종 보통, 1종 대형, 특수(대형견인/소형견인/구난)"
+    },
+    {
+      "external_id": "84",
+      "name": "삼성자동차운전전문학원",
+      "region": "전라남도 나주시",
+      "address": "전라남도 나주시 산포면 산남로 131",
+      "latitude": 35.0455401,
+      "longitude": 126.8275168,
+      "distance_km": 10.9,
+      "academy_type": "exam_academy",
+      "phone": "061-337-6663",
+      "course_summary": "1종·2종 보통"
+    },
+    {
+      "external_id": "108",
+      "name": "일곡금호자동차운전전문학원",
+      "region": "광주광역시 북구",
+      "address": "광주광역시 북구 모룡대길 26",
+      "latitude": 35.217217,
+      "longitude": 126.8981072,
+      "distance_km": 12.8,
+      "academy_type": "exam_academy",
+      "phone": "062-576-9400",
+      "course_summary": "1종·2종 보통"
+    },
+    {
+      "external_id": "587",
+      "name": "신세계자동차운전전문학원",
+      "region": "전라남도 화순군",
+      "address": "전라남도 화순군 화순읍 정곡로 65",
+      "latitude": 35.0459749,
+      "longitude": 126.9560594,
+      "distance_km": 18.1,
+      "academy_type": "exam_academy",
+      "phone": "061-375-2020",
+      "course_summary": "1종·2종 보통"
+    }
+  ]
+}
