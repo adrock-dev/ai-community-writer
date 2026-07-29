@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
+import { ARTICLE_RESEARCH_FIELDS } from "./academy-research-article-fields.js";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -593,15 +594,24 @@ export class AcademyResearchDbService implements OnModuleInit {
    * 두 DB 가 파일로 분리돼 있어 조인이 불가능하기 때문이다.
    */
   summarizeByExternalIds(externalIds: string[]): {
-    matched: number; researched: number; needs_review: number; verified: number;
+    matched: number; researched: number; article_ready: number;
+    no_sources: number; failed: number; unattempted: number;
+    needs_review: number; verified: number;
     last_researched_at: string | null; last_changed_at: string | null;
   } {
     const ids = [...new Set(externalIds.map((id) => String(id)).filter(Boolean))];
-    if (!ids.length) return { matched: 0, researched: 0, needs_review: 0, verified: 0, last_researched_at: null, last_changed_at: null };
+    const empty = {
+      matched: 0, researched: 0, article_ready: 0, no_sources: 0, failed: 0, unattempted: 0,
+      needs_review: 0, verified: 0, last_researched_at: null, last_changed_at: null,
+    };
+    if (!ids.length) return empty;
     // SQLite 변수 상한(기본 999)을 넘기지 않도록 나눠 센다.
     const chunkSize = 500;
     let matched = 0;
     let researched = 0;
+    let articleReady = 0;
+    let noSources = 0;
+    let failedAttempts = 0;
     let needsReview = 0;
     let verified = 0;
     let last: string | null = null;
@@ -619,11 +629,41 @@ export class AcademyResearchDbService implements OnModuleInit {
       );
       researched += Number(done?.n ?? 0);
       if (done?.last && (!last || String(done.last) > last)) last = String(done.last);
-      // 검토 필요는 필드 단위로 센다 — 한 학원에 여러 건이 걸릴 수 있다.
-      const metaCounts = this.get(
-        `SELECT SUM(status='needs_review') AS review, SUM(status='verified') AS ok, MAX(updated_at) AS last
-         FROM academy_field_meta WHERE external_id IN (${marks})`,
+      /*
+        조사를 마쳤다는 것과 이 도메인 글에 쓸 값이 있다는 것은 다르다. 조사 스키마는 원천
+        교차검증용 항목(학원명·주소·전화·구·동·지번)까지 겸하는데, 그것만 채워진 학원은
+        researched_at 이 찍혀도 글에는 한 글자도 실리지 않는다(실측 377곳 중 62곳).
+        도메인 화면의 헤드라인은 「조사했나」가 아니라 「글에 쓸 값이 있나」여야 한다.
+
+        컬럼명은 ARTICLE_RESEARCH_FIELDS 상수에서만 온다(사용자 입력이 닿지 않는다).
+      */
+      const valueCols = ARTICLE_RESEARCH_FIELDS.map((f) => `COALESCE(${f.key},'')`).join("||");
+      articleReady += Number(this.get(
+        `SELECT COUNT(*) AS n FROM academy_research WHERE external_id IN (${marks}) AND TRIM(${valueCols}) <> ''`,
         chunk,
+      )?.n ?? 0);
+      // 시도했지만 값이 없는 자리. "미조사" 한 덩어리로 보이면 조사를 안 돌린 것처럼 읽히는데,
+      // 근거 없음은 다시 돌려도 대개 그대로고 미시도는 돌리면 채워진다 — 할 일이 다르다.
+      const outcomes = this.get(
+        `SELECT SUM(last_attempt_outcome='no_sources') AS no_sources, SUM(last_attempt_outcome='failed') AS failed
+         FROM academy_research WHERE researched_at IS NULL AND external_id IN (${marks})`,
+        chunk,
+      );
+      noSources += Number(outcomes?.no_sources ?? 0);
+      failedAttempts += Number(outcomes?.failed ?? 0);
+      /*
+        검토·승인 건수는 **글에 실릴 수 있는 항목만** 센다. 원천 교차검증용 항목이나 안 쓰기로
+        한 항목은 승인해도 이 도메인 글에 닿지 않으므로, 여기 세우면 운영자가 할 일이 있다고
+        착각한다. 실제로 「검토 필요」로 잡히던 11건은 전부 homepage_url 이었고, 자료관리의
+        검토 대기 화면(같은 허용 목록을 쓴다)은 0건이라 눌러 가면 빈 화면이었다.
+        내려간 학원(active=0)도 뺀다 — 이 도메인이 쓰지 않는 학원이다.
+      */
+      const metaMarks = ARTICLE_RESEARCH_FIELDS.map(() => "?").join(",");
+      const metaCounts = this.get(
+        `SELECT SUM(m.status='needs_review') AS review, SUM(m.status='verified') AS ok, MAX(m.updated_at) AS last
+         FROM academy_field_meta m JOIN academy_base b ON b.external_id = m.external_id
+         WHERE b.active = 1 AND m.field_key IN (${metaMarks}) AND m.external_id IN (${marks})`,
+        [...ARTICLE_RESEARCH_FIELDS.map((f) => f.key), ...chunk],
       );
       needsReview += Number(metaCounts?.review ?? 0);
       verified += Number(metaCounts?.ok ?? 0);
@@ -631,7 +671,15 @@ export class AcademyResearchDbService implements OnModuleInit {
       bump(done?.last);
       bump(this.get(`SELECT MAX(updated_at) AS last FROM academy_research WHERE external_id IN (${marks})`, chunk)?.last);
     }
-    return { matched, researched, needs_review: needsReview, verified, last_researched_at: last, last_changed_at: changed };
+    // 한 번도 시도하지 않은 곳은 남은 자리로 센다 — 조사 행이 아예 없거나(academy_research 미생성)
+    // 행은 있는데 시도 결과가 안 찍힌 옛 행까지 여기로 모인다.
+    const unattempted = Math.max(0, matched - researched - noSources - failedAttempts);
+    return {
+      matched, researched, article_ready: articleReady,
+      no_sources: noSources, failed: failedAttempts, unattempted,
+      needs_review: needsReview, verified,
+      last_researched_at: last, last_changed_at: changed,
+    };
   }
   countBase(opts: { region?: string; includeInactive?: boolean } = {}): number {
     const where: string[] = [];

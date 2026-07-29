@@ -1403,6 +1403,16 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
     catch { /* 조회 실패는 화면을 막지 않는다 — 경고만 안 뜬다 */ }
   }, [domain.domain]);
   useEffect(() => { void loadFreshness(); }, [loadFreshness]);
+  /*
+    연결이 끝났을 때 다시 읽어야 하는 것들. 심층조사 카드는 자기 요약을 마운트할 때만 읽으므로
+    이 토큰을 의존성에 걸어 밖에서 다시 읽게 한다. 안 그러면 카드 안의 연결 버튼으로 눌렀을
+    때만 안내가 사라지고, 2단계 버튼이나 신뢰 기준 변경(서버가 재연결한다)으로는 남는다.
+  */
+  const [researchReloadToken, setResearchReloadToken] = useState(0);
+  const afterLink = useCallback(async () => {
+    setResearchReloadToken((n) => n + 1);
+    await loadFreshness();
+  }, [loadFreshness]);
   // 제외한 학원 목록. 연결이 이 목록을 건너뛰므로, 보이지 않는 규칙이 되지 않게 화면에도 드러낸다.
   const loadExclusions = useCallback(async () => {
     try { setExclusions((await listAcademyExclusions(domain.domain)).items); }
@@ -1488,7 +1498,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       setAcademyMsg(`학원 ${res.linked}곳 연결${removed}${excluded} · 후기 ${res.reviews}건 · 블로그 ${res.blog_reviews}건 · ${research}`);
       // 경고는 건수만 세면 아무도 안 읽는다. 대량 이탈 보류 같은 건 내용을 봐야 한다.
       setSyncWarning(res.warnings[0] ?? "");
-      await onRefresh(); await loadAcademies(); await loadExclusions(); await loadFreshness();
+      await onRefresh(); await loadAcademies(); await loadExclusions(); await afterLink();
     } catch (e) {
       setAcademyMsg(e instanceof Error ? e.message : String(e));
     } finally { setSyncBusy(""); }
@@ -1626,7 +1636,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       도메인 지표라 따라갈 수 없다. 도메인이 1개인 동안은 "전역인데 도메인 화면에 있다" 는 혼동이
       비용보다 작아 여기 둔다. 두 번째 도메인이 트리거다(조사 자료의 업종 스코프 전환과 동일).
     */}
-    <RegionDirectoryCard domain={domain.domain} stale={freshness?.region_directory_ahead ?? false} freshness={freshness} onSynced={loadFreshness} />
+    <RegionDirectoryCard domain={domain.domain} stale={freshness?.region_directory_ahead ?? false} freshness={freshness} onSynced={loadFreshness} onLink={linkFromResearch} linkBusy={syncBusy === "link"} />
     {/* 묶음 2 — 지역자료 동기화 */}
     <div className="card card-pad grid">
       <div className="spread"><h3 style={{ margin: 0 }}>1단계 · 지역자료 동기화</h3><span className="badge">지역 데이터 · region 축</span></div>
@@ -1644,13 +1654,21 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
         "바뀌었다" 가 아니라 "받은 뒤 연결하지 않았다" 로 적는다 — 값이 같아도 synced_at 은 오른다.
       */}
       {freshness?.seo_regions_ahead && (
-        <p className="uploaded-notice" style={{ padding: "8px 12px", margin: 0 }}>
-          ⚠️ 지역 목록을 받은 뒤 <b>「학원자료 연결」을 실행하지 않았습니다</b>
-          {freshness.seo_regions_synced_at ? ` (지역 ${formatDateTime(freshness.seo_regions_synced_at)}` : ""}
-          {freshness.seo_regions_synced_at && freshness.academies_synced_at ? ` · 학원 자료 ${formatDateTime(freshness.academies_synced_at)})` : freshness.seo_regions_synced_at ? ")" : ""}.
-          학원의 지역 배정은 연결 시점에 계산되므로, 아래 <b>2단계 「학원자료 연결」</b>을 눌러야 새 지역 목록이 반영됩니다.
-          내용이 실제로 달라졌는지까지는 알 수 없어, 다시 받은 뒤 연결하지 않은 상태면 표시됩니다.
-        </p>
+        <div className="action-hint">
+          {/* 문장과 시각을 나눠 둔다. 한 덩어리로 섞으면 안내멘트 인벤토리가 문장을 집지 못해
+              분류가 빠지고, 코드가 바뀌어도 이 문장이 낡았다는 경고가 뜨지 않는다. */}
+          <span>
+            <span>지역 목록을 받은 뒤 「학원자료 연결」을 실행하지 않았습니다. 학원의 지역 배정은 연결 시점에 계산되므로, 다시 연결해야 새 지역 목록이 반영됩니다. 내용이 실제로 달라졌는지까지는 알 수 없어, 다시 받은 뒤 연결하지 않은 상태면 표시됩니다.</span>
+            {freshness.seo_regions_synced_at && (
+              <span style={{ fontWeight: 400 }}>
+                {` (지역 ${formatDateTime(freshness.seo_regions_synced_at)}${freshness.academies_synced_at ? ` · 학원 자료 ${formatDateTime(freshness.academies_synced_at)}` : ""})`}
+              </span>
+            )}
+          </span>
+          <button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)}>
+            {syncBusy === "link" ? "연결 중…" : "학원자료 연결"}
+          </button>
+        </div>
       )}
       {/* 지역은 화면에 DB 기준 개수가 없어 브라우저 기록만 남긴다. 학원 쪽처럼 DB 와 대조할 수 없으므로
           '이 브라우저 기록'임을 문구로 밝혀, 실패한 시도를 서버 상태로 오해하지 않게 한다. */}
@@ -1698,7 +1716,9 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
           <button className="btn primary" onClick={linkFromResearch} disabled={Boolean(syncBusy)}>{syncBusy === "link" ? "연결 중…" : "학원자료 연결"}</button>
         </div>
       )}
-      <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={onSave} onLink={linkFromResearch} linkBusy={syncBusy === "link"} />
+      {/* 신뢰 기준을 바꾸면 서버가 곧바로 재연결한다(admin.controller PATCH). 그것도 연결이므로
+          이 카드의 요약과 위 재연결 안내를 함께 다시 읽는다. */}
+      <ResearchSummaryCard domain={domain.domain} usage={domain.research_usage ?? "off"} busy={busy} onSave={async (fields) => { await onSave(fields); await afterLink(); }} onLink={linkFromResearch} linkBusy={syncBusy === "link"} refreshToken={researchReloadToken} />
       <div className="spread"><div><h3 style={{ margin: 0 }}>현재 연결 학원 목록</h3><p className="muted small">이 도메인에 연결된 학원입니다. 검색·지역으로 찾고, 쓰지 않을 학원은 제외합니다. 글 생성에 쓰는 학원 타입은 글유형별로 정합니다(글유형 탭의 “학원 타입 필터”).</p></div><span className="badge info">{remoteTotal.toLocaleString()}개{loading ? " 검색 중" : ""}</span></div>
       <div className="grid grid-4">
         <Field label="검색"><input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명, 주소, SEO 설명" /></Field>
@@ -2226,18 +2246,23 @@ const RESEARCH_USAGE_CHOICES = [
 
 // 심층조사 현황(읽기 전용). 조사는 학원 자체의 속성이라 도메인마다 돌리면 같은 학원을
 // 도메인 수만큼 다시 조사하게 된다. 그래서 실행은 자료관리에서 전역으로 하고 여기선 현황만 본다.
-function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy }: { domain: string; usage: "off" | "verified" | "draft"; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onLink: () => Promise<void>; linkBusy: boolean }) {
+function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy, refreshToken }: { domain: string; usage: "off" | "verified" | "draft"; busy: boolean; onSave: (f: Record<string, unknown>) => Promise<void>; onLink: () => Promise<void>; linkBusy: boolean; refreshToken: number }) {
   const [summary, setSummary] = useState<ResearchSummary | null>(null);
   const [failed, setFailed] = useState(false);
 
   const reload = useCallback(async () => {
     try { setSummary(await getResearchSummary(domain)); } catch { setFailed(true); }
   }, [domain]);
-  useEffect(() => { void reload(); }, [reload]);
+  // refreshToken 은 바깥에서 연결이 끝났다는 신호다. 이 카드는 자기 요약을 마운트할 때만 읽어서,
+  // 카드 밖 버튼(2단계 「학원자료 연결」·신뢰 기준 변경)으로 연결하면 판정이 옛 값에 묶여 있었다.
+  useEffect(() => { void reload(); }, [reload, refreshToken]);
 
   const total = summary?.total ?? 0;
   const researched = summary?.researched ?? 0;
-  const percent = total ? Math.round((researched / total) * 100) : 0;
+  // 비율의 기준은 「조사했나」가 아니라 「글에 쓸 값이 있나」다. researched 는 원천 교차검증
+  // 항목만 채워진 학원까지 세서, 조사값을 켰을 때 실제로 실리는 양보다 후하게 보인다.
+  const articleReady = summary?.article_ready ?? 0;
+  const percent = total ? Math.round((articleReady / total) * 100) : 0;
   // 조사 자료(값 또는 검증상태)가 마지막 연결보다 새로우면 아직 이 도메인 글에 닿지 않았다.
   // 한 번도 연결한 적이 없으면(linked_at 없음) 그 자체가 연결이 필요하다는 뜻이다.
   //
@@ -2262,7 +2287,7 @@ function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy }: 
           <p className="muted small">
             원천에 없는 항목(편의시설·자체 시험장·야간반·설립연도 등)을 공개 자료에서 조사해 둡니다.
             조사 결과는 <b>학원 1곳에 하나</b>로 저장되며 도메인 사본이 아닙니다 — 여기 숫자는
-            「이 도메인에 연결된 학원 중 몇 곳이 조사됐나」를 대조해 보여주는 것입니다.
+            「이 도메인에 연결된 학원 중 <b>글에 쓸 값이 있는 곳이 몇 곳인가</b>」를 대조해 보여주는 것입니다.
             그래서 실행은 자료관리에서 한 번만 하고, 결과는 그 학원을 연결한 모든 도메인이 함께 씁니다.
           </p>
         </div>
@@ -2273,17 +2298,35 @@ function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy }: 
         : !summary
           ? <p className="muted small">불러오는 중...</p>
           : <>
-              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {/*
+                0건이어도 배지를 지우지 않는다. 사라지는 배지는 "없음" 과 "못 읽음" 을 구분해 주지
+                못해, 운영자가 상태를 확인하러 자료관리를 한 번 더 열게 만든다.
+              */}
+              {/*
+                두 줄로 나누는 이유는 단위가 다르기 때문이다 — 위는 학원 수(곳), 아래는 조사 항목
+                수(건)다. 한 학원에 항목이 여럿이라 「승인됨 739건」이 「연결된 학원 380곳」보다
+                크다. 같은 줄에 세우면 큰 쪽이 잘못된 값처럼 읽힌다.
+              */}
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="muted small" style={{ minWidth: 76, fontWeight: 800 }} title="학원 한 곳이 하나로 세어집니다.">학원 단위</span>
                 <span className="badge info">이 도메인에 연결된 학원 {total.toLocaleString()}곳</span>
-                <span className="badge">조사 완료 {researched.toLocaleString()}곳 ({percent}%)</span>
-                <span className="badge">미조사 {(total - researched).toLocaleString()}곳</span>
-                {summary.needs_review > 0 && <span className="badge warn">검토 필요 {summary.needs_review.toLocaleString()}건</span>}
+                <span className={`badge${articleReady > 0 ? " success" : ""}`} title="글에 실릴 수 있는 항목(편의시설·자체 시험장·야간반 등)에 값이 하나라도 있는 학원입니다. 원천 교차검증용 항목만 채워진 학원은 조사를 마쳤어도 여기 들어가지 않습니다.">
+                  글에 쓸 값 있음 {articleReady.toLocaleString()}곳 ({percent}%)
+                </span>
+                <span className="badge" title="조사를 시도했지만 신뢰할 공개 자료를 찾지 못한 학원입니다. 다시 돌려도 대개 그대로입니다.">근거 없음 {(summary.no_sources ?? 0).toLocaleString()}곳</span>
+                <span className="badge" title="조사 중 오류로 끝난 학원입니다. 자료관리에서 「실패·근거 없음만」으로 다시 돌릴 수 있습니다.">실패 {(summary.failed ?? 0).toLocaleString()}곳</span>
+                <span className="badge" title="아직 한 번도 조사하지 않은 학원입니다. 자료관리에서 조사를 돌리면 채워집니다.">미시도 {(summary.unattempted ?? 0).toLocaleString()}곳</span>
+              </div>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span className="muted small" style={{ minWidth: 76, fontWeight: 800 }} title="학원 한 곳에 조사 항목이 여럿이라 학원 수보다 큽니다.">항목 단위</span>
                 {/* 「검증완료만」을 고를 때 실제로 쓸 값이 있는지 여기서 보여야 한다 —
                     0건인 줄 모르고 고르면 조사값이 하나도 안 실린 채 글이 나간다. */}
-                <span className={`badge${summary.verified > 0 ? " success" : ""}`}>승인됨 {summary.verified.toLocaleString()}건</span>
+                <span className={`badge${summary.needs_review > 0 ? " warn" : ""}`} title="자료관리 검토 대기 화면과 같은 기준입니다 — 글에 실릴 수 있는 항목만, 연결 중인 학원만 셉니다.">검토 필요 {summary.needs_review.toLocaleString()}건</span>
+                <span className={`badge${summary.verified > 0 ? " success" : ""}`} title="사람이 「검증완료」로 올린 값입니다. 「검증완료만」 설정이면 이 값들만 글에 쓰입니다.">승인됨 {summary.verified.toLocaleString()}건</span>
               </div>
               <p className="muted small">
                 {summary.last_researched_at ? `최근 조사: ${formatDateTime(summary.last_researched_at)}` : "아직 조사한 학원이 없습니다."}
+                {` · 조사 시도를 마친 학원 ${researched.toLocaleString()}곳`}
                 {summary.matched < total ? ` · 조사 DB에 없는 학원 ${(total - summary.matched).toLocaleString()}곳(자료관리에서 동기화 필요)` : ""}
               </p>
             </>}
@@ -2342,7 +2385,7 @@ function ResearchSummaryCard({ domain, usage, busy, onSave, onLink, linkBusy }: 
   );
 }
 
-function RegionDirectoryCard({ domain, stale, freshness, onSynced }: { domain: string; stale: boolean; freshness: SourceFreshness | null; onSynced: () => Promise<void> }) {
+function RegionDirectoryCard({ domain, stale, freshness, onSynced, onLink, linkBusy }: { domain: string; stale: boolean; freshness: SourceFreshness | null; onSynced: () => Promise<void>; onLink: () => Promise<void>; linkBusy: boolean }) {
   const [status, setStatus] = useState<RegionDirectoryStatus | null>(null);
   // 아직 못 읽은 것과 못 읽힌 것은 다르다. 하나로 뭉치면 첫 렌더에서 실패하지도 않았는데
   // "불러오지 못했습니다" 라고 단정한다(심층조사 현황 카드와 같은 기준).
@@ -2407,13 +2450,20 @@ function RegionDirectoryCard({ domain, stale, freshness, onSynced }: { domain: s
         사실을 세운다 — 규칙만 적어두면 해당되는 순간에 읽히지 않는다.
       */}
       {stale && (
-        <p className="uploaded-notice" style={{ padding: "8px 12px", margin: 0 }}>
-          ⚠️ 사전을 받은 뒤 <b>「학원자료 연결」을 실행하지 않았습니다</b>
-          {freshness?.region_directory_synced_at ? ` (사전 ${formatDateTime(freshness.region_directory_synced_at)}` : ""}
-          {freshness?.region_directory_synced_at && freshness.academies_synced_at ? ` · 학원 자료 ${formatDateTime(freshness.academies_synced_at)})` : freshness?.region_directory_synced_at ? ")" : ""}.
-          지금 학원에 붙어 있는 셔틀 운행 지역은 그 이전 사전으로 계산된 값입니다. 아래 <b>2단계 「학원자료 연결」</b>을 누르면 다시 계산됩니다.
-          내용이 실제로 달라졌는지까지는 알 수 없어, 다시 받은 뒤 연결하지 않은 상태면 표시됩니다.
-        </p>
+        <div className="action-hint">
+          {/* 문장과 시각을 나눠 둔다 — 위 1단계 안내와 같은 이유(인벤토리 캡처). */}
+          <span>
+            <span>사전을 받은 뒤 「학원자료 연결」을 실행하지 않았습니다. 지금 학원에 붙어 있는 셔틀 운행 지역은 그 이전 사전으로 계산된 값입니다. 내용이 실제로 달라졌는지까지는 알 수 없어, 다시 받은 뒤 연결하지 않은 상태면 표시됩니다.</span>
+            {freshness?.region_directory_synced_at && (
+              <span style={{ fontWeight: 400 }}>
+                {` (사전 ${formatDateTime(freshness.region_directory_synced_at)}${freshness.academies_synced_at ? ` · 학원 자료 ${formatDateTime(freshness.academies_synced_at)}` : ""})`}
+              </span>
+            )}
+          </span>
+          <button className="btn primary" onClick={onLink} disabled={linkBusy}>
+            {linkBusy ? "연결 중…" : "학원자료 연결"}
+          </button>
+        </div>
       )}
       <div className="row">
         <button className="btn" disabled={busy} onClick={onSync}>{busy ? "갱신 중..." : "지역 사전 갱신"}</button>

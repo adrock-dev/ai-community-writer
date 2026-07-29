@@ -322,7 +322,58 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "을 눌러야 새 지역 목록이 반영됩니다",
+      "match": "값이 하나라도 있는 학원입니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-research-db.service.ts#summarizeByExternalIds",
+        "apps/api-nest/src/academy-research-article-fields.ts#ARTICLE_RESEARCH_FIELDS"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "다시 돌려도 대개 그대로입니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-research-db.service.ts#recordResearchAttempt"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "「실패·근거 없음만」으로 다시 돌릴 수 있습니다",
+      "class": "B",
+      "depends": [
+        "apps/admin-next/components/AcademyResearchClient.tsx 재조사 범위 선택"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "아직 한 번도 조사하지 않은 학원입니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-research-db.service.ts#summarizeByExternalIds"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "자료관리 검토 대기 화면과 같은 기준입니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-research-db.service.ts#summarizeByExternalIds",
+        "apps/api-nest/src/academy-research-db.service.ts#listReviewQueue"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "「검증완료만」 설정이면 이 값들만 글에 쓰입니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/academy-research-usage.ts",
+        "apps/api-nest/src/academy-link.service.ts#researchValuesFor"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "학원의 지역 배정은 연결 시점에 계산되므로",
       "class": "B",
       "depends": [
         "apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies bestRegionForAddress",
@@ -331,7 +382,7 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "을 누르면 다시 계산됩니다",
+      "match": "그 이전 사전으로 계산된 값입니다",
       "class": "B",
       "depends": [
         "셔틀 지역 판정",

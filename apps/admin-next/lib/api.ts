@@ -150,6 +150,11 @@ export async function downloadPostExport(domain: string, body: { post_ids: strin
 }
 export interface ResearchSummary {
   domain: string; total: number; matched: number; researched: number;
+  /** 글에 실릴 수 있는 항목에 값이 하나라도 있는 학원 수. researched 는 교차검증 항목만 채워진 곳도 센다. */
+  article_ready: number;
+  /** 조사했지만 값이 없는 자리 — 할 일이 달라 나눠 센다(근거 없음은 다시 돌려도 대개 그대로). */
+  no_sources: number; failed: number; unattempted: number;
+  /** 둘 다 글에 실릴 수 있는 항목·연결 중인 학원만 센다(자료관리 검토 대기와 같은 기준). */
   needs_review: number; verified: number;
   last_researched_at: string | null;
   /** 조사값·검증상태가 마지막으로 바뀐 시각. linked_at 보다 새로우면 아직 도메인에 반영되지 않았다. */
