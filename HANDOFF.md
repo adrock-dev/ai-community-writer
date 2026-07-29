@@ -78,10 +78,17 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | `apps/api-nest/src/image-generation.service.ts` | Codex backend 기반 이미지 생성 선택 기능 |
 | `apps/api-nest/src/constants.ts` | driving vertical, 템플릿, 디자인 템플릿, 프리셋 |
 | `apps/admin-next/app/api/admin/[...path]/route.ts` | Admin Next → Nest API 프록시 |
+| `apps/admin-next/components/AppShell.tsx` | 사이드바·운영 대상 선택기·「반영 대기」 셸 배너 |
 | `apps/admin-next/components/DashboardClient.tsx` | 도메인 생성/대시보드 |
-| `apps/admin-next/components/DomainClient.tsx` | 도메인 상세/생성/검수/설정 대부분의 UI |
-| `apps/admin-next/components/JobsClient.tsx` | 작업 큐 UI |
-| `apps/admin-next/components/PostDetailClient.tsx` | 글 상세/렌더링 확인 |
+| `apps/admin-next/components/DomainClient.tsx` | 도메인 상세/생성/검수/설정 대부분의 UI + 운영 튜토리얼 |
+| `apps/admin-next/components/AcademyResearchClient.tsx` | 「운전학원 자료」 — 원천 동기화·AI 심층조사·검토 승인(업종 단위, 도메인 무관) |
+| `apps/admin-next/components/AcademyDetailClient.tsx` | 학원 1곳의 조사값 확인/수정/승인 해제 |
+| `apps/admin-next/components/DraftsClient.tsx` | 격리(`draft_posts`) 검수 — 게이트 미통과 글 확인/발행/반려 |
+| `apps/admin-next/components/JobsClient.tsx` · `JobCard.tsx` | 작업 큐 UI |
+| `apps/admin-next/components/PostDetailClient.tsx` | 글 상세/렌더링 확인 + 「이 글의 근거」 |
+| `apps/admin-next/components/SettingsClient.tsx` | 작업환경(튜토리얼·생성 기본값·업종 레지스트리·블로그리뷰 수집) |
+| `apps/admin-next/components/NeedDomainClient.tsx` · `IntegrationSettingsClient.tsx` | 도메인 없음 안내 / 연동 설정 |
+| `apps/admin-next/lib/tour.ts` | 운영 튜토리얼 흐름·단계(focus) 정의와 on/off 저장 |
 | `apps/admin-next/lib/api.ts` | Admin API client |
 | `apps/admin-next/lib/types.ts` | UI 타입 계약 |
 | `docs/admin-json-api.md` | 관리자 API 상세 명세 |
@@ -102,9 +109,15 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | --- | --- |
 | `/` | 대시보드, 도메인 목록/생성, 시작 플로우 |
 | `/jobs` | 전체 작업 큐, 3초 폴링/수동 새로고침 |
+| `/academies` | 「운전학원 자료」 — 원천 동기화·AI 심층조사·검토 승인. **업종 단위 전역 화면이라 도메인을 모른다** |
+| `/academies/[externalId]` | 학원 1곳의 조사값 상세 |
+| `/settings` | 작업환경(튜토리얼·생성 기본값·업종·블로그리뷰 수집) |
+| `/integrations` | 연동 설정 |
+| `/need-domain` | 도메인이 없을 때의 안내 |
 | `/t/[domain]` | 도메인 상세 개요 |
 | `/t/[domain]/generate` | 글 생성 중심 화면 |
 | `/t/[domain]/posts` | 검수/내보내기 중심 화면 |
+| `/t/[domain]/drafts` | 격리 검수 — 품질 게이트 미통과 글(`draft_posts`) |
 | `/t/[domain]/post/[postId]` | 글 상세/렌더 HTML 확인 |
 
 ## 6. 관리자 API 요약
@@ -179,10 +192,15 @@ data/admin.db
 - `axes`
 - `slots`
 - `posts`
+- `draft_posts` — 품질 게이트 미통과로 격리된 글(`/t/[domain]/drafts`에서 검수). 공개 경로와 분리돼 있다
+- `custom_templates` — 도메인이 직접 만든 글유형
 - `jobs`
 - `app_settings`
 - `academies`
+- `academy_exclusions` — 도메인별로 뺀 학원. 연결이 이 목록을 건너뛴다(행만 지우면 재연결 때 되살아나므로)
 - `seo_regions`
+- `region_directory` — 읍·면·동 공용 지역 사전. 도메인과 무관한 전역 자료
+- `sync_runs` — 원천 동기화 실행 이력. `jobs`(워커가 하나씩 claim하는 큐)와 분리돼 있다
 
 주의:
 
