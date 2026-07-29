@@ -1063,6 +1063,45 @@
         "apps/api-nest/src/post-insight.controller.ts#unusedResearchLines",
         "apps/api-nest/src/academy-research-article-fields.ts"
       ]
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "작성 엔진·모델·이미지 옵션은 글 작성에만 적용",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/slot.service.ts#generateSlotsForDomain"
+      ],
+      "note": "1단계 후보 생성은 LLM·이미지를 쓰지 않는다는 전제. 후보 생성이 LLM을 쓰게 되면 거짓이 된다."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "후보가 없으면 이 버튼은 실패합니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts#enqueueGenerate"
+      ],
+      "note": "작성은 기존 planned 후보만 쓰고 후보가 0이면 400으로 거절한다. 자동 생성이 생기면 이 문장과 2단계 카드 안내를 함께 뒤집어야 한다. 예전에는 반대로 적혀 있었고 인벤토리에 없어 아무도 못 봤다."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "게이트를 통과 못한 글은 이 목록에 없고",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/quality-gate.ts",
+        "apps/api-nest/src/db.service.ts#insertDraftPost",
+        "apps/admin-next/lib/post-insight.ts"
+      ],
+      "note": "게이트 미통과 글은 posts 가 아니라 draft_posts 로 간다는 전제 + 「이 글의 근거」가 보여주는 항목."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "작업은 끝났는데 목록이 비어 있다면",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/quality-gate.ts",
+        "apps/api-nest/src/db.service.ts#insertDraftPost"
+      ],
+      "note": "같은 전제의 빈 상태 안내. 격리가 없어지면 이 안내가 사람을 없는 화면으로 보낸다."
     }
   ]
 }

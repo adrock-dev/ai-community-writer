@@ -68,6 +68,14 @@ function collect() {
       push(rel, m.index, src, "info-div", m[1].replace(/<[^>]+>/g, ""));
     for (const m of src.matchAll(/\b(body|desc|action|hint|note|help)\s*:\s*(?:"([^"]*)"|`([^`]*)`)/g))
       push(rel, m.index, src, `field:${m[1]}`, m[2] ?? m[3] ?? "");
+    // 상태에 따라 갈리는 본문(삼항식). 값이 문자열로 바로 시작하지 않아 위 패턴이 못 잡는다.
+    // 이 사각지대가 실제로 사고를 냈다: 튜토리얼의 "후보가 없을 때" 안내가 서버 동작과 반대로
+    // 적혀 있었는데(후보를 자동 생성한다 → 실제로는 400), 인벤토리에 없어 아무 게이트도 못 봤다.
+    // 상태별로 갈리는 문장은 그 상태를 만드는 코드에 매달려 있어 가장 잘 썩는 자리다.
+    for (const m of src.matchAll(/\b(body|desc|action|hint|note|help)\s*:\s*[^,;{}]{0,120}?\?\s*(?:"([^"]*)"|`([^`]*)`)\s*:\s*(?:"([^"]*)"|`([^`]*)`)/g)) {
+      push(rel, m.index, src, `field:${m[1]}`, m[2] ?? m[3] ?? "");
+      push(rel, m.index, src, `field:${m[1]}`, m[4] ?? m[5] ?? "");
+    }
     for (const m of src.matchAll(/\b(confirm|alert)\(\s*(?:"([^"]*)"|`([^`]*)`)/g))
       push(rel, m.index, src, "confirm", m[2] ?? m[3] ?? "");
     for (const m of src.matchAll(/\stitle="([^"]{12,})"/g))
