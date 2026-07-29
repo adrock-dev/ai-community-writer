@@ -47,6 +47,13 @@ export class SlotService {
       if (!spec) continue;
       const archetype = getArchetype(String(spec.kind || ""));
       const override = overrides[tid];
+      // 단독 소개형은 지역이 아니라 시설 1곳당 슬롯 하나다(archetype.entity_per_slot 주석 참조).
+      if (archetype?.entity_per_slot) {
+        const entityRows = this.buildEntitySlots(domain, tid, spec, override, maxPerTemplate);
+        rows.push(...entityRows);
+        summary[tid] = entityRows.length;
+        continue;
+      }
       // (a) 주제(topic) 결정 — keyword_filter 있으면 free 모드(그 키워드를 권위로 직접 사용 + primary_override 로 지역 결합 여부),
       //     없으면 아키타입 폴백 모드(keyword_rule 패턴 + archetype.primary). 폴백은 기존과 byte-동일 = 골든 0-diff.
       const topicUnits = buildTopicUnits(spec, archetype, axes);
@@ -105,6 +112,46 @@ export class SlotService {
     summary._excluded_total = filtered.excluded.length;
     summary._inserted_total = this.db.bulkUpsertSlots(filtered.kept);
     return summary;
+  }
+
+  /**
+   * 단독 소개형 슬롯 — 시설 1곳당 하나.
+   *
+   * 지역 기반과 다른 점은 셋이다.
+   *  1) 토픽이 지역 축이 아니라 **연결된 시설 목록**이다. 시설이 없는 지역은 슬롯이 안 생긴다.
+   *  2) `region` 이 그 시설의 실제 소재지다 → 제목(`{지역} …`)이 저절로 정합해진다.
+   *  3) 축(persona/intent)은 곱하지 않고 시설마다 **하나만** 고른다. 곱하면 같은 시설로 글이
+   *     여러 개 생겨(실측 T14: 강릉 3건) 단독 소개의 뜻이 사라진다. 고르는 기준은 시설 id
+   *     해시라 재생성해도 같은 값이 나온다(slot_id idempotency).
+   */
+  private buildEntitySlots(domain: string, tid: string, spec: TemplateSpecShape, override: Row | undefined, maxPerTemplate: number): Row[] {
+    const academyTypes = (spec.academy_types ?? []).map((t) => String(t || "").trim()).filter(Boolean);
+    // 학원 타입을 지정하지 않은 단독형은 대상을 특정할 수 없다 — 슬롯을 만들지 않는다(임의 시설 선택 방지).
+    if (!academyTypes.length) return [];
+    const academies = this.db.listAcademies(domain, { academy_types: academyTypes, limit: MAX_SLOTS_PER_TEMPLATE });
+    if (!academies.length) return [];
+    const keyword = (spec.keyword_filter ?? []).map((k) => String(k || "").trim()).find(Boolean) ?? "";
+    const recipe = resolveRecipeFlags(spec, override);
+    const personaPool = recipe.use_persona ? resolveAxisPool(spec, "persona") : [];
+    const intentPool = recipe.with_intent ? resolveAxisPool(spec, "intent") : [];
+    const rows: Row[] = [];
+    for (const academy of academies) {
+      if (rows.length >= maxPerTemplate) break;
+      const externalId = String(academy.external_id || "").trim();
+      const name = String(academy.name || "").trim();
+      if (!externalId || !name) continue;
+      const region = String(academy.region || "").trim();
+      // 제목 규칙이 `{지역} …` 를 쓰므로 region 은 반드시 실제 소재지여야 한다.
+      const primaryKeyword = [region, keyword].filter(Boolean).join(" ").replace(/\s+/g, " ").trim() || name;
+      const persona = personaPool.length ? String(personaPool[axisComboOffset(externalId, personaPool.length)]!.value ?? "") || null : null;
+      const intent = intentPool.length ? String(intentPool[axisComboOffset(`${externalId}|intent`, intentPool.length)]!.value ?? "") || null : null;
+      rows.push({
+        slot_id: slotId(domain, tid, [externalId]), domain, template_id: tid, primary_keyword: primaryKeyword,
+        region: region || null, persona, intent, modifier_1: null, modifier_2: null,
+        entity_id: externalId, priority_score: priority(null, null, spec.weight),
+      });
+    }
+    return rows;
   }
 
   // 레시피↔데이터 정합성 분석(읽기/계산 전용, 생성 미변경). 전 빌트인+커스텀 유형을 대상으로,

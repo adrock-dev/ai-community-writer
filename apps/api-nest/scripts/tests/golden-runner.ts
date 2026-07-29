@@ -28,6 +28,17 @@ const { TEMPLATE_SPECS } = await import("../../src/constants.js");
 const db = new DbService();
 db.init();
 db.createDomain({ domain: "golden", display_name: "golden", vertical: "driving", templates_enabled: JSON.stringify(Object.keys(TEMPLATE_SPECS)) });
+// 단독 소개형(archetype.entity_per_slot)은 지역 축이 아니라 **연결된 시설 목록**에서 슬롯을 만든다.
+// 픽스처가 없으면 그 유형이 0건이 되어 회귀 방어가 사라지므로, 고정된 최소 시설 집합을 심는다.
+// 값은 결정론적이어야 한다 — 여기 목록·순서를 바꾸면 골든의 해당 유형 슬롯이 함께 바뀐다.
+db.upsertAcademies("golden", [
+  { external_id: "gold-exam-1", name: "골든 운전면허시험장", region: "서울특별시 강남구", address: "서울특별시 강남구 골든로 1", academy_type: "license_test_course", phone: "02-000-0001" },
+  { external_id: "gold-exam-2", name: "골든북부 운전면허시험장", region: "경기도 고양시", address: "경기도 고양시 골든로 2", academy_type: "license_test_course", phone: "031-000-0002" },
+  { external_id: "gold-academy-1", name: "골든자동차운전전문학원", region: "서울특별시 강남구", address: "서울특별시 강남구 골든로 11", academy_type: "exam_academy", phone: "02-000-0011" },
+  { external_id: "gold-academy-2", name: "골든제이자동차운전전문학원", region: "부산광역시 사상구", address: "부산광역시 사상구 골든로 12", academy_type: "exam_academy", phone: "051-000-0012" },
+  { external_id: "gold-academy-3", name: "골든케이자동차운전전문학원", region: "강원특별자치도 강릉시", address: "강원특별자치도 강릉시 골든로 13", academy_type: "exam_academy", phone: "033-000-0013" },
+]);
+
 const slots = new SlotService(db);
 slots.applyPreset("golden", "driving");
 slots.generateSlotsForDomain("golden", { templates: Object.keys(TEMPLATE_SPECS), maxPerTemplate: 40 });

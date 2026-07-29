@@ -1339,7 +1339,7 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
       </div>
     </div>
     {isRegionPrimary && <div className="grid" style={{ gap: 8 }}>
-      <div><b className="small">학원 타입 (선택)</b><p className="muted small">이 글유형이 후보로 쓸 학원 타입입니다. 괄호 안 숫자는 이 도메인에 <b>동기화된 학원 수</b>예요. <b>비우면 학원정보를 쓰지 않고</b> 지역 가이드/체크리스트 중심으로 작성합니다. 지역형 글유형에만 적용됩니다.</p></div>
+      <div><b className="small">학원 타입 (선택)</b><p className="muted small">이 글유형이 후보로 쓸 학원 타입입니다. 괄호 안 숫자는 이 도메인에 <b>동기화된 학원 수</b>예요. <b>비우면 학원정보를 쓰지 않고</b> 지역 가이드/체크리스트 중심으로 작성합니다. 지역형 글유형에만 적용됩니다. <b>단독 소개형</b>(시설 1곳을 다루는 유형)에서는 이 타입이 후보 조건일 뿐 아니라 <b>후보를 만드는 대상 목록</b>이라, 비우면 후보가 하나도 생기지 않습니다.</p></div>
       <div className="info-panel grid grid-3" style={{ gap: 6 }}>
         {(academyTypeOptions ?? []).map((t) => <label key={t.value} className="row" style={{ gap: 6 }}>
           <input type="checkbox" checked={academyTypes.has(t.value)} onChange={(e) => setAcademyTypes((prev) => { const next = new Set(prev); if (e.target.checked) next.add(t.value); else next.delete(t.value); return next; })} /> {t.value} <span className="muted small">({t.count})</span>
@@ -1773,7 +1773,7 @@ function Academies({ domain, academies, regionAxis, busy, onSave, onRefresh }: {
       {/* 지역은 화면에 DB 기준 개수가 없어 브라우저 기록만 남긴다. 학원 쪽처럼 DB 와 대조할 수 없으므로
           '이 브라우저 기록'임을 문구로 밝혀, 실패한 시도를 서버 상태로 오해하지 않게 한다. */}
       <p className="muted small">최근 지역 동기화(이 브라우저 기록): {lastSync.regions ? `${formatDateTime(lastSync.regions.at)} · ${lastSync.regions.count.toLocaleString()}개 반영${lastSync.regions.detail ? ` (${lastSync.regions.detail})` : ""}` : "아직 기록 없음"}</p>
-      <div className="spread"><div><h3 style={{ margin: 0 }}>현재 지역 축</h3><p className="muted small">글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. 키워드 마스터와 동일하게 <b>가중치·월검색량·KD</b>는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다.</p></div><span className="badge info">{regionAxis.length}개</span></div>
+      <div className="spread"><div><h3 style={{ margin: 0 }}>현재 지역 축</h3><p className="muted small">글유형(지역형)이 「지역 × 키워드」 조합을 만들 때 쓰는 지역 풀입니다. <b>단독 소개형</b>(시설 1곳을 다루는 유형)은 이 풀을 쓰지 않고 연결된 시설 목록에서 후보를 만들며, 지역은 그 시설의 실제 소재지가 됩니다. 키워드 마스터와 동일하게 <b>가중치·월검색량·KD</b>는 슬롯 우선순위 계산에만 쓰이고 글 내용은 바꾸지 않습니다.</p></div><span className="badge info">{regionAxis.length}개</span></div>
       <p className="uploaded-notice" style={{ padding: "8px 12px", margin: "-8px 0" }}>⚠️ <b>월검색량·KD</b>는 실측이 아닌 추정 시드값으로 슬롯 <b>우선순위</b>에만 쓰이며 글 내용은 바꾸지 않습니다(추후 <b>네이버 검색광고 API</b> 연동 시 실측 갱신 예정). 지역 동기화로 축을 교체하면 이 두 값은 비워집니다.</p>
       {regionAxis.length > 0
         ? <div className="table-wrap" style={{ maxHeight: 340, overflow: "auto" }}><table>

@@ -34,6 +34,19 @@ export type Archetype = {
   academy_centric: boolean;       // worker: 학원 facts+이미지 수집(lead). slot: BEST 근거 경고. (골든과 무관하나 생성 load-bearing)
   academy_min?: number;           // 충분/보장/차단 기준 = 이 아키타입이 최소로 필요로 하는 학원 수. 미지정 시 ACADEMY_MIN_FOR_BEST(2).
   academy_pool?: number;          // 한 글이 모으는 학원 후보 풀 크기(=단독형이면 1). 미지정 시 ACADEMY_MAX_CANDIDATES(7).
+  /**
+   * 슬롯을 지역이 아니라 **시설 1곳당 하나씩** 만든다(단독 소개형).
+   *
+   * 지역 기준으로 만들면 단독 소개형이 두 가지로 깨진다(2026-07-29 실측).
+   *  - 같은 지역 슬롯 여럿이 같은 시설을 골라 **제목까지 똑같은 글이 여러 개** 나온다
+   *    (T14: 강릉 슬롯 3개 → 전부 "강릉자동차운전전문학원", slug 만 -2·-3).
+   *  - 그 지역에 시설이 없으면 인근에서 끌어오는데 제목은 이미 지역명으로 굳어 있다
+   *    (T11: "동해시 운전면허시험장" 글이 39.9km 떨어진 강릉 시험장을 소개).
+   *
+   * 시설당 하나면 region 이 그 시설의 실제 소재지가 되므로 제목이 저절로 정합해지고
+   * 중복도 사라진다. 시설이 없는 지역은 슬롯 자체가 안 생겨 반경 상한 문제도 없어진다.
+   */
+  entity_per_slot?: boolean;
   writing_guide: WritingGuide;    // 유형별 작성 지침(프롬프트 주입). 글 품질을 좌우.
 };
 
@@ -118,7 +131,7 @@ export const ARCHETYPES: Record<string, Archetype> = {
   // 학원 1곳이면 성립(min 1), 후보 풀도 1곳 — 비교표/BEST 프레이밍을 만들지 않는다.
   local_single: {
     id: "local_single", primary: "region", keyword_rule: { format: "region_plus_pick", pattern: /운전면허학원|자동차운전전문학원|자동차학원|운전면허시험장/u }, academy_centric: true,
-    academy_min: 1, academy_pool: 1,
+    academy_min: 1, academy_pool: 1, entity_per_slot: true,
     writing_guide: {
       core: [
         "그 지역의 대상 시설 1곳을 단독으로 깊게 소개한다 — 비교표·BEST·'후보 N곳' 같은 비교 프레이밍을 쓰지 않는다",
