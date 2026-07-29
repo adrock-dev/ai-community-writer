@@ -164,8 +164,15 @@ export function formatShuttleFact(
   if (conditions.length) segments.push(`이용 조건 ${conditions[0]}`);
 
   // 3) 경유지 — 지역이 안 잡힌 학원에서 특히 유용한 보조 정보.
+  //
+  // 총 개수는 넣지 않는다. 학원끼리 수강료·운영 과정이 거의 같은 지역에서는 경유지 수가
+  // 유일하게 눈에 띄는 숫자라, 넣어 두면 모델이 그걸 그 학원의 강점으로 집어 든다
+  // (발행 14건 중 3건: "161곳으로 가장 많고", "경유지 100곳", "67곳 경유지").
+  //
+  // 독자에게 중요한 것은 "내 출발지가 경유지에 있느냐"이지 총 개수가 아니다. 161곳은
+  // 내 동네를 지난다는 뜻이 아니고, 오히려 노선이 길어 타는 시간이 길다는 뜻일 수도 있다.
   const stops = stopNames(routes);
-  if (stops.length) segments.push(`경유지 ${stops.slice(0, MAX_STOPS).join(", ")} 등 ${stops.length}곳`);
+  if (stops.length) segments.push(`경유지 ${stops.slice(0, MAX_STOPS).join(", ")} 등`);
 
   // 셔틀 연락처는 대부분 실번호라 넣지 않는다. 공개 연락처는 학원 안심번호 하나로 통일한다.
   if (!segments.length) return "셔틀 운행(세부 정보는 자료에 없음)";

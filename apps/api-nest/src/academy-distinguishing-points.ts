@@ -71,18 +71,12 @@ export function academyDistinguishingPoints(academies: Row[]): DistinguishingPoi
     break;
   }
 
-  // 4) 셔틀 — 경유지 수가 자료에 명시된 경우에만. 없는 학원은 비교에서 빠진다.
-  //    값을 가진 곳이 하나뿐이면 '가장 많음'(비교)은 성립하지 않지만 '유일하게 안내'(유일성)는
-  //    성립한다. 이걸 빼면 혼자만 상세한 학원이 오히려 아무 특징도 없는 카드가 된다(실측: 흥업).
-  const stops = rows.map((row) => shuttleStopCount(row.shuttle));
-  const mostStops = uniqueExtremeIndex(stops, "max");
-  if (mostStops !== null) push(mostStops, `셔틀 경유지가 ${scope} 가장 많음(${stops[mostStops]}곳)`);
-  else {
-    // 문구는 비교형이 아니라 그 학원의 사실로 쓴다. "유일하게 안내됨"이라고 쓰면 모델이 그 근거로
-    // "다른 곳은 자료가 없어서"를 서술하게 되고, 그건 내부 처리 노출(exposes_internal_fact_language)이다.
-    const onlyStops = onlyIndexWith(stops.map((count) => count !== null));
-    if (onlyStops !== null) push(onlyStops, `셔틀 경유지 ${stops[onlyStops]}곳까지 안내됨`);
-  }
+  // 4) 셔틀은 여기서 다루지 않는다.
+  //    예전에는 경유지 수로 '가장 많음'·'N곳까지 안내됨'을 계산했는데, 경유지 개수는 독자에게
+  //    의미가 없다 — 중요한 것은 "내 출발지가 경유지에 있느냐"이지 총 개수가 아니다.
+  //    셔틀 사실에서 개수를 뺐으므로(drivingplus-shuttle-facts) 계산 근거 자체도 사라졌다.
+  //    셔틀로 카드를 여는 길은 따로 있다 — 차별점이 없는 학원은 셔틀 운행 지역으로 열라고
+  //    T16 프롬프트가 안내하며, 그쪽은 지역 기준이라 독자가 자기 동네를 찾을 수 있다.
 
   // 5) 그 학원에서만 운영하는 과정 — 독자가 그 면허를 원하면 선택지가 하나로 좁혀진다.
   for (const [index, list] of courses.entries()) {
@@ -185,14 +179,7 @@ function formatWon(amount: number | null | undefined): string {
   return amount === null || amount === undefined ? "" : `${amount.toLocaleString("en-US")}원`;
 }
 
-// ---------- 셔틀 / 주소 ----------
-
-/** 셔틀 문구의 "경유지 … 등 15곳"에서 경유지 수를 읽는다. 없으면 null. */
-export function shuttleStopCount(value: unknown): number | null {
-  const match = String(value ?? "").match(/경유지[^]*?등\s*(\d+)\s*곳/u);
-  const count = match ? Number(match[1]) : NaN;
-  return Number.isFinite(count) ? count : null;
-}
+// ---------- 주소 ----------
 
 /** 주소에서 시·군·구 토큰을 뽑는다. */
 export function districtOf(value: unknown): string | null {

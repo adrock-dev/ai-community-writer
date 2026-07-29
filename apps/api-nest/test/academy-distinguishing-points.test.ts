@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   academyDistinguishingPoints, districtOf, distinguishingPointsFactLine,
-  parseBusinessHours, parseCoursePrices, shuttleStopCount,
+  parseBusinessHours, parseCoursePrices,
 } from "../src/academy-distinguishing-points.js";
 import { t16FactsForPrompt } from "../src/t16-axis-comparison.js";
 
@@ -61,16 +61,11 @@ describe("parseBusinessHours", () => {
   });
 });
 
-describe("parseCoursePrices / shuttleStopCount / districtOf", () => {
+describe("parseCoursePrices / districtOf", () => {
   it("과정별 금액을 읽는다", () => {
     const prices = parseCoursePrices("1종 보통 수동 780,000원, 1종 보통 자동 900,000원");
     expect(prices.get("1종 보통 수동")).toBe(780000);
     expect(prices.get("1종 보통 자동")).toBe(900000);
-  });
-
-  it("경유지 수는 명시된 경우에만 읽는다", () => {
-    expect(shuttleStopCount("운행 지역(자료 기준) 원주시(개운동 등) · 경유지 명륜동, 개운동 등 15곳")).toBe(15);
-    expect(shuttleStopCount("운행 지역(자료 기준) 학원셔틀")).toBeNull();
   });
 
   it("주소에서 시·군을 뽑는다", () => {
@@ -106,17 +101,16 @@ describe("academyDistinguishingPoints", () => {
     expect(points[3]?.some((point) => point.includes("혼자 다른 시·군에 있음(횡성군)"))).toBe(true);
   });
 
-  it("경유지 수를 밝힌 학원이 하나뿐이면 비교형 대신 사실형으로 쓴다", () => {
-    // 흥업만 "등 15곳"으로 경유지 수를 밝혔다. 비교 대상이 없으니 '가장 많음'은 성립하지 않지만,
-    // 그렇다고 빼면 혼자만 상세한 학원이 아무 특징 없는 카드가 된다 — 비교 없는 사실로 남긴다.
-    expect(points[0]?.some((point) => point === "셔틀 경유지 15곳까지 안내됨")).toBe(true);
-    expect(points.flat().some((point) => point.includes("가장 많음(15곳)"))).toBe(false);
-    // 둘 이상이 밝히면 그때 비교한다.
-    const withTwo = academyDistinguishingPoints([
+  it("경유지 수를 차별점으로 삼지 않는다", () => {
+    // 독자에게 중요한 것은 "내 출발지가 경유지에 있느냐"이지 총 개수가 아니다. 개수를 강점으로
+    // 올리면 발행 글에서 "161곳으로 가장 많고" 같은 문장이 카드 첫 줄에 온다(실측 3건).
+    // 셔틀 사실에서 개수를 뺐으므로 옛 형식이 다시 들어와도 살아나지 않아야 한다.
+    expect(points.flat().some((point) => point.includes("경유지"))).toBe(false);
+    const legacyFormat = academyDistinguishingPoints([
       { ...WONJU[0], shuttle: "경유지 A, B 등 15곳" },
       { ...WONJU[1], shuttle: "경유지 C 등 3곳" },
     ]);
-    expect(withTwo[0]?.some((point) => point.includes("셔틀 경유지가 2곳 중 가장 많음(15곳)"))).toBe(true);
+    expect(legacyFormat.flat().some((point) => point.includes("경유지"))).toBe(false);
   });
 
   it("과정이 가장 많은 곳과 보통면허에 집중한 곳을 구분한다", () => {

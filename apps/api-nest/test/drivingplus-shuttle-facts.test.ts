@@ -88,9 +88,20 @@ describe("경계", () => {
     expect(formatShuttleFact(null, [])).toBeNull();
   });
 
-  it("출발지 표기는 경유지로 세지 않는다", () => {
+  it("출발지 표기는 경유지 목록에 넣지 않는다", () => {
     const text = formatShuttleFact([bus({ title: "1호차", times: [{ time: "", runDirection: "학원출발" }, { time: "7분", runDirection: "마석역" }] })], []);
-    expect(text).toContain("마석역 등 1곳");
+    expect(text).toContain("경유지 마석역 등");
+    expect(text).not.toContain("학원출발");
+  });
+
+  it("경유지 총 개수는 내보내지 않는다", () => {
+    // 개수를 주면 학원끼리 수강료·과정이 비슷한 지역에서 모델이 그걸 강점으로 집는다.
+    const text = formatShuttleFact([bus({ title: "1호차", times: [
+      { time: "", runDirection: "마석역" }, { time: "", runDirection: "평내호평역" },
+      { time: "", runDirection: "금곡역" }, { time: "", runDirection: "도농역" }, { time: "", runDirection: "구리역" },
+    ] })], []);
+    expect(text).toContain("등");
+    expect(text).not.toMatch(/\d+\s*곳/u);
   });
 
   it("facts 필드 경계를 깨는 슬래시가 남지 않는다", () => {
