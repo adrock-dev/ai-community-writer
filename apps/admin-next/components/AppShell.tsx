@@ -142,6 +142,13 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           <SidebarLink href={manageHref} active={onDomainOverview || (onNeedDomainPage && menuFrom === "manage")} tabIndex={sidebarOpen ? 0 : -1}>도메인 관리</SidebarLink>
           <SidebarLink href={generationHref} active={onGenerate || (onNeedDomainPage && menuFrom === "generate")} tabIndex={sidebarOpen ? 0 : -1}>글 생성</SidebarLink>
           <SidebarLink href={reviewHref} active={onReview || (onNeedDomainPage && menuFrom === "review")} tabIndex={sidebarOpen ? 0 : -1}>검수·보내기</SidebarLink>
+          <p style={{ marginTop: 12 }}>작업 관리</p>
+          {/*
+            작업 큐는 위 「콘텐츠 운영」이 아니라 여기 있다. 그룹은 소유 단위로 나뉘는데(콘텐츠=도메인,
+            자료=업종), 작업은 워커에 딸린다 — 워커는 하나뿐이고 도메인을 가로질러 처리한다.
+            도메인 종속 메뉴 사이에 두면 바로 위 「운영 대상」이 적용될 것처럼 읽혀, 실제로
+            "왜 다른 도메인 작업이 보이지" 로 이어졌다. 도메인별 큐는 「도메인 관리」의 작업 큐 탭이 맡는다.
+          */}
           <SidebarLink href="/jobs" active={pathname === "/jobs"} tabIndex={sidebarOpen ? 0 : -1}>작업 큐</SidebarLink>
           <p style={{ marginTop: 12 }}>자료 관리</p>
           {/* 자료는 도메인이 아니라 업종에 딸린다. 업종이 늘면 여기 업종 선택이 붙는다. */}
