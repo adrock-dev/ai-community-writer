@@ -54,7 +54,12 @@ export class AcademyLinkService {
       rows.push(built.row);
     }
 
-    const result = this.db.upsertDrivingplusAcademies(domain, rows, { blogReviewsAttempted: blogCount > 0, applyResearch: true });
+    // blogReviewsAttempted=false: 연결은 원천을 치지 않는다. 블로그리뷰가 없는 학원은
+    // "가져오다 실패한" 것이 아니라 조사 DB에 없는 것뿐이다. 그 경고는 동기화 경로를 위한
+    // 것이고(받아오다 실패했을 때 기존 후기를 지우지 않았다는 사실이 중요하다), 연결에서는
+    // 매번 뜨는 잡음이 된다. 보존 동작 자체는 그대로다 — 빈 배열 대신 undefined 를 넘긴다.
+    const result = this.db.upsertDrivingplusAcademies(domain, rows, { blogReviewsAttempted: false, applyResearch: true });
+    void blogCount;
     const removed = this.removeStale(domain, rows, result.warnings);
     return {
       linked: result.upserted,
@@ -83,7 +88,7 @@ export class AcademyLinkService {
     const built = this.buildRow(base, parseResearchUsage(this.db.getDomain(domain)?.research_usage));
     if (!built) return { linked: false, reason: "원천 자료가 비어 있어 연결할 수 없습니다." };
     const result = this.db.upsertDrivingplusAcademies(domain, [built.row], {
-      blogReviewsAttempted: built.blogReviewCount > 0,
+      blogReviewsAttempted: false,
       applyResearch: true,
     });
     return result.upserted > 0 ? { linked: true } : { linked: false, reason: result.warnings[0] ?? "연결하지 못했습니다." };
