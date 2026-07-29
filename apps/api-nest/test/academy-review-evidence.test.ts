@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STUDENT_REVIEW_SOURCE, selectedStudentReviewForAcademy, studentReviewFactLines, studentReviewsForAcademy, truncateReviewQuote } from "../src/academy-review-evidence.js";
+import { STUDENT_REVIEW_SOURCE, isReviewAboutOtherReviews, selectedStudentReviewForAcademy, studentReviewFactLines, studentReviewsForAcademy, truncateReviewQuote } from "../src/academy-review-evidence.js";
 
 describe("academy student review evidence", () => {
   it("원문 리뷰를 테마로 축약하지 않고 출처·평점·작성일과 함께 보존한다", () => {
@@ -98,5 +98,30 @@ describe("리뷰 100자 말줄임", () => {
       const quote = line.match(/“([^”]*)”/)?.[1] ?? "";
       expect(Array.from(quote).length).toBeLessThanOrEqual(100);
     }
+  });
+});
+
+describe("평판이 나쁘다고 알리는 후기는 인용에서 뺀다", () => {
+  // 발행 글 실측(홍천, 평균 3.3점). 5점 호평인데 첫 문장이 "이 학원 후기가 나쁘다"를 알렸다.
+  it("'후기를 봤을 때는 걱정' 처럼 후기를 부정적 반응과 함께 말하면 걸러낸다", () => {
+    expect(isReviewAboutOtherReviews("솔직히 처음에 후기를 봤을 때는 조금 걱정되고 망설여졌어요. 그런데 합격했어요.")).toBe(true);
+    expect(isReviewAboutOtherReviews("후기가 낮아서 처음에는 걱정했습니다만 친절하셔서 한 번에 합격했습니다")).toBe(true);
+    expect(isReviewAboutOtherReviews("리뷰땜에 걱정했는데 다들 친절하고 설명 잘해주셨어요")).toBe(true);
+    expect(isReviewAboutOtherReviews("별점이 낮아서 조금 고민했지만 집이랑 가까워서 선택했는데 좋았어요")).toBe(true);
+  });
+
+  it("자기 글을 '후기'라 부르는 표현은 걸러내지 않는다", () => {
+    expect(isReviewAboutOtherReviews("이번에 2종 보통 면허 딴 후기 남깁니다! 강사님이 친절하게 알려주셨어요")).toBe(false);
+    expect(isReviewAboutOtherReviews("오늘 도로주행 합격해서 후기 올려봅니다. 시설도 깨끗했어요")).toBe(false);
+  });
+
+  it("학원과 무관한 걱정(시험·긴장)은 걸러내지 않는다", () => {
+    expect(isReviewAboutOtherReviews("처음엔 한번에 붙을까 걱정이 많았는데 강사님이 잘 알려주셔서 편하게 배웠어요")).toBe(false);
+    expect(isReviewAboutOtherReviews("기능시험 보기 전까지는 긴장 때문에 걱정이 많았는데 자신감이 생겼어요")).toBe(false);
+  });
+
+  it("기존 규칙(다른 리뷰 직접 논평)도 그대로 잡는다", () => {
+    expect(isReviewAboutOtherReviews("리뷰보고 쫄았는데 강사분들까지 다 친절하고 좋았어요")).toBe(true);
+    expect(isReviewAboutOtherReviews("여기 리뷰 악의적 조작일 가능성이 높음")).toBe(true);
   });
 });

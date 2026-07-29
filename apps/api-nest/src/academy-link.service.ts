@@ -3,6 +3,7 @@ import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { DbService } from "./db.service.js";
 import { parseResearchUsage, researchValueUsable } from "./academy-research-usage.js";
 import { usableInArticle } from "./academy-research-article-fields.js";
+import { isReviewAboutOtherReviews } from "./academy-review-evidence.js";
 
 /**
  * 조사 DB(운전학원 자료) → admin.db(도메인 원천 데이터) 연결.
@@ -133,8 +134,13 @@ export class AcademyLinkService {
 
     // 후기는 행 단위로 보관돼 있어 원천 응답 형태로 되돌린다.
     const stored = this.researchDb.listReviews(externalId);
+    // 다른 리뷰·평점이 나쁘다고 말하는 후기는 도메인으로 넘기지 않는다. 점수가 5점이고 내용이
+    // 호평이어도 첫 문장이 "이 학원 평판이 나쁘다"를 알려, 카드가 부정적 인상으로 열린다.
+    // T01 경로는 selectedStudentReviewForAcademy 가 이미 걸렀지만 T16 은 academies.review 를
+    // 그대로 쓰는 별도 경로라 그대로 통과했다(발행 글 실측 1건). 두 경로가 공유하는 이 지점에서
+    // 끊어 한 번만 판정한다. 조사 DB 원문은 남으므로 학원 상세 화면에서 검수할 수 있다.
     const reviews = stored
-      .filter((r) => r.platform === "drivingplus_review")
+      .filter((r) => r.platform === "drivingplus_review" && !isReviewAboutOtherReviews(r.quote_text))
       .map((r) => ({ id: numeric(r.source_key), author: r.author_masked, point: r.rating, content: r.quote_text, date: r.posted_at, images: parseJson(r.images) ?? [] }));
     const blogReviews = stored
       .filter((r) => r.platform === "drivingplus_blog")

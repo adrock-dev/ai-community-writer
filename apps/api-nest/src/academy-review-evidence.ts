@@ -94,9 +94,24 @@ function reviewSelectionScore(text: string): number {
  * 다른 리뷰·평점을 논평하거나 강사 편차·불안을 말하는 후기.
  * 내용은 사실이지만 카드를 부정적 인상으로 열게 하므로 화면 인용 후보에서 뺀다
  * (카드 도입부 개성 문장에 적용한 기준과 같다).
+ *
+ * 두 갈래로 본다.
+ *  1) 다른 리뷰·평점을 직접 가리키는 말(기존 규칙).
+ *  2) **"리뷰/후기"를 부정적 반응과 함께 말하는 문장.** 이쪽이 실제로 새는 자리였다 —
+ *     "솔직히 처음에 후기를 봤을 때는 조금 걱정되고 망설여졌어요"(홍천, 평균 3.3점)가
+ *     5점 리뷰라 그대로 통과해 발행 글에 인용됐다. 호평이어도 첫 문장이 "이 학원 평판이
+ *     나쁘다"를 독자에게 알린다. 1번 규칙은 "후기"라는 낱말을 보지 않아 못 잡았다.
+ *
+ * "면허 딴 후기 남깁니다" 처럼 자기 글을 후기라 부르는 표현은 걸리지 않아야 한다 —
+ * 그래서 '후기' 단독이 아니라 부정 반응과 15자 안에서 함께 나올 때만 잡는다
+ * (실측 1,223건: 확장으로 +23건, '후기 남김' 유형 5건은 0건 오탐).
  */
+const OTHER_REVIEW_COMMENTARY = /(?:리뷰\s*보고|리뷰들|옛날\s*리뷰|별점|평점|믿지\s*마|운빨|겁먹)/u;
+const NEGATIVE_REPUTATION_MENTION = /(?:리뷰|후기|평가|평이)[^.!?\n]{0,15}(?:걱정|망설|겁|쫄|고민|무서|불안|낮|나쁘|안\s*좋|안좋|욕|너무하|조작|어이없)|(?:걱정|망설|겁\s*먹|겁먹|쫄|고민|불안)[^.!?\n]{0,15}(?:리뷰|후기|별점|평점)/u;
+
 export function isReviewAboutOtherReviews(text: unknown): boolean {
-  return /(?:리뷰\s*보고|리뷰들|옛날\s*리뷰|별점|평점|믿지\s*마|운빨|겁먹)/u.test(String(text || "").replace(/\s+/g, " "));
+  const normalized = String(text || "").replace(/\s+/g, " ");
+  return OTHER_REVIEW_COMMENTARY.test(normalized) || NEGATIVE_REPUTATION_MENTION.test(normalized);
 }
 
 /**
