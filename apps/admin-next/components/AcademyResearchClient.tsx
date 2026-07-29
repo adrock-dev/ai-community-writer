@@ -646,6 +646,8 @@ const STATUS_LABEL: Record<string, string> = {
 
 // 검토 대기 — 학원을 가로질러 필드 단위로 모은다.
 // 값을 고치는 곳은 학원 상세다. 여기서는 "검증완료로 올린다"만 한다(승인 도구를 새로 만들지 않는다).
+function rowKey(r: { external_id: string; field_key: string }): string { return `${r.external_id}:${r.field_key}`; }
+
 function ReviewQueue() {
   const [rows, setRows] = useState<ReviewQueueRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -659,7 +661,7 @@ function ReviewQueue() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busyKey, setBusyKey] = useState("");
-  // 승인에서 뺀 항목. 기본은 전체 선택이고 **체크를 푸는 것이 판단**이다 —
+  // 승인에서 뺀 항목. 대부분이 멀쩡하므로 기본은 선택된 상태이고 **체크를 푸는 것이 판단**이다 —
   // 대부분이 멀쩡한데 하나씩 체크하게 하면 217건짜리 항목은 아무도 끝내지 못한다.
   const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
 
@@ -671,7 +673,11 @@ function ReviewQueue() {
       setRows(res.items);
       setTotal(res.total);
       setFields(res.fields ?? []);
-      setUnchecked(new Set());
+      // 「검토 필요」는 기본 선택에서 뺀다. 근거 검사가 짚어 둔 값인데 「전체 선택」이
+      // 쓸어 담으면, 검토가 필요하다는 표시가 무의미해진다 — 실제로 2026-07-29 일괄 승인에서
+      // 근거가 방문자 후기 한 줄뿐인 셔틀값과 광고 문구 4건이 그렇게 승인됐다.
+      // 개별 체크는 막지 않는다. 하나씩 확인하고 직접 켜는 것은 사람의 판단이다.
+      setUnchecked(new Set(res.items.filter((row) => row.status === "needs_review").map(rowKey)));
     } catch (e: any) {
       setError(e?.message || "검토 대기 목록을 불러오지 못했습니다.");
     } finally {
@@ -681,9 +687,10 @@ function ReviewQueue() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const rowKey = (r: ReviewQueueRow) => `${r.external_id}:${r.field_key}`;
+  // (load 안에서도 쓰므로 호이스팅되는 함수 선언으로 둔다)
   // 이미 승인된 것은 일괄 대상이 아니다(되돌리기는 학원 상세에서 한다).
   const selectable = rows.filter((r) => r.status !== "verified");
+  const flaggedCount = selectable.filter((r) => r.status === "needs_review").length;
   const selected = selectable.filter((r) => !unchecked.has(rowKey(r)));
 
   async function approveSelected() {
@@ -722,7 +729,8 @@ function ReviewQueue() {
     <div className="grid" style={{ gap: 10, marginTop: 14 }}>
       <p className="muted small" style={{ margin: 0 }}>
         도메인의 <b>「조사값 신뢰 기준」이 「검증완료만」</b>일 때, 여기서 승인한 값만 글에 쓰입니다.
-        항목을 하나 골라 값을 나란히 훑고 <b>이상한 것만 체크를 푼 뒤</b> 일괄 승인하세요 — 기본은 전체 선택입니다.
+        항목을 하나 골라 값을 나란히 훑고 <b>이상한 것만 체크를 푼 뒤</b> 일괄 승인하세요.
+        <b>「검토 필요」는 기본 선택에서 빠집니다</b> — 근거 검사가 짚어 둔 값이라, 하나씩 확인하고 직접 체크해야 승인됩니다.
         값을 고치거나 승인을 되돌리려면 학원 상세로 갑니다.
       </p>
       <div className="row" style={{ alignItems: "flex-end", gap: 8 }}>
@@ -765,8 +773,13 @@ function ReviewQueue() {
             {busyKey === "bulk" ? "승인 중…" : `선택한 ${selected.length}건 검증완료로`}
           </button>
           <button className="btn" onClick={() => setUnchecked(new Set(selectable.map(rowKey)))} disabled={busyKey === "bulk"}>전체 해제</button>
-          <button className="btn" onClick={() => setUnchecked(new Set())} disabled={busyKey === "bulk"}>전체 선택</button>
-          <span className="muted small">체크를 푼 {unchecked.size}건은 그대로 남습니다.</span>
+          {/* 「전체 선택」도 검토 필요는 켜지 않는다. 이름이 「전체」라고 해서 짚어 둔 값까지
+              집어가면, 되돌릴 방법이 사람 기억뿐이다. */}
+          <button className="btn" onClick={() => setUnchecked(new Set(selectable.filter((r) => r.status === "needs_review").map(rowKey)))} disabled={busyKey === "bulk"}>검토 필요 빼고 전체</button>
+          <span className="muted small">
+            체크를 푼 {unchecked.size}건은 그대로 남습니다.
+            {flaggedCount > 0 ? ` 「검토 필요」 ${flaggedCount}건은 기본 제외 — 값을 확인한 뒤 직접 체크하세요.` : ""}
+          </span>
         </div>
       )}
       <div className="review-queue-table">
@@ -778,7 +791,9 @@ function ReviewQueue() {
                   type="checkbox"
                   checked={selectable.length > 0 && unchecked.size === 0}
                   ref={(el) => { if (el) el.indeterminate = unchecked.size > 0 && unchecked.size < selectable.length; }}
-                  onChange={(e) => setUnchecked(e.target.checked ? new Set() : new Set(selectable.map(rowKey)))}
+                  onChange={(e) => setUnchecked(e.target.checked
+                    ? new Set(selectable.filter((r) => r.status === "needs_review").map(rowKey))
+                    : new Set(selectable.map(rowKey)))}
                   aria-label="전체 선택"
                 />
               </th>
