@@ -86,12 +86,19 @@ it("값이 없거나 빈 문자열이면 줄을 만들지 않는다", () => {
 it("편의시설에서 시설이 아닌 태그를 뺀다", () => {
   // 네이버 플레이스가 업종 구분 없이 붙이는 태그를 조사가 그대로 옮겨 담았다
   // (facilities 281건 중 212건에 섞여 있었다). 소스에 실제로 있는 낱말이라 근거 검사는 통과한다.
-  expect(cleanFacilities("예약, 주차, 남/녀 화장실 구분, 무선 인터넷"))
-    .toBe("주차, 남/녀 화장실 구분, 무선 인터넷");
+  // 시설이 아닌 태그(예약)뿐 아니라 **대부분이 가진 항목**(주차·화장실·인터넷)도 뺀다 —
+  // 5곳이 다 가지고 있으면 비교 정보가 아니다(실측 4건에서 한 번도 본문에 안 쓰였다).
+  expect(cleanFacilities("예약, 주차, 남/녀 화장실 구분, 무선 인터넷")).toBe("");
+  expect(cleanFacilities("예약, 주차, 장애인 편의시설, 무선 인터넷")).toBe("장애인 편의시설");
+  // 표기가 흔들려도 같은 것으로 본다(무선인터넷/무선 인터넷, 남녀화장실/남/녀 화장실 구분).
+  expect(cleanFacilities("무선인터넷, 남녀화장실, 발렛파킹")).toBe("발렛파킹");
+  // "없다" 는 정보는 남긴다.
+  expect(cleanFacilities("주차 불가, 무선 인터넷")).toBe("주차 불가");
   expect(cleanFacilities("예약, 방문접수/출장, 반려동물 동반, 간편결제, 단체 이용 가능")).toBe("");
   // 뺀 뒤 남는 것이 없으면 그 줄은 나가지 않는다.
   expect(researchFactParts({ facilities: "예약" })).toEqual([]);
-  expect(researchFactParts({ facilities: "예약, 주차" })).toEqual(["편의시설(조사): 주차"]);
+  expect(researchFactParts({ facilities: "예약, 주차" })).toEqual([]);
+  expect(researchFactParts({ facilities: "예약, 주차, 유아시설 (놀이방)" })).toEqual(["편의시설(조사): 유아시설 (놀이방)"]);
 });
 
 it("쉼표가 없는 서술형 편의시설은 손대지 않는다", () => {

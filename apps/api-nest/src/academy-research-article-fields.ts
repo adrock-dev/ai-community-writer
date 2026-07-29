@@ -45,6 +45,30 @@ const NON_FACILITY_TAGS = [
 ];
 
 /**
+ * **대부분이 가진 편의시설** — 있고 없고가 갈려도 학원 선택의 판단 근거가 못 된다.
+ *
+ * 실측(2026-07-29, 277곳): 주차 89% · 남녀 화장실 81% · 무선 인터넷 70% · 대기공간 42%.
+ * 그리고 이 넷만 든 값이 84%다. 실제 생성 4건(서울·부산·광주·제주)에서 편의시설은
+ * **한 번도 본문에 쓰이지 않았다** — 모델이 버린 것이고, 그 판단이 맞다. 5곳이 다 "주차 가능"
+ * 이면 비교 정보가 아니다.
+ *
+ * 빼고 나면 45곳(16%)이 남는데 전부 진짜 차별점이다 —
+ * 장애인 편의시설 11 · 발렛파킹 14 · 유아시설(놀이방) 4 · 실내 시뮬레이터 · 지문인식 출결 등.
+ *
+ * "주차 불가" 처럼 **없다는 정보는 남긴다.** 표기 흔들림(무선인터넷/무선 인터넷,
+ * 남녀화장실/남/녀 화장실 구분)이 있어 공백·마침표를 지우고 대조한다.
+ */
+const COMMON_FACILITY_TAGS = new Set([
+  "주차", "주차가능", "무료주차",
+  "남녀화장실구분", "남/녀화장실구분", "남녀화장실", "남녀구분화장실", "남/녀구분화장실",
+  "무선인터넷", "대기공간",
+]);
+
+function isCommonFacility(part: string): boolean {
+  return COMMON_FACILITY_TAGS.has(part.replace(/[\s.]/g, ""));
+}
+
+/**
  * 쉼표로 나열된 편의시설에서 시설이 아닌 조각을 뺀다.
  *
  * 쉼표가 없는 값(서술형 한 문장)은 손대지 않는다 — 가운뎃점으로 나누면
@@ -56,9 +80,13 @@ export function cleanFacilities(value: string): string {
     const single = value.trim();
     // 태그 하나짜리 값이 시설이 아니면 남길 것이 없다(실측: "예약" 만 있는 값 2건).
     // 길이로 태그와 서술형 문장을 가른다 — 문장 안에 "예약" 이 들어갔다고 통째로 버리면 안 된다.
+    if (isCommonFacility(single)) return "";
     return single.length <= 12 && NON_FACILITY_TAGS.some((tag) => single.includes(tag)) ? "" : single;
   }
-  return parts.filter((part) => !NON_FACILITY_TAGS.some((tag) => part.includes(tag))).join(", ");
+  return parts
+    .filter((part) => !NON_FACILITY_TAGS.some((tag) => part.includes(tag)))
+    .filter((part) => !isCommonFacility(part))
+    .join(", ");
 }
 
 export interface ArticleResearchField {
