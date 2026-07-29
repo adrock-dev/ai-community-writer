@@ -38,6 +38,9 @@ data/incident-*/
 # 학원 심층조사 DB(별도 · 초기화 금지 · *.db 로도 이미 제외되지만 명시)
 data/academy_research.db*
 data/generated-images/
+# 생성 실험 산출물(프롬프트 덤프·LLM 원문·메트릭). 재현 가능하고 수십 MB로 불어난다.
+# 결론은 docs/content-generation/ 아래 문서로 남기고, 원자료는 로컬에만 둔다.
+data/content-generation-evaluation/
 
 # === 비밀/환경 ===
 .env
