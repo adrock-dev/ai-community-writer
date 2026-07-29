@@ -90,6 +90,19 @@ export function cleanFacilities(value: string): string {
 }
 
 /**
+ * 공단이 전 시험장 페이지에 똑같이 붙여 놓은 주차 정형구. 26곳 중 16곳은 이 문장이
+ * 값의 전부다 — 남겨 두면 16곳이 다 같은 말로 시작한다(편의시설 공통태그와 같은 문제).
+ *
+ * 그 시험장의 사실도 아니다. 강서는 이 문장 뒤에 "무료 주차 가능, 주차용량 200대"가
+ * 붙어 있어 앞뒤가 모순된다. 정형구를 걷어내야 진짜 주차 사정이 드러난다.
+ */
+const COMMON_PARKING_NOTICE = /주차\s*공간이?\s*매우\s*협소하?[오요]?니?\s*가급적\s*대중교통을?\s*이용(?:해|하여)?\s*주시기?\s*바랍니다\.?/gu;
+
+export function cleanParkingNote(value: string): string {
+  return value.replace(COMMON_PARKING_NOTICE, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
  * 대중교통 경로는 출발지별로 여러 개가 나열된다(광양 494자 — 다른 조사 필드의 10배).
  * DB 에는 통째로 남겨 검수 근거로 쓰고, 글에 나갈 때만 첫 경로로 줄인다. 안 줄이면
  * 학원 카드 하나가 프롬프트를 다 먹어 다른 학원 사실이 밀린다.
@@ -133,7 +146,7 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   { key: "scale", label: "규모(조사)" },
   { key: "enrollment_prep", label: "등록 준비물(조사)" },
   { key: "transit_access", label: "대중교통 접근(조사)", clean: shortenTransit },
-  { key: "parking_note", label: "주차(조사)" },
+  { key: "parking_note", label: "주차(조사)", clean: cleanParkingNote },
   // 원천이 이기는 항목. 원천이 그 학원 값을 안 줄 때만 빈 자리를 메운다.
   { key: "hours", label: "영업시간(조사)", sourceWins: true },
   { key: "shuttle_summary", label: "셔틀(조사)", sourceWins: true },

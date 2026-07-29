@@ -8,7 +8,7 @@ import {
   parseKoroadBlocks,
   type KoroadBlock,
 } from "../src/academy-research-koroad.js";
-import { shortenTransit } from "../src/academy-research-article-fields.js";
+import { cleanParkingNote, shortenTransit } from "../src/academy-research-article-fields.js";
 
 // 도로교통공단 「지방조직찾기」 페이지의 실제 구조를 줄인 것. 우편번호 표기가 블록마다
 // 다르고(`(57764)` / `(우편번호:…)` / `(우 : …)` / 없음), 주소 뒤에 시험장 이름이 덧붙는
@@ -168,5 +168,24 @@ describe("대중교통 경로 줄이기", () => {
     const short = shortenTransit(value);
     expect(short.length).toBeLessThanOrEqual(141);
     expect(short.endsWith("…")).toBe(true);
+  });
+});
+
+describe("주차 안내 정형구 걷어내기", () => {
+  it("공단이 전 시험장에 붙인 문장만 있으면 글에 내보내지 않는다", () => {
+    expect(cleanParkingNote("주차공간이 매우 협소하오니 가급적 대중교통을 이용해 주시기 바랍니다.")).toBe("");
+  });
+
+  it("정형구 뒤의 실제 주차 사정은 남긴다", () => {
+    // 강서 실제 값 — 앞뒤가 모순이라(협소 vs 무료 200대) 정형구를 걷어내야 사실이 드러난다.
+    const value = "주차공간이 매우 협소하오니 가급적 대중교통을 이용해 주시기 바랍니다. 강서운전면허시험장은 무료 주차가 가능합니다. 주차용량 : 200대.";
+    const cleaned = cleanParkingNote(value);
+    expect(cleaned).not.toContain("매우 협소");
+    expect(cleaned).toContain("무료 주차가 가능");
+    expect(cleaned).toContain("200대");
+  });
+
+  it("정형구가 없는 값은 손대지 않는다", () => {
+    expect(cleanParkingNote("주차장 무료이용")).toBe("주차장 무료이용");
   });
 });
