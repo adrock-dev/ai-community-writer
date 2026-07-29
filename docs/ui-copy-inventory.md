@@ -146,11 +146,11 @@
 | `apps/api-nest/src/admin.controller.ts:344` | api-error | 검증할 방향성(direction)을 입력하세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
 | `apps/api-nest/src/admin.controller.ts:355` | api-error | LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
 | `apps/api-nest/src/admin.controller.ts:609` | api-error | 안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다. 본문을 수정해 재검증하세요.<br>_DraftsClient 의 같은 규칙 설명 2건과 한 몸이다 — 등급 기준이 바뀌면 세 곳을 같이 고쳐야 한다._ | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
-| `apps/api-nest/src/admin.controller.ts:874` | api-error | 작성할 planned 후보가 없습니다. 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)<br>_후보가 없을 때의 대처(‘재료로 글 후보 만들기’)를 안내하므로 화면 흐름·버튼 이름에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
-| `apps/api-nest/src/admin.controller.ts:1053` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
-| `apps/api-nest/src/admin.controller.ts:1064` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
-| `apps/api-nest/src/admin.controller.ts:1066` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
-| `apps/api-nest/src/admin.controller.ts:1068` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:876` | api-error | 작성할 planned 후보가 없습니다. 먼저 「글 생성」 탭 1단계의 「글 후보 만들기」로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)<br>_후보가 없을 때의 대처를 안내하며 버튼 이름(「글 후보 만들기」)과 그 위치(「글 생성」 탭 1단계)를 부른다 — 화면 흐름·버튼 이름이 바뀌면 같이 고쳐야 한다._ | `apps/api-nest/src/slot.service.ts` |
+| `apps/api-nest/src/admin.controller.ts:1055` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
+| `apps/api-nest/src/admin.controller.ts:1066` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
+| `apps/api-nest/src/admin.controller.ts:1068` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:1070` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 
 ## C — 순수 안내 (182건)
 

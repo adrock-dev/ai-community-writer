@@ -871,7 +871,7 @@
       "depends": [
         "apps/api-nest/src/slot.service.ts"
       ],
-      "note": "후보가 없을 때의 대처(‘재료로 글 후보 만들기’)를 안내하므로 화면 흐름·버튼 이름에 매달린다."
+      "note": "후보가 없을 때의 대처를 안내하며 버튼 이름(「글 후보 만들기」)과 그 위치(「글 생성」 탭 1단계)를 부른다 — 화면 흐름·버튼 이름이 바뀌면 같이 고쳐야 한다."
     },
     {
       "file": "apps/api-nest/src/admin.controller.ts",
