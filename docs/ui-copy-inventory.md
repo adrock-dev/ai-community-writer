@@ -12,10 +12,10 @@
 | --- | --- | --- | --- |
 | **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 11 |
 | **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 104 |
-| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 182 |
-| | | **합계** | **297** |
+| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 183 |
+| | | **합계** | **298** |
 
-파일별: `apps/admin-next/components/DomainClient.tsx` 218 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 10 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/lib/domain-gate.ts` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/JobsClient.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
+파일별: `apps/admin-next/components/DomainClient.tsx` 218 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 10 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/lib/domain-gate.ts` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/JobsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
 
 ## 지금 이미 어긋난 것 (0건)
 
@@ -131,7 +131,7 @@
 | `apps/admin-next/components/DraftsClient.tsx:229` | muted-p | 안전·사실(B) 이슈가 있어 바로 발행할 수 없습니다. 아래에서 본문을 수정하고 재검증해 B 이슈를 해소하세요. | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
 | `apps/admin-next/components/IntegrationSettingsClient.tsx:14` | muted-p | 구글 색인 설정은 도메인 관리 &gt; 설정 탭으로 이동되었습니다. 현재는 비활성(추후 지원 예정) 상태입니다. | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
 | `apps/admin-next/components/IntegrationSettingsClient.tsx:18` | muted-p | 배포 연동 방식이 정해지면 색인 기능을 활성화할 예정입니다. 그 전까지는 별도 연동 설정이 없습니다. | `apps/api-nest/src/worker.service.ts indexing job(제출 skip)` |
-| `apps/admin-next/components/JobsClient.tsx:26` | muted-p | worker가 처리하는 generate/dedup/prune/indexing 작업 상태입니다. | `apps/api-nest/src/worker.service.ts job types` |
+| `apps/admin-next/components/JobsClient.tsx:66` | muted-p | worker가 처리하는 generate/dedup/prune/indexing 작업 상태입니다. | `apps/api-nest/src/worker.service.ts job types` |
 | `apps/admin-next/components/PostDetailClient.tsx:89` | jsx-text | 근거 검사에 걸려 이 글에 들어가지 못했습니다. 값을 고쳐 승인하면 다음 생성부터 쓰입니다. | `apps/api-nest/src/post-insight.controller.ts#blockedForAcademies`<br>`apps/api-nest/src/academy-research-usage.ts` |
 | `apps/admin-next/components/PostDetailClient.tsx:111` | muted-p | 보냈지만 본문에 나타나지 않은 값입니다. 결함이 아닙니다 — 5곳이 다 가진 편의시설처럼 비교 정보가 아니면 모델이 버리는 것이 맞습니다. | `apps/api-nest/src/post-insight.controller.ts#unusedResearchLines`<br>`apps/api-nest/src/academy-research-article-fields.ts` |
 | `apps/admin-next/components/SettingsClient.tsx:111` | muted-p | 도메인 개요나 대시보드에서 「글 생성 / 검수 흐름 시작」(또는 세부 단계 시작)을 누르면 단계별 가이드가 표시됩니다. × 또는 Esc로 이번 안내만 닫을 수 있고, 「더 이상 안 보기」는 이후 자동 제안을 끕니다. | `apps/admin-next/lib/tour.ts` |
@@ -152,12 +152,12 @@
 | `apps/api-nest/src/admin.controller.ts:1068` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 | `apps/api-nest/src/admin.controller.ts:1070` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 
-## C — 순수 안내 (182건)
+## C — 순수 안내 (183건)
 
 흐름 설명·투어 문구·빈 상태 문구. 사실을 주장하지 않으므로 코드 변경과 무관하다.
 새로 추가된 문장이 사실을 주장하는데 C 로 남아 있는지는 `node scripts/copy-inventory.mjs --untagged` 로 점검한다.
 
-<details><summary>전체 182건 펼치기</summary>
+<details><summary>전체 183건 펼치기</summary>
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
@@ -326,6 +326,7 @@
 | `apps/admin-next/components/DraftsClient.tsx:74` | muted-p | 검수 후 발행한 글이 여기에 기록됩니다. 발행된 글 자체는 검수·내보내기 화면에서 확인합니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:85` | jsx-text | 최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다.<br>_빈 상태 해석._ | — |
 | `apps/admin-next/components/JobCard.tsx:81` | muted-p | 예약 {formatDateTime(job.scheduled_at)} · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)} · 대기 {String(job.payload_obj?.cooldown_sec ?? "-")}초 · 제한 {String… | — |
+| `apps/admin-next/components/JobsClient.tsx:84` | muted-p | {domain ? <>운영 대상 「{selected?.display_name \|\| domain}」 작업만 보고 있습니다. 워커는 모든 도메인 작업을 함께 처리하므로, 전체를 보려면 「전체 도메인」으로 바꾸세요. : <>모든 도메인의 작업을 보고 있습니다.} | — |
 | `apps/admin-next/components/NeedDomainClient.tsx:57` | jsx-text | 백엔드가 실행 중인지, `SEO_API_BASE_URL` 설정을 확인하세요. | — |
 | `apps/admin-next/components/PostDetailClient.tsx:60` | muted-p | 원문은 상단의 복사/다운로드 버튼으로 확인합니다. 상세 화면에는 발행 디자인만 표시합니다. | — |
 | `apps/admin-next/components/PostDetailClient.tsx:81` | muted-p | 학원 {insight.used.academies}곳 · 후기 인용 {insight.used.quotes}건 · 이미지 {insight.used.images}장 · {insight.used.chars.toLocaleString()}자 | — |
