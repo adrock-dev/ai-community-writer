@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
-import { DrivingplusApiService, type DrivingplusAcademy } from "./drivingplus-api.service.js";
+import { DrivingplusApiService, type DrivingplusAcademy, type DrivingplusReviewStats } from "./drivingplus-api.service.js";
 import {
   detectResearchProviders, parseResearchJson, runResearchCli,
   type ResearchProvider, type ResearchProviderPreference, type ResearchResult,
@@ -95,8 +95,10 @@ export class AcademyResearchService {
     if (activity.inactive) this.logger.log(`원천 목록에 없는 학원 ${activity.inactive}곳을 비활성 처리했습니다.`);
     opts.onTotal?.(all.length);
     return this.runSyncPool(all, opts, async (academy) => {
-      const externalId = this.upsertBaseRow(academy);
+      // 리뷰를 먼저 받아야 그 응답의 통계를 base 에 함께 실을 수 있다(순서가 뒤바뀌어 있어
+      // reviewStats 가 7/27 이후 전 건 유실됐다).
       const page = await this.pullReviews(academy.id, opts.reviewLimit ?? 5);
+      const externalId = this.upsertBaseRow(academy, page.stats);
       return this.storeReviewPlatform(externalId, page);
     });
   }
@@ -179,7 +181,6 @@ export class AcademyResearchService {
     const all = await this.drivingplus.fetchAcademies();
     const academy = all.find((a) => String(a.id) === String(externalId));
     if (!academy) return { external_id: externalId, found: false, reviews: 0, student_reviews: 0, blog_reviews: 0 };
-    const id = this.upsertBaseRow(academy);
     // 블로그리뷰는 수집 스위치를 따른다. 전에는 이 경로만 스위치를 건너뛰었는데, 화면에 단건
     // 동기화 버튼이 붙으면서 한 번 클릭이면 닿게 됐다. 스위치를 끈 이유는 원천이 학원명을
     // 느슨하게 매칭해 다른 학원 글이 섞이기 때문이고(오배정 10%), 저장은 전량교체라
@@ -189,6 +190,8 @@ export class AcademyResearchService {
       this.pullReviews(academy.id, opts.reviewLimit ?? 5),
       collectBlog ? this.pullBlogReviews(academy.id, opts.blogReviewLimit ?? 5) : Promise.resolve(null),
     ]);
+    // syncAll 과 같은 이유로 base 저장은 리뷰 조회 뒤다(통계를 함께 싣기 위함).
+    const id = this.upsertBaseRow(academy, reviewPage.stats);
     const studentReviews = this.storeReviewPlatform(id, reviewPage).stored;
     // 스위치가 꺼져 있으면 기존 블로그리뷰를 건드리지 않는다(0건으로 덮지 않는다).
     const blogReviews = blogPage ? this.storeBlogPlatform(id, blogPage).stored : 0;
@@ -200,8 +203,14 @@ export class AcademyResearchService {
     };
   }
 
-  private upsertBaseRow(academy: DrivingplusAcademy): string {
+  /**
+   * @param stats 이번 리뷰 조회로 얻은 통계. **null 이면 기존 값을 유지한다** — raw_json 은 통째
+   *   덮어쓰기라, 조회 실패 때 그냥 저장하면 멀쩡하던 통계가 지워진다(후기 전량교체와 같은 함정).
+   */
+  private upsertBaseRow(academy: DrivingplusAcademy, stats?: DrivingplusReviewStats | null): string {
     const externalId = String(academy.id);
+    const carried = stats ?? previousReviewStats(this.db.getBase(externalId));
+    const raw: DrivingplusAcademy = carried ? { ...academy, reviewStats: carried } : academy;
     this.db.upsertBase({
       external_id: externalId,
       name: academy.title,
@@ -216,17 +225,25 @@ export class AcademyResearchService {
       seo_title: academy.seoTitle ?? null,
       seo_keywords: academy.seoKeywords ?? null,
       seo_description: academy.seoDescription ?? null,
-      raw_json: academy,
+      raw_json: raw,
     });
     return externalId;
   }
 
   // 후기는 원천이 준 목록으로 통째 교체하므로 조회 성공 여부를 반드시 구분해야 한다.
   // 실패를 빈 목록으로 폴백하면 일시적인 원천 장애가 그대로 후기 전멸이 된다.
+  //
+  // stats(원천 총 리뷰 수·평균 평점)를 함께 돌려준다. 같은 응답에 이미 들어 있는 값이라
+  // 호출이 늘지 않는다. 이걸 버리면 **평균 1.5점 학원과 4.8점 학원을 구분할 수단이 없어진다** —
+  // 인용 리뷰는 sort=point(평점 높은 순) 상위 N건이라 어느 쪽이든 호평만 실린다.
   private pullReviews(academyId: number, limit: number) {
     return this.drivingplus.fetchReviews(academyId, limit)
-      .then((page) => ({ ok: true, reviews: page.reviews }))
-      .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["reviews"] }));
+      .then((page) => ({
+        ok: true,
+        reviews: page.reviews,
+        stats: { totalCount: page.totalCount, averagePoint: page.averagePoint, sourceCount: page.sourceCount } as DrivingplusReviewStats,
+      }))
+      .catch(() => ({ ok: false, reviews: [] as DrivingplusAcademy["reviews"], stats: null }));
   }
 
   // 블로그리뷰는 예외로 실패하지 않는다. 원천이 처리 한계를 넘으면 10초 뒤 code:200 + 빈 배열을
@@ -609,6 +626,14 @@ function safeJsonParse(value: unknown): unknown {
   if (value == null) return null;
   if (typeof value === "object") return value;
   try { return JSON.parse(String(value)); } catch { return null; }
+}
+
+/** 저장돼 있던 리뷰 통계. 이번 조회가 실패했을 때 기존 값을 잃지 않으려고 되읽는다. */
+function previousReviewStats(base: Record<string, unknown> | undefined): DrivingplusReviewStats | null {
+  const raw = safeJsonParse(base?.raw_json);
+  if (!raw || typeof raw !== "object") return null;
+  const stats = (raw as { reviewStats?: unknown }).reviewStats;
+  return stats && typeof stats === "object" ? stats as DrivingplusReviewStats : null;
 }
 
 // 작성자 식별정보 최소화: 첫 글자만 남기고 마스킹.
