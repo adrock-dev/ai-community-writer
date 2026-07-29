@@ -57,10 +57,6 @@ export interface ResearchResult {
 }
 
 // CLI 존재 여부 감지(claude 우선). PATH에서 확인.
-export async function detectResearchProvider(): Promise<ResearchProvider | null> {
-  return (await detectResearchProviders())[0] ?? null;
-}
-
 export async function detectResearchProviders(): Promise<ResearchProvider[]> {
   const providers: ResearchProvider[] = [];
   if (await hasCommand("claude")) providers.push("claude");
@@ -74,49 +70,6 @@ function hasCommand(cmd: string): Promise<boolean> {
     child.on("error", () => resolvePromise(false));
     child.on("close", (code) => resolvePromise(code === 0));
   });
-}
-
-export function buildResearchPrompt(base: ResearchBaseRef): string {
-  const ref = [
-    base.name ? `- 이름: ${base.name}` : null,
-    base.address ? `- 주소(참고): ${base.address}` : null,
-    base.phone ? `- 전화(참고): ${base.phone}` : null,
-    base.vphone ? `- 대표번호(참고): ${base.vphone}` : null,
-    base.region ? `- 지역: ${base.region}` : null,
-  ].filter(Boolean).join("\n");
-
-  return `당신은 자동차운전전문학원을 조사하는 정확성 최우선 리서처입니다.
-
-[대상 학원 — 확실한 참고 정보]
-${ref}
-
-[중요] 학원명이 동일한 학원이 여러 곳 있을 수 있습니다. 위 주소·전화와 **일치하는 바로 그 학원**만 조사하세요. 다른 지점/동명 학원 정보를 섞지 마세요.
-
-[조사 방법]
-- 공식 홈페이지 / 네이버플레이스 / 카카오맵 / 공공데이터를 웹에서 교차 확인하세요.
-- 절대 추측하거나 지어내지 마세요. 특히 주소·전화·가격·합격률은 확인된 값만.
-- 확인 안 된 항목은 반드시 null 로 두세요. 애매하면 null.
-- 참고 정보(주소·전화)도 웹에서 다시 확인해 *_researched 필드에 넣으세요(참고값과 다르면 확인된 값 우선).
-
-[출력 형식 — 매우 중요]
-- 오직 **JSON 하나**만 출력하세요. 설명·마크다운·코드펜스 없이 순수 JSON.
-- 스키마(모든 필드 선택, 모르면 null):
-{
-  "name_researched": string|null, "address_researched": string|null, "phone_researched": string|null,
-  "gu": string|null, "dong": string|null, "jibun_address": string|null,
-  "hours": string|null, "night_class": string|null, "weekend": string|null, "closed_days": string|null,
-  "shuttle_available": "yes"|"no"|null, "shuttle_summary": string|null,
-  "licenses": string|null, "self_test": string|null, "facilities": string|null,
-  "fee_summary": string|null, "price_disclosed": "yes"|"no"|null,
-  "pass_rate": string|null, "pass_rate_scope": "official"|"self_claim"|null,
-  "established_year": string|null, "scale": string|null,
-  "homepage_url": string|null, "naver_place_url": string|null, "kakao_url": string|null,
-  "courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}],
-  "shuttle_routes": [{"route_name": string, "waypoints": string|null, "coverage": string|null, "interval_text": string|null, "source_url": string|null}],
-  "sources": { "<field_key>": "<확인한 출처 URL>" }
-}
-- courses/shuttle_routes 는 확인된 것만. 없으면 빈 배열.
-- sources 에는 값을 채운 필드의 출처 URL을 최대한 넣으세요.`;
 }
 
 export interface ResearchCliOut {
