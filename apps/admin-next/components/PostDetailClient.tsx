@@ -7,6 +7,7 @@ import { formatDateTime, formatShortDate } from "@/lib/date";
 import { publicBrandName } from "@/lib/brand";
 import { getDesignTheme, resolveDesignId } from "@/lib/design-theme";
 import type { DesignTemplateId, PostDetail, DomainConfig } from "@/lib/types";
+import { getPostInsight, type PostInsight } from "@/lib/post-insight";
 
 export default function PostDetailClient({ domain, postId }: { domain: string; postId: string }) {
   const [post, setPost] = useState<PostDetail | null>(null);
@@ -14,6 +15,9 @@ export default function PostDetailClient({ domain, postId }: { domain: string; p
   const [bodyHtml, setBodyHtml] = useState("");
   const [publishedHtml, setPublishedHtml] = useState("");
   const [error, setError] = useState("");
+  const [insight, setInsight] = useState<PostInsight | null>(null);
+  // 근거 카드는 본문 로딩과 별개다 — 실패해도 글은 봐야 하므로 조용히 접는다.
+  useEffect(() => { void getPostInsight(postId).then(setInsight).catch(() => setInsight(null)); }, [postId]);
   useEffect(() => { (async () => {
     try {
       const [detail, domainDetail] = await Promise.all([
@@ -53,10 +57,67 @@ export default function PostDetailClient({ domain, postId }: { domain: string; p
           <section className="preview-bottom-cta"><b>{brand}에서 {design.bottomCta}</b><a className="btn primary" href="#">{design.bottomCta}</a></section>
         </div>
       </article>
-      <aside className="grid"><div className="card card-pad"><h2>메타</h2><p><b>상태:</b> {post.status}</p><p><b>디자인:</b> {design.label} <span className="badge">{designId}</span></p><p><b>provider:</b> {post.provider ?? "-"} {post.model ?? ""}</p><p><b>비용:</b> {post.cost_usd ? `$${post.cost_usd.toFixed(3)}` : "-"}</p><p><b>생성:</b> {formatDateTime(post.generated_at)}</p><p className="muted">{post.meta_description}</p><p className="muted small">원문은 상단의 복사/다운로드 버튼으로 확인합니다. 상세 화면에는 발행 디자인만 표시합니다.</p></div></aside>
+      <aside className="grid"><div className="card card-pad"><h2>메타</h2><p><b>상태:</b> {post.status}</p><p><b>디자인:</b> {design.label} <span className="badge">{designId}</span></p><p><b>provider:</b> {post.provider ?? "-"} {post.model ?? ""}</p><p><b>비용:</b> {post.cost_usd ? `$${post.cost_usd.toFixed(3)}` : "-"}</p><p><b>생성:</b> {formatDateTime(post.generated_at)}</p><p className="muted">{post.meta_description}</p><p className="muted small">원문은 상단의 복사/다운로드 버튼으로 확인합니다. 상세 화면에는 발행 디자인만 표시합니다.</p></div>
+        {insight && <InsightCard insight={insight} />}
+      </aside>
     </div>
   </div>;
 }
+/**
+ * 「이 글의 근거」. 메타가 생성 정보(누가·얼마에·언제)라면 이쪽은 내용 정보다 —
+ * 무엇을 근거로 썼고, 무엇이 빠졌는가.
+ *
+ * 「안 쓰인 근거」를 아쉬움으로 단정하지 않는다. 실측 4건에서 편의시설이 한 번도 안 쓰였는데
+ * 그건 모델이 옳게 버린 것이었다("주차 가능" 은 비교 정보가 아니다). 사실만 늘어놓고
+ * 판단은 사람이 한다.
+ *
+ * 반면 「검토 필요라 빠진 값」은 진짜 아쉬운 자리다 — 글에 들어갔어야 할 사실이 광고 문구와
+ * 엉켜 통째로 빠지는 일이 실제로 있었다(학장자동차운전전문학원의 자체 시험장).
+ */
+function InsightCard({ insight }: { insight: PostInsight }) {
+  return <div className="card card-pad grid" style={{ gap: 10 }}>
+    <div>
+      <h2 style={{ margin: 0 }}>이 글의 근거</h2>
+      <p className="muted small" style={{ margin: "4px 0 0" }}>
+        학원 {insight.used.academies}곳 · 후기 인용 {insight.used.quotes}건 · 이미지 {insight.used.images}장 · {insight.used.chars.toLocaleString()}자
+      </p>
+    </div>
+
+    {insight.blocked.length > 0 && (
+      <div className="action-hint" style={{ display: "grid", gap: 6 }}>
+        <b>검토 필요라 빠진 값 {insight.blocked.length}건</b>
+        <span className="small" style={{ fontWeight: 500 }}>
+          근거 검사에 걸려 이 글에 들어가지 못했습니다. 값을 고쳐 승인하면 다음 생성부터 쓰입니다.
+        </span>
+        {insight.blocked.map((item) => (
+          <div key={`${item.academy}:${item.field}`} className="small" style={{ fontWeight: 500 }}>
+            <b>{item.academy}</b> · {item.label}<br />
+            <span className="muted">“{item.value}”</span>
+            {item.note ? <><br /><span style={{ color: "#b45309" }}>⚠ {item.note}</span></> : null}
+          </div>
+        ))}
+        <Link className="btn" href="/academies" style={{ width: "fit-content" }}>운전학원 자료에서 고치기</Link>
+      </div>
+    )}
+
+    {!insight.has_snapshot
+      ? <p className="muted small" style={{ margin: 0 }}>
+          생성 시점 근거가 저장되지 않은 글입니다(기능이 붙기 전에 생성). 지금 다시 계산하면 그때와 다른 값이 나오므로 「안 쓰인 근거」는 보여주지 않습니다.
+        </p>
+      : insight.unused.length === 0
+        ? <p className="muted small" style={{ margin: 0 }}>보낸 조사 근거는 모두 본문에 반영됐습니다.</p>
+        : <details>
+            <summary className="muted small" style={{ cursor: "pointer" }}>본문이 쓰지 않은 조사 근거 {insight.unused.length}건</summary>
+            <p className="muted small" style={{ margin: "6px 0" }}>
+              보냈지만 본문에 나타나지 않은 값입니다. <b>결함이 아닙니다</b> — 5곳이 다 가진 편의시설처럼 비교 정보가 아니면 모델이 버리는 것이 맞습니다.
+            </p>
+            <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
+              {insight.unused.map((item, i) => <li key={i}><b>{item.academy}</b> · {item.label}: {item.value}</li>)}
+            </ul>
+          </details>}
+  </div>;
+}
+
 function download(name: string, text: string, type: string) { const url = URL.createObjectURL(new Blob([text], { type })); const a = document.createElement("a"); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url); }
 function fallbackMarkdown(md: string, images: Record<string, string>) {
   return markdownBlocks(md).map((raw) => renderMarkdownBlock(raw, images)).join("");

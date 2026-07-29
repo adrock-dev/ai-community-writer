@@ -322,7 +322,7 @@
     },
     {
       "file": "apps/admin-next/components/AppShell.tsx",
-      "match": "「학원자료 연결」을 눌러야 그 도메인 글에 반영됩니다",
+      "match": "「학원자료 연결」을 눌러야 글에 쓰입니다",
       "class": "B",
       "depends": [
         "apps/api-nest/src/link-freshness.ts",
@@ -1044,6 +1044,24 @@
       "depends": [
         "apps/api-nest/src/academy-research-article-fields.ts",
         "apps/api-nest/src/academy-research.controller.ts#reviewQueue"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/PostDetailClient.tsx",
+      "match": "근거 검사에 걸려 이 글에 들어가지 못했습니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/post-insight.controller.ts#blockedForAcademies",
+        "apps/api-nest/src/academy-research-usage.ts"
+      ]
+    },
+    {
+      "file": "apps/admin-next/components/PostDetailClient.tsx",
+      "match": "보냈지만 본문에 나타나지 않은 값입니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/post-insight.controller.ts#unusedResearchLines",
+        "apps/api-nest/src/academy-research-article-fields.ts"
       ]
     }
   ]

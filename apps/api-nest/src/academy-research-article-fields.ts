@@ -157,6 +157,9 @@ const MACHINE_VALUES = new Set(["yes", "no", "true", "false", "unknown", "n/a", 
 
 const BY_KEY = new Map(ARTICLE_RESEARCH_FIELDS.map((f) => [f.key, f]));
 
+/** 글에 실릴 수 있는 항목의 라벨. 목록에 없는 항목은 빠져도 알릴 일이 아니다. */
+export const RESEARCH_FIELD_LABEL = new Map(ARTICLE_RESEARCH_FIELDS.map((f) => [f.key, f.label]));
+
 export function articleResearchField(key: string): ArticleResearchField | undefined {
   return BY_KEY.get(key);
 }

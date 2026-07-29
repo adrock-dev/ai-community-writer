@@ -378,7 +378,11 @@ export class WorkerService {
           duration_sec: durationSec, input_tokens: inputTokens, output_tokens: outputTokens,
           job_id: jobId, image_count: generatedCount, image_cost_usd: imageCostUsd, academy_count: renderedAcademyNames.length,
           region: String(slot.region || "") || null, primary_keyword: String(slot.primary_keyword || "") || null,
-          academy_names: renderedAcademyNames.length ? JSON.stringify(renderedAcademyNames) : null
+          academy_names: renderedAcademyNames.length ? JSON.stringify(renderedAcademyNames) : null,
+          // 프롬프트로 나간 학원 근거를 그대로 남긴다. 재계산으로는 그때를 알 수 없다 —
+          // 조사값·승인 상태·원천이 계속 바뀌기 때문이다(오늘 부산 글을 다시 뽑기 전후로
+          // self_test 한 줄이 사라졌다). "이 글이 무엇을 근거로 썼나" 는 그 시점 값이라야 답이 된다.
+          facts_snapshot: factsText || null
         });
         this.db.updateSlotStatus(sid, "published");
         publishMarkdownArtifact(slug, markdown);

@@ -105,6 +105,10 @@ CREATE TABLE IF NOT EXISTS posts (
   region TEXT,
   primary_keyword TEXT,
   academy_names TEXT,
+  facts_snapshot TEXT,
+  -- 생성 시점에 프롬프트로 나간 학원 근거 원문. 나중에 재계산하면 그때와 달라진다 —
+  -- 조사값·승인 상태·원천이 계속 바뀌기 때문이다. "이 글이 무엇을 근거로 썼나" 는
+  -- 그 시점 값이라야 답이 된다.
   generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (domain, slug),
   FOREIGN KEY (domain) REFERENCES domains(domain) ON DELETE CASCADE,
@@ -410,6 +414,7 @@ export class DbService implements OnModuleInit {
     if (!postCols.has("region")) this.db.exec("ALTER TABLE posts ADD COLUMN region TEXT");
     if (!postCols.has("primary_keyword")) this.db.exec("ALTER TABLE posts ADD COLUMN primary_keyword TEXT");
     if (!postCols.has("academy_names")) this.db.exec("ALTER TABLE posts ADD COLUMN academy_names TEXT");
+    if (!postCols.has("facts_snapshot")) this.db.exec("ALTER TABLE posts ADD COLUMN facts_snapshot TEXT");
     const jobCols = new Set(this.all("PRAGMA table_info(jobs)").map((r) => r.name));
     if (!jobCols.has("paused")) this.db.exec("ALTER TABLE jobs ADD COLUMN paused INTEGER NOT NULL DEFAULT 0");
     if (!jobCols.has("cancel_requested")) this.db.exec("ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0");
@@ -916,10 +921,10 @@ export class DbService implements OnModuleInit {
   }
   insertPost(input: Row): string {
     const id = randomUUID();
-    this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens, job_id, image_count, image_cost_usd, academy_count, region, primary_keyword, academy_names)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, job_id=excluded.job_id, image_count=excluded.image_count, image_cost_usd=excluded.image_cost_usd, academy_count=excluded.academy_count, region=excluded.region, primary_keyword=excluded.primary_keyword, academy_names=excluded.academy_names, generated_at=CURRENT_TIMESTAMP`,
-      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0, input.job_id ?? null, input.image_count ?? 0, input.image_cost_usd ?? 0, input.academy_count ?? null, input.region ?? null, input.primary_keyword ?? null, input.academy_names ?? null]);
+    this.run(`INSERT INTO posts (id, domain, slot_id, slug, title, body_markdown, meta_description, images, design_template_id, provider, model, session_id, cost_usd, duration_sec, input_tokens, output_tokens, job_id, image_count, image_cost_usd, academy_count, region, primary_keyword, academy_names, facts_snapshot)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(domain, slug) DO UPDATE SET title=excluded.title, slot_id=excluded.slot_id, body_markdown=excluded.body_markdown, meta_description=excluded.meta_description, images=excluded.images, design_template_id=excluded.design_template_id, status='published', provider=excluded.provider, model=excluded.model, session_id=excluded.session_id, cost_usd=excluded.cost_usd, duration_sec=excluded.duration_sec, input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens, job_id=excluded.job_id, image_count=excluded.image_count, image_cost_usd=excluded.image_cost_usd, academy_count=excluded.academy_count, region=excluded.region, primary_keyword=excluded.primary_keyword, academy_names=excluded.academy_names, facts_snapshot=excluded.facts_snapshot, generated_at=CURRENT_TIMESTAMP`,
+      [id, input.domain, input.slot_id ?? null, input.slug, input.title, input.body_markdown, input.meta_description ?? null, input.images ?? null, input.design_template_id || DEFAULT_DRIVING_DESIGN_TEMPLATE, input.provider ?? null, input.model ?? null, input.session_id ?? null, input.cost_usd ?? 0, input.duration_sec ?? null, input.input_tokens ?? 0, input.output_tokens ?? 0, input.job_id ?? null, input.image_count ?? 0, input.image_cost_usd ?? 0, input.academy_count ?? null, input.region ?? null, input.primary_keyword ?? null, input.academy_names ?? null, input.facts_snapshot ?? null]);
     return id;
   }
   deletePost(postId: string): void { this.run("DELETE FROM posts WHERE id=?", [postId]); }

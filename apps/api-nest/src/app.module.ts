@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AdminController } from "./admin.controller.js";
 import { AcademyResearchController } from "./academy-research.controller.js";
+import { PostInsightController } from "./post-insight.controller.js";
 import { PublicController } from "./public.controller.js";
 import { DbService } from "./db.service.js";
 import { AcademyResearchDbService } from "./academy-research-db.service.js";
@@ -14,7 +15,7 @@ import { WorkerService } from "./worker.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 
 @Module({
-  controllers: [AdminController, AcademyResearchController, PublicController],
+  controllers: [AdminController, AcademyResearchController, PostInsightController, PublicController],
   providers: [AcademyLinkService, DbService, AcademyResearchDbService, AcademyResearchService, DrivingplusApiService, DrivingplusSyncService, RegionDirectoryService, SlotService, WorkerService, ImageGenerationService],
 })
 export class AppModule {}
