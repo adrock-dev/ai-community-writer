@@ -1,5 +1,6 @@
 import type { ResearchBaseRef } from "./academy-research-llm.js";
 import { baseKnownFacts, type KnownFacts } from "./academy-research-known-facts.js";
+import { isKoroadTestCoursePage, isTestCourseType, koroadTestCourseSource } from "./academy-research-koroad.js";
 
 // B안: CLI 웹툴에 의존하지 않고, 서버(Node)가 직접 검색·페이지를 fetch 해서
 // 그 본문을 LLM에 넘겨 "소스에 있는 사실만" 추출한다. 근거 URL을 함께 확보한다.
@@ -17,7 +18,7 @@ const NEEDLE_FIELDS = ["셔틀", "노선", "운행", "시간", "가격", "수강
 // 학원 하나에 대해 후보 URL을 찾아 페이지 본문까지 수집.
 export async function gatherSources(
   base: ResearchBaseRef,
-  opts: { maxSources?: number; timeoutMs?: number; preferredUrls?: string[] } = {},
+  opts: { maxSources?: number; timeoutMs?: number; preferredUrls?: string[]; academyType?: string | null } = {},
 ): Promise<WebSource[]> {
   const maxSources = opts.maxSources ?? MAX_SOURCES;
   const timeoutMs = opts.timeoutMs ?? 12000;
@@ -26,11 +27,25 @@ export async function gatherSources(
 
   const sources: WebSource[] = [];
 
+  // 시험장은 개별 홈페이지가 없어 검색 경로가 죽은 도메인·민원 랜딩만 물어 왔다.
+  // 공단 페이지 한 곳에 전국 시험장 블록이 다 있으므로 그것부터 확보한다.
+  if (isTestCourseType(opts.academyType)) {
+    const koroad = await koroadTestCourseSource(base, { timeoutMs }).catch(() => null);
+    if (koroad) sources.push(koroad);
+  }
+
   // 원천이 이미 확보한 URL은 검색 결과보다 먼저 확인한다. 단, 원천 URL도 오래됐거나
   // 다른 업체 URL일 수 있으므로 주소·전화가 맞는 페이지일 때만 조사 근거로 쓴다.
   // priceObservations.sourceUrl처럼 수강료 하위 페이지인 경우도 있어, 홈페이지뿐 아니라
   // 원천이 준 모든 검증 가능한 URL을 이 경로로 받는다.
-  const preferredUrls = limitPerHost(dedupe(opts.preferredUrls ?? []).filter(isEvidenceCandidate));
+  // 시험장 블록을 이미 확보했으면 같은 공단 페이지를 다시 받지 않는다. 원천이 준 URL이
+  // 바로 그 페이지라, 그대로 두면 후보 4자리 중 하나를 중복이 차지한다(광양에서 확인).
+  const skipKoroadPage = sources.length > 0 && isTestCourseType(opts.academyType);
+  const preferredUrls = limitPerHost(
+    dedupe(opts.preferredUrls ?? [])
+      .filter(isEvidenceCandidate)
+      .filter((url) => !skipKoroadPage || !isKoroadTestCoursePage(url)),
+  );
   for (const url of preferredUrls) {
     if (sources.length >= maxSources) return sources;
     await collectTargetPage(base, url, timeoutMs, maxSources, sources, false);
@@ -73,6 +88,7 @@ export async function gatherSources(
   const homepages = new Set(sources.flatMap((s) => homepageUrlsFromPlaceText(s.text)));
   const candidates = limitPerHost(dedupe([...homepages, ...rankCandidates(dedupe(urls))]))
     .filter((url) => !preferredUrls.includes(url))
+    .filter((url) => !skipKoroadPage || !isKoroadTestCoursePage(url))
     .slice(0, maxSources);
   for (const url of candidates) {
     if (sources.length >= maxSources) break;

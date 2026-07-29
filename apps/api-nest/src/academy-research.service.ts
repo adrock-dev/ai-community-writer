@@ -253,7 +253,7 @@ export class AcademyResearchService {
     const raw = safeJsonParse(base.raw_json);
 
     // 1) 원천이 이미 확인한 URL을 먼저 검증하고, 부족할 때만 검색으로 보완한다.
-    const sources = await gatherSources(ref, { preferredUrls: sourceUrlsFromRaw(raw) });
+    const sources = await gatherSources(ref, { preferredUrls: sourceUrlsFromRaw(raw), academyType: base.academy_type });
     if (sources.length === 0) {
       const error = "공개 소스를 찾지 못했습니다(검색/페치 실패). 값은 저장하지 않았습니다.";
       this.db.recordResearchAttempt(externalId, "no_sources", error);
