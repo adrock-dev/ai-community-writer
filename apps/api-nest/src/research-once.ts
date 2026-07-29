@@ -17,24 +17,30 @@ import { DrivingplusApiService } from "./drivingplus-api.service.js";
  *   npm run research:once            # 미조사분 30곳(기본)
  *   npm run research:once -- 100     # 100곳
  *   npm run research:once -- 100 codex
+ *   npm run research:once -- 500 codex --refresh   # 이미 조사한 곳까지 다시
  *
  * 저장 위치·재개 방식은 관리자 화면에서 돌릴 때와 완전히 같다(같은 서비스를 부른다).
  * 중단돼도 이미 저장된 학원은 남고, 다시 실행하면 미조사분부터 이어간다.
  */
-const limit = Math.max(1, Math.min(5000, Number(process.argv[2] ?? 30) || 30));
-const providerArg = String(process.argv[3] ?? "").trim();
+const args = process.argv.slice(2);
+// 이미 조사한 곳까지 다시 돌린다. 조사한 곳은 last_attempt_outcome='saved' 라 기본 대상에서
+// 빠지므로, 검사 규칙이나 수집 방식을 고친 뒤 전량을 새 기준으로 다시 받을 때 필요하다.
+const refreshAll = args.includes("--refresh");
+const positional = args.filter((arg) => !arg.startsWith("--"));
+const limit = Math.max(1, Math.min(5000, Number(positional[0] ?? 30) || 30));
+const providerArg = String(positional[1] ?? "").trim();
 const provider = providerArg === "codex" || providerArg === "claude" ? providerArg : "auto";
 
 const db = new AcademyResearchDbService();
 await db.onModuleInit();
 const service = new AcademyResearchService(db, new DrivingplusApiService());
 
-const started = await service.startRegionResearch(undefined, { provider, limit });
+const started = await service.startRegionResearch(undefined, { provider, limit, refreshAll });
 if (!started.ok || !started.run_id) {
   console.error(`시작 실패: ${started.error ?? "원인 미상"}`);
   process.exit(1);
 }
-console.log(`조사 시작 — 대상 ${started.count}곳 · provider=${provider} · run=${started.run_id}`);
+console.log(`조사 시작 — 대상 ${started.count}곳 · provider=${provider}${refreshAll ? " · 재조사" : ""} · run=${started.run_id}`);
 console.log("이 프로세스를 켜 둔 동안은 코드를 저장해도 배치가 죽지 않습니다.\n");
 
 // startRegionResearch 는 백그라운드로 던지고 즉시 반환한다(HTTP 응답을 막지 않기 위함).
