@@ -589,7 +589,7 @@ function digits(value: string): string {
 // 조사 스키마. 프롬프트에 그대로 박아 넣지 않고 **필드 하나씩** 조립한다.
 // 여러 필드를 한 줄에 묶으면 그중 하나만 빠져도 줄 전체가 남아, 이미 아는 값을 계속 요구하게 된다
 // (원천이 홈페이지 URL 을 주기 시작하는 순간 바로 겪을 문제였다).
-const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
+export const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
   { key: "name_researched", text: `"name_researched": string|null` },
   { key: "address_researched", text: `"address_researched": string|null` },
   { key: "phone_researched", text: `"phone_researched": string|null` },
@@ -616,6 +616,10 @@ const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
   { key: "kakao_url", text: `"kakao_url": string|null` },
   { key: "enrollment_prep", text: `"enrollment_prep": string|null` },
   { key: "booking_channel", text: `"booking_channel": string|null` },
+  // 소스에 적힌 경로를 그대로 옮기게 둔다. "지하철 2호선 감전역 하차" 같은 한 줄이
+  // 독자에게 가장 쓸모 있는데, 요약을 시키면 "교통 편리" 같은 말로 뭉개진다.
+  { key: "transit_access", text: `"transit_access": string|null  // 가까운 역·정류장, 노선번호, 도보 시간. 소스에 적힌 대로. 없으면 null` },
+  { key: "parking_note", text: `"parking_note": string|null  // 주차 가능·협소·외부 주차장 등 실제 안내 문구. 없으면 null` },
 ];
 
 const COURSES_LINE = `"courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}]`;

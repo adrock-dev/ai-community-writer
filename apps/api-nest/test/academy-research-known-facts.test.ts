@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { knownFactsFromSource } from "../src/academy-research-known-facts.js";
-import { buildExtractionPrompt } from "../src/academy-research-web.js";
+import { buildExtractionPrompt, SCHEMA_FIELDS } from "../src/academy-research-web.js";
 
 // 파일럿 실측(26곳): 겹치는 영역에서 웹 조사가 원천을 이기지 못한다
 // (수강료 23% vs 87% · 셔틀 노선 23% vs 56% · 운영시간 42% vs 67% · 면허과정 46% vs 88%).
@@ -116,14 +116,8 @@ describe("buildExtractionPrompt — 뺀 필드는 스키마에서 사라진다",
 
   it("모든 필드가 빠져도 sources 맵은 남아 JSON 형태가 깨지지 않는다", () => {
     const everything = knownFactsFromSource(source);
-    for (const key of [
-      "name_researched", "address_researched", "phone_researched", "gu", "dong", "jibun_address",
-      "night_class", "self_test", "facilities",
-      "established_year", "scale", "homepage_url", "naver_place_url",
-      "enrollment_prep", "booking_channel",
-    ]) {
-      everything.skipFields.add(key);
-    }
+    // 목록을 손으로 적으면 필드가 하나 늘 때마다 이 테스트가 깨진다. 스키마에서 받는다.
+    for (const field of SCHEMA_FIELDS) everything.skipFields.add(field.key);
     const prompt = buildExtractionPrompt(ref, webSources, everything);
     expect(prompt).toContain('{\n  "sources": { "<field_key>": "<근거 소스 URL>" }\n}');
   });

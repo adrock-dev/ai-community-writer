@@ -93,6 +93,8 @@ CREATE TABLE IF NOT EXISTS academy_research (
   kakao_url TEXT,
   enrollment_prep TEXT,
   booking_channel TEXT,
+  transit_access TEXT,
+  parking_note TEXT,
   research_engine TEXT,
   research_method TEXT,
   researched_at TEXT,
@@ -217,12 +219,12 @@ CREATE INDEX IF NOT EXISTS idx_research_runs_started ON research_runs(started_at
 `;
 
 // academy_research 에서 사람이 수정 가능한 스칼라 필드 화이트리스트(임의 컬럼 주입 방지)
-const RESEARCH_FIELDS = new Set<string>([
+export const RESEARCH_FIELDS = new Set<string>([
   "name_researched", "address_researched", "phone_researched", "gu", "dong", "jibun_address",
   "hours", "night_class", "weekend", "closed_days", "shuttle_available", "shuttle_summary",
   "licenses", "self_test", "facilities", "fee_summary", "price_disclosed", "pass_rate",
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
-  "enrollment_prep", "booking_channel",
+  "enrollment_prep", "booking_channel", "transit_access", "parking_note",
 ]);
 
 export interface BaseAcademyInput {
@@ -369,6 +371,12 @@ export class AcademyResearchDbService implements OnModuleInit {
     const researchCols = new Set(this.all("PRAGMA table_info(academy_research)").map((r) => r.name));
     if (!researchCols.has("enrollment_prep")) this.db.exec("ALTER TABLE academy_research ADD COLUMN enrollment_prep TEXT");
     if (!researchCols.has("booking_channel")) this.db.exec("ALTER TABLE academy_research ADD COLUMN booking_channel TEXT");
+
+    // 시험장 전용 소스(도로교통공단 지방조직찾기)가 주는 알짜인데 담을 자리가 없던 항목.
+    // 대중교통 경로는 시험장별로 매우 상세하고, 주차 안내는 편의시설 태그의 "주차"와 달리
+    // 실제 사정을 말한다("본관 만차 시 외부 주차장", "협소하니 대중교통 이용").
+    if (!researchCols.has("transit_access")) this.db.exec("ALTER TABLE academy_research ADD COLUMN transit_access TEXT");
+    if (!researchCols.has("parking_note")) this.db.exec("ALTER TABLE academy_research ADD COLUMN parking_note TEXT");
   }
 
   /**

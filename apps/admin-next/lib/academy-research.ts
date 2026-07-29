@@ -200,4 +200,6 @@ export const RESEARCH_FIELD_LABELS: Array<{ key: string; label: string }> = [
   { key: "kakao_url", label: "카카오맵" },
   { key: "enrollment_prep", label: "등록 준비물" },
   { key: "booking_channel", label: "예약·상담 경로" },
+  { key: "transit_access", label: "대중교통 접근" },
+  { key: "parking_note", label: "주차" },
 ];

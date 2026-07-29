@@ -11,12 +11,12 @@ import { findingNote, hasFinding, inspectResearchValue, sourceHaystack } from ".
 import { blogReviewSyncEnabled } from "./runtime-config.js";
 
 // academy_research 스칼라 필드(courses/shuttle_routes/sources 제외)
-const SCALAR_KEYS: Array<keyof ResearchResult> = [
+export const SCALAR_KEYS: Array<keyof ResearchResult> = [
   "name_researched", "address_researched", "phone_researched", "gu", "dong", "jibun_address",
   "hours", "night_class", "weekend", "closed_days", "shuttle_available", "shuttle_summary",
   "licenses", "self_test", "facilities", "fee_summary", "price_disclosed", "pass_rate",
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
-  "enrollment_prep", "booking_channel",
+  "enrollment_prep", "booking_channel", "transit_access", "parking_note",
 ];
 const SCALAR_KEY_SET = new Set<string>(SCALAR_KEYS as string[]);
 

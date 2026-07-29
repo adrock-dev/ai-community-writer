@@ -89,6 +89,22 @@ export function cleanFacilities(value: string): string {
     .join(", ");
 }
 
+/**
+ * 대중교통 경로는 출발지별로 여러 개가 나열된다(광양 494자 — 다른 조사 필드의 10배).
+ * DB 에는 통째로 남겨 검수 근거로 쓰고, 글에 나갈 때만 첫 경로로 줄인다. 안 줄이면
+ * 학원 카드 하나가 프롬프트를 다 먹어 다른 학원 사실이 밀린다.
+ */
+const TRANSIT_MAX_CHARS = 140;
+
+export function shortenTransit(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= TRANSIT_MAX_CHARS) return trimmed;
+  // 경로 한 건은 대개 "…에서 …승차 후 …하차 → 약 N분 소요" 로 끝난다.
+  const firstRoute = trimmed.match(/^.*?(?:소요|하차)/u)?.[0] ?? "";
+  if (firstRoute && firstRoute.length <= TRANSIT_MAX_CHARS) return firstRoute;
+  return `${trimmed.slice(0, TRANSIT_MAX_CHARS).trim()}…`;
+}
+
 export interface ArticleResearchField {
   key: string;
   /** 글로 내보내기 직전에 값을 다듬는다. 빈 문자열을 돌려주면 그 줄은 나가지 않는다. */
@@ -116,6 +132,8 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   { key: "established_year", label: "설립연도(조사)" },
   { key: "scale", label: "규모(조사)" },
   { key: "enrollment_prep", label: "등록 준비물(조사)" },
+  { key: "transit_access", label: "대중교통 접근(조사)", clean: shortenTransit },
+  { key: "parking_note", label: "주차(조사)" },
   // 원천이 이기는 항목. 원천이 그 학원 값을 안 줄 때만 빈 자리를 메운다.
   { key: "hours", label: "영업시간(조사)", sourceWins: true },
   { key: "shuttle_summary", label: "셔틀(조사)", sourceWins: true },

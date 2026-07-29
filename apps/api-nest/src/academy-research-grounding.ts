@@ -157,6 +157,8 @@ const EVIDENCE_KEYWORDS: Record<string, string[]> = {
   facilities: ["시설", "주차", "휴게", "화장실", "편의", "인터넷", "차량", "코스"],
   enrollment_prep: ["준비", "지참", "신분증", "사진", "접수", "등록", "구비"],
   booking_channel: ["예약", "상담", "신청", "문의", "접수"],
+  transit_access: ["지하철", "역", "정류장", "버스", "도보", "노선", "환승", "터미널", "하차", "승차"],
+  parking_note: ["주차", "만차", "주차장", "협소", "내비"],
   licenses: ["종", "면허", "원동기", "견인", "대형"],
   established_year: ["설립", "개원", "창립", "년"],
   scale: ["면적", "규모", "정원", "㎡", "평"],
@@ -223,8 +225,12 @@ const AD_CLAIM_PATTERNS: Array<[RegExp, string]> = [
 /** 개인 거래·중고 플랫폼 가격은 학원 공식 요금이 아니다. */
 const PERSONAL_MARKET_WORDS = ["당근", "중고나라", "번개장터", "직거래"];
 
+// transit_access 는 일부러 뺐다. "가장 가까운 정류장"·"최단 도보 경로"는 광고가 아니라
+// 길 안내 그 자체라, 여기 넣으면 정확한 값일수록 걸린다. parking_note 는 반대로
+// "최대 규모 주차장" 같은 주장이 실제로 들어갈 수 있는 자리다.
 const AD_CLAIM_SENSITIVE_FIELDS = new Set([
   "pass_rate", "scale", "facilities", "licenses", "shuttle_summary", "self_test", "fee_summary",
+  "parking_note",
 ]);
 
 export function fieldTypeIssues(field: string, value: string | null | undefined): string[] {

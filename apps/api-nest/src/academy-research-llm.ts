@@ -47,6 +47,10 @@ export interface ResearchResult {
   enrollment_prep?: string | null;
   /** 온라인 예약·상담 신청 경로가 있는지. */
   booking_channel?: string | null;
+  /** 가까운 역·정류장과 노선·도보 시간. 시험장은 공단 페이지가 이걸 상세히 준다. */
+  transit_access?: string | null;
+  /** 주차 사정(가능·협소·외부 주차장 등). 편의시설 태그의 "주차"와 달리 실제 안내다. */
+  parking_note?: string | null;
   courses?: Array<{ course_name?: string; price?: string; exam_fee_included?: string; extra_costs?: string; note?: string; source_url?: string }>;
   shuttle_routes?: Array<{ route_name?: string; waypoints?: unknown; coverage?: unknown; interval_text?: string; source_url?: string }>;
   sources?: Record<string, string>;

@@ -8,6 +8,7 @@ import {
   parseKoroadBlocks,
   type KoroadBlock,
 } from "../src/academy-research-koroad.js";
+import { shortenTransit } from "../src/academy-research-article-fields.js";
 
 // 도로교통공단 「지방조직찾기」 페이지의 실제 구조를 줄인 것. 우편번호 표기가 블록마다
 // 다르고(`(57764)` / `(우편번호:…)` / `(우 : …)` / 없음), 주소 뒤에 시험장 이름이 덧붙는
@@ -145,5 +146,27 @@ describe("시험장 전용 소스 — 적용 대상", () => {
     expect(isKoroadTestCoursePage("https://www.safedriving.or.kr/mainM.do")).toBe(false);
     // 다른 도메인이 경로에 문자열만 흉내 내는 경우.
     expect(isKoroadTestCoursePage("https://example.com/koroad.or.kr/MN05010523.do")).toBe(false);
+  });
+});
+
+describe("대중교통 경로 줄이기", () => {
+  it("짧은 값은 그대로 둔다", () => {
+    expect(shortenTransit("지하철 2호선 감전역 하차")).toBe("지하철 2호선 감전역 하차");
+  });
+
+  it("경로가 여럿 나열되면 첫 경로만 남긴다", () => {
+    // 광양 실제 값(494자)을 줄인 형태.
+    const value = "광양공영버스 터미널에서 광양터미널 정류장까지 약 60m 이동->77(광양역.제일고), 777 승차 후, 한려대학교 정류장에서 하차->광양운전면허시험장까지 약 216m 도보 이동=> 약 25분 소요. 순천종합버스 터미널에서 종합버스터미널 정류장까지 약 105m이동->77 승차 후 하차 => 약 40분 소요";
+    const short = shortenTransit(value);
+    expect(short.length).toBeLessThanOrEqual(140);
+    expect(short).toContain("광양공영버스 터미널에서");
+    expect(short).not.toContain("순천종합버스");
+  });
+
+  it("끊을 자리가 없으면 길이로 자른다", () => {
+    const value = "가".repeat(400);
+    const short = shortenTransit(value);
+    expect(short.length).toBeLessThanOrEqual(141);
+    expect(short.endsWith("…")).toBe(true);
   });
 });
