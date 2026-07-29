@@ -72,7 +72,7 @@ flowchart LR
 | --- | --- |
 | `domains` | 도메인별 운영 설정, 디자인/콘텐츠 지침, 제외 키워드, 일일 제한 |
 | `axes` | 지역, 키워드, 의도, 페르소나, 수식어 등 생성 축 |
-| `slots` | 생성 후보 글 단위. 상태는 `planned`, `in_progress`, `published`, `failed`, `pruned` 중심 |
+| `slots` | 생성 후보 글 단위. 상태는 `planned`, `in_progress`, `published`, `failed`, `skipped` 중심 |
 | `posts` | 발행 글 본문, 메타, 렌더링 자료, 색인 상태 |
 | `jobs` | `generate`, `dedup`, `indexing`, `prune` 작업 큐 |
 | `app_settings` | 앱 전역 설정 |
@@ -89,7 +89,7 @@ SQLite 파일 경로는 기본 `data/admin.db`이며, 배포 환경에서는 `SE
 
 - 옵션 조회: 디자인 템플릿, 생성 템플릿, 업종 프리셋
 - 도메인 관리: 목록, 생성, 상세, 수정, 삭제
-- 축 관리: 프리셋 적용, 축 전체 교체, AI 보조 채우기
+- 축 관리: 프리셋 적용(지역/키워드), 축 전체 교체 (persona/intent/modifier AI 제안은 글유형별 `templates/suggest-axes`)
 - 슬롯 관리: 목록, 생성, 삭제, 실패 초기화
 - 글 관리: 목록, 상세, 내보내기, 삭제
 - 학원 관리: 목록, 등록/수정, 외부 동기화, 삭제

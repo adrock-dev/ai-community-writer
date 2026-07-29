@@ -1,11 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
 import { api, getOptions, listDomains } from "@/lib/api";
 import { formatDateTime } from "@/lib/date";
 import { getDesignTheme } from "@/lib/design-theme";
-import type { AdminOptions, Job, DomainConfig } from "@/lib/types";
+import { notifyDomainsChanged } from "@/lib/domain-events";
+import { getRecentDomains, rememberDomain } from "@/lib/recent-domain";
+import { domainTourHref } from "@/lib/tour";
+import type { AdminOptions, DomainConfig, Job } from "@/lib/types";
+import Link from "next/link";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const DEFAULT_BRAND_COLOR = "#2563eb";
 
@@ -17,6 +20,7 @@ export default function DashboardClient() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [brandColor, setBrandColor] = useState(DEFAULT_BRAND_COLOR);
+  const [recentDomains, setRecentDomains] = useState<string[]>([]);
   const previewTheme = getDesignTheme("local-guide", brandColor);
 
   async function refresh() {
@@ -31,6 +35,7 @@ export default function DashboardClient() {
   }
 
   useEffect(() => { refresh().catch((e) => setError(e.message)); }, []);
+  useEffect(() => { setRecentDomains(getRecentDomains()); }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -46,29 +51,42 @@ export default function DashboardClient() {
     const form = e.currentTarget;
     setBusy(true); setError("");
     const fd = new FormData(form);
+    const newDomain = String(fd.get("domain") || "").trim();
     try {
       await api("/domains", {
         method: "POST",
         body: JSON.stringify({
-          domain: String(fd.get("domain") || "").trim(),
+          domain: newDomain,
           display_name: String(fd.get("display_name") || "").trim(),
+          brand_name: String(fd.get("brand_name") || "").trim(),
           vertical: String(fd.get("vertical") || "").trim(),
-          theme: String(fd.get("theme") || "clean"),
           brand_color: String(fd.get("brand_color") || "#2563eb"),
-          daily_limit: Number(fd.get("daily_limit") || 30),
+          daily_limit: Number(fd.get("daily_limit") || 0),
           apply_preset: fd.get("apply_preset") === "on",
         }),
       });
       form.reset();
       setBrandColor(DEFAULT_BRAND_COLOR);
       setOpen(false);
+      // 방금 만든 도메인을 "최근 접근"으로 기록해 도메인 현황 목록 맨 위에 오게 한다.
+      rememberDomain(newDomain);
+      setRecentDomains(getRecentDomains());
       await refresh();
+      notifyDomainsChanged(); // 사이드바(AppShell) 도메인 드롭다운 즉시 갱신
     } catch (err) {
       setError((err as Error).message);
     } finally { setBusy(false); }
   }
 
-  const defaultDomain = pickDefaultDomain(domains);
+  const sortedDomains = useMemo(() => {
+    const rank = new Map(recentDomains.map((domain, index) => [domain, index]));
+    return [...domains].sort((a, b) => {
+      const ar = rank.get(a.domain) ?? Number.MAX_SAFE_INTEGER;
+      const br = rank.get(b.domain) ?? Number.MAX_SAFE_INTEGER;
+      return ar === br ? 0 : ar - br;
+    });
+  }, [domains, recentDomains]);
+  const latestDomain = recentDomains.find((domain) => domains.some((item) => item.domain === domain)) ?? null;
 
   return (
     <div>
@@ -81,24 +99,29 @@ export default function DashboardClient() {
         <button className="btn primary" onClick={() => setOpen((v) => !v)}>+ 새 도메인</button>
       </div>
 
+      <div className="card card-pad" style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "12px 16px", marginBottom: 18 }}>
+        <p className="small" style={{ margin: 0, color: "#1e3a8a" }}>ℹ️ <b>현재 범위</b> — 이 관리자는 <b>운전면허·운전학원(<code>driving</code>) 글 생성에 특화</b>되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 이 주제 기준이라, <b>다른 주제의 글은 생성되더라도 품질을 보장할 수 없습니다.</b> (업종은 추가할 수 있으나 전용 프리셋·품질은 아직 운전면허·운전학원에만 적용)</p>
+      </div>
+
       {error && <p className="toast-error">{error}</p>}
 
       {open && (
         <form onSubmit={createDomain} className="card card-pad grid" style={{ maxWidth: 720, marginBottom: 20 }}>
           <div className="grid grid-2">
             <Field label="도메인"><input className="input" name="domain" placeholder="drive.example.com" required pattern="[a-z0-9.\-]+" /></Field>
-            <Field label="표시 이름"><input className="input" name="display_name" placeholder="강남 운전면허센터" required /></Field>
+            <Field label="표시 이름 (관리자 전용)"><input className="input" name="display_name" placeholder="예: 평택 운영본" required /></Field>
           </div>
-          <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v} value={v}>{v === "driving" ? "운전면허/운전학원" : v}</option>)}</select></Field>
-          <div className="grid grid-3">
-            <Field label="테마"><select className="select" name="theme">{options?.themes.map((v) => <option key={v}>{v}</option>)}</select></Field>
+          <Field label="브랜드명 (글에 노출 · 선택)"><input className="input" name="brand_name" placeholder="예: 운전면허플러스" /></Field>
+          <p className="muted small">생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다.</p>
+          <Field label="업종"><select className="select" name="vertical" defaultValue="driving">{options?.verticals.map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}</select></Field>
+          <div className="grid grid-2">
             <Field label="브랜드 컬러">
               <div className="row">
                 <input className="input-color" name="brand_color" type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)} />
                 <code className="mono small">{brandColor}</code>
               </div>
             </Field>
-            <Field label="일일 한도"><input className="input" name="daily_limit" type="number" defaultValue={30} min={1} max={500} /></Field>
+            <Field label="일일 한도 (0=무제한)"><input className="input" name="daily_limit" type="number" defaultValue={0} min={0} max={500} /></Field>
           </div>
           <label className="row small"><input type="checkbox" name="apply_preset" defaultChecked /> 운전학원 지역/키워드 프리셋 자동 적용</label>
           <div className="brand-color-preview" style={{ ["--accent" as string]: previewTheme.accent, ["--accent-soft" as string]: previewTheme.soft, ["--primary" as string]: previewTheme.accent }}>
@@ -111,7 +134,7 @@ export default function DashboardClient() {
 
       <div className="grid grid-3" style={{ marginBottom: 22 }}>
         <Stat label="도메인" value={domains.length} />
-        <Stat label="전체 슬롯" value={domains.reduce((a, t) => a + (t.slot_count ?? 0), 0)} />
+        <Stat label="전체 후보" value={domains.reduce((a, t) => a + (t.slot_count ?? 0), 0)} />
         <Stat label="발행 글" value={domains.reduce((a, t) => a + (t.published_count ?? 0), 0)} accent />
       </div>
 
@@ -123,30 +146,34 @@ export default function DashboardClient() {
         </div>
       ) : (
         <div className="grid">
-          <DashboardFlowStarter domain={defaultDomain} />
           <section id="dashboard-domains">
             <div className="spread" style={{ marginBottom: 10 }}>
               <div>
-                <h2>도메인별 시작</h2>
-                <p className="muted small">도메인을 고른 뒤 같은 방식으로 기본/고급/검수 흐름을 바로 시작합니다.</p>
+                <h2>도메인 현황</h2>
+                <p className="muted small">전체 도메인의 후보·대기·발행 상태를 보고 필요한 화면으로 이동합니다.</p>
               </div>
             </div>
             <div className="grid grid-3">
-              {domains.map((t) => (
+              {sortedDomains.map((t) => (
                 <article className="card card-pad domain-card" key={t.domain}>
-                  <div className="spread"><h3>{t.display_name}</h3><span className="badge">{t.vertical}</span></div>
+                  <div className="domain-card-head">
+                    <h3>{t.display_name}</h3>
+                    <div className="domain-card-badges">
+                      {t.domain === latestDomain && <span className="badge info">최근 접근</span>}
+                      <span className="badge">{options?.verticals.find((v) => v.key === t.vertical)?.label ?? t.vertical}</span>
+                    </div>
+                  </div>
                   <p className="muted mono small">{t.domain}</p>
                   <RecommendedDomainAction domain={t} />
                   <div className="grid grid-3" style={{ gap: 8, marginTop: 16 }}>
-                    <Mini label="슬롯" value={t.slot_count ?? 0} />
+                    <Mini label="후보" value={t.slot_count ?? 0} />
                     <Mini label="대기" value={t.planned_count ?? 0} />
                     <Mini label="발행" value={t.published_count ?? 0} />
                   </div>
                   <div className="domain-actions">
                     <Link className="btn" href={domainHref(t.domain)}>열기</Link>
-                    <Link className="btn primary" href={domainHref(t.domain, "basic")}>기본 생성</Link>
-                    <Link className="btn" href={domainHref(t.domain, "advanced")}>고급 슬롯</Link>
-                    <Link className="btn" href={domainHref(t.domain, "review")}>검수</Link>
+                    <Link className="btn primary" href={`${domainHref(t.domain)}/generate`}>글 생성</Link>
+                    <Link className="btn" href={`${domainHref(t.domain)}/posts`}>검수</Link>
                   </div>
                 </article>
               ))}
@@ -156,7 +183,7 @@ export default function DashboardClient() {
       )}
 
       <section style={{ marginTop: 28 }}>
-        <div className="spread" style={{ marginBottom: 10 }}><h2>최근 작업</h2><Link className="btn" href="/jobs">전체 보기</Link></div>
+        <div className="spread" style={{ marginBottom: 10 }}><h2>최근 작업 큐</h2><Link className="btn" href="/jobs">전체 보기</Link></div>
         <div className="table-wrap">
           <table><thead><tr><th>도메인</th><th>종류</th><th>상태</th><th>예약</th><th>완료</th></tr></thead><tbody>
             {jobs.length === 0 && <tr><td colSpan={5} className="muted">작업 없음</td></tr>}
@@ -168,114 +195,6 @@ export default function DashboardClient() {
   );
 }
 
-type FlowMode = "basic" | "advanced" | "review";
-type FlowFocus = "source" | "slot-create" | "test-write" | "jobs" | "posts" | "plan" | "template-design" | "academy-types" | "slot-filter";
-
-const DASHBOARD_STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ flow: FlowMode; focus: FlowFocus; no: string; title: string; desc: string; tone?: "primary" }> }> = [
-  {
-    title: "기본 글 생성",
-    desc: "처음 쓰는 운영자가 가장 적게 눌러도 되는 순서",
-    steps: [
-      { flow: "basic", focus: "source", no: "기본 1", title: "원천 데이터 준비", desc: "지역/학원 동기화", tone: "primary" },
-      { flow: "basic", focus: "slot-create", no: "기본 2", title: "글 후보 만들기", desc: "슬롯 후보 생성" },
-      { flow: "basic", focus: "test-write", no: "기본 3", title: "1개 테스트 작성", desc: "대량 전 안전 확인" },
-    ],
-  },
-  {
-    title: "고급 슬롯 생성",
-    desc: "정교하게 후보를 설계하고 확장할 때",
-    steps: [
-      { flow: "advanced", focus: "plan", no: "고급 1", title: "기획/제외어", desc: "방향과 금지어" },
-      { flow: "advanced", focus: "template-design", no: "고급 2", title: "유형/디자인", desc: "글 구조 선택" },
-      { flow: "advanced", focus: "academy-types", no: "고급 3", title: "학원 타입 제한", desc: "원천 타입 정책" },
-      { flow: "advanced", focus: "slot-filter", no: "고급 4", title: "슬롯 필터", desc: "후보 조건 좁히기" },
-    ],
-  },
-  {
-    title: "검수/마감",
-    desc: "생성 이후 확인과 내보내기",
-    steps: [
-      { flow: "review", focus: "jobs", no: "검수 1", title: "작업 상태", desc: "큐/실패 확인" },
-      { flow: "review", focus: "posts", no: "검수 2", title: "완성 글 검수", desc: "export/indexing" },
-    ],
-  },
-];
-
-function pickDefaultDomain(domains: DomainConfig[]) {
-  return domains.find((d) => (d.planned_count ?? 0) > 0)
-    ?? domains.find((d) => (d.slot_count ?? 0) === 0)
-    ?? domains.find((d) => (d.published_count ?? 0) > 0)
-    ?? domains[0];
-}
-
-function DashboardFlowStarter({ domain }: { domain: DomainConfig }) {
-  return <section className="flow-start" aria-labelledby="dashboard-flow-start">
-    <div>
-      <p className="eyebrow">운영 시작</p>
-      <h2 id="dashboard-flow-start">대시보드에서 바로 글 생성 흐름을 선택하세요</h2>
-      <p className="muted">진행이 필요한 도메인을 먼저 추천합니다. 도메인별 카드에서도 같은 흐름을 따로 시작할 수 있습니다.</p>
-      <RecommendedDomainAction domain={domain} large />
-    </div>
-    <div className="grid grid-3">
-      <DashboardFlowCard
-        href={domainHref(domain.domain, "basic")}
-        title="기본 글 생성"
-        badge="추천"
-        body="처음 운영자가 헷갈리지 않게 데이터 준비, 후보 생성, 1개 테스트 작성, 검수만 순서대로 안내합니다."
-        cta="기본 흐름 시작"
-        tone="primary"
-      />
-      <DashboardFlowCard
-        href={domainHref(domain.domain, "advanced")}
-        title="고급 슬롯 생성"
-        badge="운영자용"
-        body="기획, 글유형, 디자인, 학원 타입, 슬롯 필터를 만지며 대량 후보를 정교하게 만드는 흐름입니다."
-        cta="고급 흐름 시작"
-      />
-      <DashboardFlowCard
-        href={domainHref(domain.domain, "review")}
-        title="검수/내보내기"
-        badge="마감"
-        body="작업 큐와 완성 글만 빠르게 확인해 export, 색인 요청, 중복 점검으로 마무리합니다."
-        cta="검수 흐름 시작"
-      />
-    </div>
-    <DashboardStepLauncher domain={domain.domain} />
-  </section>;
-}
-
-function DashboardFlowCard({ href, title, badge, body, cta, tone }: { href: string; title: string; badge: string; body: string; cta: string; tone?: "primary" }) {
-  return <Link href={href} className={`flow-card ${tone === "primary" ? "primary" : ""}`}>
-    <div className="spread"><h3>{title}</h3><span className={`badge ${tone === "primary" ? "success" : "info"}`}>{badge}</span></div>
-    <p className="muted">{body}</p>
-    <span className={`btn ${tone === "primary" ? "primary" : ""}`}>{cta}</span>
-  </Link>;
-}
-
-function DashboardStepLauncher({ domain }: { domain: string }) {
-  return <div className="step-launch-panel">
-    <div className="spread">
-      <div>
-        <p className="eyebrow">세부 단계 바로 시작</p>
-        <h3>처음부터가 아니라 필요한 단계에서 바로 시작</h3>
-      </div>
-      <span className="badge info">9단계</span>
-    </div>
-    <div className="step-launch-groups">
-      {DASHBOARD_STEP_GROUPS.map((group) => <section className="step-launch-group" key={group.title}>
-        <div><b>{group.title}</b><p className="muted small">{group.desc}</p></div>
-        <div className="step-launch-grid">
-          {group.steps.map((step) => <Link key={`${step.flow}-${step.focus}`} className={`step-launch ${step.tone === "primary" ? "primary" : ""}`} href={domainHref(domain, step.flow, step.focus)}>
-            <span className="step-no">{step.no}</span>
-            <b>{step.title}</b>
-            <small>{step.desc}</small>
-          </Link>)}
-        </div>
-      </section>)}
-    </div>
-  </div>;
-}
-
 function RecommendedDomainAction({ domain, large }: { domain: DomainConfig; large?: boolean }) {
   const action = getRecommendedDomainAction(domain);
   return <div className={`next-action ${large ? "large" : ""}`}>
@@ -284,25 +203,23 @@ function RecommendedDomainAction({ domain, large }: { domain: DomainConfig; larg
       <b>{action.title}</b>
       <p className="muted small">{action.desc}</p>
     </div>
-    <Link className="btn primary" href={domainHref(domain.domain, action.flow, action.focus)}>{action.cta}</Link>
+    <Link className="btn success" href={action.href}>{action.cta}</Link>
   </div>;
 }
 
-function getRecommendedDomainAction(domain: DomainConfig): { title: string; desc: string; cta: string; flow: FlowMode; focus: FlowFocus } {
-  if ((domain.slot_count ?? 0) === 0) return { title: "원천 데이터부터 준비", desc: "아직 글 후보가 없어서 데이터/후보 생성부터 시작하는 게 안전합니다.", cta: "기본 1 시작", flow: "basic", focus: "source" };
-  if ((domain.planned_count ?? 0) > 0) return { title: "1개 테스트 작성", desc: `${(domain.planned_count ?? 0).toLocaleString()}개 대기 후보 중 하나만 먼저 작성해 품질을 확인하세요.`, cta: "기본 3 시작", flow: "basic", focus: "test-write" };
-  if ((domain.published_count ?? 0) > 0) return { title: "완성 글 검수", desc: `${(domain.published_count ?? 0).toLocaleString()}개 발행 글을 미리보기/export/indexing으로 마감하세요.`, cta: "검수 2 시작", flow: "review", focus: "posts" };
-  return { title: "글 후보 만들기", desc: "운영을 시작할 후보를 먼저 만들어야 합니다.", cta: "기본 2 시작", flow: "basic", focus: "slot-create" };
+// href 는 개요 라우트 + ?flow= 로 만든다(domainTourHref): 튜토리얼 ON 이면 진입 시 해당 흐름 오버레이가
+// 열리고, OFF 면 그 흐름의 첫 실작업 탭으로 조용히 이동한다. (/generate·/posts 는 focusedPage 라 탭 앵커가
+// 없어 튜토리얼이 깨지므로 개요 라우트로 보낸다.)
+function getRecommendedDomainAction(domain: DomainConfig): { title: string; desc: string; cta: string; href: string } {
+  if ((domain.templates_enabled?.length ?? 0) === 0) return { title: "글 생성 준비 시작", desc: "새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있어요.", cta: "글 생성 흐름 시작", href: domainTourHref(domain.domain, "basic") };
+  if ((domain.slot_count ?? 0) === 0) return { title: "원천 데이터 준비", desc: "글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 후보를 만드세요.", cta: "원천 데이터", href: domainTourHref(domain.domain, "basic", "source") };
+  if ((domain.planned_count ?? 0) > 0) return { title: "글 생성 이어가기", desc: `${(domain.planned_count ?? 0).toLocaleString()}개 대기 후보 중 하나만 먼저 작성해 품질을 확인하세요.`, cta: "테스트 작성", href: domainTourHref(domain.domain, "basic", "test-write") };
+  if ((domain.published_count ?? 0) > 0) return { title: "완성 글 검수", desc: `${(domain.published_count ?? 0).toLocaleString()}개 발행 글을 미리보기/export/indexing으로 마감하세요.`, cta: "검수", href: domainTourHref(domain.domain, "review", "posts") };
+  return { title: "글 후보 만들기", desc: "운영을 시작할 후보를 먼저 만들어야 합니다.", cta: "후보 만들기", href: domainTourHref(domain.domain, "basic", "slot-create") };
 }
 
-function domainHref(domain: string, flow?: FlowMode, focus?: FlowFocus) {
-  const base = `/t/${encodeURIComponent(domain)}`;
-  if (!flow) return base;
-  if (flow === "basic") return `${base}/generate`;
-  if (flow === "review") return focus === "jobs" ? "/jobs" : `${base}/posts`;
-  const params = new URLSearchParams({ flow });
-  if (focus) params.set("focus", focus);
-  return `${base}?${params.toString()}`;
+function domainHref(domain: string) {
+  return `/t/${encodeURIComponent(domain)}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) { return <label><span className="label">{label}</span>{children}</label>; }

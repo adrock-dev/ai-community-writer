@@ -23,6 +23,12 @@ export function resolveDesignId(value: string | null | undefined): DesignTemplat
   return value && value in BASE_DESIGN_SPECS ? value as DesignTemplateId : "local-guide";
 }
 
+// 도메인 디자인 설정 표시용 라벨. "auto"는 글 유형별 자동 매칭을 뜻한다.
+export function designSettingLabel(value: string | null | undefined): string {
+  if (value === "auto") return "자동(글 유형별)";
+  return value || "local-guide";
+}
+
 export function getDesignTheme(designId: string | null | undefined, brandColor?: string | null): DesignThemeSpec {
   const id = resolveDesignId(designId);
   return applyBrandToDesignSpec(BASE_DESIGN_SPECS[id], brandColor);

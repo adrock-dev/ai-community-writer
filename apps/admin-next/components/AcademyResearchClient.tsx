@@ -1,0 +1,878 @@
+"use client";
+
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type AcademyBaseRow, type ResearchProvider, type ResearchRun,
+  type ManualAcademyInput, type ReviewQueueRow,
+  bulkFieldMeta, cancelResearchRun, createManualAcademy, deleteManualAcademy,
+  listAcademyResearch, listResearchRuns, listReviewQueue, researchRegion,
+  setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS,
+} from "@/lib/academy-research";
+import { getBlogReviewSync } from "@/lib/api";
+import { notifyDomainsChanged } from "@/lib/domain-events";
+import { ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
+import { formatDateTime, formatShortDate, parseUtcTimestamp } from "@/lib/date";
+
+export default function AcademyResearchClient() {
+  const [tab, setTab] = useState<"list" | "review" | "manual">("list");
+  const [q, setQ] = useState("");
+  const [items, setItems] = useState<AcademyBaseRow[]>([]);
+  const [hiddenCount, setHiddenCount] = useState(0);
+  const [runs, setRuns] = useState<ResearchRun[]>([]);
+  const [researchProvider, setResearchProvider] = useState<ResearchProvider>("auto");
+  // 조사는 학원 1곳당 1분 안팎이라 나눠 돌린다. 0이면 전체.
+  const [researchLimit, setResearchLimit] = useState(30);
+  // 기본은 미시도·실패만. 근거 없음은 정상 시도로 남겨 무한 재시도를 막되,
+  // 운영자가 필요할 때 실패와 함께 골라 재시도할 수 있다.
+  const [researchTarget, setResearchTarget] = useState<"pending" | "retry" | "all">("pending");
+  const [researchOffset, setResearchOffset] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState("");
+  // 수집 스위치 상태. 서버가 최종 판단하므로 화면은 받아서 표시만 한다.
+  // null = 아직 못 읽음. false 로 뭉개면 켜져 있는데도 첫 화면에 "수집 꺼짐" 이라고 적힌다.
+  const [blogSyncOn, setBlogSyncOn] = useState<boolean | null>(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 진행 중이던 실행이 끝나는 순간을 잡아 결과를 알려주기 위한 직전 상태.
+  const watchedRunRef = useRef<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await listAcademyResearch(undefined, q.trim() || undefined);
+      setItems(res.items);
+      setHiddenCount(res.hidden ?? 0);
+    } catch (e: any) {
+      setError(e?.message || "목록을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [q]);
+
+  const loadRuns = useCallback(async () => {
+    try {
+      const res = await listResearchRuns();
+      setRuns(res.items);
+    } catch { /* 무시 */ }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+  useEffect(() => {
+    // 수집 스위치는 설정 화면에서 바뀐다. 여기서는 읽기만 하고, 실패하면 꺼짐으로 본다(안전한 쪽).
+    void getBlogReviewSync().then((res) => setBlogSyncOn(res.enabled)).catch(() => setBlogSyncOn(false));
+  }, []);
+
+  // 진행 중인 실행이 있으면 폴링.
+  useEffect(() => {
+    const running = runs.some((r) => r.status === "running");
+    if (running && !pollRef.current) {
+      pollRef.current = setInterval(() => { loadRuns(); load(); }, 5000);
+    } else if (!running && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => { if (pollRef.current && !running) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [runs, loadRuns, load]);
+
+  // 지켜보던 실행이 끝나면 결과를 알린다. 요청이 결과를 들고 오지 않으므로(백그라운드)
+  // 완료 통보는 run 행에서만 온다 — 새로고침하거나 창을 닫았다 와도 동일하게 보인다.
+  useEffect(() => {
+    const watched = watchedRunRef.current;
+    if (!watched) return;
+    const run = runs.find((r) => r.id === watched);
+    if (!run || run.status === "running") return;
+    watchedRunRef.current = null;
+    // 결과 문구는 목록 새로고침이 끝난 뒤에 세운다. load() 가 시작할 때 setError("") 로
+    // 에러를 비우기 때문에, 먼저 세우면 실패 메시지가 곧바로 지워진다.
+    // 반대쪽 메시지도 반드시 비운다 — 안 그러면 "백그라운드에서 계속 진행됩니다" 안내가
+    // 이미 끝난(중단된) 실행 옆에 그대로 남아 서로 모순된 화면이 된다.
+    void load().finally(() => {
+      if (run.status === "error") {
+        setNotice("");
+        setError(`${runLabel(run)} 중단됨 — ${run.error || "원인 미상"} (${runSummary(run)})`);
+        return;
+      }
+      setError("");
+      if (run.status === "cancelled") setNotice(`${runLabel(run)} 중단됨 — ${runSummary(run)}까지 저장했습니다.`);
+      else setNotice(`${runLabel(run)} 완료 — ${runSummary(run)}`);
+    });
+  }, [runs, load]);
+
+  async function onSync() {
+    if (!confirm("DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요?")) return;
+    setBusy("sync");
+    setError("");
+    setNotice("");
+    try {
+      const res = await syncRegion();
+      if (!res.ok) throw new Error(res.error || "시작 실패");
+      if (res.run_id) watchedRunRef.current = res.run_id;
+      setNotice("동기화를 백그라운드에서 시작했습니다. 창을 닫아도 계속 진행됩니다.");
+      await loadRuns();
+    } catch (e: any) {
+      setError(e?.message || "동기화 시작 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function onResearchAll() {
+    const refreshAll = researchTarget === "all";
+    const retryOnly = researchTarget === "retry";
+    const scope = refreshAll ? "이미 조사한 곳까지 다시" : retryOnly ? "실패·근거 없음 학원만" : "미시도·실패 학원만";
+    const size = researchLimit ? `최대 ${researchLimit}곳` : "전체";
+    const offset = refreshAll && researchLimit > 0 ? researchOffset : undefined;
+    if (!confirm(`${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요?`)) return;
+    setBusy("research");
+    setError("");
+    setNotice("");
+    try {
+      const res = await researchRegion(researchProvider, { refreshAll, retryOnly, limit: researchLimit || undefined, offset });
+      if (!res.ok) throw new Error(res.error || "시작 실패");
+      if (refreshAll && researchLimit > 0) setResearchOffset((current) => current + researchLimit);
+      if (res.run_id) watchedRunRef.current = res.run_id;
+      setNotice(`조사 시작 — 대상 ${res.count}곳. 창을 닫아도 계속 진행됩니다. 중단되면 다시 눌러 이어서 진행할 수 있습니다.`);
+      await loadRuns();
+    } catch (e: any) {
+      setError(e?.message || "조사 시작 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+
+  /** 수동 등록분만 지운다. 원천분은 다음 동기화에 되살아나므로 버튼 자체를 두지 않는다. */
+  async function removeManual(row: AcademyBaseRow) {
+    if (!confirm(`직접 등록한 「${row.name || row.external_id}」을(를) 삭제할까요?\n조사 결과와 검토 상태도 함께 지워집니다. 되돌릴 수 없습니다.`)) return;
+    setBusy("manual-delete");
+    setError("");
+    try {
+      await deleteManualAcademy(row.external_id);
+      setNotice(`「${row.name || row.external_id}」을(를) 삭제했습니다.`);
+      await load();
+    } catch (e: any) {
+      setError(e?.message || "삭제 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function onCancel(run: ResearchRun) {
+    if (!confirm(`${runLabel(run)}을(를) 중단할까요? 처리 중이던 학원 1곳은 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다.`)) return;
+    setError("");
+    try {
+      await cancelResearchRun(run.id);
+      setNotice("중단을 요청했습니다. 곧 멈춥니다.");
+      await loadRuns();
+    } catch (e: any) {
+      setError(e?.message || "중단 요청 실패");
+    }
+  }
+
+  async function onSyncBlog() {
+    if (!confirm(`블로그리뷰를 동기화합니다. 한 곳씩 받아야 해 전체에 ${ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다(백그라운드). 수집만 하며 글 생성에는 쓰이지 않습니다. 진행할까요?`)) return;
+    setBusy("blog");
+    setError("");
+    setNotice("");
+    try {
+      const res = await syncBlogReviews();
+      if (!res.ok) throw new Error(res.error || "시작 실패");
+      if (res.run_id) watchedRunRef.current = res.run_id;
+      setNotice("블로그리뷰 동기화를 백그라운드에서 시작했습니다. 창을 닫아도 계속 진행됩니다.");
+      await loadRuns();
+    } catch (e: any) {
+      setError(e?.message || "블로그리뷰 동기화 시작 실패");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const activeSyncRun = runs.find((r) => r.status === "running" && r.scope === "sync");
+  const activeBlogRun = runs.find((r) => r.status === "running" && r.scope === "sync_blog");
+  const activeResearchRun = runs.find((r) => r.status === "running" && r.scope !== "sync" && r.scope !== "sync_blog");
+  const researchCounts = items.reduce((counts, item) => {
+    if (item.last_attempt_outcome === "failed") counts.failed += 1;
+    else if (item.researched_at) counts.saved += 1;
+    else if (item.last_attempt_outcome === "no_sources") counts.noSources += 1;
+    else counts.unattempted += 1;
+    return counts;
+  }, { saved: 0, noSources: 0, failed: 0, unattempted: 0 });
+  // 끝난 동기화 중 가장 최근 것 — 진행 중이 아닐 때도 "언제 받아온 자료인지" 알 수 있어야 한다.
+  const lastSyncRun = runs.find((r) => r.scope === "sync" && r.status !== "running");
+  const lastBlogRun = runs.find((r) => r.scope === "sync_blog" && r.status !== "running");
+  // 끝난 조사 중 가장 최근 것. 동기화에는 「최근 동기화」가 있는데 조사에는 없어서,
+  // 터미널(research:once)로 돌리거나 창을 닫았다 오면 **어떻게 끝났는지 볼 데가 없었다**.
+  // 완료 통보(watchedRunRef)는 그 브라우저에서 시작한 실행에만 붙는다.
+  const lastResearchRun = runs.find((r) => r.scope !== "sync" && r.scope !== "sync_blog" && r.status !== "running");
+  // 두 동기화는 같은 원천을 두드려 서버가 동시 실행을 막는다. 버튼도 같이 잠근다.
+  const syncBusy = Boolean(activeSyncRun || activeBlogRun);
+  // 이미 받아 둔 블로그리뷰가 있는지만 본다(수집은 중단했고, 뒤처짐 비교는 의미가 없어졌다).
+  const lastBlogDone = runs.find((r) => r.scope === "sync_blog" && r.status === "done");
+
+  return (
+    <div className="card-pad">
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">자료 관리</p>
+          <h1>운전학원 자료 · DrivingPlus 원천</h1>
+        </div>
+      </div>
+
+      <p className="muted">
+        여기서 받은 기본정보·후기 원문·AI 심층조사는 <b>학원 자료 전용 DB</b>에 모입니다.
+        도메인은 이 자료를 <b>연결해서</b> 쓰므로, 도메인에서 「연결 끊기」를 하거나 도메인을 지워도
+        원본과 조사 결과는 그대로 남고 다시 연결하면 복구됩니다.
+        다만 글 생성이 읽는 것은 연결된 사본이라, 자료를 갱신했으면 도메인에서 다시 연결해야 반영됩니다.
+      </p>
+
+      <div className="card card-pad grid" style={{ gap: 14, margin: "16px 0" }}>
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: 4 }}>
+            <div className="row" style={{ alignItems: "center" }}>
+              <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>학원정보</span>
+              <button className="btn" onClick={onSync} disabled={busy === "sync" || syncBusy}>
+                {activeSyncRun ? "동기화 진행 중…" : busy === "sync" ? "시작하는 중…" : "학원정보 동기화"}
+              </button>
+              <span className="muted small">{lastSyncLabel(lastSyncRun, Boolean(activeSyncRun))}</span>
+            </div>
+            <DiagnosisLine run={activeSyncRun ? undefined : lastSyncRun} />
+          </div>
+          {/*
+            블로그리뷰 수집은 설정(설정 화면 → 블로그 리뷰 수집)으로 켜고 끈다. 기본은 꺼짐이다.
+            원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이다
+            (2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이
+            비슷한 학원 2~3곳에 중복 배정). 켜도 수집만 하며 글 생성·품질 게이트에는 닿지 않는다.
+            여기서 상태를 자체 판단하지 않고 서버가 준 값을 쓴다 — 화면과 서버가 어긋나면 안내가 거짓말이 된다.
+          */}
+          <div style={{ display: "grid", gap: 4 }}>
+            <div className="row" style={{ alignItems: "center" }}>
+              <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>블로그리뷰</span>
+              {blogSyncOn === null ? (
+                <span className="muted small">수집 설정 확인 중…</span>
+              ) : blogSyncOn ? (
+                <>
+                  <button className="btn" onClick={onSyncBlog} disabled={busy === "blog" || syncBusy}>
+                    {activeBlogRun ? "동기화 진행 중…" : busy === "blog" ? "시작하는 중…" : "블로그리뷰 동기화"}
+                  </button>
+                  <span className="muted small">
+                    {lastSyncLabel(lastBlogRun, Boolean(activeBlogRun))} · 한 곳씩 받아 {ACADEMY_SYNC_DURATION_WITH_BLOG} 걸립니다. 수집만 하며 글 생성에는 쓰지 않습니다.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="badge warn">수집 꺼짐</span>
+                  <span className="muted small">
+                    원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞입니다. 글 생성에도 쓰지 않습니다.
+                    블로그 글이 실제 그 학원의 글인지 가려내는 검증 기능이 있으면, 검증을 통과한 것만 골라 쓸 수 있을 것입니다.
+                    수집 자체는 필요하면 설정 화면에서 켤 수 있습니다.
+                    {lastBlogDone ? " 이미 받아 둔 자료는 학원 상세에 그대로 남아 있습니다." : ""}
+                  </span>
+                </>
+              )}
+            </div>
+            {blogSyncOn === true && <DiagnosisLine run={activeBlogRun ? undefined : lastBlogRun} />}
+          </div>
+          <div className="row" style={{ alignItems: "center" }}>
+            <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>
+            <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
+              <select className="select" value={researchProvider} onChange={(e) => setResearchProvider(e.target.value as ResearchProvider)} disabled={busy === "research" || Boolean(activeResearchRun)} aria-label="전체 AI 조사 CLI 선택" style={{ width: "auto", minWidth: 112 }}>
+                <option value="auto">자동</option>
+                <option value="codex">Codex</option>
+                <option value="claude">Claude</option>
+              </select>
+              <select
+                className="select"
+                value={String(researchLimit)}
+                onChange={(e) => setResearchLimit(Number(e.target.value))}
+                disabled={busy === "research" || Boolean(activeResearchRun)}
+                aria-label="이번 실행에서 조사할 학원 수"
+                style={{ width: "auto", minWidth: 96 }}
+              >
+                <option value="10">10곳</option>
+                <option value="30">30곳</option>
+                <option value="100">100곳</option>
+                <option value="0">전체</option>
+              </select>
+              <select
+                className="select"
+                value={researchTarget}
+                onChange={(e) => {
+                  const target = e.target.value as "pending" | "retry" | "all";
+                  setResearchTarget(target);
+                  if (target !== "all") setResearchOffset(0);
+                }}
+                disabled={busy === "research" || Boolean(activeResearchRun)}
+                aria-label="AI 조사 대상"
+                style={{ width: "auto", minWidth: 148 }}
+              >
+                <option value="pending">미시도·실패</option>
+                <option value="retry">실패·근거 없음만</option>
+                <option value="all">조사한 곳도 다시</option>
+              </select>
+              <button className="btn" onClick={onResearchAll} disabled={busy === "research" || Boolean(activeResearchRun)} style={{ whiteSpace: "nowrap" }}>
+                {activeResearchRun ? "조사 진행 중…" : "AI 조사 실행"}
+              </button>
+            </div>
+          </div>
+          {/* 배치는 API 프로세스 안의 루프라 재시작되면 사라진다. 다시 눌러 이어서 진행한다. */}
+          <div className="muted small" style={{ paddingLeft: 96 }}>
+            기본은 미시도·실패 학원만 대상입니다. <b>실패·근거 없음만</b>을 고르면 이미 시도했지만 결과가 없던 학원만 다시 조사합니다.
+            {researchTarget === "all" && researchLimit > 0 ? ` 현재 다음 배치 시작 위치: ${researchOffset}번째.` : ""}
+          </div>
+          <div className="muted small" style={{ paddingLeft: 96 }}>{lastResearchLabel(lastResearchRun, Boolean(activeResearchRun))}</div>
+        </div>
+      </div>
+
+      {notice && <div className="card card-pad" style={{ borderColor: "#1a9c5b", color: "#1a9c5b", margin: "8px 0" }}>{notice}</div>}
+      {error && <div className="card card-pad" style={{ borderColor: "#d64545", color: "#d64545", margin: "8px 0" }}>{error}</div>}
+
+      {[activeSyncRun, activeBlogRun, activeResearchRun].filter(Boolean).map((run) => (
+        <div key={run!.id} className="card card-pad" style={{ margin: "8px 0" }}>
+          <div className="row" style={{ alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <b>{runLabel(run!)} 진행</b>
+            {/* 단건은 학원 사이에서 멈출 지점이 없어 중단을 지원하지 않는다. 눌러도 안 멈추는
+                버튼을 두느니 안 보이는 편이 낫다(1곳이라 85초 안팎이면 끝난다). */}
+            {run!.scope !== "single" && (
+              <button className="btn" onClick={() => onCancel(run!)} disabled={Boolean(run!.cancel_requested)} style={{ whiteSpace: "nowrap" }}>
+                {run!.cancel_requested ? "중단하는 중…" : "중단"}
+              </button>
+            )}
+          </div>
+          <div className="muted small" style={{ marginTop: 4 }}>{runDetail(run!)} · {run!.count_done}/{run!.count_total || "?"}</div>
+          <div style={{ height: 8, background: "var(--surface-2, #eee)", borderRadius: 999, marginTop: 8, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${pct(run!)}%`, background: run!.cancel_requested ? "#b0851f" : "#1f6feb", transition: "width .4s" }} />
+          </div>
+          {collectBreakdown(run!) && <div className="muted small" style={{ marginTop: 8 }}>{collectBreakdown(run!)}</div>}
+          {collectDiagnosis(run!) && (
+            <p style={{ margin: "6px 0 0", color: "#b0851f", fontSize: 13 }}>⚠ {collectDiagnosis(run!)}</p>
+          )}
+          <p className="muted small" style={{ margin: "8px 0 0" }}>
+            {run!.cancel_requested
+              ? "중단 요청됨 — 처리 중이던 학원 1곳을 마친 뒤 멈춥니다. 여기까지 저장된 내용은 남습니다."
+              : "서버에서 실행 중입니다. 이 창을 닫거나 새로고침해도 계속 진행되며, 다시 들어오면 진행률이 이어서 보입니다."}
+          </p>
+        </div>
+      ))}
+
+      {/* 조사 실행과 검토를 같은 화면에서 잇는다. 대기 목록이 없으면 「검증완료만」 설정은
+          380곳을 하나씩 열어야 해서 실질적으로 쓸 수 없다. */}
+      <div className="tabs" style={{ marginTop: 18 }}>
+        {([["list", "학원 목록"], ["review", "검토 대기"], ["manual", "직접 등록"]] as const).map(([id, label]) => (
+          <button key={id} className={`tab ${tab === id ? "active" : ""}`} onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </div>
+
+      {tab === "review" ? <ReviewQueue /> : null}
+      {tab === "manual" ? <ManualAcademies onSaved={load} /> : null}
+
+      <div className="row" style={{ alignItems: "flex-end", margin: "18px 0 10px", display: tab === "list" ? undefined : "none" }}>
+        <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 180 }}>
+          <span className="muted">목록 검색(이름/주소)</span>
+          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
+        </label>
+        <button className="btn" onClick={load} disabled={loading}>새로고침</button>
+        <span className="muted small" style={{ paddingBottom: 10 }}>
+          {loading ? "불러오는 중…" : `${items.length}곳`}
+          {!loading && ` · 조사값 있음 ${researchCounts.saved} · 근거 없음 ${researchCounts.noSources} · 미시도 ${researchCounts.unattempted}${researchCounts.failed ? ` · 재시도 필요 ${researchCounts.failed}` : ""}`}
+          {!loading && hiddenCount > 0 && (
+            <span title="원천 목록에서 내려간 항목입니다. 자료는 보관하되 목록·동기화 대상에서 제외합니다.">
+              {" "}(원천 목록에 없는 {hiddenCount}곳 제외)
+            </span>
+          )}
+        </span>
+      </div>
+      <div style={{ overflowX: "auto", display: tab === "list" ? undefined : "none" }}>
+        <table className="table">
+          <thead>
+            <tr><th>이름</th><th>주소</th><th>전화</th><th>유형</th><th>조사</th><th></th></tr>
+          </thead>
+          <tbody>
+            {items.map((a) => (
+              <tr key={a.external_id}>
+                <td>
+                  {a.name || "(이름없음)"}
+                  {a.source === "manual" && <span className="badge" style={{ marginLeft: 6 }} title="원천 동기화가 아니라 사람이 직접 등록한 학원입니다.">직접 등록</span>}
+                </td>
+                <td className="muted">{a.address || "-"}</td>
+                <td className="muted">{a.phone || "-"}</td>
+                <td className="muted">{a.academy_type || "-"}</td>
+                <td><ResearchAttemptStatus academy={a} /></td>
+                <td className="row" style={{ gap: 6 }}>
+                  <Link className="btn" href={`/academies/${encodeURIComponent(a.external_id)}`}>상세</Link>
+                  {a.source === "manual" && (
+                    <button className="btn danger" onClick={() => removeManual(a)} disabled={busy !== ""}>삭제</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {!loading && items.length === 0 && (
+              <tr><td colSpan={6} style={{ padding: 16 }}>
+                <div className="action-hint">
+                  <span>동기화된 학원이 없습니다. 원천에서 학원 목록과 후기를 먼저 받아야 합니다.</span>
+                  <button className="btn primary" onClick={onSync} disabled={busy === "sync" || syncBusy}>
+                    {activeSyncRun ? "동기화 진행 중…" : busy === "sync" ? "시작하는 중…" : "학원정보 동기화"}
+                  </button>
+                </div>
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+const MANUAL_FIELDS: Array<{ name: keyof ManualAcademyInput; label: string }> = [
+  { name: "region", label: "지역" },
+  { name: "name", label: "이름" },
+  { name: "address", label: "주소" },
+  { name: "phone", label: "전화" },
+  { name: "academy_type", label: "학원 유형" },
+  { name: "price", label: "수강료" },
+  { name: "shuttle", label: "셔틀" },
+  { name: "hours", label: "운영시간" },
+  { name: "pass_rate", label: "합격률" },
+  { name: "source_name", label: "출처명" },
+  { name: "source_url", label: "출처 URL" },
+  { name: "review", label: "검증 메모" },
+];
+
+/**
+ * 원천에 없는 학원을 직접 등록한다.
+ *
+ * 예전에는 도메인의 「원천 데이터」 탭에 있었다. 그때는 도메인마다 따로 입력해야 했고, 도메인의
+ * 학원 연결을 끊으면 함께 사라졌다 — 원천분은 다시 동기화하면 되지만 수동분은 되살릴 방법이 없다.
+ * 학원 자료는 도메인이 아니라 업종의 자산이므로 수집처인 이 화면으로 옮겼다. 여기서 한 번 등록하면
+ * 도메인의 「학원자료 연결」을 누르는 모든 도메인에 함께 들어간다.
+ */
+function ManualAcademies({ onSaved }: { onSaved: () => Promise<void> }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  async function submit(run: () => Promise<{ created: number; errors: string[] }>) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const res = await run();
+      setNotice(`${res.created}곳 등록했습니다.${res.errors.length ? ` (건너뜀 ${res.errors.length}건: ${res.errors[0]})` : ""} 도메인에 반영하려면 그 도메인에서 「학원자료 연결」을 다시 누르세요.`);
+      await onSaved();
+      return true;
+    } catch (e: any) {
+      setError(e?.message || "등록 실패");
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addOne(form: HTMLFormElement) {
+    const values = Object.fromEntries(new FormData(form).entries()) as unknown as ManualAcademyInput;
+    if (await submit(() => createManualAcademy(values))) form.reset();
+  }
+
+  async function addBulk(form: HTMLFormElement) {
+    const text = String(new FormData(form).get("json") || "").trim();
+    let parsed: unknown;
+    try { parsed = JSON.parse(text); } catch { setError("JSON 형식이 아닙니다."); return; }
+    const rows = (Array.isArray(parsed) ? parsed : [parsed]) as ManualAcademyInput[];
+    if (await submit(() => createManualAcademy(rows))) form.reset();
+  }
+
+  return (
+    <div className="grid" style={{ gap: 14, marginTop: 14 }}>
+      <p className="muted small" style={{ margin: 0 }}>
+        원천 동기화 목록에 없는 학원을 직접 넣습니다. 필수는 <b>이름</b> 하나이며, 나머지는 근거로 확인한 것만 채우세요.
+        여기 등록한 학원은 동기화를 다시 돌려도 사라지지 않고, AI 조사 대상에도 함께 들어갑니다.
+      </p>
+      <p className="small" style={{ color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px", margin: 0 }}>
+        ⚠️ 수강료·셔틀·운영시간은 <b>원천이 그 학원 값을 주지 않을 때만</b> 쓰입니다. 원천에 구조화된 값이 있으면 그쪽이 이깁니다.
+      </p>
+      {error && <p className="small" style={{ color: "var(--danger)", margin: 0 }}>{error}</p>}
+      {notice && <p className="small" style={{ margin: 0 }}>{notice}</p>}
+
+      <form className="grid" onSubmit={(e) => { e.preventDefault(); void addOne(e.currentTarget); }}>
+        <h3 style={{ margin: 0 }}>1. 단건 등록</h3>
+        <div className="grid grid-3">
+          {MANUAL_FIELDS.map((f) => (
+            <input key={f.name} className="input" name={f.name} placeholder={f.label} required={f.name === "name"} />
+          ))}
+        </div>
+        <button className="btn primary" disabled={busy}>{busy ? "등록 중…" : "단건 등록"}</button>
+      </form>
+
+      <form className="grid" onSubmit={(e) => { e.preventDefault(); void addBulk(e.currentTarget); }}>
+        <h3 style={{ margin: 0 }}>2. JSON 일괄 등록</h3>
+        <textarea className="textarea mono" name="json" rows={5} placeholder='[{"region":"대구","name":"OO운전전문학원","price":"65만원"}]' />
+        <button className="btn" disabled={busy}>JSON 일괄 등록</button>
+      </form>
+    </div>
+  );
+}
+
+function pct(run: ResearchRun): number {
+  if (!run.count_total) return 0;
+  return Math.min(100, Math.round((run.count_done / run.count_total) * 100));
+}
+function ResearchAttemptStatus({ academy }: { academy: AcademyBaseRow }) {
+  if (academy.last_attempt_outcome === "failed") {
+    return <span className="badge warn" title={academy.last_attempt_error || "최근 조사 시도 실패"}>재시도 필요 · {fmtDate(academy.last_attempted_at)}</span>;
+  }
+  if (academy.researched_at) {
+    return <span className="badge">{academy.research_engine || "AI"} · {fmtDate(academy.researched_at)}</span>;
+  }
+  if (academy.last_attempt_outcome === "no_sources") {
+    return <span className="badge warn" title={academy.last_attempt_error || "신뢰할 공개 소스를 찾지 못했습니다."}>근거 없음 · {fmtDate(academy.last_attempted_at)}</span>;
+  }
+  return <span className="muted">미시도</span>;
+}
+// 마지막 동기화 시각 + 결과. 중단된 실행은 "일부만 갱신됨"이 드러나야 한다.
+/**
+ * 마지막 조사가 어떻게 끝났는지. 진행 카드는 도는 동안에만 뜨므로, 끝나고 나면 결과를 볼 데가
+ * 없었다 — 터미널로 돌리면 완료 통보도 안 붙는다(그 브라우저가 시작한 실행이 아니라서).
+ */
+function lastResearchLabel(run: ResearchRun | undefined, running: boolean): string {
+  if (running) return "진행 중";
+  if (!run) return "조사 실행 기록이 없습니다.";
+  const when = formatDateTime(run.finished_at || run.started_at);
+  const scope = run.scope === "single" ? `단건(#${run.external_id ?? "?"})` : "전체";
+  const partial = `${run.count_done}/${run.count_total || "?"}곳`;
+  if (run.status === "cancelled") return `마지막 조사 ${when} · ${scope} 중단됨 — ${partial}까지 저장 (${runSummary(run)})`;
+  if (run.status !== "done") return `마지막 조사 ${when} · ${scope} 실패 — ${run.error || "원인 미상"} (${partial}까지 저장)`;
+  return `마지막 조사 ${when} · ${scope} 완료 — ${runSummary(run)}`;
+}
+
+function lastSyncLabel(run: ResearchRun | undefined, running: boolean): string {
+  if (running) return "진행 중";
+  if (!run) return "동기화 기록 없음";
+  const when = formatDateTime(run.finished_at || run.started_at);
+  const partial = `${run.count_done}/${run.count_total || "?"}곳만 갱신`;
+  if (run.status === "cancelled") return `마지막 시도 ${when} · 사용자 중단(${partial})`;
+  if (run.status !== "done") return `마지막 시도 ${when} · 중단됨(${partial})`;
+  const result = parseResult(run.result);
+  const reviews = typeof result?.reviews === "number" ? ` · 후기 ${result.reviews.toLocaleString()}건` : "";
+  const breakdown = collectBreakdown(run);
+  return `마지막 동기화 ${when} · 학원 ${result?.matched ?? run.count_done}곳${reviews}${breakdown ? ` (${breakdown})` : ""}`;
+}
+function runLabel(run: ResearchRun): string {
+  if (run.scope === "sync") return "학원정보 동기화";
+  if (run.scope === "sync_blog") return "블로그리뷰 동기화";
+  if (run.scope === "single") return "단건 AI 조사";
+  return "전체 AI 조사";
+}
+function runDetail(run: ResearchRun): string {
+  if (run.scope === "sync") return "DrivingPlus 기본정보 + 후기";
+  if (run.scope === "sync_blog") return "DrivingPlus 블로그리뷰";
+  if (run.scope === "single") return `학원 #${run.external_id ?? "?"} · ${run.engine || "auto"}`;
+  return `${run.region || "전체"} · ${run.engine || "auto"}`;
+}
+function runSummary(run: ResearchRun): string {
+  const result = parseResult(run.result);
+  if (run.scope === "sync" || run.scope === "sync_blog") {
+    const reviews = result?.reviews;
+    const unit = run.scope === "sync_blog" ? "블로그리뷰" : "후기 원문";
+    return `학원 ${result?.matched ?? run.count_done}곳${typeof reviews === "number" ? ` · ${unit} ${reviews.toLocaleString()}건` : ""}`;
+  }
+  const saved = Number(result?.saved);
+  const noSources = Number(result?.no_sources);
+  const failed = Number(result?.failed);
+  if (Number.isFinite(saved) || Number.isFinite(noSources) || Number.isFinite(failed)) {
+    return `${run.count_done}/${run.count_total}곳 처리 · 저장 ${Number.isFinite(saved) ? saved : 0} · 근거 없음 ${Number.isFinite(noSources) ? noSources : 0} · 실패 ${Number.isFinite(failed) ? failed : 0}`;
+  }
+  return `${run.count_done}/${run.count_total}곳`;
+}
+// 끝난 실행의 원인 진단을 버튼 바로 아래에 문장으로 남긴다.
+// 배지만으로는 "왜 저조한지"가 전달되지 않는다(툴팁은 사실상 안 읽힌다).
+function DiagnosisLine({ run }: { run?: ResearchRun }) {
+  const diagnosis = run ? collectDiagnosis(run) : "";
+  if (!run || !diagnosis) return null;
+  return (
+    <p style={{ margin: 0, marginLeft: 96, color: "#b0851f", fontSize: 13, lineHeight: 1.5 }}>
+      ⚠ {diagnosis}
+    </p>
+  );
+}
+
+// 수집 내역. "빈 응답"(원천이 200 으로 0건을 줌)과 "조회 실패"(예외)는 대응이 달라 나눠 보여준다.
+function collectBreakdown(run: ResearchRun): string {
+  const r = parseResult(run.result);
+  if (!r || typeof r.with_data !== "number") return "";
+  // 이 셋은 후기 조회 결과만 센다. 학원 기본정보는 목록 API 한 번으로 전부 받아오므로
+  // 학원별로 성패가 갈리지 않는다 — 그래서 "수집"이라고만 쓰면 기본정보로 오해된다.
+  const unit = reviewUnit(run);
+  return `${unit} 있음 ${r.with_data}곳 · ${unit} 0건 ${r.empty ?? 0}곳 · 조회 실패 ${r.failed ?? 0}곳`;
+}
+function reviewUnit(run: ResearchRun): string {
+  return run.scope === "sync_blog" ? "블로그리뷰" : "후기";
+}
+
+// 저조의 원인을 문장으로. 표본이 너무 적으면 단정하지 않는다.
+function collectDiagnosis(run: ResearchRun): string {
+  const r = parseResult(run.result);
+  if (!r || typeof r.with_data !== "number") return "";
+  const done = Number(r.done ?? run.count_done ?? 0);
+  if (done < 10) return "";
+  const empty = Number(r.empty ?? 0);
+  const failed = Number(r.failed ?? 0);
+  const unit = reviewUnit(run);
+  if (failed >= done * 0.3) {
+    return `${unit} 조회 실패가 많습니다. 원천 장애로 보이며, 실패한 학원의 기존 ${unit}는 지우지 않고 그대로 두었습니다.`;
+  }
+  if (empty >= done * 0.5) {
+    return `대부분의 학원에서 ${unit}가 0건으로 내려왔습니다. 원천이 목록을 주지 않는 상태로 보이며, 교체 정책상 해당 학원의 기존 ${unit}는 지워집니다. (학원 기본정보는 정상 갱신됐습니다)`;
+  }
+  return "";
+}
+
+function parseResult(value?: string | null): Record<string, any> | null {
+  if (!value) return null;
+  try { return JSON.parse(value); } catch { return null; }
+}
+// 저장값은 UTC 다. 문자열을 그대로 자르면 9시간 어긋난 시각이 보인다.
+function fmtDate(iso?: string | null): string {
+  if (!iso) return "";
+  return formatShortDate(iso);
+}
+
+const FIELD_LABEL = new Map(RESEARCH_FIELD_LABELS.map((f) => [f.key, f.label]));
+const STATUS_LABEL: Record<string, string> = {
+  needs_review: "검토 필요",
+  ai_draft: "AI 초안",
+  verified: "검증완료",
+  unverified: "미확인",
+};
+
+// 검토 대기 — 학원을 가로질러 필드 단위로 모은다.
+// 값을 고치는 곳은 학원 상세다. 여기서는 "검증완료로 올린다"만 한다(승인 도구를 새로 만들지 않는다).
+function rowKey(r: { external_id: string; field_key: string }): string { return `${r.external_id}:${r.field_key}`; }
+
+function ReviewQueue() {
+  const [rows, setRows] = useState<ReviewQueueRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [fields, setFields] = useState<Array<{ field_key: string; n: number }>>([]);
+  const [status, setStatus] = useState("needs_review,ai_draft");
+  const [field, setField] = useState("");
+  // 기본은 글에 나갈 수 있는 항목만. 켜면 원천 교차검증용 항목까지 보인다(승인해도 글엔 안 쓰인다).
+  const [allFields, setAllFields] = useState(false);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busyKey, setBusyKey] = useState("");
+  // 승인에서 뺀 항목. 대부분이 멀쩡하므로 기본은 선택된 상태이고 **체크를 푸는 것이 판단**이다 —
+  // 대부분이 멀쩡한데 하나씩 체크하게 하면 217건짜리 항목은 아무도 끝내지 못한다.
+  const [unchecked, setUnchecked] = useState<Set<string>>(new Set());
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await listReviewQueue({ status, field: field || undefined, allFields, q: q.trim() || undefined, limit: 500 });
+      setRows(res.items);
+      setTotal(res.total);
+      setFields(res.fields ?? []);
+      // 「검토 필요」는 기본 선택에서 뺀다. 근거 검사가 짚어 둔 값인데 「전체 선택」이
+      // 쓸어 담으면, 검토가 필요하다는 표시가 무의미해진다 — 실제로 2026-07-29 일괄 승인에서
+      // 근거가 방문자 후기 한 줄뿐인 셔틀값과 광고 문구 4건이 그렇게 승인됐다.
+      // 개별 체크는 막지 않는다. 하나씩 확인하고 직접 켜는 것은 사람의 판단이다.
+      setUnchecked(new Set(res.items.filter((row) => row.status === "needs_review").map(rowKey)));
+    } catch (e: any) {
+      setError(e?.message || "검토 대기 목록을 불러오지 못했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  }, [status, field, allFields, q]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  // (load 안에서도 쓰므로 호이스팅되는 함수 선언으로 둔다)
+  // 이미 승인된 것은 일괄 대상이 아니다(되돌리기는 학원 상세에서 한다).
+  const selectable = rows.filter((r) => r.status !== "verified");
+  const flaggedCount = selectable.filter((r) => r.status === "needs_review").length;
+  const selected = selectable.filter((r) => !unchecked.has(rowKey(r)));
+
+  async function approveSelected() {
+    if (!selected.length) return;
+    const label = field ? (FIELD_LABEL.get(field) ?? field) : "선택한 항목";
+    if (!confirm(`${label} ${selected.length}건을 「검증완료」로 올립니다.\n체크를 푼 ${unchecked.size}건은 그대로 둡니다. 진행할까요?`)) return;
+    setBusyKey("bulk");
+    setError(""); setNotice("");
+    try {
+      const res = await bulkFieldMeta(selected.map((r) => ({ external_id: r.external_id, field_key: r.field_key })), "verified");
+      setNotice(`${res.changed}건을 검증완료로 올렸습니다. 도메인의 「조사값 신뢰 기준」이 「검증완료만」이면 이 값들이 글에 쓰입니다(도메인에서 「학원자료 연결」을 다시 눌러야 반영).`);
+      // 이 화면은 도메인을 모르지만, 승인은 도메인의 「반영 대기」 상태를 바꾼다. 셸이 그 판정을
+      // 다시 읽어 배너를 세우도록 알린다 — 토스트는 지나가면 끝이라 이것만으로는 놓친다.
+      notifyDomainsChanged();
+      await load();
+    } catch (e: any) {
+      setError(e?.message || "일괄 승인에 실패했습니다.");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  async function approve(row: ReviewQueueRow) {
+    const key = `${row.external_id}:${row.field_key}`;
+    setBusyKey(key);
+    try {
+      await setResearchFieldMeta(row.external_id, { field_key: row.field_key, status: "verified" });
+      // 승인한 행만 걷어낸다. 전체를 다시 불러오면 검토 중이던 위치를 잃는다.
+      setRows((prev) => prev.filter((r) => `${r.external_id}:${r.field_key}` !== key));
+      setTotal((n) => Math.max(0, n - 1));
+      notifyDomainsChanged(); // 한 건 승인도 도메인의 「반영 대기」를 켠다(위 일괄 승인과 같은 이유).
+    } catch (e: any) {
+      setError(e?.message || "검증완료 처리에 실패했습니다.");
+    } finally {
+      setBusyKey("");
+    }
+  }
+
+  return (
+    <div className="grid" style={{ gap: 10, marginTop: 14 }}>
+      <p className="muted small" style={{ margin: 0 }}>
+        도메인의 <b>「조사값 신뢰 기준」이 「검증완료만」</b>일 때, 여기서 승인한 값만 글에 쓰입니다.
+        항목을 하나 골라 값을 나란히 훑고 <b>이상한 것만 체크를 푼 뒤</b> 일괄 승인하세요.
+        <b>「검토 필요」는 기본 선택에서 빠집니다</b> — 근거 검사가 짚어 둔 값이라, 하나씩 확인하고 직접 체크해야 승인됩니다.
+        값을 고치거나 승인을 되돌리려면 학원 상세로 갑니다.
+      </p>
+      <div className="row" style={{ alignItems: "flex-end", gap: 8 }}>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="muted small">상태</span>
+          <select className="select" value={status} onChange={(e) => setStatus(e.target.value)} style={{ width: "auto" }}>
+            <option value="needs_review,ai_draft">검토 필요 + AI 초안</option>
+            <option value="needs_review">검토 필요만</option>
+            <option value="ai_draft">AI 초안만</option>
+            <option value="verified">검증완료(승인된 값)</option>
+          </select>
+        </label>
+        <label style={{ display: "grid", gap: 4 }}>
+          <span className="muted small">항목</span>
+          <select className="select" value={field} onChange={(e) => setField(e.target.value)} style={{ width: "auto", maxWidth: 240 }}>
+            <option value="">전체 항목</option>
+            {fields.map((f) => (
+              <option key={f.field_key} value={f.field_key}>{(FIELD_LABEL.get(f.field_key) ?? f.field_key)} ({f.n})</option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "grid", gap: 4, flex: 1, minWidth: 160 }}>
+          <span className="muted small">학원 검색</span>
+          <input className="input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="학원명 또는 주소" />
+        </label>
+        <label className="row small" style={{ gap: 4, alignItems: "center", paddingBottom: 10 }} title="원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번 등)까지 봅니다. 승인해도 글에는 쓰이지 않습니다.">
+          <input type="checkbox" checked={allFields} onChange={(e) => { setField(""); setAllFields(e.target.checked); }} /> 글에 안 쓰는 항목까지
+        </label>
+        <button className="btn" onClick={() => void load()} disabled={loading}>새로고침</button>
+        <span className="muted small" style={{ paddingBottom: 10 }}>
+          {loading ? "불러오는 중…" : `${total.toLocaleString()}건`}
+          {!loading && total > rows.length ? ` (상위 ${rows.length}건 표시)` : ""}
+        </span>
+      </div>
+      {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
+      {notice && <p className="small badge success" style={{ width: "fit-content" }}>{notice}</p>}
+      {selectable.length > 0 && (
+        <div className="row" style={{ alignItems: "center", gap: 10, padding: "8px 10px", background: "#f8fafc", border: "1px solid var(--line, #e5e7eb)", borderRadius: 8 }}>
+          <button className="btn primary" onClick={() => void approveSelected()} disabled={busyKey === "bulk" || !selected.length}>
+            {busyKey === "bulk" ? "승인 중…" : `선택한 ${selected.length}건 검증완료로`}
+          </button>
+          <button className="btn" onClick={() => setUnchecked(new Set(selectable.map(rowKey)))} disabled={busyKey === "bulk"}>전체 해제</button>
+          {/* 「전체 선택」도 검토 필요는 켜지 않는다. 이름이 「전체」라고 해서 짚어 둔 값까지
+              집어가면, 되돌릴 방법이 사람 기억뿐이다. */}
+          <button className="btn" onClick={() => setUnchecked(new Set(selectable.filter((r) => r.status === "needs_review").map(rowKey)))} disabled={busyKey === "bulk"}>검토 필요 빼고 전체</button>
+          <span className="muted small">
+            체크를 푼 {unchecked.size}건은 그대로 남습니다.
+            {flaggedCount > 0 ? ` 「검토 필요」 ${flaggedCount}건은 기본 제외 — 값을 확인한 뒤 직접 체크하세요.` : ""}
+          </span>
+        </div>
+      )}
+      <div className="review-queue-table">
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: 34 }}>
+                <input
+                  type="checkbox"
+                  checked={selectable.length > 0 && unchecked.size === 0}
+                  ref={(el) => { if (el) el.indeterminate = unchecked.size > 0 && unchecked.size < selectable.length; }}
+                  onChange={(e) => setUnchecked(e.target.checked
+                    ? new Set(selectable.filter((r) => r.status === "needs_review").map(rowKey))
+                    : new Set(selectable.map(rowKey)))}
+                  aria-label="전체 선택"
+                />
+              </th>
+              <th className="review-queue-school" style={{ width: 160 }}>학원</th>
+              <th className="review-queue-field" style={{ width: 100 }}>항목</th>
+              <th>값</th>
+              <th className="review-queue-status" style={{ width: 80 }}>상태</th>
+              <th className="review-queue-source" style={{ width: 60 }}>출처</th>
+              <th className="review-queue-action" style={{ width: 90 }}>승인</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const key = `${r.external_id}:${r.field_key}`;
+              return (
+                <tr key={key} style={r.status !== "verified" && unchecked.has(key) ? { opacity: 0.5 } : undefined}>
+                  <td>
+                    {r.status === "verified"
+                      ? <span className="muted small">-</span>
+                      : <input
+                          type="checkbox"
+                          checked={!unchecked.has(key)}
+                          onChange={(e) => setUnchecked((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.delete(key); else next.add(key);
+                            return next;
+                          })}
+                          aria-label="승인 대상"
+                        />}
+                  </td>
+                  <td className="review-queue-school">
+                    <Link href={`/academies/${encodeURIComponent(r.external_id)}`}>{r.name || r.external_id}</Link>
+                    {r.address ? <span className="review-queue-address" title={r.address}>{compactReviewQueueAddress(r.address)}</span> : null}
+                  </td>
+                  <td className="review-queue-field muted">{FIELD_LABEL.get(r.field_key) ?? r.field_key}</td>
+                  <td className="review-queue-value">
+                    {r.value ? <span className="review-queue-value-text">{String(r.value)}</span> : <span className="muted">(빈 값)</span>}
+                    {r.note ? <p className="review-queue-note small" style={{ margin: "4px 0 0", color: r.status === "needs_review" ? "#b45309" : "var(--muted, #64748b)" }}>
+                      {r.status === "needs_review" ? "⚠️ " : ""}{r.note}
+                    </p> : null}
+                  </td>
+                  <td className="review-queue-status"><span className={`badge${r.status === "needs_review" ? " warn" : r.status === "verified" ? " success" : ""}`}>{STATUS_LABEL[r.status] ?? r.status}</span></td>
+                  <td className="review-queue-source">{r.source_url ? <a href={r.source_url} target="_blank" rel="noreferrer" className="badge">링크</a> : <span className="muted">-</span>}</td>
+                  <td className="review-queue-action">
+                    {/* 승인 해제는 학원 상세에서 한다. 목록에서 되돌리기까지 두면 실수로 누르기 쉽다. */}
+                    {r.status === "verified"
+                      ? <span className="muted small">승인됨</span>
+                      : (
+                        // 빈 값을 검증완료로 올리면 "사람이 확인한 값" 이 비어 있게 된다. 값이 있을 때만 승인한다.
+                        <button className="btn" onClick={() => void approve(r)} disabled={busyKey === key || !r.value} title={r.value ? "이 값을 글에 쓸 수 있게 승인합니다" : "값이 비어 있어 승인할 수 없습니다"}>
+                          {busyKey === key ? "처리 중…" : "검증완료"}
+                        </button>
+                      )}
+                  </td>
+                </tr>
+              );
+            })}
+            {!loading && rows.length === 0 && (
+              <tr><td colSpan={6} className="muted" style={{ textAlign: "center", padding: 24 }}>검토 대기 중인 항목이 없습니다.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function compactReviewQueueAddress(address: string): string {
+  const parts = address.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return address;
+  const district = parts.find((part) => /(?:군|구)$/.test(part))
+    ?? parts.slice(1).find((part) => /시$/.test(part));
+  const city = parts.find((part) => /(?:특별시|광역시|특별자치시|특별자치도|도|시)$/.test(part));
+  const neighborhood = parts.find((part) => /(?:읍|면|동|리)$/.test(part));
+  const road = parts.find((part) => /(?:로|길)$/.test(part));
+  return [district ?? city ?? parts[0], neighborhood ?? road].filter(Boolean).join(" · ");
+}

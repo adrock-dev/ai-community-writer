@@ -1,16 +1,35 @@
 import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Inject, Param, Patch, Post, Put, Query, Req, Res } from "@nestjs/common";
 import type { Request, Response } from "express";
-import { DbService, domainOut, jobOut, safeJson } from "./db.service.js";
+import { DbService, domainOut, jobOut, nowSql, safeJson, syncRunOut } from "./db.service.js";
+import { publicBrandName } from "./brand.js";
 import { DrivingplusApiService, type SeoRegionLevel } from "./drivingplus-api.service.js";
-import { DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_CONTENT_BRIEF, DEFAULT_DRIVING_DESIGN_TEMPLATE, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_VERTICALS, TEMPLATE_SPECS, type AxisName } from "./constants.js";
+import { RegionDirectoryService } from "./region-directory.service.js";
+import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
+import { AcademyResearchDbService } from "./academy-research-db.service.js";
+import { AcademyLinkService } from "./academy-link.service.js";
+import { parseResearchUsage } from "./academy-research-usage.js";
+import { isAheadOfLink } from "./link-freshness.js";
+import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
-import { findSlotExclusionTerms, parseExclusionTerms } from "./exclusions.js";
-import { adminApiBaseUrl, drivingplusApiBaseUrl } from "./runtime-config.js";
+import { findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
+import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount } from "./quality-gate.js";
+import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
+import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
+import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./archetypes.js";
+import { runLlm } from "./llm-runner.js";
+import { adminApiBaseUrl, blogReviewSyncEnabled, BLOG_REVIEW_SYNC_SETTING_KEY, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
+import { isT01TemplateFamily, T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
 
 type Row = Record<string, any>;
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
+
+// 빌트인 글유형 spec 에 제목 규칙(TITLE_RULES 맵 소유)을 병합해 반환한다. /options·/templates 가 동일 계약을
+// 쓰도록 한 곳에서 만든다(한쪽만 병합해 시작점 프리필이 비던 드리프트 방지).
+function builtinSpecWithTitleRule(id: string, spec: Record<string, unknown>): Record<string, unknown> {
+  return { ...spec, title_rule: TITLE_RULES[id] ?? null };
+}
 
 @Controller("api/admin")
 export class AdminController {
@@ -18,20 +37,69 @@ export class AdminController {
     @Inject(DbService) private readonly db: DbService,
     @Inject(SlotService) private readonly slots: SlotService,
     @Inject(DrivingplusApiService) private readonly drivingplus: DrivingplusApiService,
+    @Inject(RegionDirectoryService) private readonly regionDirectory: RegionDirectoryService,
+    @Inject(DrivingplusSyncService) private readonly drivingplusSync: DrivingplusSyncService,
+    @Inject(AcademyResearchDbService) private readonly researchDb: AcademyResearchDbService,
+    @Inject(AcademyLinkService) private readonly academyLink: AcademyLinkService,
   ) {}
+
+  /**
+   * 이 도메인의 조사 자료가 마지막 연결보다 새로운가.
+   *
+   * 두 DB 에 걸친 판정이라 여기서 잇는다 — 조사 DB 는 도메인을 모르고, admin.db 는 조사 DB 를
+   * 모른다. 비교 자체는 link-freshness 한 곳에서만 한다(화면이 따로 계산하지 않는다).
+   */
+  private researchPendingLink(domain: string): boolean {
+    const linkedAt = this.db.get("SELECT MAX(synced_at) s FROM academies WHERE domain=?", [domain])?.s as string | undefined;
+    if (!linkedAt) return false;
+    const externalIds = this.db.academyExternalIds(domain);
+    return isAheadOfLink(this.researchDb.lastChangedAtForExternalIds(externalIds), linkedAt);
+  }
+
+  /**
+   * 「학원자료 연결」을 다시 눌러야 하는가 — **축 무관**.
+   *
+   * 연결 시점에 굽는 것이 조사값만이 아니다. 지역 배정(seo_regions)과 셔틀 운행 지역
+   * (region_directory)도 같은 함수에서 계산된다. 셸 배너는 운영자가 어느 화면에 있든
+   * 「눌러야 한다」만 알리면 되므로 셋을 OR 로 묶는다. 어느 축이 왜 대기인지는 도메인
+   * 원천 데이터 탭의 축별 안내가 설명한다.
+   */
+  private pendingLinkFor(domain: string): boolean {
+    if (this.researchPendingLink(domain)) return true;
+    const freshness = this.db.sourceFreshness(domain);
+    return freshness.region_directory_ahead || freshness.seo_regions_ahead;
+  }
 
   @Get("options")
   options(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers);
     return {
-      verticals: [...DRIVING_VERTICALS],
+      verticals: this.db.getVerticals(),
       themes: ["clean", "modern", "pro"],
       templates: Object.keys(TEMPLATE_SPECS),
-      template_specs: TEMPLATE_SPECS,
+      // 빌트인 제목 규칙(TITLE_RULES)을 spec 에 병합 — 커스텀 폼 '시작점' 프리필이 이 값을 읽는다(listTemplates 와 동일 계약).
+      template_specs: Object.fromEntries(Object.entries(TEMPLATE_SPECS).map(([id, spec]) => [id, builtinSpecWithTitleRule(id, spec)])),
+      // 학원 타입 정식 목록(5종). 커스텀 폼 학원 타입 체크박스가 이걸로 5종 전부 노출한다.
+      // (커스텀 폼은 지역형 kind 일 때만 이 필드를 노출한다 — academy_types 는 지역형에서만 효과.)
+      // 아키타입 kind → 섹션 순서 변형 라벨(읽기전용). 커스텀 폼이 시작점/참조 아키타입의 구조 다양성을 안내.
+      archetype_structure_variants: archetypeStructureVariants(),
+      academy_types: [...ACADEMY_TYPES],
+      axis_tag_vocab: AXIS_TAG_VOCAB,
       design_templates: DESIGN_TEMPLATES,
       providers: ["codex", "claude"],
+      generation_models: GENERATION_MODEL_OPTIONS,
       preset_options: [DEFAULT_DRIVING_VERTICAL],
-      indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() }
+      indexing: { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() },
+      // 이미 모든 글에 강제되는 규칙(읽기 전용). 관리자가 볼 화면이 없어 "가격 안내를 어디 적지?"
+      // 처럼 이미 적혀 있는 것을 다시 묻게 됐고, 공통 원칙 칸에 중복해서 적으면 그 칸에서만
+      // 전달되는 말투 지시가 묻힌다. 상수를 그대로 내려 화면과 실제가 어긋날 수 없게 한다.
+      enforced_principles: { absolute: DRIVING_ABSOLUTE_PRINCIPLES, academy: DRIVING_ACADEMY_PRINCIPLES },
+      // 후보 선정 규칙(읽기 전용). 화면 안내멘트가 「20km 이내 인근 후보」처럼 이 값을 손으로 적고
+      // 있었는데, 셋 다 env 로 덮이는 값이라 환경변수를 바꾸면 화면만 옛 숫자로 남는다. 같은 이유로
+      // 상수를 그대로 내려 안내멘트가 값에서 렌더되게 한다(docs/ui-copy-inventory.md A급).
+      candidate_rules: { nearby_km: ACADEMY_NEARBY_MAX_KM, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, used_per_post: ACADEMY_USED_PER_POST },
+      // 전역 빌트인 노출 허용 목록(검증용 임시). null = 전체 노출. 카탈로그/커스텀 시작점/아키타입 목록에서 필터.
+      exposed_builtin_template_ids: this.exposedBuiltinIds()
     };
   }
 
@@ -53,9 +121,9 @@ export class AdminController {
         include_reviews: true,
         review_limit: 5,
         review_sort: "point",
-        include_blog_reviews: true,
+        include_blog_reviews: blogReviewSyncEnabled(),
         blog_review_limit: 3,
-        review_source_note: "학원 기본 정보는 get-all-academy에서 가져오고, 일반 리뷰와 블로그 리뷰는 학원별 review/blog-review API를 추가 호출해 글 생성 보충자료로 저장합니다.",
+        review_source_note: "학원 기본 정보는 get-all-academy에서 가져오고, 일반 리뷰는 학원별 review API를 추가 호출해 저장합니다. 블로그 리뷰 수집은 기본 꺼져 있습니다 — 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이며, 글 생성에도 쓰지 않습니다.",
       },
     };
   }
@@ -63,7 +131,9 @@ export class AdminController {
   @Get("domains")
   listDomains(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers);
-    const items = this.db.listDomains().map(domainOut);
+    // pending_link 는 셸 배너가 쓴다 — 어느 화면에 있든 「연결해야 반영된다」를 알리려면
+    // 목록을 이미 읽는 셸이 판정을 함께 받아야 왕복이 늘지 않는다.
+    const items = this.db.listDomains().map((row) => ({ ...domainOut(row), pending_link: this.pendingLinkFor(String(row.domain)) }));
     return { count: items.length, items };
   }
 
@@ -72,13 +142,19 @@ export class AdminController {
     checkAuth(req, headers);
     const domain = String(body.domain || "").trim().toLowerCase();
     const display_name = String(body.display_name || "").trim();
+    // 공개 브랜드명은 선택 입력이다. 비우면 brand.ts 폴백이 display_name 을 쓴다.
+    const brand_name = String(body.brand_name || "").trim();
     const vertical = String(body.vertical || DEFAULT_DRIVING_VERTICAL).trim();
     if (!domain || !display_name) throw new HttpException("domain, display_name required", 400);
-    if (!DRIVING_VERTICALS.includes(vertical as any)) throw new HttpException("Adrock 회사용 운영본은 driving 도메인만 지원합니다", 400);
+    if (!this.db.getVerticals().some((v) => v.key === vertical)) throw new HttpException("등록되지 않은 업종입니다. 작업환경에서 먼저 추가하세요.", 400);
     if (this.db.getDomain(domain)) throw new HttpException("domain already exists", 409);
-    this.db.createDomain({ domain, display_name, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit });
-    this.db.updateDomain(domain, { design_template_id: DEFAULT_DRIVING_DESIGN_TEMPLATE, content_brief: body.content_brief || DEFAULT_DRIVING_CONTENT_BRIEF });
+    this.db.createDomain({ domain, display_name, brand_name: brand_name || null, vertical, theme: body.theme, brand_color: body.brand_color || DEFAULT_DRIVING_BRAND_COLOR, daily_limit: body.daily_limit, templates_enabled: JSON.stringify(DEFAULT_DRIVING_TEMPLATE_IDS) });
+    // 새 도메인은 디자인 자동 매칭으로 시작한다: 글마다 슬롯의 글 유형 기본 디자인을 적용(docs/design-template-mapping.md).
+    this.db.updateDomain(domain, { design_template_id: AUTO_DESIGN_TEMPLATE_ID, common_principles: body.common_principles || body.content_brief || DEFAULT_DRIVING_COMMON_PRINCIPLES });
     if (body.apply_preset !== false) this.slots.applyPreset(domain, vertical);
+    // 전역 지역 사전을 미리 준비해 둔다(비어 있거나 오래됐을 때만 원천 호출).
+    // 비차단이다 — 원천이 죽어 있어도 도메인 생성은 성공해야 한다.
+    this.regionDirectory.ensureInBackground(`domain:${domain}`);
     return { ok: true, domain: domainOut(this.requireDomain(domain)) };
   }
 
@@ -92,6 +168,7 @@ export class AdminController {
       domain: domainConfig,
       axes: this.db.listAxes(domain),
       slot_counts: this.db.countSlots(domain),
+      custom_templates: this.db.listCustomTemplates(domain),
       settings: { indexing_has_key: Boolean(this.db.getSetting("google_sa_json")), indexing_url_template: this.indexingUrlTemplate() }
     };
     if (include.has("slots")) payload.slots = this.db.listSlots(domain, { status: query.slot_status || undefined, template: query.slot_template || undefined, q: query.slot_q || undefined, limit });
@@ -107,9 +184,267 @@ export class AdminController {
     this.requireDomain(domain);
     const fields = { ...body };
     if (Array.isArray(fields.templates_enabled)) fields.templates_enabled = JSON.stringify(fields.templates_enabled);
-    if (Array.isArray(fields.academy_type_filter)) fields.academy_type_filter = JSON.stringify(fields.academy_type_filter.map((v: any) => String(v || "").trim()).filter(Boolean));
+    if (fields.design_template_overrides && typeof fields.design_template_overrides === "object") fields.design_template_overrides = JSON.stringify(normalizeDesignOverrides(fields.design_template_overrides));
+    if (fields.template_overrides && typeof fields.template_overrides === "object") fields.template_overrides = JSON.stringify(safeTemplateOverrides(fields.template_overrides));
+    // 조사값 신뢰 기준은 연결 시점에 academies.extra.research 로 구워진다. 설정만 바꾸면
+    // 아무 일도 일어나지 않아, 운영자는 바꿨다고 생각하는데 글은 옛 값으로 나간다.
+    // 연결은 원천 API 를 치지 않고 이미 받아 둔 자료만 옮겨 380곳에 0.5초라, 여기서 바로 반영한다.
+    const usageBefore = parseResearchUsage(this.requireDomain(domain).research_usage);
     this.db.updateDomain(domain, fields);
-    return { ok: true, domain: domainOut(this.requireDomain(domain)) };
+    const usageAfter = parseResearchUsage(this.requireDomain(domain).research_usage);
+    let relinked: { linked: number; research_applied: number } | undefined;
+    if (usageAfter !== usageBefore && this.db.listAcademies(domain, { limit: 1 }).length) {
+      const result = this.academyLink.linkToDomain(domain);
+      relinked = { linked: result.linked, research_applied: result.research_applied };
+    }
+    return { ok: true, domain: domainOut(this.requireDomain(domain)), relinked };
+  }
+
+  // 글유형 목록: 빌트인(TEMPLATE_SPECS) + 도메인 커스텀(custom_templates).
+  @Get("domains/:domain/templates")
+  listTemplates(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return {
+      builtin: Object.entries(TEMPLATE_SPECS).map(([id, spec]) => ({ template_id: id, ...builtinSpecWithTitleRule(id, spec), custom: false })),
+      custom: this.db.listCustomTemplates(domain),
+    };
+  }
+
+  // 커스텀 글유형 생성. kind 는 기존 아키타입 참조만 허용(getArchetype 검증) — 새 아키타입 authoring 금지(품질 보장).
+  @Post("domains/:domain/templates")
+  createTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const name = String(body.name || "").trim();
+    const kind = String(body.kind || "").trim();
+    if (!name) throw new HttpException("name required", 400);
+    if (!getArchetype(kind)) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    const template = this.db.createCustomTemplate(domain, {
+      name, kind,
+      use_persona: Boolean(body.use_persona),
+      with_intent: Boolean(body.with_intent),
+      modifier_count: body.modifier_count,
+      weight: body.weight,
+      min_sv: body.min_sv,
+      axis_tags: body.axis_tags,
+      axis_values: body.axis_values,
+      academy_types: body.academy_types,
+      keyword_filter: body.keyword_filter,
+      primary_override: body.primary_override,
+      default_direction: body.default_direction,
+      default_design: body.default_design,
+      title_rule: body.title_rule,
+    });
+    return { ok: true, template };
+  }
+
+  // 커스텀 글유형 삭제. 빌트인은 상수라 삭제 불가.
+  @Delete("domains/:domain/templates/:templateId")
+  deleteTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("templateId") templateId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    if ((TEMPLATE_SPECS as Record<string, unknown>)[templateId]) throw new HttpException("cannot delete builtin template", 400);
+    const deleted = this.db.deleteCustomTemplate(domain, templateId);
+    if (!deleted) throw new HttpException("custom template not found", 404);
+    return { ok: true, deleted: templateId };
+  }
+
+  // 글유형 복제(clone) — 검증된 기존 글유형(빌트인/커스텀)을 복사해 조정 시작점으로. 새 커스텀 row 발급.
+  // effective 복사: 소스가 '이 도메인에서 지금 동작하는 그대로'(spec + 해당 오버라이드 병합)를 파라미터로 굳혀 독립 row 로.
+  @Post("domains/:domain/templates/clone")
+  cloneTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const sourceId = String(body.source_template_id || "").trim();
+    if (!sourceId) throw new HttpException("source_template_id required", 400);
+    const spec = this.db.getTemplateSpec(domain, sourceId);
+    if (!spec) throw new HttpException("source template not found", 404);
+    const config = domainOut(this.requireDomain(domain));
+    const srcOverride = safeTemplateOverrides(config.template_overrides)[sourceId];
+    // effective 파라미터: 오버라이드를 소스 spec 위에 적용해 굳힌다(복제본은 오버라이드 없이 소스와 동일 동작).
+    const recipe = resolveRecipeFlags(spec, srcOverride);
+    const axis_tags: Partial<Record<TaggedAxis, string[]>> = {};
+    for (const axis of ["persona", "intent", "modifier"] as TaggedAxis[]) {
+      const tags = srcOverride?.axis_tags?.[axis] ?? spec.axis_tags?.[axis];
+      if (Array.isArray(tags) && tags.length) axis_tags[axis] = tags;
+    }
+    const direction = resolveTemplateDirection(spec, srcOverride);
+    // inline overrides(복제-후-조정 한 번에). 알려진 파라미터만 위에 덮는다.
+    const inline = (body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)) ? body.overrides : {};
+    const input: Row = {
+      kind: spec.kind,
+      use_persona: recipe.use_persona,
+      with_intent: recipe.with_intent,
+      modifier_count: recipe.modifier_count,
+      weight: spec.weight,
+      min_sv: spec.min_sv,
+      axis_tags,
+      axis_values: spec.axis_values,
+      academy_types: spec.academy_types,
+      keyword_filter: spec.keyword_filter,
+      primary_override: spec.primary_override,
+      default_direction: direction || null,
+      default_design: spec.default_design,
+      // 복제본이 다시 복제돼도 최초 빌트인 원본을 유지한다. T01 계보의 기본
+      // 생성 정책을 제목·이름 추정 없이 안전하게 적용하기 위한 내부 메타데이터다.
+      origin_template_id: spec.origin_template_id || sourceId,
+      // 소스의 유효 제목 규칙을 굳혀 복사 — 빌트인(T01 등) 클론도 제목 규칙을 그대로 상속한다.
+      // (getTemplateSpec 이 빌트인 title_rule 을 TITLE_RULES 에서 실어주므로 빌트인/커스텀 동일 경로.)
+      title_rule: spec.title_rule ?? null,
+      ...inline,
+    };
+    const kind = String(input.kind || "").trim();
+    if (!getArchetype(kind)) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    input.kind = kind;
+    input.name = String(body.name || "").trim() || `${spec.name} (복사본)`;
+    const template = this.db.createCustomTemplate(domain, input);
+    return { ok: true, template, source_template_id: sourceId };
+  }
+
+  // 커스텀 글유형 편집(PATCH). 빌트인은 상수라 편집 불가(template_overrides 로).
+  @Patch("domains/:domain/templates/:templateId")
+  updateTemplate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("templateId") templateId: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    if ((TEMPLATE_SPECS as Record<string, unknown>)[templateId]) throw new HttpException("cannot edit builtin template (clone it to a custom template instead)", 400);
+    if (!this.db.getCustomTemplate(domain, templateId)) throw new HttpException("custom template not found", 404);
+    if (body.kind !== undefined && !getArchetype(String(body.kind || "").trim())) throw new HttpException(`unknown archetype kind: ${String(body.kind || "").trim() || "(empty)"}`, 400);
+    this.db.updateCustomTemplate(domain, templateId, body);
+    return { ok: true, template: this.db.getCustomTemplate(domain, templateId) };
+  }
+
+  // 커스텀 글유형 축 값(persona/intent/modifier) AI 제안 — LLM 에 유형 맥락(kind/이름/방향성)을 주고 후보를 생성한다.
+  // 저장하지 않고 '제안'만 반환한다(프론트가 폼에 채우고 사용자가 검토/수정 후 저장 — 품질 관문은 사람).
+  @Post("domains/:domain/templates/suggest-axes")
+  async suggestAxes(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers);
+    const config = domainOut(this.requireDomain(domain));
+    const kind = String(body.kind || "").trim();
+    const archetype = getArchetype(kind);
+    if (!archetype) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    const axes = (Array.isArray(body.axes) ? body.axes : []).map((a: any) => String(a)).filter((a: string) => ["persona", "intent", "modifier"].includes(a));
+    if (!axes.length) throw new HttpException("axes required (persona/intent/modifier 중 하나 이상)", 400);
+    const keywords = (Array.isArray(body.keywords) ? body.keywords : []).map((k: any) => String(k).trim()).filter(Boolean).slice(0, 20);
+    const prompt = buildAxisSuggestPrompt({ domainName: publicBrandName({ ...config, domain }), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), keywords, axes, commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype) });
+    const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
+    if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
+    const suggestions = parseAxisSuggestion(result.summary, axes);
+    if (!Object.keys(suggestions).length) throw new HttpException("LLM 응답에서 축 값을 추출하지 못했습니다. 다시 시도해 주세요.", 502);
+    return { ok: true, suggestions, provider: result.provider, model: result.model };
+  }
+
+  // 방향성 검증: 입력한 방향성이 절대 원칙(하드코딩 보편 바닥)·공통원칙·아키타입 writing_guide 와 중복/충돌하는지 LLM 으로 대조하고,
+  // 이 글유형 고유 방향만 남긴 개선안을 제안한다. 저장하지 않음(프론트가 사용자 확인 후 방향성 폼에 반영).
+  @Post("domains/:domain/templates/validate-direction")
+  async validateDirection(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
+    checkAuth(req, headers);
+    const config = domainOut(this.requireDomain(domain));
+    const kind = String(body.kind || "").trim();
+    const archetype = getArchetype(kind);
+    if (!archetype) throw new HttpException(`unknown archetype kind: ${kind || "(empty)"}`, 400);
+    const direction = String(body.direction || "").trim();
+    if (!direction) throw new HttpException("검증할 방향성(direction)을 입력하세요.", 400);
+    // 유형이 학원 후보를 다루면(has_academy) 학원 전용 규칙도 함께 대조. 기본값은 아키타입 academy_centric.
+    const hasAcademy = typeof body.has_academy === "boolean" ? body.has_academy : Boolean(archetype.academy_centric);
+    const absolutePrinciples = DRIVING_ABSOLUTE_PRINCIPLES + (hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` : "");
+    const prompt = buildDirectionValidatePrompt({
+      name: String(body.name || ""), kind, direction, currentDirection: String(body.current_direction || ""),
+      commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype), absolutePrinciples,
+    });
+    const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
+    if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
+    const validation = parseDirectionValidation(result.summary);
+    if (!validation) throw new HttpException("LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
+    return { ok: true, validation, provider: result.provider, model: result.model };
+  }
+
+  // 레시피↔데이터 정합성(coherence) — 읽기/계산 전용. 생성 전에 얇은/근거없는 조합을 사전 경고(전 빌트인+커스텀).
+  @Get("domains/:domain/templates/coherence")
+  templatesCoherence(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.slots.analyzeCoherence(domain);
+  }
+
+  // 특정 글유형의 지역별 학원 커버리지(팝업 L1/L2). 지역별 학원 수·충분 여부 + 학원별 빠진 데이터.
+  @Get("domains/:domain/templates/:templateId/academy-coverage")
+  academyCoverage(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("templateId") templateId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.slots.academyCoverage(domain, templateId);
+  }
+
+  // 커스텀 글유형 편집 상태 export — DB 초기화(wipe) 대비. 빌트인은 상수라 export 불필요.
+  // 봉투(envelope): 메타(schema/version/domain/exported_at) + custom_templates + template_overrides + templates_enabled.
+  @Get("domains/:domain/templates/export")
+  exportTemplates(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers);
+    const config = domainOut(this.requireDomain(domain));
+    const custom_templates = this.db.listCustomTemplates(domain).map((t) => ({
+      template_id: t.template_id, name: t.name, kind: t.kind,
+      use_persona: t.use_persona, with_intent: t.with_intent, modifier_count: t.modifier_count,
+      weight: t.weight, min_sv: t.min_sv, axis_tags: t.axis_tags, axis_values: t.axis_values, academy_types: t.academy_types, keyword_filter: t.keyword_filter, primary_override: t.primary_override,
+      default_direction: t.default_direction ?? null, default_design: t.default_design,
+      origin_template_id: t.origin_template_id ?? null, title_rule: t.title_rule ?? null,
+      created_at: t.created_at,
+    }));
+    return {
+      schema: "adrock-templates-export",
+      version: 1,
+      domain,
+      exported_at: nowSql(),
+      custom_templates,
+      template_overrides: config.template_overrides,
+      templates_enabled: config.templates_enabled,
+    };
+  }
+
+  // 커스텀 글유형 편집 상태 import(복구/복제). mode=merge(기본): id별 upsert + overrides/enabled 병합. replace: 교체.
+  // id 보존(overrides/enabled 참조 유지) · 빌트인 id 차단 · kind 검증 · 부재 필드는 건드리지 않음(부분 봉투 방어).
+  @Post("domains/:domain/templates/import")
+  importTemplates(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const mode = String(query.mode || "").trim() === "replace" ? "replace" : "merge";
+    const isObj = (v: unknown): v is Row => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+    // {data: envelope} 래퍼를 명시했으면 data 는 반드시 객체여야 한다(malformed 래퍼 차단).
+    if (body && Object.prototype.hasOwnProperty.call(body, "data") && !isObj(body.data)) throw new HttpException("invalid import envelope (data wrapper malformed)", 400);
+    const env: Row = isObj(body?.data) ? body.data : (body || {});
+    if (!isObj(env)) throw new HttpException("invalid import envelope", 400);
+    // 최소한 export 봉투 표식이나 import 가능한 필드가 하나는 있어야 한다.
+    const hasPayload = env.schema === "adrock-templates-export" || Array.isArray(env.custom_templates) || isObj(env.template_overrides) || Array.isArray(env.templates_enabled);
+    if (!hasPayload) throw new HttpException("invalid import envelope (no importable fields)", 400);
+    const warnings: string[] = [];
+    if (env.domain && String(env.domain) !== domain) warnings.push(`envelope domain '${env.domain}' != target '${domain}' — importing into target`);
+
+    // 1) custom_templates
+    if (mode === "replace") this.db.deleteAllCustomTemplates(domain);
+    let imported = 0, skipped = 0;
+    const incomingCustom = Array.isArray(env.custom_templates) ? env.custom_templates : [];
+    for (const row of incomingCustom) {
+      const tid = String(row?.template_id || "").trim();
+      const kind = String(row?.kind || "").trim();
+      if (!tid) { skipped++; warnings.push("custom template without template_id skipped"); continue; }
+      if ((TEMPLATE_SPECS as Record<string, unknown>)[tid]) { skipped++; warnings.push(`'${tid}' collides with builtin id — skipped`); continue; }
+      if (!getArchetype(kind)) { skipped++; warnings.push(`'${tid}' unknown archetype kind '${kind || "(empty)"}' — skipped`); continue; }
+      this.db.importCustomTemplate(domain, row);
+      imported++;
+    }
+
+    // 2) template_overrides (봉투에 필드가 있을 때만). merge: 기존 ∪ 봉투(봉투 우선). replace: 봉투로 교체.
+    let overrides_merged = 0;
+    if (env.template_overrides !== undefined && env.template_overrides !== null) {
+      const incoming = safeTemplateOverrides(env.template_overrides);
+      const existing = mode === "replace" ? {} : safeTemplateOverrides(domainOut(this.requireDomain(domain)).template_overrides);
+      const merged = { ...existing, ...incoming };
+      this.db.updateDomain(domain, { template_overrides: JSON.stringify(merged) });
+      overrides_merged = Object.keys(incoming).length;
+    }
+
+    // 3) templates_enabled (봉투에 필드가 있을 때만). 실제 존재하는 id(빌트인+현재 커스텀)만 남겨 유령 id 방지.
+    let templates_enabled: string[] | undefined;
+    if (Array.isArray(env.templates_enabled)) {
+      const valid = new Set<string>([...Object.keys(TEMPLATE_SPECS), ...this.db.listCustomTemplates(domain).map((t) => String(t.template_id))]);
+      const incoming = env.templates_enabled.map((v: unknown) => String(v));
+      const base = mode === "replace" ? [] : (Array.isArray(domainOut(this.requireDomain(domain)).templates_enabled) ? domainOut(this.requireDomain(domain)).templates_enabled.map((v: unknown) => String(v)) : []);
+      templates_enabled = [...new Set([...base, ...incoming])].filter((id) => valid.has(id));
+      this.db.updateDomain(domain, { templates_enabled: JSON.stringify(templates_enabled) });
+    }
+
+    return { ok: true, mode, imported, skipped, overrides_merged, templates_enabled, warnings };
   }
 
   @Delete("domains/:domain")
@@ -134,16 +469,10 @@ export class AdminController {
     checkAuth(req, headers); this.requireDomain(domain);
     const preset_key = String(body.preset_key || "").trim();
     if (!preset_key) throw new HttpException("preset_key required", 400);
-    this.slots.applyPreset(domain, preset_key);
+    // axes 필터(선택): 지정하면 그 축만 프리셋으로 채운다(예 ["keyword"] — region 등 동기화 축 보존).
+    const onlyAxes = Array.isArray(body.axes) ? (body.axes as unknown[]).map((a) => String(a)).filter((a): a is AxisName => ["region", "keyword", "intent", "persona", "modifier"].includes(a)) : undefined;
+    this.slots.applyPreset(domain, preset_key, onlyAxes);
     return { ok: true, preset_key, axes: this.db.listAxes(domain) };
-  }
-
-  @Post("domains/:domain/axes/ai-fill")
-  aiFill(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
-    checkAuth(req, headers); const domainConfig = this.requireDomain(domain);
-    // Nest runtime no longer shells through Python ai_axes; keep endpoint explicit and safe.
-    const summary = this.slots.applyPreset(domain, domainConfig.vertical || DEFAULT_DRIVING_VERTICAL);
-    return { ok: true, summary: { applied_preset: domainConfig.vertical, ...summary }, axes: this.db.listAxes(domain) };
   }
 
   @Get("domains/:domain/slots")
@@ -157,8 +486,15 @@ export class AdminController {
   @Post("domains/:domain/slots/generate")
   generateSlots(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const summary = this.slots.generateSlotsForDomain(domain, { maxPerTemplate: Math.max(1, Number(body.max_per_template || 200)) });
-    return { ok: true, summary, slot_counts: this.db.countSlots(domain) };
+    // template(단일)/templates(배열)가 오면 그 유형만 후보 생성한다. 없으면 기존대로 enabled 전 유형.
+    const rawTemplates = Array.isArray(body.templates) ? body.templates : (body.template ? [body.template] : []);
+    const templates = rawTemplates.map((t: any) => String(t).trim()).filter(Boolean);
+    // 글유형당 상한은 MAX_SLOTS_PER_TEMPLATE 로 클램프한다(축 조합 폭발 → 메모리/삽입 폭주로 인한 500 방지).
+    const maxPerTemplate = clampInt(body.max_per_template, 200, 1, MAX_SLOTS_PER_TEMPLATE);
+    const opts: { templates?: string[]; maxPerTemplate: number } = { maxPerTemplate };
+    if (templates.length) opts.templates = templates;
+    const summary = this.slots.generateSlotsForDomain(domain, opts);
+    return { ok: true, max_per_template: maxPerTemplate, summary, slot_counts: this.db.countSlots(domain) };
   }
 
   @Delete("domains/:domain/slots/:slotId")
@@ -173,10 +509,19 @@ export class AdminController {
     this.db.updateSlotStatus(slotId, "planned", null); return { ok: true, slot: this.db.getSlot(slotId) };
   }
 
+  // 슬롯 수동 제목 오버라이드. title=null/"" 이면 규칙/LLM 로 폴백. {지역}/{개수}/{키워드}/{학원명} 은 생성 시점 치환.
+  @Patch("domains/:domain/slots/:slotId")
+  updateSlot(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("slotId") slotId: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const slot = this.db.getSlot(slotId); if (!slot || slot.domain !== domain) throw new HttpException("slot not found", 404);
+    if (body.title !== undefined) this.db.updateSlotTitle(slotId, body.title == null ? null : String(body.title));
+    return { ok: true, slot: this.db.getSlot(slotId) };
+  }
+
   @Get("domains/:domain/posts")
   listPosts(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const items = this.db.listPosts(domain, { status: query.status || undefined, limit: clampInt(query.limit, 100, 1, 500) });
+    const items = this.db.listPosts(domain, { status: query.status || undefined, jobId: query.job_id || undefined, limit: clampInt(query.limit, 100, 1, 500) });
     return { count: items.length, items };
   }
 
@@ -187,7 +532,11 @@ export class AdminController {
     const dbImages = safeJson(post.images, {});
     const mergedImages = { ...fallbackImagesForPost(this.db, domain, post), ...(dbImages && typeof dbImages === "object" ? dbImages : {}) };
     const bodyMarkdown = ensureImageSlotsForRender(stripPseudoSlotsForRender(post.body_markdown || ""), mergedImages);
-    const responsePost = { ...post, body_markdown: bodyMarkdown, images: Object.keys(mergedImages).length ? JSON.stringify(mergedImages) : post.images };
+    const responsePost = {
+      ...post,
+      body_markdown: bodyMarkdown,
+      images: Object.keys(mergedImages).length ? JSON.stringify(mergedImages) : post.images,
+    };
     const payload: Row = { post: responsePost };
     if (rendered === "true" || rendered === "1") payload.body_html = renderMarkdown(bodyMarkdown, mergedImages);
     return payload;
@@ -221,6 +570,83 @@ export class AdminController {
     this.db.deletePost(postId); return { ok: true };
   }
 
+  // --- 격리(draft_posts) 검수: 품질 게이트 미통과 글을 관리자가 확인/발행/반려 ---
+  @Get("domains/:domain/drafts")
+  listDrafts(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const items = this.db.listDraftPosts(domain, { reviewStatus: query.status || undefined, limit: clampInt(query.limit, 100, 1, 500) })
+      .map((draft) => ({ ...draft, quality_issues: safeJson(draft.quality_issues, []) }));
+    return { count: items.length, pending: this.db.countDraftPosts(domain, "pending"), items };
+  }
+
+  @Get("domains/:domain/drafts/:draftId")
+  getDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string, @Query("include_rendered") rendered = "") {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    const dbImages = safeJson(draft.images, {});
+    const mergedImages = { ...fallbackImagesForPost(this.db, domain, draft), ...(dbImages && typeof dbImages === "object" ? dbImages : {}) };
+    const bodyMarkdown = ensureImageSlotsForRender(stripPseudoSlotsForRender(draft.body_markdown || ""), mergedImages);
+    const responseDraft = {
+      ...draft,
+      quality_issues: safeJson(draft.quality_issues, []),
+      body_markdown: bodyMarkdown,
+      images: Object.keys(mergedImages).length ? JSON.stringify(mergedImages) : draft.images,
+    };
+    const payload: Row = { draft: responseDraft };
+    if (rendered === "true" || rendered === "1") payload.body_html = renderMarkdown(bodyMarkdown, mergedImages);
+    return payload;
+  }
+
+  @Post("domains/:domain/drafts/:draftId/promote")
+  promoteDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    if (draft.review_status === "promoted") throw new HttpException("이미 발행된 초안입니다", 409);
+    // UI 우회 방지: 저장된 이슈로 서버에서 다시 차단 등급을 계산한다. B(안전/사실)가 남아 있으면 발행 불가.
+    const codes = (safeJson(draft.quality_issues, []) as Row[]).map((issue) => String(issue.code ?? issue));
+    if (blockingClass(codes) === "B") throw new HttpException("안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다. 본문을 수정해 재검증하세요.", 409);
+    const postId = this.db.promoteDraftToPost(draftId);
+    return { ok: true, post_id: postId };
+  }
+
+  @Post("domains/:domain/drafts/:draftId/revalidate")
+  revalidateDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string, @Body() body: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    const newBody = typeof body?.body_markdown === "string" && body.body_markdown.trim() ? body.body_markdown : String(draft.body_markdown || "");
+    const images = safeJson(draft.images, {}) as Record<string, string>;
+    const factsText = String(draft.facts_text || "");
+    const monitoredPhrases = parseMonitoredPhrases(this.db.getDomain(domain)?.monitored_phrases);
+    // 워커의 두 게이트(본문·최종 표면)를 저장된 facts 로 그대로 재현한다.
+    const articleIssues = articleQualityIssues(newBody, factsText, images, monitoredPhrases, domain);
+    const surfaceIssues = postSurfaceQualityIssues(
+      { title: draft.title, body_markdown: newBody, images: Object.keys(images).length ? JSON.stringify(images) : null, design_template_id: draft.design_template_id },
+      3500, renderedCandidateCount(newBody, factsText), monitoredPhrases, domain,
+    );
+    // t01 데이터 게이트는 별도 모듈이라 여기서 재실행하지 않는다(워커 캡처 훅과 함께 연결 예정).
+    // 그전까지는 기존에 걸린 t01_ 코드를 보수적으로 유지해 안전 이슈가 재검증으로 사라지지 않게 한다.
+    const carriedT01 = (safeJson(draft.quality_issues, []) as Row[]).map((issue) => String(issue.code ?? issue)).filter((code) => code.startsWith("t01_"));
+    const codes = Array.from(new Set([...articleIssues, ...surfaceIssues, ...carriedT01]));
+    const classified = classifyIssues(codes);
+    const bc = blockingClass(codes);
+    this.db.updateDraftAfterRevalidate(draftId, newBody, JSON.stringify(classified), bc);
+    return { ok: true, quality_issues: classified, blocking_class: bc, promotable: bc !== "B" };
+  }
+
+  @Post("domains/:domain/drafts/:draftId/dismiss")
+  dismissDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    this.db.setDraftReviewStatus(draftId, "dismissed"); return { ok: true };
+  }
+
+  @Delete("domains/:domain/drafts/:draftId")
+  deleteDraft(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("draftId") draftId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const draft = this.db.getDraftPost(draftId); if (!draft || draft.domain !== domain) throw new HttpException("draft not found", 404);
+    this.db.deleteDraftPost(draftId); return { ok: true };
+  }
+
   @Get("domains/:domain/academies")
   listAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
@@ -234,6 +660,13 @@ export class AdminController {
     return { count: items.length, items, academy_types: this.db.listAcademyTypes(domain) };
   }
 
+  /**
+   * 학원 자료 직접 등록(레거시 · 화면에서는 쓰지 않는다).
+   *
+   * 이 도메인에만 존재하는 행이 만들어져, 「연결 끊기」로 지우면 되살릴 방법이 없었다.
+   * 사람이 등록하는 경로는 「운전학원 자료 → 직접 등록」(POST /api/admin/academy-research/manual)로
+   * 옮겼고 그쪽은 업종 자산으로 남는다. 이 엔드포인트는 API 직접 호출 호환을 위해서만 남긴다.
+   */
   @Post("domains/:domain/academies")
   upsertAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: any) {
     checkAuth(req, headers); this.requireDomain(domain);
@@ -243,17 +676,95 @@ export class AdminController {
     return { ok: true, upserted: this.db.upsertAcademies(domain, rows) };
   }
 
-  @Post("domains/:domain/sync/drivingplus/academies")
-  async syncDrivingplusAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row = {}) {
+  /**
+   * 이 도메인 학원들의 심층조사 현황(읽기 전용).
+   *
+   * 조사는 도메인이 아니라 학원 자체의 속성이라 실행은 자료관리에서 전역으로 한다
+   * (도메인마다 돌리면 같은 학원을 도메인 수만큼 다시 조사하게 된다).
+   * 도메인 화면에는 "내 학원들이 얼마나 조사됐나"만 보여주고 실행 버튼은 두지 않는다.
+   */
+  @Get("domains/:domain/research-summary")
+  researchSummary(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
     checkAuth(req, headers); this.requireDomain(domain);
-    const rows = await this.drivingplus.fetchAcademies({
+    const academies = this.db.listAcademies(domain, { limit: 5000 });
+    const externalIds = academies.map((row) => String(row.external_id ?? "")).filter(Boolean);
+    const summary = this.researchDb.summarizeByExternalIds(externalIds);
+    // 마지막으로 이 도메인에 연결한 시각. 조사 자료가 이보다 새로우면 아직 반영되지 않은 것이다
+    // (조사값은 연결 시점에 academies.extra.research 로 구워진다).
+    const linkedAt = academies.reduce<string | null>((max, row) => {
+      const at = row.synced_at ? String(row.synced_at) : "";
+      return at && (!max || at > max) ? at : max;
+    }, null);
+    // 판정은 서버에서만 한다. 예전에는 화면이 last_changed_at 과 linked_at 을 직접 견줬는데,
+    // 두 DB 의 시각 형식이 달라 파싱 규칙까지 화면이 알아야 했다(link-freshness 주석 참조).
+    return { domain, total: externalIds.length, linked_at: linkedAt, pending_link: isAheadOfLink(summary.last_changed_at, linkedAt), ...summary };
+  }
+
+  /**
+   * 학원 동기화를 백그라운드로 시작하고 run_id 를 즉시 반환한다(결과를 기다리지 않는다).
+   * 블로그리뷰를 포함하면 12분 넘게 걸리는데 Node fetch 가 300초에 끊어버려, 응답을 기다리는
+   * 구조로는 관리자 UI 에서 절대 완주할 수 없다. 진행 상황은 sync/runs/:runId 로 조회한다.
+   */
+  /**
+   * 학원자료 연결 — 이미 받아 둔 조사 DB 자료를 이 도메인의 원천 데이터로 가져온다.
+   *
+   * 원천 API 를 다시 치지 않는다. 수집은 「운전학원 자료」 한 곳에서만 하고, 도메인은 연결만
+   * 한다(같은 목록을 두 경로가 각각 받던 중복 제거). 조사값은 도메인 설정과 필드 검증상태를
+   * 통과한 것만 함께 실린다.
+   */
+  @Post("domains/:domain/academies/link")
+  linkAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.academyLink.linkToDomain(domain);
+  }
+
+  @Post("domains/:domain/sync/drivingplus/academies")
+  syncDrivingplusAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row = {}) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const result = this.drivingplusSync.startAcademySync(domain, {
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
       reviewSort: body.review_sort === "new" ? "new" : "point",
-      includeBlogReviews: body.include_blog_reviews !== false,
+      // 블로그리뷰는 기본 수집하지 않는다(runtime-config blogReviewSyncEnabled 주석 참고).
+      // 스위치가 꺼져 있으면 요청이 true 를 보내도 켜지지 않는다 — 오래된 클라이언트나
+      // 직접 호출로 낡은 자료가 다시 쌓이는 것을 막는다.
+      includeBlogReviews: blogReviewSyncEnabled() && body.include_blog_reviews !== false,
       blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
     });
-    return { ok: true, ...this.db.upsertDrivingplusAcademies(domain, rows) };
+    if (!result.ok) throw new HttpException(result.error, 409);
+    return result;
+  }
+
+  @Get("domains/:domain/sync/runs")
+  listSyncRuns(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query("limit") limit?: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return { items: this.db.listSyncRuns(domain, clampInt(limit, 20, 1, 200)).map(syncRunOut) };
+  }
+
+  @Get("domains/:domain/sync/runs/:runId")
+  getSyncRun(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("runId") runId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const run = this.db.getSyncRun(runId);
+    if (!run || run.domain !== domain) throw new HttpException("실행 이력을 찾을 수 없습니다.", 404);
+    return syncRunOut(run);
+  }
+
+  @Post("domains/:domain/sync/runs/:runId/cancel")
+  cancelSyncRun(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("runId") runId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const run = this.db.getSyncRun(runId);
+    if (!run || run.domain !== domain) throw new HttpException("실행 이력을 찾을 수 없습니다.", 404);
+    return { ok: this.db.requestSyncCancel(runId) };
+  }
+
+  /**
+   * 원천 표(지역 사전·지역 목록)를 학원 행보다 나중에 받았는지. 화면이 "연결을 다시 누르라" 는
+   * 안내를 실제로 어긋났을 때만 띄우기 위해 쓴다. 계산 시점 설명은 db.sourceFreshness 주석에 있다.
+   */
+  @Get("domains/:domain/source-freshness")
+  sourceFreshness(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    return this.db.sourceFreshness(domain);
   }
 
   @Post("domains/:domain/sync/drivingplus/regions")
@@ -273,6 +784,10 @@ export class AdminController {
     return { ok: true, level, axis_replaced, ...summary };
   }
 
+  /**
+   * 지역 + 학원 통합 동기화. 지역은 원천 왕복 1회라 응답 안에서 끝내고,
+   * 학원은 백그라운드 run 으로 넘긴다(위 syncDrivingplusAcademies 와 같은 이유).
+   */
   @Post("domains/:domain/sync/drivingplus")
   async syncDrivingplusAll(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); this.requireDomain(domain);
@@ -280,29 +795,69 @@ export class AdminController {
     const regions = await this.drivingplus.fetchSeoRegions(level);
     const regionSummary = this.db.upsertSeoRegions(domain, regions);
     if (body.replace_axis) this.db.bulkReplaceAxis(domain, "region", regions.map((r) => ({ value: r.region, weight: r.level === 2 ? 5 : 3, monthly_search_volume: null, competition_kd: null })));
-    const academies = await this.drivingplus.fetchAcademies({
+    const started = this.drivingplusSync.startAcademySync(domain, {
       includeReviews: body.include_reviews !== false,
       reviewLimit: clampInt(body.review_limit, 5, 1, 10),
       reviewSort: body.review_sort === "new" ? "new" : "point",
-      includeBlogReviews: body.include_blog_reviews !== false,
+      // 블로그리뷰는 기본 수집하지 않는다(runtime-config blogReviewSyncEnabled 주석 참고).
+      // 스위치가 꺼져 있으면 요청이 true 를 보내도 켜지지 않는다 — 오래된 클라이언트나
+      // 직접 호출로 낡은 자료가 다시 쌓이는 것을 막는다.
+      includeBlogReviews: blogReviewSyncEnabled() && body.include_blog_reviews !== false,
       blogReviewLimit: clampInt(body.blog_review_limit, 3, 1, 10),
     });
-    const academySummary = this.db.upsertDrivingplusAcademies(domain, academies);
-    return { ok: true, regions: regionSummary, academies: academySummary, axis_replaced: Boolean(body.replace_axis), level };
+    if (!started.ok) throw new HttpException(started.error, 409);
+    return { ok: true, regions: regionSummary, run_id: started.run_id, axis_replaced: Boolean(body.replace_axis), level };
   }
 
+  /**
+   * 이 도메인에서 학원 1곳을 뺀다(제외 목록에 기록).
+   *
+   * 예전에는 academies 행만 지웠는데, 학원 자료의 원본이 조사 DB 로 옮겨간 뒤로는
+   * 「학원자료 연결」이 전량을 다시 밀어넣어 뺀 학원이 곧바로 되살아났다. 제외는 도메인별
+   * 결정이므로 조사 DB 를 건드리지 않고 여기에만 남긴다.
+   */
   @Delete("domains/:domain/academies/:academyId")
   deleteAcademy(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("academyId") academyId: string) {
-    checkAuth(req, headers); this.requireDomain(domain); return { ok: true, deleted: this.db.deleteAcademy(domain, academyId) };
+    checkAuth(req, headers); this.requireDomain(domain);
+    return { ok: true, ...this.db.excludeAcademy(domain, academyId) };
+  }
+
+  @Get("domains/:domain/academy-exclusions")
+  listAcademyExclusions(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const items = this.db.listAcademyExclusions(domain);
+    return { count: items.length, items };
+  }
+
+  /** 제외 해제 — 그 자리에서 학원을 다시 연결한다(해제만 하고 안 돌아오면 고장으로 보인다). */
+  @Delete("domains/:domain/academy-exclusions/:externalId")
+  unexcludeAcademy(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Param("externalId") externalId: string) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const removed = this.db.unexcludeAcademy(domain, externalId);
+    const relink = this.academyLink.linkOneToDomain(domain, externalId);
+    return { ok: true, removed, relinked: relink.linked, reason: relink.reason };
+  }
+
+  // 학원 자료 일괄 삭제. region 쿼리가 있으면 그 지역만, 없으면 도메인 전체.
+  @Delete("domains/:domain/academies")
+  deleteAcademies(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Query() query: Row) {
+    checkAuth(req, headers); this.requireDomain(domain);
+    const region = String(query.region || "").trim();
+    return { ok: true, deleted: this.db.deleteAcademies(domain, region || undefined) };
   }
 
   @Post("domains/:domain/jobs/generate")
   enqueueGenerate(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers); const domainMeta = this.requireDomain(domain);
     let slotIds = Array.isArray(body.slot_ids) ? body.slot_ids.map((id: any) => String(id)).filter(Boolean) : [];
+    const batchOpts = {
+      q: body.q || undefined,
+      template: body.template || undefined,
+      limit: clampInt(body.max, 10, 1, 500),
+      balanced: Boolean(body.balanced),
+    };
     if (!slotIds.length) {
-      const picked = this.db.selectSlotsForBatch(domain, { q: body.q || undefined, template: body.template || undefined, limit: clampInt(body.max, 10, 1, 500), balanced: Boolean(body.balanced) });
-      slotIds = picked.map((s) => s.slot_id);
+      slotIds = this.db.selectSlotsForBatch(domain, batchOpts).map((s) => s.slot_id);
     } else {
       const exclusionTerms = parseExclusionTerms(domainMeta.excluded_keywords);
       if (exclusionTerms.length) {
@@ -312,7 +867,35 @@ export class AdminController {
         });
       }
     }
-    if (!slotIds.length) throw new HttpException("작성할 planned 슬롯이 없습니다. 검색어나 제외 목록을 확인하세요.", 400);
+    // 작성은 기존 planned 후보만 사용한다. 후보 생성은 '재료로 글 후보 만들기'(slots/generate) 전용이며 여기서 자동 생성하지 않는다.
+    if (!slotIds.length) {
+      throw new HttpException(
+        "작성할 planned 후보가 없습니다. 먼저 ‘재료로 글 후보 만들기’로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)",
+        400,
+      );
+    }
+    const enableImageGeneration = Boolean(body.enable_image_generation);
+    const defaultTimeoutSec = enableImageGeneration ? 1200 : 600;
+    // 모드가 생략되면 worker 가 슬롯별로 T01 계보는 Legacy Plus, 그 외는 Legacy를
+    // 선택한다. 하나의 배치에 두 계보가 섞여도 생성 경로가 섞이지 않게 auto를 보존한다.
+    // 명시 legacy는 기존 동작을 강제하는 호환 탈출구다.
+    const generationMode = body.generation_mode === undefined || body.generation_mode === null || body.generation_mode === ""
+      ? "auto"
+      : String(body.generation_mode);
+    if (["t01_data_gated_v2", "t01_hybrid_v1"].includes(generationMode)) {
+      throw new HttpException(`retired generation_mode: ${generationMode}; use legacy or ${T01_LEGACY_PLUS_MODE}`, 400);
+    }
+    if (!["auto", "legacy", T01_LEGACY_PLUS_MODE].includes(generationMode)) {
+      throw new HttpException(`unknown generation_mode: ${generationMode}`, 400);
+    }
+    if (generationMode === T01_LEGACY_PLUS_MODE) {
+      const nonT01 = slotIds.map((slotId) => this.db.getSlot(slotId)).find((slot) => {
+        if (!slot) return true;
+        const spec = this.db.getTemplateSpec(domain, String(slot.template_id || ""));
+        return !isT01TemplateFamily(slot.template_id, spec?.origin_template_id);
+      });
+      if (nonT01) throw new HttpException(`${generationMode} is only supported for T01 slots`, 400);
+    }
     const job_id = this.db.enqueueJob(domain, "generate", {
       slot_ids: slotIds,
       provider: body.provider || "codex",
@@ -320,13 +903,14 @@ export class AdminController {
       design_template_id: body.design_template_id,
       use_web_research: body.use_web_research ?? true,
       cooldown_sec: body.cooldown_sec ?? 60,
-      timeout_sec: body.timeout_sec ?? 600,
-      enable_image_generation: Boolean(body.enable_image_generation),
+      timeout_sec: body.timeout_sec ?? defaultTimeoutSec,
+      enable_image_generation: enableImageGeneration,
       image_generation_required: Boolean(body.image_generation_required),
       image_count: clampInt(body.image_count, 1, 1, 3),
       image_size: String(body.image_size || "1024x1024"),
       image_model: String(body.image_model || "").trim(),
       image_provider: String(body.image_provider || "private-codex").trim(),
+      generation_mode: generationMode,
     });
     return { ok: true, job_id, slot_count: slotIds.length };
   }
@@ -350,6 +934,49 @@ export class AdminController {
     return { count: items.length, items };
   }
 
+  @Post("jobs/:id/cancel")
+  cancelJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return this.db.cancelJob(id);
+  }
+
+  @Post("jobs/:id/pause")
+  pauseJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return { ok: this.db.pauseJob(id) };
+  }
+
+  @Post("jobs/:id/resume")
+  resumeJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return { ok: this.db.resumeJob(id) };
+  }
+
+  @Post("jobs/:id/prioritize")
+  prioritizeJob(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers); return { ok: this.db.prioritizeJob(id) };
+  }
+
+  /**
+   * 블로그리뷰 "수집" 스위치. 켜고 끄는 것은 수집뿐이며, 글 생성에는 어느 쪽이든 쓰지 않는다
+   * (프롬프트 389ce0d · T01 품질 게이트 bfe5881 에서 각각 제거됨).
+   */
+  @Get("settings/blog-review-sync")
+  getBlogReviewSync(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers);
+    return {
+      enabled: blogReviewSyncEnabled(),
+      // 저장값이 없으면 환경변수 기본값을 따르고 있다는 뜻이라, 화면이 "설정된 적 없음" 을 구분할 수 있어야 한다.
+      configured: this.db.getSetting(BLOG_REVIEW_SYNC_SETTING_KEY) !== null,
+      used_in_generation: false,
+    };
+  }
+
+  @Put("settings/blog-review-sync")
+  saveBlogReviewSync(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    if (typeof body.enabled !== "boolean") throw new HttpException("enabled(boolean)가 필요합니다.", 400);
+    this.db.setSetting(BLOG_REVIEW_SYNC_SETTING_KEY, body.enabled ? "1" : "0");
+    return { ok: true, enabled: blogReviewSyncEnabled(), configured: true, used_in_generation: false };
+  }
+
   @Get("settings/indexing")
   getIndexing(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers); return { has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() };
@@ -362,6 +989,80 @@ export class AdminController {
     if (sa) this.db.setSetting("google_sa_json", sa);
     if (String(body.url_template || "").trim()) this.db.setSetting("indexing_url_template", String(body.url_template).trim());
     return { ok: true, has_key: Boolean(this.db.getSetting("google_sa_json")), url_template: this.indexingUrlTemplate() };
+  }
+
+  // 전역 빌트인 노출 목록(검증용 임시). body.exposed = 노출 허용 id 배열 | null(전체 노출로 초기화).
+  // 노출 제어는 UI 카탈로그/커스텀 시작점/아키타입 목록에만 영향(비파괴) — 이미 켠 유형의 생성엔 영향 없음.
+  @Put("settings/builtin-visibility")
+  saveBuiltinVisibility(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const exposed = body.exposed;
+    if (exposed === null || exposed === undefined) {
+      this.db.setSetting("exposed_builtin_template_ids", null); // 설정 삭제 → 기본값(T01)으로 복귀
+    } else {
+      if (!Array.isArray(exposed)) throw new HttpException("exposed must be an array or null", 400);
+      const valid = new Set(Object.keys(TEMPLATE_SPECS));
+      const ids = [...new Set(exposed.map((x: unknown) => String(x)).filter((x: string) => valid.has(x)))];
+      // 명시 목록을 그대로 저장(전부 노출도 명시 저장). 저장 안 하면 기본값 T01 만 노출된다.
+      this.db.setSetting("exposed_builtin_template_ids", JSON.stringify(ids));
+    }
+    return { ok: true, exposed_builtin_template_ids: this.exposedBuiltinIds() };
+  }
+
+  // 저장된 노출 목록 파싱. 설정이 없거나 파싱 실패면 기본값(T01)만 노출.
+  private exposedBuiltinIds(): string[] {
+    const raw = this.db.getSetting("exposed_builtin_template_ids");
+    if (!raw) return [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS];
+    try { const v = JSON.parse(raw); return Array.isArray(v) ? v.filter((x: unknown): x is string => typeof x === "string") : [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS]; }
+    catch { return [...DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS]; }
+  }
+
+  // 전역 행정구역 사전. 도메인별이 아니라 모든 도메인이 같은 표를 본다.
+  // 도메인 생성 시 자동으로 준비되므로 이 엔드포인트는 수동 갱신(행정구역 개편 등)용이다.
+  @Get("settings/region-directory")
+  regionDirectoryStatus(@Req() req: Request, @Headers() headers: Record<string, string>, @Query() query: Row) {
+    checkAuth(req, headers);
+    const domain = String(query.domain || "").trim();
+    // domain 을 주면 그 도메인에서 사전이 실제로 얼마나 쓰이는지 함께 돌려준다(관리자 카드 지표).
+    return { ...this.db.regionDirectoryStatus(), ...(domain ? { shuttle: this.db.shuttleRegionCoverage(domain) } : {}) };
+  }
+  @Post("settings/region-directory/sync")
+  async syncRegionDirectory(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row = {}) {
+    checkAuth(req, headers);
+    const domain = String(body?.domain || "").trim();
+    const result = await this.regionDirectory.sync();
+    return { ok: true, ...result, ...this.db.regionDirectoryStatus(), ...(domain ? { shuttle: this.db.shuttleRegionCoverage(domain) } : {}) };
+  }
+
+  // 업종 레지스트리(라벨 MVP): 작업환경에서 key/label 추가·삭제. key 는 프리셋 선택·프롬프트에 쓰인다.
+  // 주의: 새 key 는 프리셋(PRESETS)이 없어 해당 도메인은 축이 빈 상태로 시작한다(생성은 driving 프리셋만 실효).
+  @Get("settings/verticals")
+  listVerticals(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers); return { items: this.db.getVerticals() };
+  }
+  @Post("settings/verticals")
+  addVertical(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const key = String(body.key || "").trim().toLowerCase();
+    const label = String(body.label || "").trim();
+    if (!/^[a-z0-9-]+$/.test(key)) throw new HttpException("업종 key는 영문 소문자·숫자·하이픈만 사용하세요.", 400);
+    if (!label) throw new HttpException("표시명(label)을 입력하세요.", 400);
+    const list = this.db.getVerticals();
+    if (list.some((v) => v.key === key)) throw new HttpException("이미 존재하는 업종 key 입니다.", 409);
+    list.push({ key, label });
+    this.db.setVerticals(list);
+    return { ok: true, items: list };
+  }
+  @Delete("settings/verticals/:key")
+  deleteVertical(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("key") key: string) {
+    checkAuth(req, headers);
+    if (key === "driving") throw new HttpException("기본 업종(driving)은 삭제할 수 없습니다.", 400);
+    const inUse = this.db.countDomainsByVertical(key);
+    if (inUse > 0) throw new HttpException(`이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다.`, 409);
+    const list = this.db.getVerticals().filter((v) => v.key !== key);
+    if (!list.length) throw new HttpException("최소 1개 업종은 남겨야 합니다.", 400);
+    this.db.setVerticals(list);
+    return { ok: true, items: list };
   }
 
   private requireDomain(domain: string): Row { const domainConfig = this.db.getDomain(domain); if (!domainConfig) throw new HttpException("domain not found", 404); return domainConfig; }
@@ -379,6 +1080,14 @@ export function checkAuth(req: Request, headers: Record<string, string>): void {
 }
 
 function clampInt(value: any, fallback: number, min: number, max: number): number { const n = Number(value); return Math.max(min, Math.min(max, Number.isFinite(n) ? Math.trunc(n) : fallback)); }
+function normalizeDesignOverrides(value: Row): Row {
+  const templates = new Set(Object.keys(TEMPLATE_SPECS));
+  const designs = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
+  return Object.fromEntries(Object.entries(value)
+    .map(([templateId, designId]) => [String(templateId), String(designId || "")])
+    .filter((entry) => templates.has(entry[0] ?? "") && designs.has(entry[1] ?? "")));
+}
+
 function normalizePostForAdminExport(db: DbService, domain: string, post: Row): Row {
   const dbImages = safeJson(post.images, {});
   const images = { ...fallbackImagesForPost(db, domain, post), ...(dbImages && typeof dbImages === "object" ? dbImages : {}) };
@@ -417,9 +1126,12 @@ function renderBulkMarkdownExport(domain: string, posts: Row[]): string {
 }
 
 function renderSingleHtmlExport(domainConfig: Row, domain: string, post: Row): string {
-  const designId = resolveDesignId(post.design_template_id || domainConfig.design_template_id);
+  const rawDesignId = String(post.design_template_id || domainConfig.design_template_id || "");
+  const designId = resolveDesignId(rawDesignId);
   const design = getDesignTheme(designId, domainConfig.brand_color);
-  const brand = publicBrandName(String(domainConfig.display_name || domain));
+  const articleClass = `design-${designId}`;
+  const visibleDesignId = designId;
+  const brand = publicBrandName({ ...domainConfig, domain });
   const title = String(post.title || brand);
   const contentHtml = toPreviewBlocks(prepareBodyHtml(String(post.body_html || ""), title));
   const chips = designChips(designId);
@@ -434,7 +1146,7 @@ function renderSingleHtmlExport(domainConfig: Row, domain: string, post: Row): s
 </head>
 <body>
   <main class="post-page">
-    <article class="preview-phone preview-phone-fluid design-${designId}" style="--accent:${design.accent};--accent-soft:${design.soft};--primary:${design.accent};background:${design.pageBg}">
+    <article class="preview-phone preview-phone-fluid ${articleClass}" style="--accent:${design.accent};--accent-soft:${design.soft};--primary:${design.accent};background:${design.pageBg}">
       <div class="preview-top"><div><b>${escapeHtml(brand)}</b><p>${escapeHtml(design.label)}</p></div><span class="preview-cta">${escapeHtml(design.topCta)}</span></div>
       <div class="preview-hero post-hero title-hero">
         <div>
@@ -443,7 +1155,7 @@ function renderSingleHtmlExport(domainConfig: Row, domain: string, post: Row): s
         </div>
       </div>
       <div class="preview-body">
-        <div class="preview-meta"><span>${escapeHtml(formatShortDate(String(post.generated_at || "")))}</span><span>${escapeHtml(designId)}</span></div>
+        <div class="preview-meta"><span>${escapeHtml(formatShortDate(String(post.generated_at || "")))}</span><span>${escapeHtml(visibleDesignId)}</span></div>
         <div class="preview-divider"></div>
         <div class="row post-chips">${chips.map((chip) => `<span class="badge">${escapeHtml(chip)}</span>`).join("")}</div>
         <div class="generated-blocks">
@@ -583,7 +1295,83 @@ const CRC32_TABLE = Array.from({ length: 256 }, (_, n) => {
   for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
   return c >>> 0;
 });
-function publicBrandName(value: string): string { return value.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || value; }
+// 축 값 AI 제안 프롬프트: 유형 맥락(아키타입 작성지침 + 커스텀 방향성 + 도메인 공통원칙) + 축별 정의/개수 + JSON-only 출력.
+function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: string; name: string; direction: string; keywords?: string[]; axes: string[]; commonPrinciples?: string; writingGuide?: string[] }): string {
+  const axisSpec: Record<string, string> = {
+    persona: 'persona: 이 글의 독자(누구에게 말하는가). 구체적 상황·니즈를 담은 짧은 명사구. 예: "주말만 가능한 직장인", "집 근처 학원을 찾는 수강생".',
+    intent: 'intent: 사용자가 알고 싶어하는 정보 의도. 짧은 명사구. 예: "준비물", "비용확인", "근처학원".',
+    modifier: 'modifier: 주키워드에 붙는 짧은 강조 수식어. 예: "가까운", "비용절약", "야간반".',
+  };
+  const counts: Record<string, string> = { persona: "10~14개", intent: "4~6개", modifier: "5~8개" };
+  const wanted = o.axes.map((a) => `- ${axisSpec[a]} (${counts[a]})`).join("\n");
+  const guide = (o.writingGuide ?? []).map((g) => `- ${g}`).join("\n");
+  const principles = String(o.commonPrinciples || "").trim();
+  const keywords = (o.keywords ?? []).filter(Boolean);
+  return [
+    "너는 한국 운전면허·운전학원 SEO 콘텐츠의 축(axis) 값을 제안하는 도우미다.",
+    `대상 글유형: "${o.name || o.kind}" (아키타입 kind=${o.kind}, 주축=${o.primary === "region" ? "지역형(지역+키워드)" : "키워드형"}).`,
+    guide ? `이 아키타입이 쓰는 글의 작성 지침(이 글이 무엇을 하는지 참고):\n${guide}` : "",
+    o.direction ? `이 커스텀 글유형의 방향성: ${o.direction}` : "",
+    keywords.length ? `이 글유형이 노리는 주키워드(이 키워드에 딱 맞는 값으로 제안):\n${keywords.map((k) => `- ${k}`).join("\n")}` : "",
+    principles ? `도메인 공통 원칙(톤·전략, 참고):\n${principles}` : "",
+    "위 맥락 전체에 맞춰 아래 축 값을 제안하라:",
+    wanted,
+    "규칙: 운전면허·운전학원 도메인에 현실적으로 맞는 한국어 값만. 각 값은 짧고 서로 중복 없이. 가격·합격률 등 확인 불가한 수치를 값에 넣지 말 것.",
+    '출력은 오직 JSON 하나. 키는 요청한 축만 포함. 예: {"persona":["...","..."],"modifier":["..."]}. JSON 외 다른 텍스트·코드펜스 금지.',
+  ].filter(Boolean).join("\n\n");
+}
+
+// 방향성 검증 프롬프트: 방향성 ↔ (절대 원칙·공통원칙·writing_guide) 대조 + 고유 방향만 남긴 개선안 요청.
+function buildDirectionValidatePrompt(o: { name: string; kind: string; direction: string; currentDirection?: string; commonPrinciples?: string; writingGuide?: string[]; absolutePrinciples: string }): string {
+  const guide = (o.writingGuide ?? []).map((g) => `- ${g}`).join("\n");
+  const principles = String(o.commonPrinciples || "").trim();
+  const current = String(o.currentDirection || "").trim();
+  return [
+    "너는 한국 운전면허·운전학원 SEO 콘텐츠 시스템에서 '글유형 방향성(direction)'을 검증하는 도우미다.",
+    "방향성은 '이 글유형만의 방향(무엇을 어떤 각도로 다루고, 어떤 전환으로 잇는지)'을 적는 자리다. 아래 '이미 강제되는 규칙'을 다시 진술하면 중복(불필요)이다.",
+    `대상 글유형: "${o.name || o.kind}" (아키타입 kind=${o.kind}).`,
+    `[이 유형에 이미 강제되는 절대 원칙 — 방향성에 다시 쓰면 중복]\n${o.absolutePrinciples}`,
+    principles ? `[도메인 공통 원칙(톤·정책) — 다시 쓰면 중복]\n${principles}` : "",
+    guide ? `[이 아키타입 작성 지침(writing_guide) — 다시 쓰면 중복]\n${guide}` : "",
+    current ? `[이 글유형의 현재 방향성(참고)]\n${current}` : "",
+    `[검증할 방향성 — 사용자 입력]\n${o.direction}`,
+    "작업: (1) '검증할 방향성'의 각 요소가 위 절대 원칙/공통 원칙/작성 지침과 중복(이미 강제됨)되는지, 충돌하는지 판단하라. (2) 중복·충돌을 제거하고 이 글유형만의 고유 방향만 남긴 개선된 방향성을 1~3문장으로 제안하라. 고유 방향이 없으면 현재 방향성을 유지하는 제안을 하라.",
+    "규칙: 안전·데이터 규칙(날조 금지, 내부흔적 금지 등)은 방향성에 넣지 않는다(이미 강제됨). 제안은 한국어로 간결하게.",
+    '출력은 오직 JSON 하나: {"redundant":[{"text":"중복 부분","overlaps":"절대원칙|공통원칙|작성지침"}],"conflicting":[{"text":"충돌 부분","reason":"이유"}],"suggested_direction":"개선된 방향성 문장","summary":"한 문장 요약"}. JSON 외 텍스트·코드펜스 금지.',
+  ].filter(Boolean).join("\n\n");
+}
+
+// 방향성 검증 응답 파싱. 첫 JSON 블록 추출 후 필드 정규화. suggested_direction 이 없으면 실패(null).
+function parseDirectionValidation(text: string): { redundant: Array<{ text: string; overlaps: string }>; conflicting: Array<{ text: string; reason: string }>; suggested_direction: string; summary: string } | null {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  let obj: any;
+  try { obj = JSON.parse(m[0]); } catch { return null; }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  const suggested = String(obj.suggested_direction ?? "").trim();
+  if (!suggested) return null;
+  const redundant = Array.isArray(obj.redundant) ? obj.redundant.map((r: any) => ({ text: String(r?.text ?? "").trim(), overlaps: String(r?.overlaps ?? "").trim() })).filter((r: any) => r.text).slice(0, 12) : [];
+  const conflicting = Array.isArray(obj.conflicting) ? obj.conflicting.map((r: any) => ({ text: String(r?.text ?? "").trim(), reason: String(r?.reason ?? "").trim() })).filter((r: any) => r.text).slice(0, 12) : [];
+  return { redundant, conflicting, suggested_direction: suggested, summary: String(obj.summary ?? "").trim() };
+}
+
+// LLM 응답 텍스트에서 첫 JSON 블록을 추출·검증해 요청한 축의 문자열 배열만 반환(코드펜스/설명 섞여도 방어).
+function parseAxisSuggestion(text: string, axes: string[]): Record<string, string[]> {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return {};
+  let obj: any;
+  try { obj = JSON.parse(m[0]); } catch { return {}; }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+  const out: Record<string, string[]> = {};
+  for (const axis of axes) {
+    const list = obj[axis];
+    if (!Array.isArray(list)) continue;
+    const clean = [...new Set(list.map((v: unknown) => String(v ?? "").trim()).filter(Boolean))].slice(0, 20);
+    if (clean.length) out[axis] = clean;
+  }
+  return out;
+}
+
 function escapeRegExp(s: string): string { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function escapeHtml(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c)); }
 function escapeAttr(s: string): string { return escapeHtml(s).replace(/'/g, "&#39;"); }

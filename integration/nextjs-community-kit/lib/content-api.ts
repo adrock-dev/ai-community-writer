@@ -29,13 +29,20 @@ export interface PostDetail extends PostListItem {
   body_html?: string;
   /** 이미지 슬롯 kind → CDN URL (키 미설정 시 빈 객체) */
   images?: Record<string, string>;
+  /** 글의 대상 지역(JSON-LD 등 SEO 파생용). Phase 1a 이전 글은 null. */
+  region?: string | null;
+  /** 본문에 실제 소개된 학원명 목록(JSON-LD 등 SEO 파생용). 없으면 빈 배열. */
+  academy_names?: string[];
 }
 
 export interface SiteConfig {
   domain: string;
+  /** 공개 브랜드명. 구버전 API 는 이 필드가 없으므로 display_name 으로 폴백한다. */
+  brand_name?: string | null;
   display_name: string;
   brand_color: string | null;
   design_template_id: string;
+  logo_url: string | null;
 }
 
 function assertConfigured(): void {

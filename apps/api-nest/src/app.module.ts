@@ -1,14 +1,21 @@
 import { Module } from "@nestjs/common";
 import { AdminController } from "./admin.controller.js";
+import { AcademyResearchController } from "./academy-research.controller.js";
+import { PostInsightController } from "./post-insight.controller.js";
 import { PublicController } from "./public.controller.js";
 import { DbService } from "./db.service.js";
+import { AcademyResearchDbService } from "./academy-research-db.service.js";
+import { AcademyLinkService } from "./academy-link.service.js";
+import { AcademyResearchService } from "./academy-research.service.js";
 import { DrivingplusApiService } from "./drivingplus-api.service.js";
+import { DrivingplusSyncService } from "./drivingplus-sync.service.js";
+import { RegionDirectoryService } from "./region-directory.service.js";
 import { SlotService } from "./slot.service.js";
 import { WorkerService } from "./worker.service.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 
 @Module({
-  controllers: [AdminController, PublicController],
-  providers: [DbService, DrivingplusApiService, SlotService, WorkerService, ImageGenerationService],
+  controllers: [AdminController, AcademyResearchController, PostInsightController, PublicController],
+  providers: [AcademyLinkService, DbService, AcademyResearchDbService, AcademyResearchService, DrivingplusApiService, DrivingplusSyncService, RegionDirectoryService, SlotService, WorkerService, ImageGenerationService],
 })
 export class AppModule {}

@@ -2,12 +2,42 @@ import { DbService, safeJson } from "./db.service.js";
 
 type Row = Record<string, any>;
 
+/**
+ * The generation contract uses standalone `[IMAGE:key]` lines.  Models
+ * occasionally wrap that token in ordinary Markdown image syntax, e.g.
+ * `![학원 사진]( [IMAGE:academy_1] )`.  That is not a valid URL and used to
+ * leak as broken Markdown into the rendered article.  Normalize only that
+ * exact wrapper; ordinary Markdown images and links remain untouched.
+ */
+export function normalizeImageSlotMarkup(markdown: string): string {
+  return String(markdown || "").replace(
+    /!?\[[^\]\r\n]*\]\(\s*(\[IMAGE:[A-Za-z0-9_-]+\])\s*\)/g,
+    "$1",
+  );
+}
+
 export function renderMarkdown(markdown: string, images: Record<string, string> = {}): string {
-  return markdownBlocks(markdown).map((raw) => renderMarkdownBlock(raw, images)).filter(Boolean).join("\n");
+  markdown = normalizeImageSlotMarkup(markdown);
+  // ### 학원명부터 다음 학원/섹션 전까지(이름·설명·이미지·관련후기)를 하나의 카드로 묶어 학원 경계를 명확히 한다.
+  const out: string[] = [];
+  let card: string[] | null = null;
+  // 이미지 alt 는 그 이미지가 속한 섹션 제목(학원 카드면 '### 학원명')을 쓴다 — 렌더 순서상 직전 헤딩이 문맥.
+  let currentHeading = "";
+  const closeCard = () => { if (card && card.length) { out.push(`<section class="academy-card">${card.join("\n")}</section>`); card = null; } };
+  for (const raw of markdownBlocks(markdown)) {
+    if (/^#{1,3}\s+/.test(raw)) currentHeading = plainText(raw.replace(/^#{1,3}\s+/, ""));
+    const html = renderMarkdownBlock(raw, images, currentHeading);
+    if (!html) continue;
+    if (raw.startsWith("### ")) { closeCard(); card = [html]; continue; }
+    if (raw.startsWith("## ") || raw.startsWith("# ")) { closeCard(); out.push(html); continue; }
+    if (card) card.push(html); else out.push(html);
+  }
+  closeCard();
+  return out.join("\n");
 }
 
 export function stripPseudoSlotsForRender(markdown: string): string {
-  return markdown.split(/\r?\n/)
+  return normalizeImageSlotMarkup(markdown).split(/\r?\n/)
     .filter((line) => !/^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE|INTERNAL_LINK)_SLOT:[^\]]+\]$/i.test(line.trim()))
     .join("\n")
     .replace(/\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE|INTERNAL_LINK)_SLOT:[^\]]+\]/gi, "")
@@ -32,10 +62,13 @@ export function ensureImageSlotsForRender(markdown: string, images: Record<strin
 export function fallbackImagesForPost(db: DbService, domain: string, post: Row): Record<string, string> {
   const slot = post.slot_id ? db.getSlot(post.slot_id) : null;
   if (!slot?.region) return {};
+  // 학원 이미지 폴백도 생성과 동일하게 글유형 academy_types 를 단일 소스로 쓴다. 선택값 없으면 학원 이미지 미사용.
+  const spec = db.getTemplateSpec(domain, String(slot.template_id || ""));
+  const academyTypes = Array.isArray(spec?.academy_types) && spec.academy_types.length ? spec.academy_types : [];
+  if (!academyTypes.length) return {};
   const images: Record<string, string> = {};
   const region = String(slot.region);
-  const academyTypes = db.academyTypeFilter(domain);
-  const typeFilter = academyTypes.length ? { academy_types: academyTypes } : {};
+  const typeFilter = { academy_types: academyTypes };
   let academies = db.listAcademies(domain, { region, ...typeFilter, limit: 5 });
   if (!academies.length) {
     academies = db.listAcademies(domain, { ...typeFilter, limit: 5000 }).filter((academy) => String(academy.region || "") === region || String(academy.address || "").includes(region)).slice(0, 5);
@@ -51,7 +84,12 @@ function markdownBlocks(markdown: string): string[] {
   const blocks: string[] = [];
   let current: string[] = [];
   let currentKind: "paragraph" | "list" | "quote" | "table" | null = null;
+  // 리스트 도중의 빈 줄은 CommonMark 의 loose list 이지 리스트의 끝이 아니다. 여기서 바로 끊으면
+  // 뒤따르는 항목이 별도 블록(1줄짜리)이 되어 `- ` 마커가 그대로 노출된 <p> 로 렌더됐다.
+  // 다음 비어있지 않은 줄까지 보고 리스트가 이어지면 같은 블록으로 유지한다.
+  let pendingListBreak = false;
   const flush = () => {
+    pendingListBreak = false;
     if (!current.length) return;
     blocks.push(current.join("\n").trim());
     current = [];
@@ -59,11 +97,13 @@ function markdownBlocks(markdown: string): string[] {
   };
   for (const line of markdown.split(/\r?\n/)) {
     const trimmed = line.trim();
+    if (!trimmed && currentKind === "list") { pendingListBreak = true; continue; }
     if (!trimmed || /^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(trimmed)) { flush(); continue; }
     const mixedImageBlocks = splitMixedImageTokenLine(trimmed);
     if (mixedImageBlocks) { flush(); blocks.push(...mixedImageBlocks); continue; }
     if (/^#{1,3}\s+/.test(trimmed) || /^\[IMAGE:[A-Za-z0-9_-]+\]$/.test(trimmed)) { flush(); blocks.push(trimmed); continue; }
     const kind: "paragraph" | "list" | "quote" | "table" = trimmed.includes("|") ? "table" : isListLine(trimmed) ? "list" : trimmed.startsWith(">") ? "quote" : "paragraph";
+    if (pendingListBreak) { if (kind !== "list") flush(); pendingListBreak = false; }
     if (currentKind && currentKind !== kind) flush();
     currentKind = kind;
     current.push(trimmed);
@@ -84,13 +124,13 @@ function splitMixedImageTokenLine(line: string): string[] | null {
   return text ? [text, ...tokens] : tokens;
 }
 
-function renderMarkdownBlock(raw: string, images: Record<string, string>): string {
+function renderMarkdownBlock(raw: string, images: Record<string, string>, heading = ""): string {
   if (/^\[(?:IMAGE|TABLE|CTA|FAQ|QUOTE)_SLOT:[^\]]+\]$/i.test(raw)) return "";
   const imageMatch = raw.match(/^\[IMAGE:([A-Za-z0-9_-]+)\]$/);
   if (imageMatch) {
     const key = imageMatch[1]!;
     const src = images[key];
-    if (src) return `<figure class="post-image"><img src="${escapeAttr(src)}" alt="${escapeAttr(key)}" loading="lazy" /></figure>`;
+    if (src) return `<figure class="post-image"><img src="${escapeAttr(src)}" alt="${escapeAttr(imageAltFor(key, heading))}" loading="lazy" /></figure>`;
     return "";
   }
   if (isMarkdownTable(raw)) return renderMarkdownTable(raw);
@@ -116,7 +156,11 @@ function isListLine(line: string): boolean { return /^[-*]\s+/.test(line) || /^\
 
 function isMarkdownList(raw: string): boolean {
   const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return lines.length >= 2 && lines.every(isListLine);
+  if (!lines.length) return false;
+  if (lines.length >= 2) return lines.every(isListLine);
+  // 한 줄짜리 블록은 진짜 마크다운 마커(-, *, 1.)일 때만 리스트로 본다. isListLine 은 ✅ 로 시작하는
+  // 줄도 항목으로 보지만, ✅ 만 붙은 한 문장은 일반 문단일 수 있어 문단으로 남긴다(오탐 방지).
+  return /^[-*]\s+/.test(lines[0]!) || /^\d+[.)]\s+/.test(lines[0]!);
 }
 
 function renderMarkdownList(raw: string): string {
@@ -155,3 +199,20 @@ function renderInlineMarkdown(raw: string): string {
 
 function escapeHtml(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c] || c)); }
 function escapeAttr(s: string): string { return escapeHtml(s).replace(/'/g, "&#39;"); }
+
+// 마크다운 헤딩에서 강조/링크 마커를 벗겨 alt 로 쓸 순수 텍스트만 남긴다.
+function plainText(md: string): string {
+  return String(md || "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// 이미지 alt: 그 이미지가 속한 섹션 제목(학원 카드면 학원명)을 우선 쓰고, 없으면 의미 있는 일반 설명으로 폴백한다.
+// 절대 image key(academy_1, generated_hero 등)를 그대로 alt 로 노출하지 않는다(접근성·이미지 SEO).
+export function imageAltFor(key: string, heading = ""): string {
+  const h = plainText(heading);
+  if (h) return h;
+  return /^generated_/.test(key) ? "운전면허학원 안내 이미지" : "운전면허학원 사진";
+}

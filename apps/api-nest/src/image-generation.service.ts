@@ -28,15 +28,16 @@ export class ImageGenerationService {
     const images: Record<string, string> = {};
     const warnings: string[] = [];
     try {
+      const provider = resolveImageProvider(options.provider);
       const count = clampInt(options.count, 1, 1, 3);
       for (let i = 0; i < count; i++) {
         const key = count === 1 ? "generated_hero" : `generated_${i + 1}`;
         const filename = safeImageFilename(`${String(slot.slot_id || "slot")}-${key}.png`);
         const outputPath = generatedImageFilePath(domain, filename);
         mkdirSync(dirname(outputPath), { recursive: true });
-        await generateCodexImage({
+        await generateImage(provider, {
           prompt: buildSeoImagePrompt(domain, slot, facts, i),
-          model: options.model || process.env.CODEX_IMAGEGEN_MODEL || "gpt-5.4",
+          model: options.model,
           outputPath,
           size: options.size || "1024x1024",
         });
@@ -48,6 +49,120 @@ export class ImageGenerationService {
       warnings.push(message);
     }
     return { images, warnings };
+  }
+
+  // 글 작성 후, LLM이 실제 배치한 생성 슬롯을 그 섹션 내용에 맞춰 1장씩 만든다(내용 기반 이미지).
+  async generateContextual(
+    domain: string,
+    slot: Row,
+    key: string,
+    sectionHeading: string,
+    options: { size: string; provider?: string; required: boolean; index: number; sectionText?: string },
+  ): Promise<{ url: string | null; warning?: string }> {
+    try {
+      const provider = resolveImageProvider(options.provider);
+      const filename = safeImageFilename(`${String(slot.slot_id || "slot")}-${key}.png`);
+      const outputPath = generatedImageFilePath(domain, filename);
+      mkdirSync(dirname(outputPath), { recursive: true });
+      await generateImage(provider, {
+        prompt: buildSectionImagePrompt(domain, slot, sectionHeading, options.index, options.sectionText || ""),
+        outputPath,
+        size: options.size || "1024x1024",
+      });
+      if (existsSync(outputPath)) return { url: publicGeneratedImageUrl(domain, filename) };
+      return { url: null };
+    } catch (error: any) {
+      const message = `image generation failed: ${error?.message || String(error)}`;
+      if (options.required) throw new Error(message);
+      return { url: null, warning: message };
+    }
+  }
+}
+
+// 섹션(H2/H3) 내용에 맞고, index 로 구도를 분산해 글마다·이미지마다 겹치지 않게 한다.
+function buildSectionImagePrompt(domain: string, slot: Row, sectionHeading: string, index: number, sectionText: string): string {
+  const region = String(slot.region || "").trim();
+  const keyword = String(slot.primary_keyword || "").trim();
+  const persona = String(slot.persona || "").trim();
+  const topic = String(sectionHeading || "").replace(/[#*_`>]/g, "").trim();
+  const detail = String(sectionText || "").replace(/[#*_`>]/g, "").trim();
+  const audience = persona ? `${persona} audience` : "local search audience";
+  const compositions = [
+    "wide establishing editorial shot",
+    "mid-shot focused on the activity or subject",
+    "closer detail-oriented supporting shot",
+  ];
+  const composition = compositions[index % compositions.length];
+  return [
+    "Create a realistic editorial photo for a Korean SEO article.",
+    `Article topic: ${[region, keyword].filter(Boolean).join(" ") || domain}. Audience: ${audience}.`,
+    topic ? `This image illustrates the section titled "${topic}". Depict a scene that specifically matches this section's content.` : "",
+    detail ? `Section summary (interpret as a single realistic scene; never render any of this wording as visible text): ${detail}` : "",
+    `Composition: ${composition}.`,
+    "Choose the setting that fits the section: e.g., written-exam study, driving test course, on-road practice, license test center, or consultation — Korean driving-education context.",
+    "Natural daylight, trustworthy editorial style, looks like a usable article photo, not an advertisement.",
+    "No readable text, no logos, no brand marks, no license plate numbers, no UI mockups.",
+  ].filter(Boolean).join("\n");
+}
+
+type ImageProvider = "openai" | "codex";
+
+// provider 선택: 명시값(openai/codex) → 환경변수 SEO_IMAGE_PROVIDER → OPENAI_API_KEY 존재 시 openai → 기본 codex.
+// 프론트가 보내는 "private-codex" 같은 값은 openai/codex 가 아니므로 자동 해석으로 넘어간다(키 넣으면 자동 이관).
+function resolveImageProvider(requested?: string): ImageProvider {
+  const explicit = String(requested || "").toLowerCase();
+  if (explicit === "openai") return "openai";
+  if (explicit === "codex") return "codex";
+  const envProvider = String(process.env.SEO_IMAGE_PROVIDER || "").toLowerCase();
+  if (envProvider === "openai") return "openai";
+  if (envProvider === "codex") return "codex";
+  return process.env.OPENAI_API_KEY ? "openai" : "codex";
+}
+
+async function generateImage(provider: ImageProvider, options: { prompt: string; model?: string; outputPath: string; size: string }): Promise<void> {
+  if (provider === "openai") {
+    return generateOpenAiImage({
+      prompt: options.prompt,
+      model: process.env.SEO_IMAGE_MODEL || "gpt-image-1",
+      outputPath: options.outputPath,
+      size: options.size,
+    });
+  }
+  return generateCodexImage({
+    prompt: options.prompt,
+    model: options.model || process.env.CODEX_IMAGEGEN_MODEL || "gpt-5.4",
+    outputPath: options.outputPath,
+    size: options.size,
+  });
+}
+
+const OPENAI_IMAGE_SIZES = new Set(["auto", "1024x1024", "1536x1024", "1024x1536"]);
+
+// 공식 OpenAI 이미지 API(gpt-image-1). API 키 종량 과금이라 대량 생성에 적합하고, 인증이 안정적이다.
+async function generateOpenAiImage(options: { prompt: string; model: string; outputPath: string; size: string }): Promise<void> {
+  const apiKey = normalizeRequiredString(process.env.OPENAI_API_KEY, "missing OPENAI_API_KEY for OpenAI image provider");
+  const baseUrl = String(process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  const size = OPENAI_IMAGE_SIZES.has(options.size) ? options.size : "1024x1024";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.SEO_IMAGEGEN_TIMEOUT_MS || process.env.CODEX_IMAGEGEN_TIMEOUT_MS || 300_000));
+  try {
+    const response = await fetch(`${baseUrl}/images/generations`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: options.model, prompt: options.prompt, size, n: 1 }),
+      signal: controller.signal,
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      const hint = response.status === 401 ? "OpenAI auth failed (check OPENAI_API_KEY)" : `OpenAI image API HTTP ${response.status}`;
+      throw new Error(`${hint}: ${text.slice(0, 300)}`);
+    }
+    const parsed = JSON.parse(text);
+    const b64 = parsed?.data?.[0]?.b64_json;
+    if (!b64) throw new Error("OpenAI image response missing b64_json data");
+    await saveBase64Png(b64, options.outputPath);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

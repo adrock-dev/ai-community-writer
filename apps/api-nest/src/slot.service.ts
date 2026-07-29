@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
-import { PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, MAX_SLOTS_PER_TEMPLATE, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
+import { resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
+import { academyMin, academyPool, getArchetype, buildKeyword, type Archetype } from "./archetypes.js";
+import { isConflictingAxisPair } from "./t16-axis-comparison.js";
 
 type Row = Record<string, any>;
 
@@ -10,12 +13,13 @@ type Row = Record<string, any>;
 export class SlotService {
   constructor(@Inject(DbService) private readonly db: DbService) {}
 
-  applyPreset(domain: string, key: string): Record<string, number> {
+  applyPreset(domain: string, key: string, onlyAxes?: AxisName[]): Record<string, number> {
     const presetKey = VERTICAL_TO_PRESET[key] || key;
     const preset = PRESETS[presetKey];
     if (!preset) return {};
     const summary: Record<string, number> = {};
     for (const [axis, values] of Object.entries(preset) as [AxisName, Row[]][]) {
+      if (onlyAxes && !onlyAxes.includes(axis)) continue; // axes 필터: 지정된 축만 채운다(예 keyword 만).
       if (!values.length) continue;
       this.db.bulkReplaceAxis(domain, axis, values);
       summary[axis] = values.length;
@@ -28,38 +32,66 @@ export class SlotService {
     if (!domainConfig) throw new Error(`unknown domain: ${domain}`);
     const axes = this.db.listAxes(domain);
     const enabled = opts.templates?.length ? opts.templates : safeJson(domainConfig.templates_enabled, []);
-    const templateIds = enabled.length ? enabled : Object.keys(TEMPLATE_SPECS);
-    const maxPerTemplate = opts.maxPerTemplate ?? 200;
+    // 켜진 글유형이 없으면 슬롯을 만들지 않는다(전체 템플릿으로 폴백하지 않음 — 빈 상태는 0개 생성).
+    const templateIds = enabled;
+    // 글유형당 상한. 축 조합이 수백만까지 폭발할 수 있으므로 MAX_SLOTS_PER_TEMPLATE 로 클램프해
+    // 메모리 폭주/동기 삽입 지연으로 인한 500 을 방지한다(호출자가 큰 값을 넘겨도 여기서 방어).
+    const maxPerTemplate = Math.min(MAX_SLOTS_PER_TEMPLATE, Math.max(1, opts.maxPerTemplate ?? 200));
+    const overrides = safeTemplateOverrides(domainConfig.template_overrides);
     const summary: Record<string, number> = {};
     const rows: Row[] = [];
 
     for (const tid of templateIds) {
-      const spec = (TEMPLATE_SPECS as Record<string, any>)[tid];
+      // 글유형 spec: 빌트인(상수)·커스텀(DB)을 동일 shape 로. 아키타입은 spec.kind 참조(커스텀 지원).
+      const spec = this.db.getTemplateSpec(domain, tid);
       if (!spec) continue;
-      const primaryAxis = spec.primary[0] as AxisName;
-      const primaryValues = axes[primaryAxis] || [];
-      if (!primaryValues.length) { summary[tid] = 0; continue; }
-      const personaValues = spec.use_persona ? (axes.persona.length ? axes.persona : [{ value: null }]) : [{ value: null }];
-      const intentValues = spec.with_intent ? (axes.intent.length ? axes.intent : [{ value: null }]) : [{ value: null }];
-      const modifierCombos = modifierPairs(axes.modifier, spec.modifier_count);
+      const archetype = getArchetype(String(spec.kind || ""));
+      const override = overrides[tid];
+      // (a) 주제(topic) 결정 — keyword_filter 있으면 free 모드(그 키워드를 권위로 직접 사용 + primary_override 로 지역 결합 여부),
+      //     없으면 아키타입 폴백 모드(keyword_rule 패턴 + archetype.primary). 폴백은 기존과 byte-동일 = 골든 0-diff.
+      const topicUnits = buildTopicUnits(spec, archetype, axes);
+      if (!topicUnits.length) { summary[tid] = 0; continue; }
+      // 축 값의 소스는 **글유형 프리셋(spec.axis_values) 하나뿐이다** — 도메인 공통 축 폴백은 없다.
+      // 비어 있으면 그 축은 null 로 생략된다(아래 personaValues/intentValues 의 [{ value: null }]).
+      // (예전 주석은 "없으면 도메인 풀+태그필터 폴백"이라고 적혀 있었으나 resolveAxisPool 은 프리셋이
+      //  없으면 빈 배열을 돌려준다. 관리자 UI 안내가 맞고 주석이 낡은 상태였다.)
+      const personaPool = resolveAxisPool(spec, "persona");
+      const intentPool = resolveAxisPool(spec, "intent");
+      const modifierPool = resolveAxisPool(spec, "modifier");
+      // 레시피 파라미터(use_persona/with_intent/modifier_count)는 spec 기본값 + 도메인 오버라이드.
+      const recipe = resolveRecipeFlags(spec, override);
+      const personaValues = recipe.use_persona ? (personaPool.length ? personaPool : [{ value: null }]) : [{ value: null }];
+      const intentValues = recipe.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
+      const modifierCombos = modifierPairs(modifierPool, recipe.modifier_count);
       const candidatesByPrimary: Row[][] = [];
-      for (const pv of primaryValues) {
-        let primaryKeyword = buildPrimaryKeyword(tid, spec, pv, axes);
-        if (!primaryKeyword) continue;
-        if (tid === "T01" || tid === "T07" || tid === "T14" || tid === "T15") {
-          const kw = chooseKeywordForTemplate(tid, axes.keyword);
-          if (!kw) continue;
-          primaryKeyword = formatRegionKeyword(pv.value, kw.value);
-        }
-        const sv = numberOrNull(pv.monthly_search_volume);
-        if (sv !== null && sv < spec.min_sv) continue;
+      // interleaveByPrimary 는 그룹(토픽)당 최대 ceil(maxPerTemplate/그룹수) 개만 읽는다(그룹 길이 동일).
+      // 전체 데카르트곱(수백만)을 다 만들지 않도록 토픽별 생성량을 그만큼(+여유 1)으로 제한한다.
+      const perTopicCap = Math.max(1, Math.ceil(maxPerTemplate / topicUnits.length) + 1);
+      const comboCount = personaValues.length * intentValues.length * modifierCombos.length;
+      for (const topic of topicUnits) {
         const primaryRows: Row[] = [];
-        for (const persona of personaValues) for (const intent of intentValues) for (const [m1, m2] of modifierCombos) {
-          const parts = [pv.value || "", persona.value || "", intent.value || "", m1 || "", m2 || ""];
+        // 토픽마다 조합 열거의 '시작점'을 흩어 놓는다.
+        //
+        // interleaveByPrimary 는 모든 그룹의 index 0 을 먼저 훑고 index 1 로 넘어간다. 토픽 수가
+        // maxPerTemplate 보다 많으면(지역 251곳 vs 상한 40) index 0 에서 상한이 차 index 1 에
+        // 도달하지 못한다. 예전에는 모든 토픽이 같은 지점에서 열거를 시작해 index 0 이 항상
+        // persona[0]·intent[0]·modifier[0] 이었고, 그 결과 전 슬롯이 동일 축 조합을 가졌다
+        // (실측: 골든 T01/T07/T14/T15 각 40건이 persona·intent·수식어 모두 1종류, 운영 DB T01 100/100 동일).
+        // 축이 프롬프트에 들어가도 글을 구분하지 못하던 원인이 이것이다.
+        //
+        // 시작점은 토픽 문자열 해시라 (a) 재생성 시 동일 결과 = slot_id idempotency 유지,
+        // (b) 축 값 배열의 순서가 바뀌어도 흔들리지 않는다.
+        const comboStart = comboCount > 1 ? axisComboOffset(topic.hashKey, comboCount) : 0;
+        for (let step = 0; step < comboCount && primaryRows.length < perTopicCap; step++) {
+          const { persona, intent, m1, m2 } = axisComboAt(comboStart + step, personaValues, intentValues, modifierCombos);
+          // 축이 서로 다른 일을 해야 하는데 modifier 와 intent 가 같은 데이터를 가리키면 한 축이 낭비된다
+          // (예: 비용절약 × 비용구성). 그런 조합은 건너뛰고 다음 조합을 본다.
+          if (isConflictingAxisPair(m1, intent) || isConflictingAxisPair(m2, intent)) continue;
+          const parts = [topic.hashKey, persona || "", intent || "", m1 || "", m2 || ""];
           primaryRows.push({
-            slot_id: slotId(tid, parts), domain: domain, template_id: tid, primary_keyword: primaryKeyword,
-            region: primaryAxis === "region" ? pv.value : null, persona: persona.value ?? null, intent: intent.value ?? null,
-            modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(sv, numberOrNull(pv.competition_kd), spec.weight)
+            slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: topic.primaryKeyword,
+            region: topic.region, persona, intent,
+            modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(topic.sv, topic.kd, spec.weight)
           });
         }
         if (primaryRows.length) candidatesByPrimary.push(primaryRows);
@@ -74,45 +106,280 @@ export class SlotService {
     summary._inserted_total = this.db.bulkUpsertSlots(filtered.kept);
     return summary;
   }
+
+  // 레시피↔데이터 정합성 분석(읽기/계산 전용, 생성 미변경). 전 빌트인+커스텀 유형을 대상으로,
+  // 생성 파이프라인과 동일한 pure 헬퍼(getTemplateSpec/getArchetype/resolveRecipeFlags/resolveAcceptedTags/
+  // filterAxisValues/buildKeyword)로 "이 유형이 현재 데이터로 뭘 만들지"를 계산해 얇은/근거없는 조합을 사전 경고한다.
+  analyzeCoherence(domain: string): Row {
+    const domainConfig = this.db.getDomain(domain);
+    if (!domainConfig) throw new Error(`unknown domain: ${domain}`);
+    const axes = this.db.listAxes(domain);
+    const overrides = safeTemplateOverrides(domainConfig.template_overrides);
+    const enabledSet = new Set((safeJson(domainConfig.templates_enabled, []) as unknown[]).map((v) => String(v)));
+    // 학원(좌표 포함) 전체를 한 번 불러 글유형별 academy_types 로 필터 + 지역 좌표 맵으로 인근 계산.
+    const allAcademies = this.db.listAcademies(domain, { limit: 100000 });
+    const regionCoords = this.buildRegionCoords(domain);
+
+    const customRows = this.db.listCustomTemplates(domain);
+    const customIdSet = new Set(customRows.map((r) => String(r.template_id)));
+    const templateIds = [...Object.keys(TEMPLATE_SPECS), ...customRows.map((r) => String(r.template_id))];
+    const taggedAxes: Array<"persona" | "intent" | "modifier"> = ["persona", "intent", "modifier"];
+
+    const templates: Row[] = [];
+    for (const tid of templateIds) {
+      const spec = this.db.getTemplateSpec(domain, tid);
+      if (!spec) continue;
+      const archetype = getArchetype(String(spec.kind || ""));
+      const override = overrides[tid];
+      // (a) 생성과 동일 모델: keyword_filter 있으면 free 모드(primary_override), 없으면 아키타입 폴백.
+      const kwFilterSet = (spec.keyword_filter ?? []).map((k) => String(k || "").trim()).filter(Boolean);
+      const primary = ((kwFilterSet.length ? (spec.primary_override ?? archetype?.primary) : archetype?.primary) ?? "keyword") as AxisName;
+      const topicUnits = buildTopicUnits(spec, archetype, axes);
+      const regionValues = primary === "region" ? (axes.region || []) : [];
+      const recipe = resolveRecipeFlags(spec, override);
+      const warnings: Array<{ level: string; code: string; message: string }> = [];
+
+      // 축 풀(persona/intent/modifier): 레시피가 쓰는데 태그 필터 결과가 0이면 조용히 무시됨 = 원래 문제.
+      const usedByAxis: Record<string, boolean> = { persona: recipe.use_persona, intent: recipe.with_intent, modifier: recipe.modifier_count > 0 };
+      const poolSizes: Record<string, number> = { persona: 0, intent: 0, modifier: 0 };
+      const axesReport: Row = {};
+      for (const axis of taggedAxes) {
+        const accepted = resolveAcceptedTags(spec, axis, override);
+        const pool = resolveAxisPool(spec, axis);
+        poolSizes[axis] = pool.length;
+        axesReport[axis] = { used: usedByAxis[axis], accepted_tags: accepted, pool_size: pool.length, total: pool.length };
+        if (usedByAxis[axis] && pool.length === 0) warnings.push({ level: "warn", code: `${axis}_pool_empty`, message: `${axis} 축을 쓰지만 이 글유형에 ${axis} 축 값이 없어(0) 조합에서 무시됩니다. 글유형 편집에서 값을 입력하세요.` });
+      }
+
+      // 키워드: free 모드(keyword_filter)면 그 키워드가 곧 사용 키워드, 폴백이면 아키타입 패턴 매칭.
+      const keywordAxis = axes.keyword || [];
+      const kr = archetype?.keyword_rule;
+      let matched_keyword_count: number | null = null;
+      if (kwFilterSet.length) matched_keyword_count = kwFilterSet.length;
+      else if (kr) {
+        if (kr.format === "plain") matched_keyword_count = keywordAxis.length;
+        else if (kr.format === "pick" || kr.format === "region_plus_pick") matched_keyword_count = keywordAxis.filter((k) => kr.pattern.test(String(k.value || ""))).length;
+      }
+      if (!kwFilterSet.length && (kr?.format === "pick" || kr?.format === "region_plus_pick") && keywordAxis.length > 0 && matched_keyword_count === 0) {
+        warnings.push({ level: "warn", code: "keyword_rule_no_match", message: "키워드 규칙에 맞는 키워드가 없어 주키워드가 폴백(일반적)으로 생성됩니다." });
+      }
+
+      // 학원 데이터(academy_centric && region-primary && academy_types 선택됨): BEST/비교 근거 부족 위험.
+      // 생성(pickAcademiesForRegion)과 동일하게 글유형의 academy_types 로 학원을 거른다(빈 배열이면 학원정보 미사용).
+      const academyTypes = (spec.academy_types ?? []).map((t: unknown) => String(t || "").trim()).filter(Boolean);
+      const academyApplicable = Boolean(archetype?.academy_centric) && primary === "region" && academyTypes.length > 0;
+      let academy: Row;
+      if (academyApplicable) {
+        // 생성과 동일하게 충분(직접+인근 20km) / 보장(50km 보강으로 최소치) / 부족(그마저 없음)으로 판정.
+        // 최소치·풀 크기는 아키타입이 정한다(비교형 2/7, 단독형 1/1).
+        const minReq = academyMin(archetype), poolSize = academyPool(archetype);
+        const typeSet = new Set(academyTypes);
+        const typed = allAcademies.filter((a) => typeSet.has(String(a.academy_type || "")));
+        let withAny = 0, withMin = 0, directMin = 0, withGuaranteed = 0, withShort = 0;
+        for (const pv of regionValues) {
+          const value = String(pv.value || "").trim();
+          if (!value) continue;
+          const { direct, nearby, guaranteed } = this.matchRegionAcademies(value, typed, regionCoords.get(value), poolSize, minReq);
+          const count = direct.length + nearby.length;
+          const effective = count + guaranteed.length;
+          if (effective >= 1) withAny++;
+          if (count >= minReq) withMin++;
+          else if (effective >= minReq) withGuaranteed++;
+          else withShort++;
+          if (direct.length >= minReq) directMin++;
+        }
+        academy = { applicable: true, academy_types: academyTypes, min_required: minReq, nearby_km: ACADEMY_NEARBY_MAX_KM, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, regions_total: regionValues.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions_guaranteed: withGuaranteed, regions_short: withShort };
+        // 경고는 '생성해도 최소치를 못 채우는 부족 지역(short)' 기준으로 낸다(보장으로 채워지는 지역은 문제 아님).
+        if (withMin + withGuaranteed === 0) warnings.push({ level: "error", code: "no_academy_data_for_best", message: `학원 근거가 필요한 유형이지만 ${ACADEMY_MIN_GUARANTEE_MAX_KM}km 안에도 학원 ${minReq}곳을 채울 지역이 없어 근거 없는 글이 될 위험이 큽니다.` });
+        else if (withShort > 0) warnings.push({ level: "warn", code: "low_academy_coverage", message: `${withShort}개 지역은 ${ACADEMY_MIN_GUARANTEE_MAX_KM}km 안에도 학원이 부족해 가이드형으로 작성됩니다(충분 ${withMin} · 인근 보장 ${withGuaranteed}).` });
+      } else {
+        academy = { applicable: false };
+        // academy_centric·지역형인데 학원 타입 미선택 → 학원정보 미사용(가이드/체크리스트로 작성). 정보용 안내.
+        if (Boolean(archetype?.academy_centric) && primary === "region") warnings.push({ level: "warn", code: "academy_types_empty", message: "학원 근거형이지만 학원 타입이 선택되지 않아 학원정보를 쓰지 않습니다(지역 가이드/체크리스트로 작성)." });
+      }
+
+      // 예상 슬롯 상한(rough): topic 수(주키워드·min_sv 반영) × 축 팩터. 0 이면 이 유형은 슬롯을 못 만든다.
+      const usablePrimary = topicUnits.length;
+      const personaFactor = recipe.use_persona && (poolSizes.persona ?? 0) > 0 ? (poolSizes.persona ?? 0) : 1;
+      const intentFactor = recipe.with_intent && (poolSizes.intent ?? 0) > 0 ? (poolSizes.intent ?? 0) : 1;
+      const mPool = poolSizes.modifier ?? 0;
+      const modifierFactor = recipe.modifier_count === 0 ? 1 : recipe.modifier_count === 1 ? (mPool > 0 ? mPool : 1) : (mPool >= 2 ? (mPool * (mPool - 1)) / 2 : 1);
+      // 이 글유형이 데이터로 만들 수 있는 실제 후보 상한(raw). 생성 시점 하드 상한(MAX_SLOTS_PER_TEMPLATE)은
+      // 여기서 덮어쓰지 않는다 — 표시는 유형의 실제 상한, 상한 적용은 '후보 만들기' 시점 검증에서만 한다.
+      const estimated_slot_upperbound = usablePrimary * personaFactor * intentFactor * modifierFactor;
+      if (estimated_slot_upperbound === 0) warnings.push({ level: "error", code: "no_slots", message: "현재 축/키워드 데이터로 이 유형은 슬롯을 만들지 못합니다." });
+
+      templates.push({
+        template_id: tid, name: spec.name, kind: spec.kind, custom: customIdSet.has(tid), enabled: enabledSet.has(tid),
+        primary_axis: primary, primary_value_count: topicUnits.length,
+        keyword_rule: { format: kwFilterSet.length ? "filter" : (kr?.format ?? null), matched_keyword_count, keyword_total: keywordAxis.length },
+        axes: axesReport, academy, estimated_slot_upperbound, warnings,
+      });
+    }
+
+    return { domain, thresholds: { academy_min_for_best: ACADEMY_MIN_FOR_BEST }, templates };
+  }
+
+  // seo_regions 좌표를 region→{lat,lng} 맵으로(지역별 getSeoRegion N회 쿼리 회피). 높은 level 우선.
+  private buildRegionCoords(domain: string): Map<string, { lat: number; lng: number }> {
+    const map = new Map<string, { lat: number; lng: number; level: number }>();
+    for (const r of this.db.listSeoRegions(domain)) {
+      const region = String(r.region || "").trim();
+      const lat = finiteNum(r.latitude), lng = finiteNum(r.longitude), level = Number(r.level) || 0;
+      if (!region || lat === null || lng === null) continue;
+      const prev = map.get(region);
+      if (!prev || level > prev.level) map.set(region, { lat, lng, level });
+    }
+    return new Map([...map].map(([k, v]) => [k, { lat: v.lat, lng: v.lng }]));
+  }
+
+  // 한 지역 값에 대해 학원을 3분류로 반환 — 생성(worker.pickAcademiesForRegion)과 판정 기준을 맞춘다.
+  //  direct: region 문자열 포함(그 지역 학원). nearby: 반경 ACADEMY_NEARBY_MAX_KM 내(직접 제외, 총 상한 채우는 만큼).
+  //  guaranteed: 직접+인근이 ACADEMY_MIN_FOR_BEST 미만일 때만, 반경~ACADEMY_MIN_GUARANTEE_MAX_KM 사이 가장 가까운 순으로 최소치까지 보강.
+  private matchRegionAcademies(region: string, typedAcademies: Row[], coords: { lat: number; lng: number } | undefined, poolSize: number, minReq: number): { direct: Row[]; nearby: Array<Row & { distance_km: number }>; guaranteed: Array<Row & { distance_km: number }> } {
+    const direct = typedAcademies.filter((a) => String(a.region || "").includes(region));
+    const directKeys = new Set(direct.map(academyKey));
+    const nearbyRoom = Math.max(0, poolSize - direct.length);
+    const nearby: Array<Row & { distance_km: number }> = [];
+    const guaranteed: Array<Row & { distance_km: number }> = [];
+    if (coords) {
+      // 거리 있는 후보를 한 번에 계산해 인근/보장으로 나눈다.
+      const scored = typedAcademies
+        .filter((a) => !directKeys.has(academyKey(a)))
+        .map((a) => ({ a, alat: finiteNum(a.latitude), alng: finiteNum(a.longitude) }))
+        .filter((r): r is { a: Row; alat: number; alng: number } => r.alat !== null && r.alng !== null)
+        .map((r) => ({ academy: { ...r.a, distance_km: Math.round(haversineKm(coords.lat, coords.lng, r.alat, r.alng) * 10) / 10 }, km: haversineKm(coords.lat, coords.lng, r.alat, r.alng) }))
+        .sort((x, y) => x.km - y.km);
+      for (const r of scored) if (r.km <= ACADEMY_NEARBY_MAX_KM && nearby.length < nearbyRoom) nearby.push(r.academy);
+      // 보장: 직접+인근이 최소치(minReq) 미만이면 반경 밖(~보장 상한) 가장 가까운 순으로 채움.
+      if (direct.length + nearby.length < minReq) {
+        for (const r of scored) {
+          if (direct.length + nearby.length + guaranteed.length >= minReq) break;
+          if (r.km > ACADEMY_NEARBY_MAX_KM && r.km <= ACADEMY_MIN_GUARANTEE_MAX_KM) guaranteed.push(r.academy);
+        }
+      }
+    }
+    return { direct, nearby, guaranteed };
+  }
+
+  // 특정 글유형의 지역별 학원 커버리지(팝업 L1/L2용). 정합성과 동일한 매칭:
+  // 직접(region 문자열) + 인근(반경 ACADEMY_NEARBY_MAX_KM) + academy_types 필터 + 임계값 2(직접+인근 합).
+  // 지역별 학원 목록(직접/인근 구분·거리)과 각 학원의 빠진 데이터까지 반환.
+  academyCoverage(domain: string, templateId: string): Row {
+    const spec = this.db.getTemplateSpec(domain, templateId);
+    if (!spec) throw new Error(`unknown template: ${templateId}`);
+    const archetype = getArchetype(String(spec.kind || ""));
+    const axes = this.db.listAxes(domain);
+    const kwFilterSet = (spec.keyword_filter ?? []).map((k: unknown) => String(k || "").trim()).filter(Boolean);
+    const primary = (kwFilterSet.length ? (spec.primary_override ?? archetype?.primary) : archetype?.primary) ?? "keyword";
+    const academyTypes = (spec.academy_types ?? []).map((t: unknown) => String(t || "").trim()).filter(Boolean);
+    const applicable = Boolean(archetype?.academy_centric) && primary === "region" && academyTypes.length > 0;
+    const minReq = academyMin(archetype), poolSize = academyPool(archetype);
+    if (!applicable) return { template_id: templateId, name: spec.name, applicable: false, academy_types: academyTypes, threshold: minReq, nearby_km: ACADEMY_NEARBY_MAX_KM, regions: [] };
+    const regionValues = axes.region || [];
+    const typed = this.db.listAcademies(domain, { academy_types: academyTypes, limit: 100000 });
+    const coordsMap = this.buildRegionCoords(domain);
+    const PER_REGION_CAP = 50;
+    const toEntry = (a: Row, tier: "direct" | "nearby" | "guaranteed") => ({ name: String(a.name || ""), region: String(a.region || ""), academy_type: String(a.academy_type || ""), address: String(a.address || ""), tier, distance_km: tier === "direct" ? null : (a.distance_km ?? null), missing: academyMissingFields(a) });
+    const regions = regionValues.map((pv) => {
+      const value = String(pv.value || "").trim();
+      if (!value) return null;
+      const { direct, nearby, guaranteed } = this.matchRegionAcademies(value, typed, coordsMap.get(value), poolSize, minReq);
+      const count = direct.length + nearby.length;             // 20km 기준(데이터 밀도)
+      const effective = count + guaranteed.length;             // 생성 실제(보장 포함)
+      // status: 충분(20km 내 minReq곳) / 보장(20km 부족하나 50km 보장으로 minReq곳) / 부족(50km 안에도 없음)
+      const status: "sufficient" | "guaranteed" | "short" = count >= minReq ? "sufficient" : effective >= minReq ? "guaranteed" : "short";
+      const entries = [...direct.map((a) => toEntry(a, "direct")), ...nearby.map((a) => toEntry(a, "nearby")), ...guaranteed.map((a) => toEntry(a, "guaranteed"))];
+      return { region: value, direct: direct.length, nearby: nearby.length, guaranteed: guaranteed.length, count, effective, status, sufficient: count >= minReq, academies: entries.slice(0, PER_REGION_CAP), truncated: entries.length > PER_REGION_CAP };
+    }).filter((r): r is NonNullable<typeof r> => r !== null);
+    const withMin = regions.filter((r) => r.status === "sufficient").length;
+    const withGuaranteed = regions.filter((r) => r.status === "guaranteed").length;
+    const withShort = regions.filter((r) => r.status === "short").length;
+    const withAny = regions.filter((r) => r.effective >= 1).length;
+    const directMin = regions.filter((r) => r.direct >= minReq).length;
+    // 상태 나쁜(부족→보장→충분) 순으로 위에 오게 정렬해 운영자가 문제 지역부터 보게 한다.
+    const rank = { short: 0, guaranteed: 1, sufficient: 2 } as const;
+    regions.sort((a, b) => rank[a.status] - rank[b.status] || a.effective - b.effective || a.region.localeCompare(b.region, "ko"));
+    return { template_id: templateId, name: spec.name, applicable: true, academy_types: academyTypes, threshold: minReq, nearby_km: ACADEMY_NEARBY_MAX_KM, max_candidates: poolSize, used_per_post: Math.min(poolSize, ACADEMY_USED_PER_POST), min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, regions_total: regions.length, regions_with_academies: withAny, regions_with_min_for_best: withMin, regions_with_min_direct: directMin, regions_guaranteed: withGuaranteed, regions_short: withShort, regions };
+  }
 }
 
-function buildPrimaryKeyword(templateId: string, spec: Row, primaryValue: Row, axes: Record<AxisName, Row[]>): string {
-  const value = String(primaryValue.value || "").trim();
-  const kind = String(spec.kind || "");
-  if (!value) return "";
-  if (kind === "written_registration") return pickKeyword(axes.keyword, /필기시험.*접수|접수.*필기시험/u, "운전면허 필기시험 접수");
-  if (kind === "written_tips") return pickKeyword(axes.keyword, /필기시험.*(?:팁|문제|공부|합격)/u, "운전면허 필기시험 팁");
-  if (kind === "written_app") return pickKeyword(axes.keyword, /필기시험.*(?:어플|앱)/u, "운전면허 필기시험 어플");
-  if (kind === "test_center") return formatRegionKeyword(value, "운전면허시험장");
-  if (kind === "license_complete") return pickKeyword(axes.keyword, /취득|총정리|준비물/u, value);
-  if (kind === "license_compare") return pickKeyword(axes.keyword, /1종|2종|대형|소형|종보통/u, value);
-  if (kind === "cost_strategy") return pickKeyword(axes.keyword, /비용|가격|수강료|절약/u, value);
-  if (kind === "exam_best") return pickKeyword(axes.keyword, /필기시험|기능시험|도로주행|시험/u, value);
-  return value;
+// 학원 1곳에서 생성에 중요한데 비어 있는 데이터 항목을 한국어 라벨로 반환(팝업 L2용).
+function academyMissingFields(a: Row): string[] {
+  const has = (v: unknown) => { const s = String(v ?? "").trim(); return Boolean(s) && s !== "[]" && s !== "null" && s !== "{}"; };
+  const missing: string[] = [];
+  if (!has(a.address)) missing.push("주소");
+  if (!has(a.phone) && !has(a.vphone)) missing.push("전화");
+  if (!has(a.price)) missing.push("가격");
+  if (!has(a.shuttle)) missing.push("셔틀");
+  if (!has(a.pass_rate)) missing.push("합격률");
+  if (!has(a.review) && !has(a.review_json)) missing.push("리뷰");
+  if (!has(a.thumb_url) && !has(a.photos)) missing.push("사진");
+  return missing;
 }
 
-function chooseKeywordForTemplate(templateId: string, keywords: Row[]): Row | null {
-  const patterns: Record<string, RegExp> = {
-    T01: /운전면허학원|자동차학원/u,
-    T07: /운전면허|운전면허학원/u,
-    T14: /운전면허학원|자동차운전전문학원|자동차학원/u,
-    T15: /필기시험|기능시험|도로주행|운전면허학원/u,
-  };
-  const pattern = patterns[templateId] || /./u;
-  return keywords.find((kw) => pattern.test(String(kw.value || ""))) || keywords[0] || null;
+// 학원 중복 제거 키(external_id → id → name 순).
+function academyKey(a: Row): string { return String(a.external_id || a.id || a.name); }
+function finiteNum(value: unknown): number | null { const n = Number(value); return Number.isFinite(n) ? n : null; }
+// 두 좌표 간 거리(km, haversine). worker.haversineKm 와 동일 공식(반경 정책 공유).
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371, rad = (d: number) => (d * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1), dLng = rad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function pickKeyword(keywords: Row[], pattern: RegExp, fallback: string): string {
-  return String((keywords.find((kw) => pattern.test(String(kw.value || ""))) || {}).value || fallback);
-}
+// 주키워드 생성 로직은 archetypes.ts (buildKeyword) 로 통합 이전됨.
 
-function formatRegionKeyword(region: string, keyword: string): string {
-  return `${String(region || "").trim()} ${String(keyword || "").trim()}`.replace(/\s+/g, " ").trim();
-}
-
-function slotId(templateId: string, parts: string[]): string {
-  const h = createHash("sha1").update([templateId, ...parts].join("|")).digest("hex").slice(0, 8);
+// slot_id 해시에 domain을 포함한다. slots PK는 전역 slot_id 이므로, domain을 빼면
+// 같은 프리셋을 쓰는 다른 도메인끼리 slot_id가 충돌해 두 번째 도메인 슬롯이 유실된다.
+// 같은 도메인 재생성 시에는 동일 조합→동일 id 로 idempotency 를 유지한다.
+function slotId(domain: string, templateId: string, parts: string[]): string {
+  const h = createHash("sha1").update([domain, templateId, ...parts].join("|")).digest("hex").slice(0, 8);
   return `${templateId}_${h}`;
+}
+type TopicUnit = { primaryKeyword: string; region: string | null; sv: number | null; kd: number | null; hashKey: string };
+// (a) 주제(topic) 단위 산출. keyword_filter 있으면 free 모드(그 키워드를 권위로 직접 사용 + primary_override 로 지역 결합),
+// 없으면 아키타입 폴백(keyword_rule 패턴 + archetype.primary) — 기존 로직과 byte-동일해야 골든 0-diff.
+function buildTopicUnits(spec: TemplateSpecShape, archetype: Archetype | undefined, axes: Record<AxisName, Row[]>): TopicUnit[] {
+  const filterSet = (spec.keyword_filter ?? []).map((k) => String(k || "").trim()).filter(Boolean);
+  const units: TopicUnit[] = [];
+  if (!filterSet.length) {
+    const primaryAxis = (archetype?.primary ?? "keyword") as AxisName;
+    const primaryValues = primaryAxis === "keyword" ? (axes.keyword || []) : (axes[primaryAxis] || []);
+    for (const pv of primaryValues) {
+      const primaryKeyword = archetype ? buildKeyword(archetype, String(pv.value || ""), axes.keyword || []) : "";
+      if (!primaryKeyword) continue;
+      const sv = numberOrNull(pv.monthly_search_volume);
+      if (sv !== null && sv < spec.min_sv) continue;
+      units.push({ primaryKeyword, region: primaryAxis === "region" ? (pv.value as string) : null, sv, kd: numberOrNull(pv.competition_kd), hashKey: pv.value || "" });
+    }
+    return units;
+  }
+  // free 모드: keyword_filter 를 권위로. primary_override 없으면 archetype.primary.
+  const primary = spec.primary_override ?? archetype?.primary ?? "keyword";
+  if (primary === "region") {
+    for (const r of (axes.region || [])) {
+      const region = String(r.value || "").trim();
+      if (!region) continue;
+      const sv = numberOrNull(r.monthly_search_volume);
+      if (sv !== null && sv < spec.min_sv) continue;
+      const kd = numberOrNull(r.competition_kd);
+      for (const kw of filterSet) {
+        const primaryKeyword = `${region} ${kw}`.replace(/\s+/g, " ").trim();
+        units.push({ primaryKeyword, region, sv, kd, hashKey: primaryKeyword });
+      }
+    }
+  } else {
+    const kwRows = new Map((axes.keyword || []).map((k) => [String(k.value || ""), k]));
+    for (const kw of filterSet) {
+      const row = kwRows.get(kw);
+      const sv = numberOrNull(row?.monthly_search_volume);
+      if (sv !== null && sv < spec.min_sv) continue;
+      units.push({ primaryKeyword: kw, region: null, sv, kd: numberOrNull(row?.competition_kd), hashKey: kw });
+    }
+  }
+  return units;
 }
 function numberOrNull(v: any): number | null { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function priority(sv: number | null, kd: number | null, weight: number): number {
@@ -120,6 +387,43 @@ function priority(sv: number | null, kd: number | null, weight: number): number 
   const kdNorm = (100 - (kd ?? 50)) / 100;
   return Math.round(Math.min(Math.max((svNorm * 0.6 + kdNorm * 0.4) * weight * 100, 0), 100) * 100) / 100;
 }
+/**
+ * 축 조합 열거 — n 번째 조합을 (persona, intent, modifier쌍) 으로 분해한다.
+ *
+ * persona 가 가장 빠르게 변하도록 분해한다. 토픽별 시작점이 흩어져 있어도 인접 step 에서
+ * 먼저 확보되는 다양성이 '독자(persona)'가 되게 하려는 것이다 — 축 중 글의 방향을 가장
+ * 크게 바꾸는 값이기 때문이다.
+ */
+function axisComboAt(
+  n: number,
+  personas: Row[],
+  intents: Row[],
+  modifiers: Array<[string | null, string | null]>,
+): { persona: string | null; intent: string | null; m1: string | null; m2: string | null } {
+  const p = Math.max(1, personas.length);
+  const i = Math.max(1, intents.length);
+  const m = Math.max(1, modifiers.length);
+  const total = p * i * m;
+  const index = ((n % total) + total) % total;
+  const pair = modifiers[Math.floor(index / (p * i)) % m] ?? [null, null];
+  return {
+    persona: personas[index % p]?.value ?? null,
+    intent: intents[Math.floor(index / p) % i]?.value ?? null,
+    m1: pair[0] ?? null,
+    m2: pair[1] ?? null,
+  };
+}
+
+/** 토픽 문자열 → 조합 시작점(FNV-1a). 결정적이고 외부 의존이 없다. */
+function axisComboOffset(key: string, comboCount: number): number {
+  let hash = 2166136261 >>> 0;
+  for (let index = 0; index < key.length; index++) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash % comboCount;
+}
+
 function modifierPairs(values: Row[], count: number): Array<[string | null, string | null]> {
   if (count === 0) return [[null, null]];
   if (count === 1) return values.length ? values.map((m) => [m.value, null]) : [[null, null]];

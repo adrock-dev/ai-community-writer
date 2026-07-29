@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 
 const join = (...parts) => parts.join("");
 const forbidden = [
@@ -18,7 +18,11 @@ const forbidden = [
   join("S", "aa", "S"),
   join("sa", "ss"),
   join("SA", "SS"),
-  join("개", "인"),
+  // 레거시 프롬프트의 "1인칭 의견 흉내" 지시(글쓴이가 직접 써본 것처럼 추천하게 만드는
+  // 표현)를 막는 항목이다. 두 글자 맨 단어로 두면 "~별로 다를 수 있습니다"처럼 정상적인
+  // 한국어 문장이 전부 걸려 게이트가 상시 실패했다(추적 파일 3건 포함 227건).
+  // 아래 목록의 다른 항목과 마찬가지로, 이 파일 자신이 걸리지 않도록 문자열을 쪼개 둔다.
+  join("개", "인", "적", "으", "로"),
   join("programmatic", "-", "seo", "-", "tool"),
   join("Programmatic", " SEO", " Admin"),
   join("SEO", " Admin"),
@@ -49,6 +53,10 @@ const files = execFileSync("git", ["ls-files", "--others", "--exclude-standard"]
 const hits = [];
 for (const file of files) {
   if (!existsSync(file)) continue;
+  // git ls-files --others 는 중첩 저장소(예: .claude/worktrees/*)를 디렉터리 한 줄로 내놓는다.
+  // 그대로 읽으면 EISDIR 로 죽어 pre-commit 훅이 통째로 막힌다. 그 안은 별도 체크아웃이라
+  // 이 검사의 대상도 아니므로 건너뛴다.
+  if (statSync(file).isDirectory()) continue;
   const text = readFileSync(file, "utf8");
   for (const term of forbidden) {
     if (text.includes(term)) hits.push(`${file}: contains ${term}`);

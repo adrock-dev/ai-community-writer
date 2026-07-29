@@ -1,6 +1,7 @@
 import DomainClient from "@/components/DomainClient";
 
-export default async function DomainPage({ params }: { params: Promise<{ domain: string }> }) {
+export default async function DomainPage({ params, searchParams }: { params: Promise<{ domain: string }>; searchParams: Promise<{ tab?: string }> }) {
   const { domain } = await params;
-  return <DomainClient domain={decodeURIComponent(domain)} />;
+  const { tab } = await searchParams;
+  return <DomainClient domain={decodeURIComponent(domain)} initialTab={tab} />;
 }

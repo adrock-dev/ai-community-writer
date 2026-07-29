@@ -34,7 +34,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `custom_design_templates` | string \| null | 사용자 정의 디자인 JSON 문자열 |
 | `content_brief` | string \| null | 생성 지침 |
 | `excluded_keywords` | string \| null | 제외 키워드 텍스트 |
-| `academy_type_filter` | string[] | 학원 유형 필터 |
 | `daily_limit` | number | 일일 생성 제한 |
 | `created_at` | string | 생성 시각 |
 | `slot_count` | number | 도메인 목록 응답에서 제공되는 전체 슬롯 수 |
@@ -67,9 +66,42 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `modifier_2` | string \| null | 수식어 2 |
 | `entity_id` | string \| null | 연결 엔티티 ID |
 | `priority_score` | number \| null | 우선순위 점수 |
-| `status` | `planned` \| `in_progress` \| `published` \| `failed` \| `pruned` | 슬롯 상태 |
+| `status` | `planned` \| `in_progress` \| `published` \| `failed` \| `skipped` | 슬롯 상태. `skipped`는 생성 시 후보 부족·제외 규칙으로 건너뛴 슬롯 |
 | `last_error` | string \| null | 마지막 오류 |
+| `title` | string \| null | 수동 제목 오버라이드(원문). 설정 시 제목 규칙보다 우선하며 `{지역}`/`{개수}`/`{키워드}`/`{학원명}`을 생성 시점에 치환. null이면 규칙/LLM이 제목 결정 |
 | `created_at` | string | 생성 시각 |
+
+### TitleRule
+
+제목 규칙. 생성 시점의 **실제 후보 수**(직접+인근+보장으로 모아 글유형 상한만큼 선정한 학원 수)로 제목을 확정한다. 빌트인 글유형은 코드 상수(`TITLE_RULES`), 커스텀은 `custom_templates.title_rule`에 저장된다.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `min_generate` | number? | 후보 수가 이 값 미만이면 생성하지 않고 건너뛴다(슬롯 `skipped`) |
+| `tiers` | `{ min_count, template }[]` | `min_count` 내림차순 첫 매칭 제목을 쓴다 |
+| `fallback` | string? | 어떤 tier도 안 맞을 때 쓸 제목 |
+
+`template`/`fallback`의 `{지역}`/`{개수}`/`{키워드}`/`{학원명}`은 생성 시점에 치환된다.
+
+### CustomTemplate
+
+커스텀 글유형(`custom_templates` row). 빌트인 `TemplateSpec`과 유사하되 `template_id`/`created_at`을 갖는다.
+
+| 필드 | 타입 | 설명 |
+| --- | --- | --- |
+| `template_id` | string | 커스텀 글유형 ID(발급값) |
+| `name` | string | 표시 이름 |
+| `kind` | string | 참조 아키타입(`getArchetype`로 검증되는 기존 kind만 허용) |
+| `use_persona` / `with_intent` | boolean | 축 사용 여부 |
+| `modifier_count` | number | 수식어 조합 개수(0~2) |
+| `weight` / `min_sv` | number | 우선순위 가중치 / 최소 검색량 |
+| `axis_values` | `{persona?,intent?,modifier?: string[]}` | 글유형 축 값 프리셋(단일 소스) |
+| `academy_types` | string[] | 사용할 학원 타입. 비면 학원정보 미사용 |
+| `keyword_filter` | string[] | 값 있으면 아키타입 패턴 무시하고 이 키워드 직접 사용 |
+| `primary_override` | `region`\|`keyword`? | 주축 재정의 |
+| `default_direction` | string \| null | 기본 방향성 |
+| `default_design` | string | 기본 디자인 |
+| `title_rule` | TitleRule \| null | 제목 규칙(위 참조) |
 
 ### PostSummary / PostDetail
 
@@ -140,9 +172,9 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | --- | --- | --- |
 | `review` | 짧게 합쳐 둔 요약 리뷰 텍스트 | `review_json`이 없을 때 보조 근거로 사용 |
 | `review_json` | 수강생 리뷰 배열을 JSON 문자열로 저장한 값. 보통 `point`, `content` 중심 | 평점/문구에서 긍정 근거를 요약해 글 생성 facts에 포함 |
-| `blog_reviews` | 블로그 리뷰 배열을 JSON 문자열로 저장한 값. 보통 `title`, `content`, `link` 중심 | 블로그 리뷰 주제와 링크를 보조 근거로 포함 |
+| `blog_reviews` | 블로그 리뷰 배열을 JSON 문자열로 저장한 값. 보통 `title`, `content`, `link` 중심 | **사용하지 않는다.** 원천이 학원명을 느슨하게 매칭해 다른 학원 글이 섞여, 생성 프롬프트에서 뺐고 수집도 기본 꺼짐이다. 이미 저장된 값은 학원 상세 화면 참고용으로 남는다 |
 
-직접 upsert할 때는 `review_json` 또는 `reviews` 입력이 `review_json`에 저장되고, `blog_reviews` 입력은 JSON 문자열로 저장된다. 외부 학원 동기화는 일반 리뷰와 블로그 리뷰를 각각 정규화해 이 필드에 넣는다.
+직접 upsert할 때는 `review_json` 또는 `reviews` 입력이 `review_json`에 저장되고, `blog_reviews` 입력은 JSON 문자열로 저장된다. 외부 학원 동기화는 일반 리뷰만 정규화해 넣는다 — 블로그 리뷰 수집은 `DRIVINGPLUS_BLOG_REVIEW_SYNC` 스위치로 통제하며 기본이 꺼짐이다. 꺼져 있어도 이미 저장된 `blog_reviews` 는 지워지지 않는다.
 
 ### Job
 
@@ -201,7 +233,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
       "domain": "example.com",
       "display_name": "예시 도메인",
       "templates_enabled": ["T01", "T03"],
-      "academy_type_filter": [],
       "slot_count": 100,
       "planned_count": 80,
       "published_count": 20
@@ -262,7 +293,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
     "in_progress": 0,
     "published": 0,
     "failed": 0,
-    "pruned": 0
+    "skipped": 0
   },
   "settings": {
     "indexing_has_key": false,
@@ -292,7 +323,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 - `custom_design_templates`
 - `content_brief`
 - `excluded_keywords`
-- `academy_type_filter`
 
 응답:
 
@@ -312,7 +342,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 
 ### `PUT /api/admin/domains/{domain}/axes/{axis}`
 
-`axis`는 `region`, `keyword`, `intent`, `persona`, `modifier` 중 하나다.
+`axis`는 `region`, `keyword`, `intent`, `persona`, `modifier` 중 하나다. 단 현재 도메인 축 편집은 `region`/`keyword`만 UI에 노출되며(「원천 데이터」 탭), `intent`/`persona`/`modifier`는 도메인 레벨에서 dormant이고 글유형별 `axis_values`로 관리한다(엔드포인트는 기술적으로 값을 받는다).
 
 요청:
 
@@ -349,16 +379,6 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 { "ok": true, "preset_key": "driving", "axes": {} }
 ```
 
-### `POST /api/admin/domains/{domain}/axes/ai-fill`
-
-현재 Nest 런타임에서는 외부 축 생성 대신 도메인 업종 프리셋을 안전하게 다시 적용한다.
-
-응답:
-
-```json
-{ "ok": true, "summary": { "applied_preset": "driving" }, "axes": {} }
-```
-
 ### `GET /api/admin/domains/{domain}/slots`
 
 쿼리:
@@ -382,7 +402,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
     "in_progress": 0,
     "published": 20,
     "failed": 0,
-    "pruned": 0
+    "skipped": 0
   },
   "items": []
 }
@@ -417,6 +437,81 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 ```json
 { "ok": true, "slot": {} }
 ```
+
+### `PATCH /api/admin/domains/{domain}/slots/{slot_id}`
+
+슬롯 수동 제목 오버라이드를 저장한다. 본문 `title`을 넣으면 그 슬롯 생성 시 제목 규칙보다 우선하며, 빈 문자열/`null`이면 규칙·LLM 폴백으로 되돌린다. `{지역}`/`{개수}`/`{키워드}`/`{학원명}`은 생성 시점에 치환된다(저장은 원문).
+
+```json
+{ "title": "{지역} 운전학원 완벽정리 {개수}곳" }
+```
+
+응답:
+
+```json
+{ "ok": true, "slot": {} }
+```
+
+## 글유형(템플릿)
+
+빌트인 글유형(`TEMPLATE_SPECS` 코드 상수)과 도메인 커스텀 글유형(`custom_templates`)을 관리한다. 커스텀 글유형은 검증된 아키타입(`kind`)을 참조하고 축·키워드·디자인·방향성·제목 규칙 등 세부만 조정한다.
+
+### `GET /api/admin/domains/{domain}/templates`
+
+빌트인 + 커스텀 글유형 목록. 빌트인에는 `title_rule`(있으면)이 병합되어 온다.
+
+```json
+{
+  "builtin": [{ "template_id": "T01", "name": "...", "kind": "local", "title_rule": {}, "custom": false }],
+  "custom": [{ "template_id": "C1a2b3", "name": "...", "kind": "local", "title_rule": null, "custom": true }]
+}
+```
+
+### `POST /api/admin/domains/{domain}/templates`
+
+커스텀 글유형 생성. `name`·`kind` 필수(`kind`는 등록된 아키타입만). 본문은 [CustomTemplate](#customtemplate) 필드(`title_rule` 포함)를 받는다. 응답 `{ ok, template }`.
+
+### `PATCH /api/admin/domains/{domain}/templates/{template_id}`
+
+커스텀 글유형 편집(빌트인은 불가 — 복제해서 편집). 전달한 필드만 수정한다(부분 업데이트). `title_rule`을 `{ "tiers": [] }`로 주면 규칙이 제거된다. 응답 `{ ok, template }`.
+
+### `DELETE /api/admin/domains/{domain}/templates/{template_id}`
+
+커스텀 글유형 삭제(빌트인 불가). 응답 `{ ok, deleted }`.
+
+### `POST /api/admin/domains/{domain}/templates/clone`
+
+기존 글유형(빌트인/커스텀)을 새 커스텀 row로 복제한다. 소스의 유효 설정(오버라이드 병합 + **`title_rule` 상속**)을 굳혀 독립 복제본을 만든다.
+
+```json
+{ "source_template_id": "T01", "name": "강남 특집", "overrides": { "title_rule": {} } }
+```
+
+응답 `{ ok, template, source_template_id }`. `overrides`로 복제 직후 일부 필드를 덮을 수 있다(폼이 source of truth).
+
+### `POST /api/admin/domains/{domain}/templates/suggest-axes`
+
+켜 놓은 축(`persona`/`intent`/`modifier`) 값을 LLM이 이 글유형에 맞게 제안한다(저장하지 않음). 본문 `{ kind, name, direction, keywords, axes, provider?, model? }`. 응답 `{ ok, suggestions, provider, model }`. codex/claude CLI 인증 필요(실패 시 502).
+
+### `POST /api/admin/domains/{domain}/templates/validate-direction`
+
+입력한 방향성이 절대 원칙·공통원칙·아키타입 지침과 중복/충돌하는지 LLM으로 대조하고 개선안을 제안한다(저장하지 않음). 본문 `{ kind, name, direction, current_direction?, has_academy?, provider?, model? }`. 응답 `{ ok, validation, provider, model }`.
+
+### `GET /api/admin/domains/{domain}/templates/coherence`
+
+레시피↔데이터 정합성(읽기/계산 전용). 전 빌트인+커스텀 글유형의 주축·키워드 규칙 매칭·축 풀·학원 커버리지·예상 슬롯 상한·경고를 반환한다.
+
+### `GET /api/admin/domains/{domain}/templates/{template_id}/academy-coverage`
+
+특정 글유형의 지역별 학원 커버리지(지역별 학원 수·충분 여부 + 학원별 빠진 데이터).
+
+### `GET /api/admin/domains/{domain}/templates/export`
+
+커스텀 글유형 편집 상태 봉투. `{ schema: "adrock-templates-export", version, domain, exported_at, custom_templates, template_overrides, templates_enabled }`. `custom_templates`에는 `title_rule`이 포함된다.
+
+### `POST /api/admin/domains/{domain}/templates/import`
+
+봉투를 받아 커스텀 글유형·오버라이드·활성 목록을 복원한다. 쿼리 `mode=merge`(기본, id별 upsert) 또는 `replace`(교체). 빌트인 id shadow 차단·`kind` 검증. 응답 `{ ok, mode, imported, skipped, overrides_merged, templates_enabled, warnings }`.
 
 ## 글
 
@@ -533,13 +628,52 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 { "ok": true, "upserted": 3 }
 ```
 
+### `GET /api/admin/settings/blog-review-sync`
+
+블로그리뷰 **수집** 스위치. `used_in_generation` 은 항상 `false` 다 — 켜도 생성 프롬프트
+(`389ce0d`)와 T01 품질 게이트(`bfe5881`)에는 닿지 않는다. 화면이 이 사실을 서버 응답으로 확인해
+안내 문구를 쓰도록 필드로 내려준다.
+
+```json
+{ "enabled": false, "configured": true, "used_in_generation": false }
+```
+
+- `configured` — 관리자 설정에 저장된 값이 있는지. `false` 면 환경변수 기본값을 따르는 중이다.
+
+### `PUT /api/admin/settings/blog-review-sync`
+
+`{ "enabled": true }` 를 보낸다. 저장 즉시 반영되며 API 재시작이 필요 없다 — 기동 중인 프로세스는
+시작 시점의 `.env` 를 들고 있어서, 환경변수만으로는 재시작해야 하고 그러면 진행 중인 글 생성이 죽는다.
+
+켜면 학원 동기화가 1~2분에서 14분으로 늘어난다(원천이 동시 요청을 못 견뎌 한 곳씩 받는다).
+끄더라도 이미 저장된 `blog_reviews` 는 지워지지 않는다.
+
 ### `POST /api/admin/domains/{domain}/sync/drivingplus/academies`
+
+동기화를 **백그라운드로 시작하고 `run_id` 를 즉시 반환한다.** 결과를 기다리지 않는다.
+
+**`include_blog_reviews` 는 수집 스위치가 꺼져 있으면 무시된다.** 스위치는 관리자 설정
+(`PUT /api/admin/settings/blog-review-sync`) → 환경변수 `DRIVINGPLUS_BLOG_REVIEW_SYNC` → 꺼짐
+순으로 판단하며 기본이 꺼짐이라, 꺼진 상태에서는 요청이 `true` 를 보내도 켜지지 않는다.
+원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 다른 학원 글이 섞이기 때문이다
+(2026-07-27 실측 539건 중 55건은 학원 고유명이 글 어디에도 없고, 같은 글 18건이 이름이 비슷한
+학원 2~3곳에 중복 배정). 글 생성에도 쓰지 않는다. 이미 저장된 블로그리뷰는 지워지지 않는다.
+
+스위치를 켜면 학원 380곳 기준 12분 넘게 걸린다. 원천의 `/v1/blog-review/list` 가 동시 요청을 못
+견뎌 한 곳씩 받아야 하기 때문이다(동시 1이면 전건 성공, 동시 4면 24곳 중 5곳만 성공). 그런데
+Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로(`UND_ERR_HEADERS_TIMEOUT`, 실측 301초),
+응답을 기다리는 구조로는 관리자 UI 에서 완주할 수 없다 — 그래서 이 엔드포인트는 백그라운드다.
+
+이미 진행 중인 동기화가 있으면 `409` 를 반환한다(도메인이 달라도 같은 원천을 두드리므로 하나만 허용).
 
 요청:
 
 ```json
 {
-  "include_blog_reviews": true,
+  "include_reviews": true,
+  "review_limit": 5,
+  "review_sort": "point",
+  "include_blog_reviews": false,
   "blog_review_limit": 3
 }
 ```
@@ -549,11 +683,55 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 ```json
 {
   "ok": true,
-  "fetched": 100,
-  "upserted": 95,
-  "skipped": 5,
-  "warnings": []
+  "run_id": "1b0c…"
 }
+```
+
+### `GET /api/admin/domains/{domain}/sync/runs`
+
+동기화 실행 이력. `?limit=` (기본 20, 최대 200).
+
+```json
+{ "items": [ { "id": "1b0c…", "status": "running", "step": "블로그리뷰 조회 중", "count_done": 42, "count_total": 380 } ] }
+```
+
+### `GET /api/admin/domains/{domain}/sync/runs/{runId}`
+
+진행 상황 폴링용. `status` 는 `running` / `done` / `cancelled` / `error`.
+완료 시 `result_obj` 에 저장 요약이 담긴다.
+
+```json
+{
+  "id": "1b0c…",
+  "status": "done",
+  "step": "완료",
+  "count_done": 380,
+  "count_total": 380,
+  "result_obj": {
+    "fetched": 380,
+    "upserted": 380,
+    "skipped": 0,
+    "review_count": 1223,
+    "blog_review_count": 588,
+    "blog_review_preserved": 3,
+    "warnings": []
+  },
+  "error": null
+}
+```
+
+`blog_review_preserved` 는 **블로그리뷰를 조회했는데 못 가져와 기존 값을 유지한 학원 수**다.
+수집 스위치가 꺼져 있으면(기본) 애초에 조회하지 않으므로 항상 0 이다. 원천은 처리
+한계를 넘으면 예외가 아니라 `code:200` + 빈 배열로 응답하므로, 이를 0건으로 받아들이면 전량교체
+정책상 멀쩡한 후기가 삭제된다. 이 값이 크면 원천 상태를 의심해야 한다.
+
+### `POST /api/admin/domains/{domain}/sync/runs/{runId}/cancel`
+
+진행 중인 동기화에 취소를 요청한다. 취소되면 **저장 단계로 넘어가지 않으므로 기존 자료는 그대로**다
+(절반만 조회한 목록으로 저장하면 아직 조회하지 않은 학원의 후기가 0건으로 지워진다).
+
+```json
+{ "ok": true }
 ```
 
 ### `POST /api/admin/domains/{domain}/sync/drivingplus/regions`
@@ -593,10 +771,12 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 {
   "level": "2",
   "replace_axis": true,
-  "include_blog_reviews": true,
+  "include_blog_reviews": false,
   "blog_review_limit": 3
 }
 ```
+
+지역은 원천 왕복 1회라 응답 안에서 끝내고, 학원은 위와 같은 백그라운드 run 으로 넘긴다.
 
 응답:
 
@@ -604,7 +784,7 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 {
   "ok": true,
   "regions": {},
-  "academies": {},
+  "run_id": "1b0c…",
   "axis_replaced": true,
   "level": "2"
 }
@@ -805,14 +985,22 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 {
   "post": {
     "id": "...",
+    "domain": "example.com",
     "slug": "sample-post",
     "title": "제목",
+    "meta_description": "요약",
     "body_markdown": "# 제목",
-    "images": {}
+    "images": {},
+    "design_template_id": "local-guide",
+    "generated_at": "2026-01-01 00:00:00",
+    "region": "경기도 안성시",
+    "academy_names": ["○○자동차운전전문학원"]
   },
   "body_html": "<article>...</article>"
 }
 ```
+
+> 공개 상세 응답은 명시 화이트리스트만 포함한다. `provider`/`model`/`cost_usd`/`session_id`/`job_id`/토큰·시간 등 내부·비용 필드는 노출하지 않는다. `region`/`academy_names`는 소비 사이트의 JSON-LD 등 SEO 파생용이며, 값이 없으면 각각 `null`/`[]`이다.
 
 ### `GET /api/v1/{domain}/generated-images/{file}`
 
@@ -843,6 +1031,12 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 { "count": 10, "items": [] }
 ```
 
+`items`는 명시 화이트리스트로만 구성된다.
+
+`id`, `region`, `name`, `address`, `price`, `shuttle`, `hours`, `pass_rate`, `phone`, `vphone`, `review`, `seo_title`, `seo_keywords`, `seo_description`, `latitude`, `longitude`, `thumb_url`, `photos`(배열로 파싱), `academy_type`, `synced_at`.
+
+원천 흔적(`source_name`, `source_url`, `external_id`, `extra`), 리뷰 원문 페이로드(`review_json`, `blog_reviews`), 원천 마케팅 문구(`seo_content`)는 노출하지 않는다.
+
 ### `POST /api/v1/{domain}/academies`
 
 공개 쓰기용 엔드포인트다. `PUBLIC_WRITE_TOKEN`이 설정되어 있으면 `token` 쿼리 또는 `x-public-write-token` 헤더가 일치해야 한다.
@@ -869,6 +1063,12 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 | `updateDomain()` | `PATCH /domains/{domain}` |
 | `replaceAxis()` | `PUT /domains/{domain}/axes/{axis}` |
 | `enqueueGenerate()` | `POST /domains/{domain}/jobs/generate` |
+| `updateSlotTitle()` | `PATCH /domains/{domain}/slots/{slot_id}` |
+| `listTemplates()` | `GET /domains/{domain}/templates` |
+| `createTemplate()` | `POST /domains/{domain}/templates` |
+| `updateTemplate()` | `PATCH /domains/{domain}/templates/{template_id}` |
+| `cloneTemplate()` | `POST /domains/{domain}/templates/clone` |
+| `getCoherence()` | `GET /domains/{domain}/templates/coherence` |
 | `downloadPostExport()` | `POST /domains/{domain}/posts/export` |
 | `syncDrivingplusAcademies()` | `POST /domains/{domain}/sync/drivingplus/academies` |
 | `syncDrivingplusRegions()` | `POST /domains/{domain}/sync/drivingplus/regions` |

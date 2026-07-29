@@ -6,6 +6,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getPost, listAllSlugs } from "../../../lib/content-api";
+import { buildPostJsonLd } from "../../../lib/json-ld";
 import { DesignLayout } from "../../../components/design-templates";
 import { PostRenderer } from "../../../components/PostRenderer";
 
@@ -36,18 +37,25 @@ export default async function CommunityPostPage({ params }: { params: Promise<{ 
   if (!result) notFound();
   const { post, site } = result;
   const bodyHtml = stripLeadingH1(post.body_html);
-  const brand = site?.display_name?.replace(/\s*(?:샘플|데모)\s*$/u, "").trim() || undefined;
+  // 브랜드 정규화는 API(publicSiteSummary)가 끝낸 상태로 내려온다 — 여기서 다시 손대지 않는다.
+  const brand = (site?.brand_name || site?.display_name)?.trim() || undefined;
+  const jsonLd = buildPostJsonLd(post, site);
 
   return (
-    <DesignLayout
-      designId={post.design_template_id ?? site?.design_template_id}
-      title={post.title}
-      ctaHref="/contact"
-      brand={brand}
-      brandColor={site?.brand_color}
-    >
-      {bodyHtml ? <div dangerouslySetInnerHTML={{ __html: bodyHtml }} /> : <PostRenderer markdown={post.body_markdown} images={post.images ?? {}} />}
-    </DesignLayout>
+    <>
+      {jsonLd ? (
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
+      ) : null}
+      <DesignLayout
+        designId={post.design_template_id ?? site?.design_template_id}
+        title={post.title}
+        ctaHref="/contact"
+        brand={brand}
+        brandColor={site?.brand_color}
+      >
+        {bodyHtml ? <div dangerouslySetInnerHTML={{ __html: bodyHtml }} /> : <PostRenderer markdown={post.body_markdown} images={post.images ?? {}} />}
+      </DesignLayout>
+    </>
   );
 }
 

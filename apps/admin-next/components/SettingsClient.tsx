@@ -1,0 +1,256 @@
+"use client";
+
+import { addVertical, deleteVertical, getBlogReviewSync, getOptions, listVerticals, saveBlogReviewSync } from "@/lib/api";
+import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
+import { DEFAULT_GENERATION_DEFAULTS, useGenerationDefaults } from "@/lib/generation-defaults";
+import { useTourEnabled } from "@/lib/tour";
+import type { Provider, Vertical } from "@/lib/types";
+import { useEffect, useState } from "react";
+
+const IMAGE_SIZES: Array<{ value: string; label: string }> = [
+  { value: "1024x1024", label: "1024 정방형" },
+  { value: "1536x1024", label: "1536 가로형" },
+  { value: "1024x1536", label: "1024 세로형" },
+];
+
+export default function SettingsClient() {
+  const [savedTourEnabled, setSavedTourEnabled] = useTourEnabled();
+  const [savedGen, setSavedGen] = useGenerationDefaults();
+  const [genDraft, setGenDraft] = useState(savedGen);
+  const [providers, setProviders] = useState<Provider[]>(["codex", "claude"]);
+  const [localNotice, setLocalNotice] = useState("");
+  const [verticals, setVerticals] = useState<Vertical[]>([]);
+  const [vKey, setVKey] = useState("");
+  const [vLabel, setVLabel] = useState("");
+  const [vErr, setVErr] = useState("");
+  const [vBusy, setVBusy] = useState(false);
+  // 블로그리뷰 "수집" 스위치. null 이면 아직 못 읽은 상태(토글을 섣불리 꺼진 것처럼 보이지 않게 한다).
+  const [blogSync, setBlogSync] = useState<boolean | null>(null);
+  const [blogSyncBusy, setBlogSyncBusy] = useState(false);
+  const [blogSyncErr, setBlogSyncErr] = useState("");
+
+  async function loadOptions() {
+    const opts = await getOptions();
+    if (opts.providers?.length) setProviders(opts.providers);
+  }
+
+  useEffect(() => {
+    // 백엔드 미연결 시 provider 내장 목록/빈 색인값을 유지한다.
+    loadOptions().catch(() => {});
+    listVerticals().then((r) => setVerticals(r.items)).catch(() => {});
+  }, []);
+
+  async function onAddVertical() {
+    setVBusy(true); setVErr("");
+    try {
+      const r = await addVertical(vKey.trim().toLowerCase(), vLabel.trim());
+      setVerticals(r.items); setVKey(""); setVLabel("");
+    } catch (e) { setVErr(e instanceof Error ? e.message : String(e)); }
+    finally { setVBusy(false); }
+  }
+  async function onDeleteVertical(key: string) {
+    if (!confirm(`업종 '${key}'을(를) 삭제할까요?`)) return;
+    setVErr("");
+    try { const r = await deleteVertical(key); setVerticals(r.items); }
+    catch (e) { setVErr(e instanceof Error ? e.message : String(e)); }
+  }
+
+  useEffect(() => {
+    setGenDraft(savedGen);
+  }, [savedGen]);
+
+  useEffect(() => {
+    let alive = true;
+    void getBlogReviewSync()
+      .then((res) => { if (alive) setBlogSync(res.enabled); })
+      .catch((e) => { if (alive) setBlogSyncErr((e as Error).message); });
+    return () => { alive = false; };
+  }, []);
+
+  async function onToggleBlogSync(next: boolean) {
+    setBlogSyncBusy(true);
+    setBlogSyncErr("");
+    try {
+      const res = await saveBlogReviewSync(next);
+      setBlogSync(res.enabled);
+    } catch (e) {
+      setBlogSyncErr((e as Error).message);
+    } finally {
+      setBlogSyncBusy(false);
+    }
+  }
+
+  function saveLocalSettings() {
+    setSavedGen(genDraft);
+    setLocalNotice("생성 옵션 저장됨");
+  }
+
+  const patch = (fields: Partial<typeof genDraft>) => {
+    setGenDraft((current) => ({ ...current, ...fields }));
+    setLocalNotice("");
+  };
+  const localDirty = JSON.stringify(genDraft) !== JSON.stringify(savedGen);
+  const isDefault = JSON.stringify(genDraft) === JSON.stringify(DEFAULT_GENERATION_DEFAULTS);
+
+  return (
+    <div>
+      <div className="page-head">
+        <div>
+          <p className="eyebrow">관리자</p>
+          <h1>작업환경</h1>
+          <p className="muted">튜토리얼·생성 기본값처럼 이 브라우저의 작업 편의에만 영향을 주는 설정입니다.</p>
+        </div>
+      </div>
+
+      <section className="card card-pad grid" style={{ maxWidth: 720 }}>
+        <div>
+          <div className="row" style={{ gap: 8 }}>
+            <h2 style={{ margin: 0 }}>운영 튜토리얼</h2>
+            <span className={`badge ${savedTourEnabled ? "success" : ""}`}>{savedTourEnabled ? "켜짐" : "꺼짐"}</span>
+          </div>
+          <p className="muted small" style={{ marginTop: 6 }}>
+            도메인 개요나 대시보드에서 「글 생성 / 검수 흐름 시작」(또는 세부 단계 시작)을 누르면 단계별 가이드가 표시됩니다.
+            × 또는 Esc로 이번 안내만 닫을 수 있고, 「더 이상 안 보기」는 이후 자동 제안을 끕니다.
+          </p>
+        </div>
+        <label className="row">
+          <input
+            type="checkbox"
+            checked={savedTourEnabled}
+            onChange={(e) => setSavedTourEnabled(e.target.checked)}
+          />
+          <span>흐름 시작 시 튜토리얼 표시 (기본값) · 즉시 저장</span>
+        </label>
+        <p className="muted small">
+          튜토리얼 안에서 「더 이상 안 보기」를 눌러도 여기서 다시 켤 수 있습니다.
+          설정은 이 브라우저에만 저장됩니다.
+        </p>
+      </section>
+
+      <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
+        <div>
+          <div className="row" style={{ gap: 8 }}>
+            <h2 style={{ margin: 0 }}>생성 옵션 기본값</h2>
+            <span className={`badge ${isDefault ? "" : "info"}`}>{isDefault ? "기본값" : "사용자 지정"}</span>
+          </div>
+          <p className="muted small" style={{ marginTop: 6 }}>
+            「글 후보 만들기 / 글 작성」 화면의 작성 엔진·모델·이미지 옵션 초기값입니다.
+            자주 쓰는 조합을 저장해두면 매번 다시 고르지 않아도 됩니다.
+          </p>
+        </div>
+
+        <div className="grid grid-2">
+          <label>
+            <span className="label">작성 엔진</span>
+            <select className="select" value={genDraft.provider} onChange={(e) => patch({ provider: e.target.value as Provider })}>
+              {providers.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+          <label>
+            <span className="label">모델 (비우면 엔진 기본)</span>
+            <input className="input" value={genDraft.model} onChange={(e) => patch({ model: e.target.value })} placeholder="비우면 기본 codex" />
+          </label>
+          <label>
+            <span className="label">제한시간(초)</span>
+            <input className="input" type="number" value={genDraft.timeoutSec} onChange={(e) => patch({ timeoutSec: Number(e.target.value) })} />
+          </label>
+          <label>
+            <span className="label">대량 대기시간(초)</span>
+            <input className="input" type="number" value={genDraft.cooldownSec} onChange={(e) => patch({ cooldownSec: Number(e.target.value) })} />
+          </label>
+          <label>
+            <span className="label">이미지 크기</span>
+            <select className="select" value={genDraft.imageSize} onChange={(e) => patch({ imageSize: e.target.value })}>
+              {IMAGE_SIZES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <label className="row">
+          <input type="checkbox" checked={genDraft.web} onChange={(e) => patch({ web: e.target.checked })} />
+          <span>웹 자료 수집 후 작성</span>
+        </label>
+        <label className="row">
+          <input type="checkbox" checked={genDraft.imageGen} onChange={(e) => patch({ imageGen: e.target.checked })} />
+          <span>Codex 이미지 생성</span>
+        </label>
+
+        <div className="row" style={{ gap: 8 }}>
+          <button className="btn primary" disabled={!localDirty} onClick={saveLocalSettings}>생성 옵션 저장</button>
+          <button className="btn" disabled={isDefault} onClick={() => {
+            setGenDraft(DEFAULT_GENERATION_DEFAULTS);
+            setLocalNotice("");
+          }}>기본값으로 초기화</button>
+          {localNotice && <span className="badge success">{localNotice}</span>}
+          {localDirty && <span className="badge warn">저장되지 않은 변경</span>}
+        </div>
+        <p className="muted small">이 브라우저에만 저장됩니다. 저장 후 이미 열려 있는 작성 화면에는 다음에 그 화면을 다시 열 때부터 반영됩니다.</p>
+      </section>
+
+      <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
+        <div>
+          <div className="row" style={{ gap: 8 }}>
+            <h2 style={{ margin: 0 }}>업종 관리</h2>
+            <span className="badge info">{verticals.length}개</span>
+          </div>
+          <p className="muted small" style={{ marginTop: 6 }}>
+            도메인 생성 시 고르는 업종 목록입니다. <b>key</b>는 프리셋·프롬프트에 쓰는 슬러그, <b>표시명</b>은 화면 표시용입니다.
+            새 업종은 전용 프리셋이 없어 도메인이 빈 축으로 시작합니다(현재 실질 생성은 driving 기준). 이 설정은 서버에 저장되어 즉시 반영됩니다.
+          </p>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th style={{ width: 200 }}>key</th><th>표시명</th><th style={{ width: 80 }}></th></tr></thead>
+          <tbody>
+            {verticals.map((v) => <tr key={v.key}>
+              <td className="mono small">{v.key}</td>
+              <td>{v.label}</td>
+              <td>{v.key === "driving" ? <span className="muted small">기본</span> : <button className="btn danger" onClick={() => onDeleteVertical(v.key)}>삭제</button>}</td>
+            </tr>)}
+            {!verticals.length && <tr><td colSpan={3} className="muted small">업종이 없습니다.</td></tr>}
+          </tbody>
+        </table></div>
+        <div className="grid grid-2">
+          <label><span className="label">key (영문 소문자·숫자·하이픈)</span><input className="input mono" value={vKey} onChange={(e) => setVKey(e.target.value)} placeholder="food" /></label>
+          <label><span className="label">표시명</span><input className="input" value={vLabel} onChange={(e) => setVLabel(e.target.value)} placeholder="음식점" /></label>
+        </div>
+        {vErr && <p className="toast-warn small">{vErr}</p>}
+        <div className="row"><button className="btn primary" disabled={vBusy || !vKey.trim() || !vLabel.trim()} onClick={onAddVertical}>{vBusy ? "추가 중..." : "업종 추가"}</button></div>
+      </section>
+
+      <section className="card card-pad grid" style={{ maxWidth: 720, marginTop: 18 }}>
+        <div>
+          <div className="row" style={{ gap: 8 }}>
+            <h2 style={{ margin: 0 }}>블로그 리뷰 수집</h2>
+            {/* 못 읽은 상태를 꺼짐과 같은 색(warn)으로 칠하면 "확인 중" 이라고 써도 꺼진 것처럼 읽힌다. */}
+            <span className={`badge ${blogSync === null ? "" : blogSync ? "success" : "warn"}`}>{blogSync === null ? "확인 중" : blogSync ? "켜짐" : "꺼짐"}</span>
+          </div>
+          <p className="muted small" style={{ marginTop: 6 }}>
+            <b>수집만 켜고 끕니다. 글 생성에는 어느 쪽이든 쓰지 않습니다.</b> 생성 프롬프트와 품질 게이트에서 이미 빠져 있어,
+            켜도 글 내용이 달라지지 않습니다. 글에 다시 쓰려면 <b>블로그 글이 실제 그 학원의 글인지 건별로 가려내는 검증 기능</b>이
+            먼저 필요합니다. 그런 기능이 생긴다면 검증을 통과한 것만 골라 쓰는 방식을 검토해볼 만합니다.
+          </p>
+          <p className="muted small">
+            끈 이유: 원천이 네이버 블로그 검색으로 학원명을 느슨하게 매칭해 <b>다른 학원 글이 섞입니다</b>.
+            2026-07-27 실측 539건 중 55건(10%)은 학원 고유명이 글 어디에도 없었고, 같은 글 18건이 이름이 비슷한 학원 2~3곳에
+            중복 배정됐습니다(중앙/천안중앙/북부중앙 등). 10%는 하한선입니다 — 고유명이 지역명인 학원은 그 지역 아무 글이나 통과합니다.
+          </p>
+          <p className="muted small">
+            켜면 학원 동기화가 <b>{ACADEMY_SYNC_DURATION}에서 {ACADEMY_SYNC_DURATION_WITH_BLOG}으로</b> 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다).
+            이미 수집된 자료는 끄더라도 지워지지 않고 학원 상세에 남습니다.
+          </p>
+        </div>
+        {blogSyncErr && <p className="toast-warn small">{blogSyncErr}</p>}
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className={`btn ${blogSync === false ? "primary" : ""}`}
+            disabled={blogSync === null || blogSyncBusy}
+            onClick={() => void onToggleBlogSync(!blogSync)}
+          >
+            {blogSync === null ? "확인 중..." : blogSyncBusy ? "저장 중..." : blogSync ? "수집 끄기" : "수집 켜기"}
+          </button>
+          <span className="muted small">서버에 저장되어 즉시 반영됩니다(재시작 불필요).</span>
+        </div>
+      </section>
+    </div>
+  );
+}

@@ -13,7 +13,7 @@
   - `scripts`: 생성 글 QA, 회사 제출용 clean 검증
   - `data`, `output`: SQLite DB/원천 자료/생성 산출물
 
-현재 이 프로젝트는 범용 SEO 도구가 아니라 **운전면허·운전학원 도메인 전용 운영본**입니다. 새 도메인은 기본적으로 `driving` vertical, `local-guide` 디자인, 운전학원 축 프리셋으로 시작합니다.
+현재 이 프로젝트는 범용 SEO 도구가 아니라 **운전면허·운전학원 도메인 전용 운영본**입니다. 업종(vertical)은 작업환경의 업종 레지스트리(`settings/verticals`)로 등록·선택하며 기본값은 `driving`입니다. 단 전용 프리셋·템플릿·품질 게이트는 아직 `driving`만 특화돼 있습니다(MVP). 새 도메인은 디자인 자동 매칭(`auto` — 글마다 글 유형의 기본 디자인 적용, `docs/design-template-mapping.md` 참조), 지역/키워드 축 프리셋으로 시작합니다(persona/intent/modifier는 글유형별 데이터).
 
 ## 2. 핵심 실행 명령
 
@@ -86,8 +86,15 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | `apps/admin-next/lib/types.ts` | UI 타입 계약 |
 | `docs/admin-json-api.md` | 관리자 API 상세 명세 |
 | `docs/source-analysis.md` | 현재 소스 구조 분석 |
+| `docs/source-field-usage.md` | 원천 학원 필드가 어디에 저장되고 어디에 쓰이는지 대조표(안 쓰는 이유 포함) |
+| `docs/data-portability.md` | 다른 경로·장비로 옮길 때 무엇이 따라오고 무엇이 사라지는지 + 복사 절차(WAL 주의) |
+| `docs/ui-copy-inventory.md` | 화면 안내 문구가 어떤 코드에 매달려 있는지(생성물) |
 | `scripts/qa-posts.mjs` | 생성 글 품질 QA |
 | `scripts/verify-company-clean.mjs` | 회사 제출용 금지 흔적 검사 |
+| `scripts/verify-copy-sync.mjs` | 안내 문구가 코드와 어긋났는지 검사(pre-commit) |
+| `scripts/copy-inventory.mjs` | 안내 문구 인벤토리 생성. 분류는 `scripts/ui-copy-classification.json` |
+| `scripts/copy-deps-hook.mjs` | 파일 편집 직후 종속 안내 문구를 알리는 Claude Code 훅 |
+| `scripts/install-git-hooks.sh` | pre-commit 훅 설치(정본). `npm run hooks:install` |
 
 ## 5. 관리자 화면 라우트
 
@@ -117,7 +124,6 @@ Base: `/api/admin`
 - `GET/PATCH/DELETE /domains/:domain`
 - `PUT /domains/:domain/axes/:axis`
 - `POST /domains/:domain/axes/preset`
-- `POST /domains/:domain/axes/ai-fill`
 - `GET/POST /domains/:domain/slots`, `DELETE/POST reset /slots/:slotId`
 - `GET /domains/:domain/posts`, `GET/DELETE /posts/:postId`, `POST /posts/export`
 - `GET/POST/DELETE /domains/:domain/academies`

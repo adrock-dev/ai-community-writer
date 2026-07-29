@@ -37,7 +37,7 @@
 ```text
 도메인 생성
 → driving 프리셋 적용
-→ 지역/키워드/의도/페르소나/수식어 축 준비
+→ 지역/키워드 축 준비(의도/페르소나/수식어는 글유형별 axis_values)
 → 학원 자료 동기화/입력
 → 슬롯 생성
 → 1개 테스트 글 작성
@@ -50,13 +50,14 @@
 
 ## 2. 왜 운전 도메인 전용으로 좁혔는가
 
-`constants.ts`와 `admin.controller.ts`를 보면 현재 vertical은 사실상 `driving`만 허용합니다.
+업종(vertical)은 DB 업종 레지스트리(`db.getVerticals()`, `settings/verticals` CRUD)로 관리되며, 도메인 생성은 `admin.controller.ts`에서 등록된 업종만 허용하고 미등록 업종은 거부합니다("등록되지 않은 업종입니다"). 기본 업종은 `driving`입니다.
 
 ```ts
+// constants.ts — 기본/특화 업종
 export const DRIVING_VERTICALS = ["driving"] as const;
 ```
 
-도메인 생성 시에도 다른 vertical이면 거부합니다.
+다만 **전용 프리셋(`PRESETS`)·템플릿(`TEMPLATE_SPECS`)·품질 게이트는 아직 `driving`만 특화**돼 있습니다(업종 레지스트리는 라벨 MVP). 즉 "driving 전용"이라는 표현은 하드 제약이 아니라 프리셋/템플릿/품질 층의 특화를 뜻합니다.
 
 이렇게 한 이유는 다음으로 해석됩니다.
 
@@ -440,13 +441,13 @@ job payload 확인
 - `T07`: 지역 허브 총정리
 - `T14`: 전문학원 단독 소개
 
-슬롯은 다음 축의 조합입니다.
+슬롯은 다음 축의 조합입니다. 단 **도메인 레벨 축은 `region`/`keyword`만** 관리하고(「원천 데이터」 탭), `intent`/`persona`/`modifier`는 도메인 축이 아니라 **글유형별 `axis_values` 데이터**입니다.
 
-- region
-- keyword
-- intent
-- persona
-- modifier
+- region (도메인 축)
+- keyword (도메인 축)
+- intent (글유형 axis_values)
+- persona (글유형 axis_values)
+- modifier (글유형 axis_values)
 
 의도:
 
@@ -589,8 +590,8 @@ job payload 확인
 
 지금까지의 작업 의도는 다음입니다.
 
-- 범용 도구가 아니라 driving 도메인 전용으로 좁혀 품질을 높인다.
-- 지역/키워드/의도/페르소나/수식어 축으로 글 후보를 만든다.
+- 범용 도구가 아니라 driving 도메인 전용으로 좁혀 품질을 높인다(업종 레지스트리로 확장 가능하나 프리셋·품질은 driving 특화 MVP).
+- 지역/키워드 도메인 축과 글유형별 의도/페르소나/수식어 데이터로 글 후보를 만든다.
 - 실제 학원 데이터와 리뷰/사진을 근거로 글을 작성한다.
 - Codex/Claude CLI를 worker에서 호출해 글을 생성한다.
 - 품질 게이트로 내부 흔적, 과장 claim, 구조 부족, 이미지 누락을 막는다.
