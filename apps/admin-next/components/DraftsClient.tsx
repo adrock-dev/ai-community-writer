@@ -176,12 +176,18 @@ export default function DraftsClient({ domain }: { domain: string }) {
         <p className="muted">품질 게이트에 걸려 발행되지 못한 글입니다. <b style={{ color: "#b42318" }}>B(안전·사실)</b> 이슈가 있으면 발행할 수 없고, 본문을 수정해 재검증해야 합니다. <b style={{ color: "#8a5a00" }}>A(구조/문체)</b>만 남으면 사유를 확인한 뒤 발행할 수 있습니다.</p>
       </div>
       <div className="row">
-        {(["pending", "dismissed", "promoted"] as DraftReviewStatus[]).map((s) =>
-          <button key={s} className={`tab ${statusFilter === s ? "active" : ""}`} onClick={() => setStatusFilter(s)}>
-            {s === "pending" ? "검수 대기" : s === "dismissed" ? "반려됨" : "발행됨"}
-          </button>)}
         <button className="btn" onClick={() => void refresh()}>새로고침</button>
       </div>
+    </div>
+
+    {/* 탭은 다른 화면과 같이 제목 아래 한 줄로 둔다. .tab 의 활성 밑줄은 .tabs 의 border-bottom 을
+        받침으로 삼으므로, page-head 안에 그냥 넣으면 밑줄이 받칠 선 없이 뜨고 우측 상단으로 밀린다.
+        「새로고침」은 탭이 아니라 동작이라 위 머리글에 남긴다. */}
+    <div className="tabs" style={{ marginBottom: 0 }}>
+      {(["pending", "dismissed", "promoted"] as DraftReviewStatus[]).map((s) =>
+        <button key={s} className={`tab ${statusFilter === s ? "active" : ""}`} onClick={() => setStatusFilter(s)}>
+          {s === "pending" ? "검수 대기" : s === "dismissed" ? "반려됨" : "발행됨"}
+        </button>)}
     </div>
 
     {error && <p className="toast-error">{error}</p>}
