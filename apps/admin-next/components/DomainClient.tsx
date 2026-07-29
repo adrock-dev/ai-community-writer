@@ -77,7 +77,7 @@ const STEP_GROUPS: Array<{ title: string; desc: string; steps: Array<{ mode: Tou
     title: "글 생성",
     desc: "선택 준비(원천·공통설정·디자인) 후 글유형 켜기 → 생성 · 필요한 단계만 눌러도 됩니다",
     steps: [
-      { mode: "basic", focus: "source", no: "선택", title: "원천 데이터 준비", desc: "지역/학원 자료 동기화(선택)" },
+      { mode: "basic", focus: "source", no: "선택", title: "원천 데이터 준비", desc: "지역 동기화 · 학원자료 연결(선택)" },
       { mode: "basic", focus: "plan", no: "선택", title: "글 공통 설정", desc: "공통원칙·제외어·키워드(선택)" },
       { mode: "basic", focus: "template-design", no: "선택", title: "디자인", desc: "유형별 자동 매칭 확인(선택)" },
       { mode: "basic", focus: "template-type", no: "필수", title: "글유형 켜기", desc: "만들 글 유형 선택(새 도메인 필수)", tone: "primary" },
@@ -365,15 +365,12 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
         <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />
       </div>}
       {view === "posts" && <div className="grid">
+        {/* 「검수 대기(게이트 미통과)」 링크는 Posts 안(목록 위 버튼 줄)으로 옮겼다 — 개요의
+            posts 탭에서도 같은 입구가 보여야 하기 때문이다. 여기서 다시 렌더하지 않는다. */}
         <div className="card card-pad">
-          <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <p className="eyebrow">검수 전용 페이지</p>
-              <h2>완성 글 확인, 내보내기, 색인 요청을 한곳에서 처리하세요</h2>
-              <p className="muted">제목을 눌러 상세 미리보기를 확인하고 필요한 글만 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다.</p>
-            </div>
-            <Link className="btn" href={`/t/${encodeURIComponent(domainConfig.domain)}/drafts`}>검수 대기(게이트 미통과) →</Link>
-          </div>
+          <p className="eyebrow">검수 전용 페이지</p>
+          <h2>완성 글 확인, 내보내기, 색인 요청을 한곳에서 처리하세요</h2>
+          <p className="muted">제목을 눌러 상세 미리보기를 확인하고 필요한 글만 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다.</p>
         </div>
         <Posts domain={domainConfig} posts={payload.posts ?? []} onRefresh={refresh} />
       </div>}
@@ -393,6 +390,15 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
 
 const TOUR_FULL_CARD_TARGETS = new Set(["academies-sync", "slots-writer"]);
 
+/*
+  탭을 바꾼 직후에는 대상 카드가 아직 최종 위치가 아니다. 옵션·후보 목록이 늦게 채워지면서
+  위쪽 카드가 커지면 대상이 아래로 밀리는데, 예전에는 고정 지연(80ms→180ms)으로 딱 한 번만
+  재서 그 사이 밀린 만큼 어긋났다 — 「디자인」 단계에서 스포트라이트가 위 카드에 뚫리고 정작
+  대상 카드는 화면 밖(뷰포트 1833px 아래 1993px)에 남았다. 그래서 시간이 아니라 레이아웃
+  변화에 맞춰 다시 잰다. 이 시간 동안만 스크롤까지 다시 맞춘다.
+*/
+const TOUR_SETTLE_MS = 1200;
+
 type TourStep = {
   focus: TourFocus;
   tab: string;
@@ -405,7 +411,20 @@ type TourStep = {
 function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[] {
   const hasSlots = Boolean(counts && Object.values(counts).reduce((sum, value) => sum + value, 0) > 0);
   const hasPosts = Boolean(counts && counts.published > 0);
-  const sourceSync: TourStep = { focus: "source", tab: "academies", target: "academies-sync", title: "(선택) 원천 데이터 준비", body: "지역과 학원 데이터를 가져와두면 생성 글이 검증된 자료를 기반으로 작성됩니다. 처음이면 지역 동기화 후 학원 동기화 순서를 권장합니다. 지금 건너뛰고 나중에 준비해도 됩니다. (상단 진행 막대가 전체 흐름입니다.)", action: "데이터가 이미 있거나 나중에 할 거면 다음 단계로 넘어가세요." };
+  /*
+    자료가 두 곳에 나뉜 뒤로도 이 안내는 "지역 동기화 후 학원 동기화"라고 말하고 있었다.
+    「학원 동기화」라는 버튼은 이제 없다 — 수집·조사·승인은 업종 단위인 「운전학원 자료」에서 하고,
+    도메인은 「학원자료 연결」로 가져오기만 한다. 이름이 "동기화"로 남아 있으면 원천을 다시
+    받는 12분짜리 작업으로 오해하게 된다(연결은 수십 초다).
+  */
+  const sourceSync: TourStep = {
+    focus: "source",
+    tab: "academies",
+    target: "academies-sync",
+    title: "(선택) 원천 데이터 준비",
+    body: "학원 자료는 두 곳에 나뉩니다. 원천 수집·AI 심층조사·검토 승인은 왼쪽 메뉴 「운전학원 자료」에서 하고, 이 탭은 그 자료를 이 도메인으로 가져옵니다. 1단계 「지역 동기화」 → 2단계 「학원자료 연결」 순서이며, 연결은 원천 API를 다시 부르지 않아 수십 초면 끝납니다. 글에 쓸 조사값 범위는 같은 탭 「조사값 신뢰 기준」에서 정합니다.",
+    action: "자료를 새로 받거나 조사값을 승인했으면 「학원자료 연결」을 다시 눌러야 글에 반영됩니다 — 화면 위 「반영 대기」 배너가 그 신호입니다.",
+  };
   // 안전·데이터 원칙을 정하라고 안내하지 않는다 — 이미 프롬프트와 품질 게이트가 강제하는 내용이라,
   // 여기 다시 적으면 강제력은 안 생기고 이 칸에서만 전달되는 말투 지시만 묻힌다(입력칸 안내와 같은 기준).
   const planBrief: TourStep = { focus: "plan", tab: "plan", target: "plan-brief", title: "(선택) 글 공통 설정", body: "이 사이트만의 말투·태도, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 확인된 데이터만 사용·날조 금지 같은 안전·데이터 규칙은 이미 강제되니 여기 적지 않아도 됩니다. 지금 건너뛰고 나중에 정해도 됩니다.", action: "입력 후 ‘저장’을 누르거나, 필요 없으면 다음으로 넘어가세요." };
@@ -426,13 +445,28 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     tab: "slots",
     target: "slots-writer",
     title: "2단계 · 1개 테스트 작성",
+    // 후보가 없을 때의 안내는 서버 동작과 반드시 같아야 한다. 작성은 기존 planned 후보만 쓰고
+    // 후보를 자동 생성하지 않는다(admin.controller enqueueGenerate — 후보가 0이면 400으로 거절).
+    // 예전 문구는 "자동 실행한다"고 했는데, 하필 후보가 0인 새 도메인에서만 뜨는 문장이라
+    // 튜토리얼이 가장 필요한 사람이 정확히 그 거짓말을 보고 눌렀다가 실패했다.
     body: hasSlots
       ? "2단계 카드의 작성 엔진·모델·이미지 옵션은 글 작성에만 적용됩니다. 처음엔 「1개 테스트 작성」만 눌러 품질을 확인하세요."
-      : "후보가 없어도 이 버튼은 1단계 후보 생성을 자동 실행한 뒤 큐에 등록합니다. 대량 버튼은 QA 확인 후 사용하세요.",
+      : "후보가 없으면 이 버튼은 실패합니다 — 위 1단계에서 후보를 먼저 만드세요. 대량 버튼은 1개 테스트로 품질을 확인한 뒤 사용하세요.",
     action: "버튼을 누르면 작업 큐 탭에서 진행 상태를 확인합니다.",
   };
   const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 검수·내보내기 탭에서 결과를 검수합니다." };
-  const postsReview: TourStep = { focus: "posts", tab: "posts", target: "posts-actions", title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다", body: hasPosts ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다." : "테스트 작성이 완료되면 이 화면에 글이 나타납니다. 여기서 검수, export, 색인 요청을 진행합니다.", action: `이 흐름이 안정적이면 현재 검색 ${WRITE_BATCH_SEARCH}개, 이후 ${WRITE_BATCH_NATIONWIDE}개로 확장하세요.` };
+  // 이 목록에는 게이트를 통과한 글만 있다. 격리된 글을 여기서 안 알리면, 튜토리얼만 따라간
+  // 사람은 「작업은 됐다는데 글이 없다」에서 막힌다 — 실제로 그 입구가 이 화면에 없었다.
+  const postsReview: TourStep = {
+    focus: "posts",
+    tab: "posts",
+    target: "posts-actions",
+    title: hasPosts ? "완성 글 검수/내보내기" : "완성 글이 여기에 쌓입니다",
+    body: hasPosts
+      ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다. 글 상세의 「이 글의 근거」는 그 글이 학원·후기·이미지를 얼마나 썼는지와, 「검토 필요」라 못 쓴 값이 무엇인지 보여줍니다. 게이트를 통과 못한 글은 이 목록에 없고 「검수 대기(게이트 미통과)」에 있습니다."
+      : "테스트 작성이 끝나면 이 화면에 글이 나타납니다. 작업은 끝났는데 목록이 비어 있다면 게이트에서 걸린 것이니 「검수 대기(게이트 미통과)」를 확인하세요.",
+    action: `이 흐름이 안정적이면 현재 검색 ${WRITE_BATCH_SEARCH}개, 이후 ${WRITE_BATCH_NATIONWIDE}개로 확장하세요.`,
+  };
 
   if (mode === "review") {
     return [jobsBoard, postsReview];
@@ -468,36 +502,66 @@ function OperatorTour({ mode, steps, stepIndex, onStepChange, onTab, onClose, on
     if (!step) return;
     let disposed = false;
     let active: HTMLElement | null = null;
-    const update = () => {
+    let frame = 0;
+    const settleUntil = Date.now() + TOUR_SETTLE_MS;
+
+    const find = (): HTMLElement | null =>
+      (document.querySelector(`[data-tour="${step.target}"]`) as HTMLElement | null)
+      // 글이 0건이면 posts 액션 줄이 렌더되지 않는다. 그때는 목록 전체를 가리킨다.
+      ?? (step.target === "posts-actions" ? document.querySelector(`[data-tour="posts-review"]`) as HTMLElement | null : null);
+
+    // 자리만 다시 잰다. 여기서 스크롤하면 안 된다 — 스크롤 이벤트가 이 함수를 부르므로,
+    // 스크롤할 때마다 튜토리얼이 화면을 제자리로 되돌려 버린다(예전 동작).
+    const measure = () => {
       if (disposed) return;
-      active?.classList.remove("tour-target-active");
-      active = document.querySelector(`[data-tour="${step.target}"]`) as HTMLElement | null;
-      if (!active && step.target === "posts-actions") active = document.querySelector(`[data-tour="posts-review"]`) as HTMLElement | null;
+      const next = find();
+      if (next !== active) {
+        active?.classList.remove("tour-target-active");
+        active = next;
+        active?.classList.add("tour-target-active");
+      }
       if (!active) {
         setMissingTarget(true);
         setTargetRect(null);
         return;
       }
       setMissingTarget(false);
-      active.classList.add("tour-target-active");
-      const rawRect = active.getBoundingClientRect();
-      const scrollBlock = rawRect.height > window.innerHeight * 0.55 ? "start" : "center";
-      active.scrollIntoView({ block: scrollBlock, inline: "nearest", behavior: "smooth" });
-      window.setTimeout(() => {
-        if (!disposed && active) {
-          const rect = active.getBoundingClientRect();
-          setTargetRect(TOUR_FULL_CARD_TARGETS.has(step.target) ? rect : clampTourRect(rect));
-        }
-      }, 180);
+      const rect = active.getBoundingClientRect();
+      setTargetRect(TOUR_FULL_CARD_TARGETS.has(step.target) ? rect : clampTourRect(rect));
     };
-    const id = window.setTimeout(update, 80);
-    window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, true);
+
+    // 대상을 화면 안으로 끌어온 뒤 잰다. 단계가 바뀐 직후와 레이아웃이 아직 정착하지 않은 동안에만.
+    const focusTarget = () => {
+      if (disposed) return;
+      const el = find();
+      if (el) {
+        const height = el.getBoundingClientRect().height;
+        el.scrollIntoView({ block: height > window.innerHeight * 0.55 ? "start" : "center", inline: "nearest", behavior: "smooth" });
+      }
+      measure();
+    };
+
+    const onLayoutChange = () => {
+      if (disposed || frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        if (Date.now() < settleUntil) focusTarget();
+        else measure();
+      });
+    };
+
+    focusTarget();
+    // 대상만 관찰하면 부족하다 — 위쪽 카드가 커져서 대상이 밀려나는 경우를 잡아야 한다.
+    const observer = new ResizeObserver(onLayoutChange);
+    observer.observe(document.body);
+    window.addEventListener("resize", onLayoutChange);
+    window.addEventListener("scroll", measure, true);
     return () => {
       disposed = true;
-      window.clearTimeout(id);
-      window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, true);
+      if (frame) window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("resize", onLayoutChange);
+      window.removeEventListener("scroll", measure, true);
       active?.classList.remove("tour-target-active");
     };
   }, [step?.target, step?.tab]);
@@ -587,7 +651,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>글 공통 설정 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>글유형/디자인 열기</button></div>
     </div>
-    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>(선택) 원천 데이터 탭에서 지역/학원 동기화</li><li>(선택) 글 공통 설정 탭에서 공통원칙·제외어·키워드 정리</li><li>(선택) 글유형/디자인 탭에서 디자인 확인</li><li>글유형/디자인 탭에서 만들 글 유형 켜기(새 도메인 필수)</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 → 검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「글 생성 흐름 시작」을 누르면 위 순서대로 카드 영역을 포커싱합니다.</p></div>
+    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>(선택) 원천 데이터 탭에서 지역 동기화 → 「학원자료 연결」 (수집·조사·승인은 「운전학원 자료」에서)</li><li>(선택) 글 공통 설정 탭에서 공통원칙·제외어·키워드 정리</li><li>(선택) 글유형/디자인 탭에서 디자인 확인</li><li>글유형/디자인 탭에서 만들 글 유형 켜기(새 도메인 필수)</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 → 검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「글 생성 흐름 시작」을 누르면 위 순서대로 카드 영역을 포커싱합니다.</p></div>
   </div>;
 }
 
@@ -639,7 +703,7 @@ function getRecommendedNextAction(domain: DomainConfig, counts: SlotCounts): { t
   if (counts.in_progress > 0) return { title: "진행 중인 작업을 확인하세요", desc: `${counts.in_progress.toLocaleString()}개 작업이 진행 중입니다. 새 대량 생성보다 큐 상태 확인이 먼저입니다.`, cta: "작업 상태 확인", mode: "review", focus: "jobs" };
   if (counts.planned > 0) return { title: "1개 테스트 작성부터 하세요", desc: `${counts.planned.toLocaleString()}개 후보가 대기 중입니다. 품질 확인 없이 대량 생성하지 않도록 테스트 1개부터 시작합니다.`, cta: "테스트 작성 시작", mode: "basic", focus: "test-write" };
   if (domain.templates_enabled.length === 0) return { title: "글 생성 준비를 시작하세요", desc: "새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있습니다. 「글 생성」 흐름을 처음부터 따라가세요.", cta: "글 생성 흐름 시작", mode: "basic", focus: "source" };
-  if (totalSlots === 0) return { title: "원천 데이터부터 준비하세요", desc: "글 유형은 켜져 있습니다. 지역/학원 데이터를 동기화한 뒤 글 후보를 만드세요.", cta: "원천 데이터 준비", mode: "basic", focus: "source" };
+  if (totalSlots === 0) return { title: "원천 데이터부터 준비하세요", desc: "글 유형은 켜져 있습니다. 지역을 동기화하고 「학원자료 연결」로 학원 자료를 가져온 뒤 글 후보를 만드세요.", cta: "원천 데이터 준비", mode: "basic", focus: "source" };
   if (!domain.common_principles) return { title: "공통 원칙을 먼저 저장하세요", desc: "후보는 있지만 공통 작성 원칙이 비어 있습니다. 이 사이트에서만 쓰는 말투·태도를 적어 두면 글의 결이 일정해집니다.", cta: "공통 원칙 열기", mode: "basic", focus: "plan" };
   if (counts.published > 0) return { title: "완성 글을 검수하고 내보내세요", desc: `${counts.published.toLocaleString()}개 완성 글이 있습니다. 미리보기 후 Markdown/HTML export와 색인 요청으로 마감하세요.`, cta: "완성 글 검수", mode: "review", focus: "posts" };
   return { title: "글 후보를 새로 만드세요", desc: "현재 바로 작성할 대기 후보가 없습니다. 조건을 확인하고 후보를 다시 생성하세요.", cta: "후보 만들기", mode: "basic", focus: "slot-create" };
@@ -2084,8 +2148,12 @@ function Posts({ domain, posts, onRefresh }: { domain: DomainConfig; posts: Post
       </div>
       <Link className="btn" href={`/t/${encodeURIComponent(domain.domain)}/posts`}>필터 해제</Link>
     </div>}
-    <div className="row" data-tour="posts-actions"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span>{busy && <span className="muted small">처리 중...</span>}<button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2 || busy}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length || busy}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length || busy}>색인 요청</button><button className="btn" onClick={() => exportSelected("markdown")} disabled={!selected.size || busy}>Markdown Export</button><button className="btn primary" onClick={() => exportSelected("html")} disabled={!selected.size || busy}>HTML Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size || busy}>삭제</button></div>
-    {scoped.length > 0 && aggCost === 0 && <p className="muted small">비용($)은 종량 API 사용 시에만 계측됩니다. 이미지는 OpenAI 이미지 API + <code>SEO_IMAGE_PRICE_USD</code>(장당 단가) 설정, 텍스트는 API LLM이 필요합니다. Codex/구독 경로는 $0으로 표시됩니다.</p>}
+    <div className="row" data-tour="posts-actions"><input className="input" style={{ width: 260 }} placeholder="제목/슬러그 검색" value={q} onChange={(e) => setQ(e.target.value)} /><span className="muted small">{selected.size}개 선택 / {filtered.length}개</span>{busy && <span className="muted small">처리 중...</span>}<button className="btn" onClick={() => job("dedup")} disabled={posts.length < 2 || busy}>중복 검사</button><button className="btn" onClick={() => job("prune")} disabled={!posts.length || busy}>가지치기</button><button className="btn" onClick={() => job("indexing")} disabled={!posts.length || busy}>색인 요청</button><button className="btn" onClick={() => exportSelected("markdown")} disabled={!selected.size || busy}>Markdown Export</button><button className="btn primary" onClick={() => exportSelected("html")} disabled={!selected.size || busy}>HTML Export</button><button className="btn danger" onClick={delSelected} disabled={!selected.size || busy}>삭제</button>
+      {/* 게이트를 통과 못해 격리된 글로 가는 유일한 입구다. 예전에는 /posts 라우트 머리글에만
+          있어서, 개요의 posts 탭(튜토리얼이 착지하는 곳)으로 온 사람은 격리된 글이 있다는 것조차
+          몰랐다. 목록을 렌더하는 이 컴포넌트에 두면 두 경로 모두에서 보인다. */}
+      <Link className="btn" href={`/t/${encodeURIComponent(domain.domain)}/drafts`}>검수 대기(게이트 미통과) →</Link></div>
+    {scoped.length > 0 && aggCost === 0 &&<p className="muted small">비용($)은 종량 API 사용 시에만 계측됩니다. 이미지는 OpenAI 이미지 API + <code>SEO_IMAGE_PRICE_USD</code>(장당 단가) 설정, 텍스트는 API LLM이 필요합니다. Codex/구독 경로는 $0으로 표시됩니다.</p>}
     <div className="table-wrap"><table><thead><tr><th><input type="checkbox" checked={filtered.length > 0 && selected.size === filtered.length} onChange={() => setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((p) => p.id)))} /></th><th>제목</th><th>디자인</th><th>자수</th><th>이미지</th><th>provider</th><th>비용$</th><th>생성일</th></tr></thead><tbody>{filtered.map((p) => <tr key={p.id}><td><input type="checkbox" checked={selected.has(p.id)} onChange={() => setSelected((prev) => { const n = new Set(prev); n.has(p.id) ? n.delete(p.id) : n.add(p.id); return n; })} /></td><td><Link href={`/t/${encodeURIComponent(domain.domain)}/post/${p.id}`}><b>{p.title}</b></Link><p className="muted small mono">{p.slug}</p></td><td><span className="badge">{p.design_template_id ?? domain.design_template_id}</span></td><td>{p.body_chars?.toLocaleString()}</td><td>{p.image_count ?? 0}</td><td>{p.provider}</td><td>{postCost(p) ? postCost(p).toFixed(3) : "-"}</td><td className="small muted">{formatDateTime(p.generated_at)}</td></tr>)}</tbody></table></div></div>;
 }
 
