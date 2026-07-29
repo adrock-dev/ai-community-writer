@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { EXCLUDED_FROM_ARTICLE, researchFactParts } from "../src/academy-research-article-fields.js";
+import { EXCLUDED_FROM_ARTICLE, cleanFacilities, researchFactParts } from "../src/academy-research-article-fields.js";
 
 // 조사값이 facts 로 나가는 규칙. 원천과의 우선순위·상한이 어긋나면 프롬프트에서
 // 값이 병기되거나(전화번호 사고와 같은 형태) 카드가 산만해진다.
@@ -81,4 +81,22 @@ it("허용 목록에 없는 값은 조사값 묶음에 있어도 나가지 않�
 it("값이 없거나 빈 문자열이면 줄을 만들지 않는다", () => {
   expect(researchFactParts(null)).toEqual([]);
   expect(researchFactParts({ facilities: "   ", self_test: null })).toEqual([]);
+});
+
+it("편의시설에서 시설이 아닌 태그를 뺀다", () => {
+  // 네이버 플레이스가 업종 구분 없이 붙이는 태그를 조사가 그대로 옮겨 담았다
+  // (facilities 281건 중 212건에 섞여 있었다). 소스에 실제로 있는 낱말이라 근거 검사는 통과한다.
+  expect(cleanFacilities("예약, 주차, 남/녀 화장실 구분, 무선 인터넷"))
+    .toBe("주차, 남/녀 화장실 구분, 무선 인터넷");
+  expect(cleanFacilities("예약, 방문접수/출장, 반려동물 동반, 간편결제, 단체 이용 가능")).toBe("");
+  // 뺀 뒤 남는 것이 없으면 그 줄은 나가지 않는다.
+  expect(researchFactParts({ facilities: "예약" })).toEqual([]);
+  expect(researchFactParts({ facilities: "예약, 주차" })).toEqual(["편의시설(조사): 주차"]);
+});
+
+it("쉼표가 없는 서술형 편의시설은 손대지 않는다", () => {
+  // 가운뎃점으로 나누면 "기능·도로·셔틀 대기실" 이라는 하나의 시설명이 셋으로 찢어진다.
+  const value = "기능·도로·셔틀 대기실 (대기실 TV로 도로주행 코스 영상 상영)";
+  expect(cleanFacilities(value)).toBe(value);
+  expect(researchFactParts({ facilities: value })).toEqual([`편의시설(조사): ${value}`]);
 });

@@ -29,8 +29,42 @@ export const CROSS_CHECK_ONLY = new Set([
   "jibun_address",
 ]);
 
+/**
+ * 네이버 플레이스가 업종 구분 없이 붙이는 태그 중 **편의시설이 아닌 것**.
+ *
+ * 조사가 플레이스의 편의 태그를 그대로 옮겨 담아, facilities 281건 중 212건(75%)에
+ * 예약 방식·결제 수단이 섞여 있었다. "예약"만 들어 있어 글에 쓸 것이 하나도 없는 값도 2건.
+ * 소스에 실제로 있는 낱말이라 근거 검사는 통과한다 — "그 필드에 담길 내용인가" 는
+ * 검사가 보지 않는 축이다.
+ *
+ * 값은 건드리지 않고 **글로 나갈 때만** 뺀다. 조사 원문은 검수 근거로 남아야 한다.
+ */
+const NON_FACILITY_TAGS = [
+  "예약", "방문접수", "출장", "단체 이용 가능", "간편결제", "반려동물 동반",
+  "무인계산", "포장", "배달", "무료주차 " /* 정책 표기 */,
+];
+
+/**
+ * 쉼표로 나열된 편의시설에서 시설이 아닌 조각을 뺀다.
+ *
+ * 쉼표가 없는 값(서술형 한 문장)은 손대지 않는다 — 가운뎃점으로 나누면
+ * "기능·도로·셔틀 대기실" 같은 하나의 시설명이 셋으로 찢어진다.
+ */
+export function cleanFacilities(value: string): string {
+  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
+  if (parts.length <= 1) {
+    const single = value.trim();
+    // 태그 하나짜리 값이 시설이 아니면 남길 것이 없다(실측: "예약" 만 있는 값 2건).
+    // 길이로 태그와 서술형 문장을 가른다 — 문장 안에 "예약" 이 들어갔다고 통째로 버리면 안 된다.
+    return single.length <= 12 && NON_FACILITY_TAGS.some((tag) => single.includes(tag)) ? "" : single;
+  }
+  return parts.filter((part) => !NON_FACILITY_TAGS.some((tag) => part.includes(tag))).join(", ");
+}
+
 export interface ArticleResearchField {
   key: string;
+  /** 글로 내보내기 직전에 값을 다듬는다. 빈 문자열을 돌려주면 그 줄은 나가지 않는다. */
+  clean?: (value: string) => string;
   /** facts 에 붙일 라벨. 원천 사실과 구분되도록 「(조사)」를 단다. */
   label: string;
   /**
@@ -46,7 +80,7 @@ export interface ArticleResearchField {
  */
 export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   // 원천이 0% 인 항목들. 조사가 존재하는 이유이자 그 학원만의 강조점이 되는 자리다.
-  { key: "facilities", label: "편의시설(조사)" },
+  { key: "facilities", label: "편의시설(조사)", clean: cleanFacilities },
   { key: "self_test", label: "자체 시험장(조사)" },
   { key: "night_class", label: "야간반(조사)" },
   { key: "weekend", label: "주말반(조사)" },
@@ -130,7 +164,9 @@ export function researchFactParts(
     if (!value) continue;
     if (MACHINE_VALUES.has(value.toLowerCase())) continue;
     if (field.sourceWins && sourceHas.has(field.key)) continue;
-    parts.push(`${field.label}: ${value}`);
+    const cleaned = field.clean ? field.clean(value).trim() : value;
+    if (!cleaned) continue;
+    parts.push(`${field.label}: ${cleaned}`);
   }
   return parts;
 }
