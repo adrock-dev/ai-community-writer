@@ -92,6 +92,10 @@ export type GenerationPromptOptions = {
 
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 
+// 잡을 처리하는 동안 맥을 짚는 주기. stale 판정 임계(제한시간+여유, 최소 60+60초)보다
+// 훨씬 짧아야 의미가 있고, DB 쓰기가 잦아질 이유는 없으니 30초면 충분하다.
+const HEARTBEAT_INTERVAL_MS = 30_000;
+
 @Injectable()
 export class WorkerService {
   private running = false;
@@ -112,12 +116,17 @@ export class WorkerService {
     while (this.running) {
       const job = this.db.claimNextJob();
       if (!job) { await sleep(interval); continue; }
+      // 잡을 처리하는 내내 맥을 짚는다. 진행 보고(updateJobProgress)는 슬롯 경계에서만
+      // 불려서, 그 사이 LLM 호출이 길어지면 살아 있는 워커가 stale 로 몰렸다.
+      const heartbeat = setInterval(() => this.db.touchJobHeartbeat(job.id), HEARTBEAT_INTERVAL_MS);
       try {
         const result = await this.process(job);
         if (this.db.isJobCancelRequested(job.id)) this.db.completeJob(job.id, false, result, "취소됨(작업자 요청)");
         else this.db.completeJob(job.id, true, result);
       } catch (error: any) {
         this.db.completeJob(job.id, false, undefined, error?.message || String(error));
+      } finally {
+        clearInterval(heartbeat);
       }
     }
   }

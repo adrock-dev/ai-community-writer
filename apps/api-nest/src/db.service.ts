@@ -1403,6 +1403,21 @@ export class DbService implements OnModuleInit {
       [ok ? "done" : "failed", nowSql(), nowSql(), ok ? "완료" : "실패", Number(result?.ok ?? 0), Number(result?.fail ?? 0), result ? JSON.stringify(result) : null, error ?? null, jobId],
     );
   }
+  /**
+   * 진행 단계는 그대로 두고 "아직 살아 있다"만 알린다.
+   *
+   * updateJobProgress 는 슬롯 경계에서만 불린다. 그 사이 LLM 호출은 몇 분씩 걸리는데
+   * 그 동안 heartbeat 가 멈춰 있어, 워커가 멀쩡히 일하는 중에도 recoverStaleRunningJobs 가
+   * 잡을 실패로 정리했다(실측 3건). 한 건은 글이 정상 발행됐는데도 잡만 실패로 남았다.
+   *
+   * timeout 을 늘리는 것으로는 못 고친다 — 그러면 진짜로 멈춘 워커를 늦게 발견할 뿐이다.
+   * 살아 있는 동안 맥을 짚어야 stale 판정이 실제 죽음만 잡는다. 프로세스가 죽으면 이걸
+   * 부르던 타이머도 함께 죽으므로 감지력은 오히려 정확해진다.
+   */
+  touchJobHeartbeat(jobId: string | undefined): void {
+    if (!jobId) return;
+    this.run("UPDATE jobs SET heartbeat_at=? WHERE id=? AND status='running'", [nowSql(), jobId]);
+  }
   updateJobProgress(jobId: string | undefined, progress: { step: string; slotId?: string | null; processed?: number; failed?: number }): void {
     if (!jobId) return;
     this.run(
