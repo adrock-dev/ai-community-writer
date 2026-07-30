@@ -47,7 +47,10 @@ flowchart LR
 6. 워커는 슬롯을 글로 변환하고 품질 게이트를 통과한 결과를 `posts` 테이블과 산출물 파일로 저장한다.
 7. 외부 사이트는 `apps/api-nest/src/public.controller.ts`의 공개 API를 통해 발행 글과 렌더링 HTML을 조회한다.
 8. 학원 자료는 **업종 단위**로 별도 조사 DB(`data/academy_research.db`)에 모이고, 도메인은 「학원자료 연결」로 그중 필요한 것만 `academies`로 가져온다(연결 시점에 지역 배정·셔틀 운행 지역 같은 파생값이 계산돼 박힌다).
-9. 워커는 후기 근거로 `academies.review`/`review_json`(자체 수강생 리뷰)만 쓴다. **`blog_reviews`는 수집·사용 모두 중단됐다** — 자료 오배정·중복배정 때문이며 판단 근거는 `docs/source-field-usage.md` §3.6이 정본이다.
+9. 워커는 후기 근거로 `academies.review`/`review_json`(자체 수강생 리뷰)만 쓴다. `blog_reviews`는 **수집과 사용이 서로 다르게 막혀 있다**:
+   - **수집 = 스위치, 기본 꺼짐.** `runtime-config.blogReviewSyncEnabled()`가 `app_settings` → 환경변수 `DRIVINGPLUS_BLOG_REVIEW_SYNC` → 꺼짐 순으로 판정한다. 운영자가 「작업환경」에서 다시 켤 수 있다.
+   - **사용 = 코드로 하드 오프.** 스위치를 켜도 프롬프트에는 들어가지 않는다(`worker.service.ts`의 후기 근거 구성). 즉 스위치를 켜면 자료가 다시 쌓이기만 하고 글에는 반영되지 않는다.
+   - 이렇게 갈라 둔 이유(원천이 학원명을 느슨하게 매칭해 오배정·중복배정이 섞인다)와 재개 조건은 `docs/source-field-usage.md` §3.6이 정본이다. 이미 수집된 자료는 학원 상세 화면 참고용으로 보존된다.
 
 ## 4. 백엔드 분석
 
@@ -133,7 +136,7 @@ SQLite 파일 경로는 기본 `data/admin.db`이며, 배포 환경에서는 `SE
 | 학원 목록 | `academy_type`, `q`, `has_photos` 필터와 `academy_types` 집계 포함 | `apps/api-nest/src/admin.controller.ts`, `apps/api-nest/src/db.service.ts` |
 | 외부 동기화 | 학원 동기화, 지역 동기화, 통합 동기화 엔드포인트가 분리되어 있음 | `apps/api-nest/src/admin.controller.ts` |
 | 생성 작업 | 이미지 생성 옵션(`enable_image_generation`, `image_generation_required`, `image_count`, `image_size`, `image_model`, `image_provider`) 포함 | `apps/api-nest/src/admin.controller.ts`, `apps/admin-next/lib/types.ts` |
-| 리뷰 데이터 | 학원 자료에 `review`, `review_json`, `blog_reviews` 컬럼이 있으나 **워커가 후기 근거로 쓰는 것은 `review`/`review_json`(자체 수강생 리뷰)뿐**이다. `blog_reviews`는 수집·사용 모두 중단 | `apps/api-nest/src/db.service.ts`, `apps/api-nest/src/worker.service.ts`, `docs/source-field-usage.md` §3.6 |
+| 리뷰 데이터 | 학원 자료에 `review`, `review_json`, `blog_reviews` 컬럼이 있으나 **워커가 후기 근거로 쓰는 것은 `review`/`review_json`(자체 수강생 리뷰)뿐**이다. `blog_reviews`는 수집이 스위치(기본 꺼짐)이고 사용은 코드로 하드 오프 — §3 참조 | `apps/api-nest/src/db.service.ts`, `apps/api-nest/src/worker.service.ts`, `apps/api-nest/src/runtime-config.ts`, `docs/source-field-usage.md` §3.6 |
 | 공개 API | 공개 학원 쓰기 `POST /api/v1/:domain/academies`가 있고, `PUBLIC_WRITE_TOKEN`으로 보호 가능 | `apps/api-nest/src/public.controller.ts` |
 
 세부 요청/응답 계약은 `docs/admin-json-api.md`에 현재 코드 기준으로 갱신했다.
