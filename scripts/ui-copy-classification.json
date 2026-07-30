@@ -823,9 +823,9 @@
       "match": "codex/claude CLI 설치·인증 확인",
       "class": "B",
       "depends": [
-        "apps/api-nest/src/worker.service.ts runLlm"
+        "apps/api-nest/src/llm-runner.ts runLlm"
       ],
-      "note": "LLM 실행 경로가 CLI 서브프로세스라는 사실에 매달린다. 프로바이더 방식이 바뀌면 안내가 거짓이 된다."
+      "note": "LLM 실행 경로가 CLI 서브프로세스라는 사실에 매달린다. 프로바이더 방식이 바뀌면 안내가 거짓이 된다. 종속이 worker.service.ts 로 등록돼 있었는데 runLlm 은 llm-runner.ts 로 공용 추출됐고, 그래서 러너를 고쳐도 이 문구가 경고에 걸리지 않았다(llm-runner 에는 이미 CLI 가 아닌 openai_responses 경로가 있다)."
     },
     {
       "file": "apps/api-nest/src/admin.controller.ts",

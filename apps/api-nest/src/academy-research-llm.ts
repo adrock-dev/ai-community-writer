@@ -1,8 +1,11 @@
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 
-// 학원 심층조사용 LLM CLI 래퍼. worker.service 의 runLlm 패턴을 재사용하되,
-// "웹 조사 + 엄격한 JSON 반환"에 특화. claude 우선 → 없으면 codex.
+// 학원 심층조사용 LLM CLI 래퍼. `llm-runner.ts` 의 runLlm 패턴을 재사용하되(공용 추출 전
+// worker.service 에 있던 코드다 — 그 시절 경로가 주석에 남아 있었다),
+// "엄격한 JSON 반환"에 특화한 별개 함수다. codex 우선 → 없으면 claude.
+// ⚠️ runLlm 과 코드를 공유하지 않는다. LLM 실행 규칙(프로바이더·env·타임아웃)을 바꿀 때
+// 한쪽만 고치면 다른 쪽은 조용히 옛 동작을 유지한다.
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 
 export type ResearchProvider = "claude" | "codex";

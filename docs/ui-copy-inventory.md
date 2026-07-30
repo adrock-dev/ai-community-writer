@@ -142,7 +142,7 @@
 | `apps/admin-next/lib/api.ts:23` | lib-string | 콘텐츠 API에 연결할 수 없습니다<br>_프록시·base URL 설정에 매달린 진단 문구다._ | `apps/admin-next/app/api/admin/[...path]/route.ts`<br>`SEO_API_BASE_URL` |
 | `apps/admin-next/lib/domain-gate.ts:12` | lib-string | 도메인을 만든 뒤 원천 데이터 동기화 → 후보 생성 → 테스트 작성 순서로 진행하세요.<br>_권장 순서를 단정한다 — 후보 생성이 선행 조건이라는 사실에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
 | `apps/api-nest/src/admin.controller.ts:151` | api-error | 등록되지 않은 업종입니다. 작업환경에서 먼저 추가하세요.<br>_업종 레지스트리 검증 결과를 사용자에게 설명한다._ | `apps/api-nest/src/admin.controller.ts 업종 검증`<br>`apps/api-nest/src/db.service.ts getVerticals` |
-| `apps/api-nest/src/admin.controller.ts:328` | api-error | LLM 호출 실패: ${result.error \|\| "빈 응답"} (codex/claude CLI 설치·인증 확인)<br>_LLM 실행 경로가 CLI 서브프로세스라는 사실에 매달린다. 프로바이더 방식이 바뀌면 안내가 거짓이 된다._ | `apps/api-nest/src/worker.service.ts runLlm` |
+| `apps/api-nest/src/admin.controller.ts:328` | api-error | LLM 호출 실패: ${result.error \|\| "빈 응답"} (codex/claude CLI 설치·인증 확인)<br>_LLM 실행 경로가 CLI 서브프로세스라는 사실에 매달린다. 프로바이더 방식이 바뀌면 안내가 거짓이 된다. 종속이 worker.service.ts 로 등록돼 있었는데 runLlm 은 llm-runner.ts 로 공용 추출됐고, 그래서 러너를 고쳐도 이 문구가 경고에 걸리지 않았다(llm-runner 에는 이미 CLI 가 아닌 openai_responses 경로가 있다)._ | `apps/api-nest/src/llm-runner.ts runLlm` |
 | `apps/api-nest/src/admin.controller.ts:330` | api-error | LLM 응답에서 축 값을 추출하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 축 제안` |
 | `apps/api-nest/src/admin.controller.ts:344` | api-error | 검증할 방향성(direction)을 입력하세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
 | `apps/api-nest/src/admin.controller.ts:355` | api-error | LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
