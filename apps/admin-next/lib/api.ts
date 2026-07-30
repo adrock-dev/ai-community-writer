@@ -144,8 +144,16 @@ export const getCoherence = (domain: string) =>
 
 export const replaceAxis = (domain: string, axis: Axis, values: AxisValue[]) =>
   api<{ ok: true }>(`/domains/${encodeURIComponent(domain)}/axes/${axis}`, { method: "PUT", body: JSON.stringify({ values }) });
+/**
+ * 큰 요청은 서버가 여러 잡으로 쪼개 넣는다(admin.controller 의 GENERATE_JOB_MAX_SLOTS).
+ * `job_id` 는 첫 조각이라 예전 호출부와 호환되지만, 실제로 몇 개가 등록됐는지는
+ * `job_count` 로만 알 수 있다 — 그것만 보여주면 운영자는 1건이 등록된 줄 안다.
+ */
 export const enqueueGenerate = (domain: string, body: Record<string, unknown>) =>
-  api<{ ok: true; job_id: string; slot_count?: number }>(`/domains/${encodeURIComponent(domain)}/jobs/generate`, { method: "POST", body: JSON.stringify(body) });
+  api<{ ok: true; job_id: string; job_ids?: string[]; job_count?: number; slot_count?: number; max_slots_per_job?: number }>(
+    `/domains/${encodeURIComponent(domain)}/jobs/generate`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
 export async function downloadPostExport(domain: string, body: { post_ids: string[]; format: "markdown" | "html" }): Promise<Blob> {
   const res = await fetch(`/api/admin/domains/${encodeURIComponent(domain)}/posts/export`, {
     method: "POST",

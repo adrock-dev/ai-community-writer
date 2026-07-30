@@ -124,6 +124,20 @@ export const ACADEMY_NEARBY_MAX_KM = Number(process.env.SEO_ACADEMY_NEARBY_MAX_K
 // (조합이 이보다 적으면 있는 만큼만 생성 — 중복으로 채우지 않는다.)
 export const MAX_SLOTS_PER_TEMPLATE = Number(process.env.SEO_MAX_SLOTS_PER_TEMPLATE) || 10000;
 
+/**
+ * 작성 잡 하나가 담는 최대 슬롯 수. 요청이 이보다 많으면 **여러 잡으로 쪼개** 큐에 넣는다.
+ *
+ * 쪼개는 이유는 성능이 아니라 **완주 가능성**이다. 잡 하나가 진행 중에 워커가 죽으면
+ * (`npm run dev` 중 `apps/api-nest/src` 저장 → tsx watch 재시작) 그 잡은 stale 복구로
+ * `failed` 가 되고 **남은 슬롯 전부가 통째로 버려진다.** 운영자가 다시 눌러야 이어진다.
+ * 쪼개 두면 죽은 잡 하나만 잃고 나머지는 `queued` 로 남아 워커가 살아난 뒤 자동으로 이어진다.
+ *
+ * 실측(2026-07-30): 글 1건이 생성 140초 + 쿨다운 60초 ≈ 3분. 1000건 단일 잡은 약 50시간이라
+ * dev 환경에서 완주가 불가능했다(3분 만에 죽어 999건이 버려졌다). 이 값은 "한 번 죽을 때
+ * 버리는 양"을 정한다 — 작을수록 손실이 적고, 대신 작업 큐 목록이 길어진다.
+ */
+export const GENERATE_JOB_MAX_SLOTS = Math.max(1, Number(process.env.SEO_GENERATE_JOB_MAX_SLOTS) || 25);
+
 // 학원 후보 풀 크기(직접+인근 합). 인근은 이 개수를 채우는 만큼만 가까운 순으로 가져온다.
 // 생성·미리보기 공통. 밀집 지역이 반경 안 학원을 과다 표시/사용하지 않도록 캡 역할.
 export const ACADEMY_MAX_CANDIDATES = Number(process.env.SEO_ACADEMY_MAX_CANDIDATES) || 7;

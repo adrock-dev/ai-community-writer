@@ -1452,11 +1452,21 @@ export class DbService implements OnModuleInit {
     for (const row of rows) {
       const payload = safeJson(row.payload, {});
       const staleAfterMin = jobStaleRecovery(row, extraGraceSec)?.afterMin ?? 0;
+      // 취소를 눌러 둔 잡이 **여기까지 왔다는 것 자체가 협조적 취소의 실패**다. 워커가 살아
+      // 있었으면 슬롯 경계에서 스스로 멈추고 completeJob 으로 끝냈을 것이다(worker.service 의
+      // 취소 확인). 그러니 이 경로의 취소는 "취소되어 멈춤"이 아니라 "취소가 반영되기도 전에
+      // 작업자가 죽어 있었음"을 뜻한다.
+      //
+      // 예전에는 이 경우 메시지가 `취소됨(작업자 요청, …)` 으로 시작해 협조적 취소와 **글자만
+      // 다르고 첫인상이 같았다.** 취소 버튼이 일한 것처럼 읽혀 워커 사망이 그 뒤에 숨는다
+      // (실측 2026-07-30: heartbeat 가 3분 만에 멈춘 1000개 잡이 「취소됨」으로 남아,
+      //  heartbeat_at 과 finished_at 사이 25분 공백을 직접 뒤지고서야 재시작으로 죽은 걸 알았다).
+      // 그래서 두 경우 모두 **응답 끊김을 문장 앞에 두고** 취소 요청은 괄호 안 부가 정보로 내린다.
       const cancelled = Number(row.cancel_requested ?? 0) === 1;
       const message = cancelled
-        ? `취소됨(작업자 요청, 제한시간+여유 ${staleAfterMin}분 이상 응답 없음)`
+        ? `작업자 응답 없음으로 자동 정리됨(취소 요청됐으나 반영 전에 작업자가 멈춤, 마지막 응답 후 ${staleAfterMin}분)`
         : `실패 처리됨(작업자 응답 없음, 제한시간+여유 ${staleAfterMin}분 초과)`;
-      const step = cancelled ? "취소 복구 처리" : "응답 없음 복구 처리";
+      const step = cancelled ? "응답 없음 복구 처리(취소 요청됨)" : "응답 없음 복구 처리";
       this.run("UPDATE jobs SET status='failed', finished_at=?, current_slot_id=NULL, current_step=?, error=coalesce(error, ?) WHERE id=? AND status='running'", [nowSql(), step, message, row.id]);
       this.recoverInProgressSlots(payload?.slot_ids, message);
     }

@@ -9,7 +9,7 @@ import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyLinkService } from "./academy-link.service.js";
 import { parseResearchUsage } from "./academy-research-usage.js";
 import { isAheadOfLink } from "./link-freshness.js";
-import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEPRECATED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
+import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEPRECATED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATE_JOB_MAX_SLOTS, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
@@ -902,8 +902,7 @@ export class AdminController {
       });
       if (nonT01) throw new HttpException(`${generationMode} is only supported for T01 slots`, 400);
     }
-    const job_id = this.db.enqueueJob(domain, "generate", {
-      slot_ids: slotIds,
+    const jobPayload = {
       provider: parseLlmProvider(body.provider),
       model: String(body.model || "").trim(),
       design_template_id: body.design_template_id,
@@ -917,8 +916,23 @@ export class AdminController {
       image_model: String(body.image_model || "").trim(),
       image_provider: String(body.image_provider || "private-codex").trim(),
       generation_mode: generationMode,
-    });
-    return { ok: true, job_id, slot_count: slotIds.length };
+    };
+    // 큰 요청은 **여러 잡으로 쪼개** 넣는다. 잡 하나가 진행 중에 워커가 죽으면 그 잡의 남은
+    // 슬롯이 통째로 버려지는데(stale 복구는 잡 단위다), 쪼개 두면 죽은 잡 하나만 잃고 나머지는
+    // queued 로 남아 워커가 살아난 뒤 자동으로 이어진다. 근거·크기는 GENERATE_JOB_MAX_SLOTS 참조.
+    const chunks: string[][] = [];
+    for (let i = 0; i < slotIds.length; i += GENERATE_JOB_MAX_SLOTS) chunks.push(slotIds.slice(i, i + GENERATE_JOB_MAX_SLOTS));
+    const job_ids = chunks.map((ids, index) =>
+      this.db.enqueueJob(domain, "generate", {
+        ...jobPayload,
+        slot_ids: ids,
+        // 쿨다운은 슬롯 **사이**에만 들어간다(worker.processGenerate). 쪼개면 잡 경계마다 그
+        // 간격이 사라져 LLM CLI 호출이 몰리므로, 마지막이 아닌 잡은 끝에도 쿨다운을 둔다.
+        ...(index < chunks.length - 1 ? { cooldown_after_last: true } : {}),
+        ...(chunks.length > 1 ? { chunk_index: index + 1, chunk_total: chunks.length } : {}),
+      }),
+    );
+    return { ok: true, job_id: job_ids[0], job_ids, job_count: job_ids.length, slot_count: slotIds.length, max_slots_per_job: GENERATE_JOB_MAX_SLOTS };
   }
   @Post("domains/:domain/jobs/dedup")
   enqueueDedup(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {

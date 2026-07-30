@@ -25,10 +25,31 @@ const POLL_MAX_ERRORS_IN_A_ROW = 10;
 // 자동 선별 3개 버튼은 **개수만** 다르다. 규칙은 서버 한 곳(db.service.selectSlotsForBatch)에
 // 하나뿐이므로, 이름에 규칙을 적지 않는다 — 예전 「현재 검색 N개」·「전국 골고루 N개」는 버튼마다
 // 규칙이 다르던 시절의 이름이고, 실제로 뽑히는 글이 이름과 달라 오해를 만들었다.
+// 후보 목록 표에 한 번에 불러오는 최대 행 수. 서버는 offset 페이징을 지원하지만(admin.controller
+// 의 slots 조회) 화면은 아직 첫 페이지만 그린다 — 그래서 이 숫자가 「보이는 것」의 상한이고,
+// 안내멘트가 이 값을 렌더해 총 개수와의 차이를 알린다. 자동 선별은 이 상한과 무관하게 서버 풀
+// 전체를 대상으로 한다.
+const SLOT_LIST_LIMIT = 1000;
 const WRITE_BATCH_MID = 10;
 const WRITE_BATCH_LARGE = 100;
 const WRITE_BATCH_MID_LABEL = `${WRITE_BATCH_MID}개 작성`;
 const WRITE_BATCH_LARGE_LABEL = `${WRITE_BATCH_LARGE}개 작성`;
+
+/**
+ * 작성 큐 등록 결과 안내.
+ *
+ * 서버는 큰 요청을 여러 작업으로 쪼개 넣는다(admin.controller 의 GENERATE_JOB_MAX_SLOTS).
+ * 그 사실을 알리지 않으면 1건이 등록된 줄 알고 작업 큐를 열었다가 목록이 수십 줄인 것을
+ * 보고 오작동으로 오해한다. 나눈 개수와 그 이유(중단돼도 나머지가 이어진다)를 함께 적는다.
+ */
+function queuedMessage(label: string, res: Awaited<ReturnType<typeof enqueueGenerate>>, fallbackCount: number): string {
+  const slots = (res.slot_count ?? fallbackCount).toLocaleString();
+  const jobs = res.job_count ?? 1;
+  const tail = "작업 큐 탭에서 진행상태를 확인하세요.";
+  if (jobs <= 1) return `${label}: 글 ${slots}개를 작업 1건으로 등록했습니다.\n${tail}`;
+  const per = (res.max_slots_per_job ?? 0).toLocaleString();
+  return `${label}: 글 ${slots}개를 작업 ${jobs.toLocaleString()}건으로 나눠 등록했습니다(작업 하나당 최대 ${per}개).\n하나가 중단돼도 나머지는 큐에 남아 이어서 처리됩니다.\n${tail}`;
+}
 
 /**
  * 동기화가 "성공"으로 끝났어도 운영자가 알아야 하는 것을 문장으로 만든다.
@@ -1914,7 +1935,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   async function loadCurrentSlots() {
     setLoadingSlots(true); setSlotError("");
     try {
-      const payload = await listSlots(domain.domain, { status, template, q, limit: 1000 });
+      const payload = await listSlots(domain.domain, { status, template, q, limit: SLOT_LIST_LIMIT });
       setRemoteSlots(payload.items); setRemoteTotal(payload.total ?? payload.count);
     } catch (err) { setSlotError(err instanceof Error ? err.message : String(err)); }
     finally { setLoadingSlots(false); }
@@ -1924,7 +1945,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     const handle = window.setTimeout(async () => {
       setLoadingSlots(true); setSlotError("");
       try {
-        const payload = await listSlots(domain.domain, { status, template, q, limit: 1000 });
+        const payload = await listSlots(domain.domain, { status, template, q, limit: SLOT_LIST_LIMIT });
         if (!cancelled) { setRemoteSlots(payload.items); setRemoteTotal(payload.total ?? payload.count); setSelected(new Set()); }
       } catch (err) { if (!cancelled) setSlotError(err instanceof Error ? err.message : String(err)); }
       finally { if (!cancelled) setLoadingSlots(false); }
@@ -1961,7 +1982,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     setQueueBusy(true);
     try {
       const r = await enqueueGenerate(domain.domain, { slot_ids: ids, max_per_template: max, ...writerPayload });
-      alert(`작업 큐 등록: ${r.job_id} · ${r.slot_count ?? ids.length}개\\n작업 큐 탭에서 진행상태를 확인하세요.`);
+      alert(queuedMessage("작업 큐 등록", r, ids.length));
       setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs");
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -1976,7 +1997,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     setQueueBusy(true);
     try {
       const r = await enqueueGenerate(domain.domain, { ...body, max_per_template: max, ...writerPayload });
-      alert(`${label} 큐 등록: ${r.job_id} · ${r.slot_count ?? count}개\\n작업 큐 탭에서 진행상태를 확인하세요.`);
+      alert(queuedMessage(`${label} 큐 등록`, r, count));
       setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); onTab("jobs");
     } catch (err) {
       alert(err instanceof Error ? err.message : String(err));
@@ -2043,7 +2064,9 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         <div data-tour="slots-list-head">
           <p className="eyebrow">후보 목록</p>
           <h2>후보 검색·선택</h2>
-          <p className="muted small">여기서 고른 필터는 목록 표시와 아래 2단계 자동 선별(「1개 테스트」·「{WRITE_BATCH_MID}개」·「{WRITE_BATCH_LARGE}개」)에 함께 쓰입니다. 체크한 후보는 2단계 「선택 N개 작성」으로 씁니다.</p>
+          {/* 개수를 나열하지 않는다 — 버튼 묶음 이름(자동 선별·직접 선택)으로 가리키면 개수가
+              바뀌어도 이 문장은 그대로 맞다. */}
+          <p className="muted small">여기서 고른 필터는 목록 표시와 아래 2단계 「자동 선별」 버튼에 함께 쓰입니다. 체크한 후보는 2단계 「직접 선택」으로 씁니다.</p>
         </div>
         <div className="row" data-tour="slots-filter">
           <select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","skipped"].map((s) => <option key={s}>{s}</option>)}</select>
@@ -2051,6 +2074,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <input className="input" style={{ width: 320 }} placeholder="지역/키워드/후보 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />
           {["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}
           <span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span>
+          {remoteTotal > filtered.length && <span className="muted small">표에는 우선순위 상위 {filtered.length.toLocaleString()}개만 보입니다 — 남은 {(remoteTotal - filtered.length).toLocaleString()}개는 검색으로 좁혀 보세요. 「자동 선별」은 안 보이는 후보까지 전부 대상입니다.</span>}
           <button className="btn" disabled={!selected.size || busy || queueBusy} title="선택한 후보를 작성 대기(planned)로 되돌리고 오류 메시지를 지웁니다. 실패한 후보는 이걸 해야 「1개 테스트」·「N개 작성」의 자동 선별에 다시 들어옵니다." onClick={resetSelected}>{busy ? "처리 중..." : "다시 대기로"}</button>
           <button className="btn danger" disabled={!selected.size || busy || queueBusy} onClick={delSelected}>{busy ? "삭제 중..." : "삭제"}</button>
         </div>
@@ -2083,18 +2107,26 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         {/* 왼쪽 3개는 같은 규칙(WRITE_BATCH_RULE)으로 개수만 다르다. 맨 오른쪽만 규칙이 다르다 —
             사람이 체크한 후보를 그대로 쓰므로 상태도 지역도 보지 않는다. */}
         <div className="row">
-          <button className="btn primary" data-tour="slots-test" disabled={queueBusy || busy} title={`1건만 먼저 써서 품질을 확인하는 버튼입니다. 선별 규칙은 10개·100개와 같습니다 — ${WRITE_BATCH_RULE}.`} onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>{queueBusy ? "큐 등록 중..." : "1개 테스트 작성"}</button>
-          <button className="btn" disabled={queueBusy || busy} title={`${WRITE_BATCH_RULE}.`} onClick={() => smartQueue(WRITE_BATCH_MID_LABEL, { max: WRITE_BATCH_MID, q, template })}>{WRITE_BATCH_MID_LABEL}</button>
-          <button className="btn" disabled={queueBusy || busy} title={`${WRITE_BATCH_RULE}.`} onClick={() => smartQueue(WRITE_BATCH_LARGE_LABEL, { max: WRITE_BATCH_LARGE, q, template })}>{WRITE_BATCH_LARGE_LABEL}</button>
-          <button className={`btn ${selected.size ? "primary" : ""}`} disabled={!selected.size || queueBusy || busy} title="위 목록에서 체크한 후보만 씁니다. 왼쪽 3개와 달리 상태·지역을 보지 않으므로 이미 발행된 후보도 다시 씁니다." onClick={() => queue(Array.from(selected))}>{queueBusy ? "큐 등록 중..." : `선택 ${selected.size}개 작성`}</button>
-        </div>
-        <div className="row">
           <label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label>
           <label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => { const checked = e.target.checked; setImageGen(checked); setTimeout((value) => recommendedGenerationTimeoutSec(checked, value)); }} /> Codex 이미지 생성</label>
           <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
         </div>
         <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>제한 {effectiveTimeout}초</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
-        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → {WRITE_BATCH_MID}개 → {WRITE_BATCH_LARGE}개. 왼쪽 세 버튼은 <b>개수만 다르고 선별 규칙은 같습니다</b> — {WRITE_BATCH_RULE}. 무작위로 뽑지 않습니다: 지역이 겹치면 같은 지역 글끼리 내용이 겹치기 때문에 지역을 최대한 벌립니다.</p>
+        {/* 두 줄로 나눠 「같은 규칙 · 개수만 다름」과 「사람이 고른 것」의 경계를 이름 대신 배치로
+            드러낸다. 라벨을 버튼마다 붙이면(「자동 10개 작성」) 이름만 길어지고, 「임의」라고 적으면
+            무작위로 뽑는다는 뜻이 돼 사실과 달라진다 — 지역·유형·주제를 일부러 벌려 뽑는다. */}
+        <div className="row btn-group-row">
+          <span className="btn-group-label">자동 선별</span>
+          <button className="btn primary" data-tour="slots-test" disabled={queueBusy || busy} title={`1건만 먼저 써서 품질을 확인하는 버튼입니다. 선별 규칙은 10개·100개와 같습니다 — ${WRITE_BATCH_RULE}.`} onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>{queueBusy ? "큐 등록 중..." : "1개 테스트 작성"}</button>
+          <button className="btn" disabled={queueBusy || busy} title={`${WRITE_BATCH_RULE}.`} onClick={() => smartQueue(WRITE_BATCH_MID_LABEL, { max: WRITE_BATCH_MID, q, template })}>{WRITE_BATCH_MID_LABEL}</button>
+          <button className="btn" disabled={queueBusy || busy} title={`${WRITE_BATCH_RULE}.`} onClick={() => smartQueue(WRITE_BATCH_LARGE_LABEL, { max: WRITE_BATCH_LARGE, q, template })}>{WRITE_BATCH_LARGE_LABEL}</button>
+        </div>
+        <div className="row btn-group-row">
+          <span className="btn-group-label">직접 선택</span>
+          <button className={`btn ${selected.size ? "primary" : ""}`} disabled={!selected.size || queueBusy || busy} title="위 목록에서 체크한 후보만 씁니다. 자동 선별과 달리 상태·지역을 보지 않으므로 이미 발행된 후보도 다시 씁니다." onClick={() => queue(Array.from(selected))}>{queueBusy ? "큐 등록 중..." : `선택 ${selected.size}개 작성`}</button>
+          {!selected.size && <span className="muted small">위 목록에서 후보를 체크하면 켜집니다.</span>}
+        </div>
+        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → {WRITE_BATCH_MID}개 → {WRITE_BATCH_LARGE}개. 「자동 선별」 세 버튼은 <b>개수만 다르고 선별 규칙은 같습니다</b> — {WRITE_BATCH_RULE}. 무작위로 뽑지 않습니다: 지역이 겹치면 같은 지역 글끼리 내용이 겹치기 때문에 지역을 최대한 벌립니다.</p>
       </div>
     </div>
   );
