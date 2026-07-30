@@ -1,6 +1,6 @@
 "use client";
 
-import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getSourceFreshness, type SourceFreshness, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
+import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, resetSlot, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getSourceFreshness, type SourceFreshness, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
 import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
 import { formatDateTime } from "@/lib/date";
@@ -1982,6 +1982,31 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     }
   }
   async function delSelected() { if (busy || queueBusy || !confirm(`${selected.size}개 삭제?`)) return; setBusy(true); try { for (const id of selected) await api(`/domains/${encodeURIComponent(domain.domain)}/slots/${id}`, { method: "DELETE" }); setSelected(new Set()); await onRefresh(); await loadCurrentSlots(); } catch (err) { alert(err instanceof Error ? err.message : String(err)); } finally { setBusy(false); } }
+  /**
+   * 선택한 후보를 planned 로 되돌린다(오류 메시지도 지운다).
+   *
+   * 「선택 글 작성」은 상태를 보지 않으므로 재작성 자체는 이것 없이도 된다. 이 동작이 필요한 이유는
+   * **자동 선별 풀에 되돌리기** 위해서다 — 「1개 테스트」·「현재 검색 N개」·「전국 골고루」는 planned 만
+   * 고르므로, failed 로 남은 후보는 사람이 매번 직접 체크하지 않는 한 다시 뽑히지 않는다.
+   *
+   * 이미 발행된 후보를 되돌리면 자동 선별이 그 후보를 다시 골라 **같은 자리에 글을 새로 쓴다.**
+   * 기존 글이 지워지지는 않지만 사실상 중복 글이 생기므로 그때만 따로 확인을 받는다.
+   */
+  async function resetSelected() {
+    if (busy || queueBusy || !selected.size) return;
+    const publishedCount = filtered.filter((s) => selected.has(s.slot_id) && s.status === "published").length;
+    const warning = publishedCount
+      ? `\n\n발행 완료된 후보 ${publishedCount}개가 포함돼 있습니다. 되돌리면 자동 선별이 다시 골라 같은 자리에 글을 새로 씁니다(기존 글은 남습니다).`
+      : "";
+    if (!confirm(`${selected.size}개를 작성 대기(planned)로 되돌릴까요? 오류 메시지도 지워집니다.${warning}`)) return;
+    setBusy(true);
+    try {
+      for (const id of selected) await resetSlot(domain.domain, id);
+      setSelected(new Set());
+      await onRefresh(); await loadCurrentSlots();
+    } catch (err) { alert(err instanceof Error ? err.message : String(err)); }
+    finally { setBusy(false); }
+  }
   function toggleAllVisible() { setSelected((prev) => { if (selectedAllVisible) return new Set(); const next = new Set(prev); for (const s of filtered) next.add(s.slot_id); return next; }); }
   function applySlotTitle(slotId: string, title: string | null) { setRemoteSlots((prev) => prev.map((s) => s.slot_id === slotId ? { ...s, title } : s)); }
 
@@ -2050,6 +2075,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           {["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}
           <span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span>
           <button className="btn primary" disabled={!selected.size || queueBusy || busy} onClick={() => queue(Array.from(selected))}>{queueBusy ? "큐 등록 중..." : "선택 글 작성"}</button>
+          <button className="btn" disabled={!selected.size || busy || queueBusy} title="선택한 후보를 작성 대기(planned)로 되돌리고 오류 메시지를 지웁니다. 실패한 후보는 이걸 해야 「1개 테스트」·「현재 검색 N개」·「전국 골고루」의 자동 선별에 다시 들어옵니다." onClick={resetSelected}>{busy ? "처리 중..." : "다시 대기로"}</button>
           <button className="btn danger" disabled={!selected.size || busy || queueBusy} onClick={delSelected}>{busy ? "삭제 중..." : "삭제"}</button>
         </div>
         {slotError && <p className="small" style={{ color: "var(--danger)" }}>후보 검색 오류: {slotError}</p>}

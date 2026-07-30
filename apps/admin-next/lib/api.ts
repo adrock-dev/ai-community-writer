@@ -95,6 +95,16 @@ export const listSlots = (domain: string, params: { status?: string; template?: 
 // 슬롯 수동 제목 오버라이드 저장. title=null 이면 규칙/LLM 로 폴백.
 export const updateSlotTitle = (domain: string, slotId: string, title: string | null) =>
   api<{ ok: true; slot: import("./types").Slot }>(`/domains/${encodeURIComponent(domain)}/slots/${encodeURIComponent(slotId)}`, { method: "PATCH", body: JSON.stringify({ title }) });
+/**
+ * 슬롯을 planned 로 되돌리고 last_error 를 지운다.
+ *
+ * 「선택 글 작성」은 슬롯 상태를 보지 않으므로(worker 가 넘겨받은 slot_id 를 그대로 처리한다)
+ * 재작성 자체는 이것 없이도 된다. 이 호출이 필요한 이유는 **자동 선별 풀에 되돌리기** 위해서다 —
+ * 「1개 테스트」·「현재 검색 N개」·「전국 골고루」는 planned 만 고르므로, failed 로 남은 후보는
+ * 사람이 직접 체크해 주지 않는 한 영영 다시 뽑히지 않는다.
+ */
+export const resetSlot = (domain: string, slotId: string) =>
+  api<{ ok: true; slot: import("./types").Slot }>(`/domains/${encodeURIComponent(domain)}/slots/${encodeURIComponent(slotId)}/reset`, { method: "POST" });
 export const listAcademies = (domain: string, params: { region?: string; academy_type?: string; q?: string; has_photos?: boolean; limit?: number } = {}) => {
   const search = new URLSearchParams();
   if (params.region) search.set("region", params.region);
