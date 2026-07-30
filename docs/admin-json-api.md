@@ -1,7 +1,9 @@
 # 관리자 JSON API
 
-- 검토일: 2026-06-23
-- 근거 코드: `apps/api-nest/src/admin.controller.ts`, `apps/api-nest/src/public.controller.ts`, `apps/api-nest/src/db.service.ts`, `apps/admin-next/lib/types.ts`, `apps/admin-next/lib/api.ts`
+- 검토일: 2026-07-30 (엔드포인트를 컨트롤러와 **전수 대조** — 이전 기재 2026-06-23)
+- 근거 코드: `apps/api-nest/src/admin.controller.ts`, **`academy-research.controller.ts`**, **`post-insight.controller.ts`**, `public.controller.ts`, `db.service.ts`, `apps/admin-next/lib/types.ts`, `apps/admin-next/lib/api.ts`
+- 이 문서의 상태: 실제 엔드포인트는 **95개**인데 상세 계약이 적힌 것은 52개다. 2026-07-30 대조에서 **문서에만 있는 유령 엔드포인트는 0건**이었고, 빠져 있던 43개는 아래 「엔드포인트 전수 색인」에 채웠다. 색인만 있고 상세가 없는 항목은 요청/응답을 컨트롤러에서 확인한다.
+- 누락 원인: 「근거 코드」에 `academy-research.controller.ts`(13개)와 `post-insight.controller.ts`(1개)가 빠져 있어 그 컨트롤러 전체가 문서화 범위 밖이었다. **관리자 엔드포인트는 한 파일에 없다** — `@Controller` 프리픽스가 `api/admin`, `api/admin/academy-research`, `api/admin/post-insight` 셋으로 갈린다.
 
 Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한다. 관리자 Next.js 앱은 자체 라우트 핸들러 `apps/admin-next/app/api/admin/[...path]/route.ts`를 통해 이 API로 프록시한다.
 
@@ -14,6 +16,27 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 - header: `Authorization: Bearer <ADMIN_PASSWORD>`
 
 관리자 Next.js 프록시는 브라우저 쿠키, 브라우저 토큰, 서버 환경 변수 `ADMIN_API_TOKEN`을 Nest API로 전달한다.
+
+## 엔드포인트 전수 색인
+
+2026-07-30 컨트롤러 대조 기준 전부다(관리자 88 + 공개 7). ✔ = 이 문서에 상세 계약이 있음.
+
+| 계열 | 엔드포인트 |
+| --- | --- |
+| 옵션·런타임 | ✔`GET /options` · `GET /runtime/apis` |
+| 도메인 | ✔`GET /domains` · ✔`POST /domains` · ✔`GET /domains/{domain}` · ✔`PATCH /domains/{domain}` · ✔`DELETE /domains/{domain}` |
+| 축·슬롯 | ✔`PUT /domains/{domain}/axes/{axis}` · ✔`POST /domains/{domain}/axes/preset` · ✔`GET /domains/{domain}/slots` · ✔`POST /domains/{domain}/slots/generate` · ✔`DELETE /domains/{domain}/slots/{slot_id}` · ✔`POST /domains/{domain}/slots/{slot_id}/reset` · ✔`PATCH /domains/{domain}/slots/{slot_id}` |
+| 글유형 | ✔`GET`·✔`POST /domains/{domain}/templates` · ✔`PATCH`·✔`DELETE /templates/{template_id}` · ✔`POST /templates/clone` · ✔`POST /templates/suggest-axes` · ✔`POST /templates/validate-direction` · ✔`GET /templates/coherence` · ✔`GET /templates/{template_id}/academy-coverage` · ✔`GET /templates/export` · ✔`POST /templates/import` |
+| 글 | ✔`GET /domains/{domain}/posts` · ✔`GET`·✔`DELETE /posts/{post_id}` · ✔`POST /posts/export` · `GET /post-insight/{post_id}` |
+| 격리 검수 | `GET /domains/{domain}/drafts` · `GET`·`DELETE /drafts/{draft_id}` · `POST /drafts/{draft_id}/promote`·`/revalidate`·`/dismiss` |
+| 학원 자료(도메인) | ✔`GET`·✔`POST /domains/{domain}/academies` · ✔`DELETE /academies/{academy_id}` · `DELETE /domains/{domain}/academies` · `POST /academies/link` · `GET /academy-exclusions` · `DELETE /academy-exclusions/{external_id}` · `GET /research-summary` · `GET /source-freshness` |
+| 원천 동기화 | ✔`POST /domains/{domain}/sync/drivingplus` · ✔`/sync/drivingplus/academies` · ✔`/sync/drivingplus/regions` · ✔`GET /sync/runs` · ✔`GET /sync/runs/{run_id}` · ✔`POST /sync/runs/{run_id}/cancel` |
+| 학원 심층조사 | `GET /academy-research/list`·`/status-defs`·`/runs`·`/runs/{run_id}`·`/review-queue`·`/{external_id}` · `POST /academy-research/sync`·`/sync/blog-reviews`·`/research/region`·`/field-meta/bulk`·`/manual`·`/{external_id}/sync`·`/{external_id}/research`·`/{external_id}/research-sync`·`/runs/{run_id}/cancel` · `PATCH /{external_id}/field`·`/{external_id}/field-meta` · `DELETE /manual/{external_id}` |
+| 작업 큐 | ✔`POST /domains/{domain}/jobs/generate`·`/dedup`·`/prune`·`/indexing` · ✔`GET /jobs` · `POST /jobs/{id}/cancel`·`/pause`·`/resume`·`/prioritize` |
+| 설정 | ✔`GET`·✔`PUT /settings/indexing` · ✔`GET`·✔`PUT /settings/blog-review-sync` · `PUT /settings/builtin-visibility` · `GET /settings/region-directory` · `POST /settings/region-directory/sync` · `GET`·`POST /settings/verticals` · `DELETE /settings/verticals/{key}` |
+| 공개 API | ✔`GET /api/v1/{domain}/posts` · ✔`/posts/{slug}` · ✔`/academies` · ✔`POST /academies` · ✔`/generated-images/{file}` · ✔`/sitemap.xml` · `GET /site` |
+
+관리자 경로는 모두 `/api/admin` 아래이며 위 표에서는 그 접두어를 생략했다(학원 심층조사는 `/api/admin/academy-research`, 글 인사이트는 `/api/admin/post-insight`).
 
 ## 공통 데이터 타입
 
@@ -574,6 +597,36 @@ Nest API는 관리자 화면용 JSON API를 `/api/admin/*` 아래에 제공한�
 { "ok": true }
 ```
 
+## 격리 검수(초안)
+
+품질 게이트를 통과하지 못한 글은 버려지지 않고 `draft_posts`에 격리된다. 공개 경로(`posts`)와 분리돼 있어 이 API로만 보인다.
+
+### `GET /api/admin/domains/{domain}/drafts`
+
+쿼리: `status`(review_status 필터), `limit`(기본 100, 1~500).
+
+응답: `{ "count": 3, "pending": 2, "items": [] }` — `pending`은 도메인 전체의 미검수 건수다.
+
+### `GET /api/admin/domains/{domain}/drafts/{draft_id}`
+
+쿼리 `include_rendered`로 렌더 HTML을 함께 받는다. 도메인이 다르면 404.
+
+### `POST /api/admin/domains/{domain}/drafts/{draft_id}/promote`
+
+격리 글을 발행한다. **UI 우회 방지를 위해 저장된 이슈로 서버가 차단 등급을 다시 계산한다** — 안전·사실(B) 이슈가 남아 있으면 409(`안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다`). 이미 발행된 초안도 409.
+
+### `POST /api/admin/domains/{domain}/drafts/{draft_id}/revalidate`
+
+본문을 고친 뒤 다시 검사한다. 응답 `{ ok, quality_issues, blocking_class, promotable }` — `promotable`은 `blocking_class !== "B"`다.
+
+### `POST /api/admin/domains/{domain}/drafts/{draft_id}/dismiss`
+
+반려(`review_status='dismissed'`). 행은 남는다.
+
+### `DELETE /api/admin/domains/{domain}/drafts/{draft_id}`
+
+격리 글을 지운다.
+
 ## 학원 데이터
 
 ### `GET /api/admin/domains/{domain}/academies`
@@ -798,6 +851,32 @@ Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로(`UND_ERR_HEADE
 { "ok": true, "deleted": 1 }
 ```
 
+### `DELETE /api/admin/domains/{domain}/academies`
+
+쿼리 `region`을 주면 그 지역만, 없으면 도메인 전체의 연결된 학원을 지운다. 응답 `{ ok, deleted }`.
+
+### `POST /api/admin/domains/{domain}/academies/link`
+
+업종 단위 조사 DB(`data/academy_research.db`)의 학원을 이 도메인 `academies`로 가져온다. **원천 API를 다시 부르지 않는다.** 도메인 제외 목록(`academy_exclusions`)에 있는 학원은 건너뛴다 — 그러지 않으면 운영자가 뺀 학원이 연결할 때마다 되살아난다. 응답에 `linked`·`skipped`·`removed`·`excluded`·`reviews`·`blog_reviews`가 담긴다.
+
+이 시점에 **파생값이 계산돼 박힌다** — 주소로 지역을 배정하고(`bestRegionForAddress`) 셔틀 운행 지역을 문장으로 만든다(`formatShuttleFact`). 조사값만 갱신하고 다시 연결하지 않으면 글에 반영되지 않는다.
+
+### `GET /api/admin/domains/{domain}/academy-exclusions`
+
+이 도메인에서 뺀 학원 목록. 응답 `{ count, items }`.
+
+### `DELETE /api/admin/domains/{domain}/academy-exclusions/{external_id}`
+
+제외를 해제하고 즉시 재연결을 시도한다. 응답 `{ ok, removed, relinked, reason }`.
+
+### `GET /api/admin/domains/{domain}/research-summary`
+
+이 도메인이 쓰는 조사값의 현황 요약(항목별 건수·최신 시점).
+
+### `GET /api/admin/domains/{domain}/source-freshness`
+
+원천 동기화가 얼마나 최신인지(마지막 동기화 시점 등).
+
 ## 작업 큐
 
 ### `POST /api/admin/domains/{domain}/jobs/generate`
@@ -898,6 +977,45 @@ Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로(`UND_ERR_HEADE
 { "count": 8, "items": [] }
 ```
 
+### 잡 제어
+
+| 엔드포인트 | 동작 |
+| --- | --- |
+| `POST /api/admin/jobs/{id}/cancel` | 취소. 응답은 `db.cancelJob`의 결과(`{ ok, state? }`) |
+| `POST /api/admin/jobs/{id}/pause` | 일시중지. **대기(`queued`) 중인 잡만** 멈춘다 — 상태가 아니라 `jobs.paused` 컬럼이다 |
+| `POST /api/admin/jobs/{id}/resume` | 재개(`paused=0`) |
+| `POST /api/admin/jobs/{id}/prioritize` | 대기열 맨 앞으로(가장 이른 `scheduled_at`보다 1초 앞으로 당긴다) |
+
+`pause`/`resume`/`prioritize`는 `{ "ok": true|false }`를 준다 — `false`는 조건에 맞는 잡이 없었다는 뜻이다(이미 실행 중이거나 없는 id).
+
+## 학원 심층조사
+
+`@Controller("api/admin/academy-research")` — **업종 단위**이며 도메인을 모른다. 저장소도 `data/academy_research.db`로 `admin.db`와 분리돼 있다.
+
+아래 표의 경로는 모두 **`/api/admin/academy-research` 기준 상대 경로**다(예: `GET /list` → `GET /api/admin/academy-research/list`).
+
+| 엔드포인트 | 동작 |
+| --- | --- |
+| `GET /list` | 학원 기본정보 목록. 쿼리 `region`·`q`. 응답 `{ count, region, items, hidden }` — `hidden`은 최신 동기화 목록에 없어 보관만 된 학원 수 |
+| `GET /status-defs` | 검증 상태 정의 목록 |
+| `GET /runs` · `GET /runs/{run_id}` | 조사·동기화 실행 이력(진행률 폴링용). 없으면 404 |
+| `POST /runs/{run_id}/cancel` | 취소 요청. **즉시 끊지 않고 플래그만 세운다** — 처리 중이던 학원 1곳은 온전히 끝난다. 이미 종료면 409 |
+| `POST /sync` | 원천 전체 동기화(기본정보+후기 원문). 백그라운드로 돌고 `run_id`를 즉시 반환. 바디 `review_limit`(기본 5) |
+| `POST /sync/blog-reviews` | 블로그리뷰만 별도 실행(학원당 10초라 분리). 바디 `blog_review_limit`(기본 5). **수집 스위치가 꺼져 있으면 수집하지 않는다** |
+| `POST /research/region` | 전체 AI 조사 시작(백그라운드, `run_id` 반환). 바디 `provider`(`auto`\|`codex`\|`claude`, 기본 `auto`)·`refresh_all`·`retry_only`·`limit`(최대 5000)·`offset`·`external_ids`(최대 2,000건) |
+| `GET /review-queue` | 검토 대기 목록(학원을 가로질러 필드 단위). 쿼리 `status`(기본 `needs_review,ai_draft`)·`field`·`all_fields`·`q`·`limit`(기본 500). 기본은 **글에 나갈 수 있는 항목만** 본다 |
+| `POST /field-meta/bulk` | 여러 항목 일괄 승인/되돌리기. 바디 `status`(필수)·`items`(필수, 최대 2000)·`note`. 응답 `{ ok, changed }` |
+| `POST /manual` | 수동 등록(원천 목록에 없는 학원). 바디는 단건·배열·`{items}` 모두 받는다. 응답 `{ ok, created, external_ids, errors }` |
+| `DELETE /manual/{external_id}` | **수동 등록분만** 삭제 가능(원천 미러는 다음 동기화에 되살아나므로 400) |
+| `GET /{external_id}` | 학원 1곳의 조사 집계. 응답에 `source_facts`(원천이 이미 답을 가진 항목)를 함께 준다 — 없으면 화면이 "조사 실패"로 읽힌다 |
+| `POST /{external_id}/sync` | 그 학원만 원천에서 다시 받기 |
+| `POST /{external_id}/research` | 단건 AI 조사. **백그라운드로 시작하고 `run_id`만 준다** — 조사 1곳이 평균 85초, 최대 388초인데 관리자 프록시 fetch가 300초에 끊겨 "서버는 저장했는데 화면은 실패"가 됐던 자리다 |
+| `POST /{external_id}/research-sync` | 요청 안에서 끝까지 기다리는 옛 경로(API 직접 호출 호환용, 화면은 쓰지 않는다). 소스 못 찾음은 실패가 아니라 `no_sources`로 반환 |
+| `PATCH /{external_id}/field` | 조사값 수동 편집. 바디 `field`(필수)·`value`. 허용 목록 밖 필드는 400 |
+| `PATCH /{external_id}/field-meta` | 필드별 검증 상태·출처 설정. 바디 `field_key`(필수)·`status`·`source_url`·`source_name`·`confidence`·`verified_by`·`note` |
+
+라우트 선언 순서에 함정이 있다 — `review-queue`·`list` 같은 고정 경로는 `:externalId`보다 **먼저** 선언돼야 한다. 뒤에 두면 학원 id로 해석돼 경로가 먹지 않는다.
+
 ## 색인 설정
 
 ### `GET /api/admin/settings/indexing`
@@ -934,9 +1052,31 @@ Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로(`UND_ERR_HEADE
 }
 ```
 
+## 작업환경 설정
+
+| 엔드포인트 | 동작 |
+| --- | --- |
+| `PUT /api/admin/settings/builtin-visibility` | 카탈로그에 노출할 빌트인 글유형 id 목록. **폐기된 유형(`DEPRECATED_BUILTIN_TEMPLATE_IDS` = `T01`)은 넣어도 서버가 걸러낸다** — 판정을 서버에 둔 이유는 화면만 막으면 「전체 노출」·설정 삭제·API 직접 호출 세 경로로 되살아나기 때문이다 |
+| `GET /api/admin/settings/region-directory` | 읍·면·동 전역 지역 사전 상태. 쿼리 `domain`을 주면 그 도메인의 셔틀 지역 커버리지를 함께 준다 |
+| `POST /api/admin/settings/region-directory/sync` | 지역 사전 동기화 |
+| `GET /api/admin/settings/verticals` | 업종 레지스트리 목록. 응답 `{ items }` |
+| `POST /api/admin/settings/verticals` | 업종 추가. 응답 `{ ok, items }`. **도메인 생성은 여기 등록된 업종만 허용한다**(미등록은 「등록되지 않은 업종입니다」) |
+| `DELETE /api/admin/settings/verticals/{key}` | 업종 삭제 |
+| `GET /api/admin/runtime/apis` | 이 프로세스가 실제로 들고 있는 외부 API base URL 등. **기동 시점의 `.env`를 반영하므로** `.env`를 바꿨는데 값이 그대로면 프로세스를 재시작해야 한다는 뜻이다 |
+
+## 글 인사이트
+
+### `GET /api/admin/post-insight/{post_id}`
+
+발행 글 1건의 근거 요약(관리자 「이 글의 근거」 화면). 어떤 학원 자료·조사값이 그 글에 들어갔는지 되짚는 읽기 전용 경로다.
+
 ## 공개 조회 API
 
 공개 조회 API는 `/api/v1/{domain}` 아래에서 동작한다.
+
+### `GET /api/v1/{domain}/site`
+
+공개 사이트가 쓰는 도메인 요약(브랜드·base URL 등). 인증 없이 열려 있다.
 
 ### `GET /api/v1/{domain}/posts`
 
