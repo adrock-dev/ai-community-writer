@@ -174,9 +174,12 @@
 ## Responsive behavior
 - Supported breakpoints/devices:
   - desktop-first.
-  - `globals.css`의 980px 이하 breakpoint에서 사이드바/그리드가 축소된다.
+  - `globals.css`의 breakpoint는 세 개이고 **서로 다른 것을 무너뜨린다**(하나로 뭉쳐 적으면 반응형을 고칠 때 엉뚱한 중단점을 찾는다):
+    - 1180px 이하 — 미리보기 패널 sticky 해제, 인라인 `grid-template-columns` 섹션 1열
+    - 980px 이하 — 글 상세 2열(`.post-detail-layout`)만 1열
+    - 720px 이하 — 사이드바가 static으로 내려오고 `grid-2`~`grid-5`·`workflow`·`step-launch-grid` 1열, main 패딩 축소
 - Layout adaptations:
-  - 좌측 AppShell 사이드바는 접힘 상태를 지원한다.
+  - 좌측 AppShell 사이드바는 접힘 상태를 지원한다(`.shell.sidebar-closed`, 폭 260px→0).
   - table은 `table-wrap` overflow로 처리한다.
 - Touch/hover differences:
   - 내부 관리자이므로 hover가 보조 역할을 하지만, 클릭/탭만으로 주요 작업이 가능해야 한다.
