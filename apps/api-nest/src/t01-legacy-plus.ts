@@ -49,10 +49,23 @@ export function buildT01LegacyPlusContext(data: T01DataGatedContext, seed: strin
 }
 
 /** The reader sees at most 100 characters. The ellipsis is part of that limit. */
+// academy-review-evidence.truncateReviewQuote 와 같은 규칙(순환 의존을 피해 로컬 복제).
+// 규칙 설명은 그쪽에 있다 — 한쪽만 고치면 postedit 의 인용 매칭이 깨진다.
+const LEGACY_SENTENCE_END_RE = /(?:[.!?]+|~+|[다요죠까네])(?=\s)/gu;
+const LEGACY_SENTENCE_TRIM_FLOOR = 0.8;
+
 export function truncateLegacyPlusReview(text: string, maximumLength = 100): string {
   const chars = Array.from(String(text || "").trim());
   if (chars.length < maximumLength) return chars.join("");
-  return `${chars.slice(0, Math.max(0, maximumLength - 1)).join("")}…`;
+  const head = chars.slice(0, Math.max(0, maximumLength - 1)).join("");
+  let end = -1;
+  for (const match of head.matchAll(LEGACY_SENTENCE_END_RE)) {
+    const at = match.index;
+    const token = match[0];
+    if (at === undefined || token === undefined) continue;
+    end = at + token.length;
+  }
+  return `${end >= Math.floor((maximumLength - 1) * LEGACY_SENTENCE_TRIM_FLOOR) ? head.slice(0, end) : head}…`;
 }
 
 /** Keep Legacy's facts and narrative scaffold, but do not feed candidate-by-

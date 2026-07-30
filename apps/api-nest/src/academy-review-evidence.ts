@@ -134,12 +134,49 @@ export function isContentEligibleReviewText(text: unknown): boolean {
   return !isPromotionalOnly(normalized);
 }
 
-// 리뷰 원문이 100자 이상이면 끝을 …로 줄인다.
-// t01-legacy-plus.truncateLegacyPlusReview 와 같은 규칙(순환 의존을 피해 로컬 복제 — 규칙을 바꿀 때 함께 맞춘다).
+/**
+ * 문장이 끝나는 자리(끝 문자 다음 인덱스). 없으면 -1.
+ *
+ * 한국어 후기는 마침표 없이 종결어미로 끊기는 경우가 많아 어미도 함께 본다
+ * ("…일정 잡기도 수월했어요 연세대" 의 경계는 "요" 다음이다).
+ *
+ * **뒤에 공백이 이어질 때만 인정한다.** 잘린 자리의 끝 글자까지 경계로 보면 절단이 만든
+ * 가짜 경계에 속는다 — "그리고 이어지는 다른" 이 99자에서 "…이어지는 다" 로 잘리면 그 "다"가
+ * 종결어미처럼 보인다.
+ */
+const SENTENCE_END_RE = /(?:[.!?]+|~+|[다요죠까네])(?=\s)/gu;
+function lastSentenceEnd(text: string): number {
+  let end = -1;
+  for (const match of text.matchAll(SENTENCE_END_RE)) {
+    const at = match.index;
+    const token = match[0];
+    if (at === undefined || token === undefined) continue;
+    end = at + token.length;
+  }
+  return end;
+}
+
+/** 문장 경계로 물릴 수 있는 최소 지점(한도 대비). 이보다 앞이면 버리는 양이 너무 많다. */
+const SENTENCE_TRIM_FLOOR = 0.8;
+
+/**
+ * 리뷰 원문이 한도를 넘으면 끝을 …로 줄인다.
+ *
+ * 자른 자리 가까이에 문장 경계가 있으면 거기까지 물린다. 글자 수만 보고 끊으면 문장
+ * 한복판에서 끝나 읽다 만 인용이 된다(실측: 발행 인용 42건 중 23건이 잘렸고 그중 17건은
+ * 50자 이후에 경계가 있었다. "…일정 잡기도 수월했어요 연세대 …" 는 6자만 덜 갔으면 됐다).
+ * 다만 경계가 한도의 80%보다 앞이면 버리는 양이 커져 그대로 끊는다.
+ *
+ * t01-legacy-plus.truncateLegacyPlusReview 와 같은 규칙(순환 의존을 피해 로컬 복제 —
+ * 규칙을 바꿀 때 함께 맞춘다. postedit 이 이 값으로 인용을 매칭해 어긋나면 매칭이 깨진다).
+ */
 export function truncateReviewQuote(text: string, maximumLength = 100): string {
   const chars = Array.from(String(text || "").trim());
+  // 경계값은 "100자 이상이면 줄인다" 그대로 둔다(전용 테스트가 있는 의도된 규칙이다).
   if (chars.length < maximumLength) return chars.join("");
-  return `${chars.slice(0, Math.max(0, maximumLength - 1)).join("")}…`;
+  const head = chars.slice(0, Math.max(0, maximumLength - 1)).join("");
+  const end = lastSentenceEnd(head);
+  return `${end >= Math.floor((maximumLength - 1) * SENTENCE_TRIM_FLOOR) ? head.slice(0, end) : head}…`;
 }
 
 /**

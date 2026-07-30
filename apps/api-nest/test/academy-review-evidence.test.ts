@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { STUDENT_REVIEW_SOURCE, isReviewAboutOtherReviews, selectedStudentReviewForAcademy, studentReviewFactLines, studentReviewsForAcademy, truncateReviewQuote } from "../src/academy-review-evidence.js";
+import { truncateLegacyPlusReview } from "../src/t01-legacy-plus.js";
 
 describe("academy student review evidence", () => {
   it("원문 리뷰를 테마로 축약하지 않고 출처·평점·작성일과 함께 보존한다", () => {
@@ -89,6 +90,33 @@ describe("리뷰 100자 말줄임", () => {
     const out = truncateReviewQuote(exact);
     expect(Array.from(out).length).toBe(100);
     expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("자른 자리 가까이에 문장 경계가 있으면 거기까지 물린다", () => {
+    // 실제 사례: "…일정 잡기도 수월했어요 연세대 …" — 93자에 경계가 있는데 99자에서 끊겼다.
+    const text = `${"가".repeat(80)} 정말 좋았어요 그리고 다음 문장이 길게 이어집니다만 여기는 잘립니다`;
+    const out = truncateReviewQuote(text);
+    expect(out).toBe(`${"가".repeat(80)} 정말 좋았어요…`);
+  });
+
+  it("경계가 한도의 80%보다 앞이면 그대로 끊는다", () => {
+    // 경계까지 물리면 버리는 양이 너무 커진다.
+    const text = `짧게 끝나요 ${"가".repeat(140)}`;
+    const out = truncateReviewQuote(text);
+    expect(Array.from(out).length).toBe(100);
+    expect(out.endsWith("가…")).toBe(true);
+  });
+
+  it("마침표로 끝나는 문장도 경계로 인정한다", () => {
+    const text = `${"나".repeat(78)} 아주 만족합니다. 그리고 이어지는 다른 이야기가 계속됩니다`;
+    expect(truncateReviewQuote(text)).toBe(`${"나".repeat(78)} 아주 만족합니다.…`);
+  });
+
+  it("두 쌍둥이 함수가 같은 결과를 낸다", () => {
+    // t01-legacy-plus-postedit 이 이 값으로 인용을 매칭해, 어긋나면 매칭이 깨진다.
+    for (const text of ["짧은 후기", "가".repeat(100), `${"다".repeat(85)} 좋았어요 뒤에 더 있습니다만`]) {
+      expect(truncateReviewQuote(text)).toBe(truncateLegacyPlusReview(text));
+    }
   });
 
   it("studentReviewFactLines 가 말줄임된 인용을 낸다", () => {
