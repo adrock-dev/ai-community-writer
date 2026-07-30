@@ -278,7 +278,10 @@ export class AcademyResearchService {
       return { ok: false, external_id: externalId, provider: providers[0], no_sources: true, error };
     }
 
-    // 2) 소스 본문에서만 추출(웹툴 불필요 → Opus 지정).
+    // 2) 소스 본문에서만 추출(앱이 소스를 이미 받아왔으므로 웹툴이 필요 없다).
+    //    provider 는 codex 우선이고 codex 는 기본 모델로 돈다. claude 로 폴백될 때만 Opus 를 지정한다.
+    //    ⚠️ 폴백은 CLI 실패·JSON 파싱 실패에서만 일어난다 — 형식은 맞지만 채움률이 낮은 응답은
+    //    그대로 저장되므로, 추출 모델을 바꿀 때는 채움률을 실측해 비교한다.
     // 원천이 이미 준 필드는 스키마에서 빼고 [이미 확정된 사실]로 넘긴다 — 겹치는 영역에서는
     // 웹 조사가 원천을 이기지 못하는데(파일럿 실측: 수강료 23% vs 87%), 그걸 다시 캐느라
     // 학원당 1분을 쓰고 있었다.

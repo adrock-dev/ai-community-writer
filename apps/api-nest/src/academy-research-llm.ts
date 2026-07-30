@@ -57,11 +57,14 @@ export interface ResearchResult {
   sources?: Record<string, string>;
 }
 
-// CLI 존재 여부 감지(claude 우선). PATH에서 확인.
+// CLI 존재 여부 감지(codex 우선 → 없으면 claude). PATH에서 확인.
+// 반환 순서가 provider="auto" 의 시도 순서이자 폴백 순서다(researchOne 이 순회하며
+// CLI 실패·JSON 파싱 실패면 다음으로 넘어간다). 글 생성(llm-runner)도 기본이 codex 이므로
+// 조사만 claude 를 먼저 쓰던 비대칭을 없앤다.
 export async function detectResearchProviders(): Promise<ResearchProvider[]> {
   const providers: ResearchProvider[] = [];
-  if (await hasCommand("claude")) providers.push("claude");
   if (await hasCommand("codex")) providers.push("codex");
+  if (await hasCommand("claude")) providers.push("claude");
   return providers;
 }
 
