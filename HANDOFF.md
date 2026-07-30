@@ -137,20 +137,22 @@ Base: `/api/admin`
 - `GET/PATCH/DELETE /domains/:domain`
 - `PUT /domains/:domain/axes/:axis`
 - `POST /domains/:domain/axes/preset`
-- `GET/POST /domains/:domain/slots`, `DELETE/POST reset /slots/:slotId`
+- `GET /domains/:domain/slots`, `POST /slots/generate`, `PATCH /slots/:slotId`(제목), `DELETE /slots/:slotId`, `POST /slots/:slotId/reset`
 - `GET /domains/:domain/posts`, `GET/DELETE /posts/:postId`, `POST /posts/export`
-- `GET/POST/DELETE /domains/:domain/academies`
-- `POST /domains/:domain/sync/drivingplus/*`
+- `GET /domains/:domain/drafts`, `GET/DELETE /drafts/:draftId`, `POST /drafts/:draftId/promote|revalidate|dismiss` — 격리 검수
+- `GET/POST/DELETE /domains/:domain/academies`, `POST /academies/link`(자료 연결), `GET/DELETE /academy-exclusions`
+- `POST /domains/:domain/sync/drivingplus/*`, `GET /sync/runs`
 - `POST /domains/:domain/jobs/generate|dedup|prune|indexing`
-- `GET /jobs`
-- `GET/POST /settings/indexing`
+- `GET /jobs`, `POST /jobs/:id/cancel|pause|resume|prioritize`
+- `GET/PUT /settings/indexing`, `GET/PUT /settings/blog-review-sync`, `GET/POST /settings/verticals`
 
-상세 계약은 `docs/admin-json-api.md`를 기준으로 봅니다.
+**위는 일부입니다.** 실제 엔드포인트는 95개(관리자 88 + 공개 7)이고, 학원 심층조사는 별도 컨트롤러(`/api/admin/academy-research/*`, 18개)에 있습니다. 전수 목록과 상세 계약은 `docs/admin-json-api.md`(「엔드포인트 전수 색인」)를 기준으로 봅니다.
 
 ## 7. 공개 API 요약
 
 Base: `/api/v1/:domain`
 
+- `GET /site`: 공개 사이트가 쓰는 도메인 요약(브랜드·base URL)
 - `GET /posts`: 발행 글 목록
 - `GET /posts/:slug`: 글 상세, `include_rendered=true` 지원
 - `GET /generated-images/:file`: 생성 이미지 파일 제공
