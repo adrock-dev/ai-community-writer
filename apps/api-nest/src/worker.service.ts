@@ -8,6 +8,7 @@ import { publicBrandName } from "./brand.js";
 import { buildT16AxisPlan, normalizeT16ReviewAttribution, t16FactsForPrompt, t16ReviewPromptInstruction, t16PromptContract, t16StructureGuide, t16ToneFromDirection, t16WritingGuide, T16_TEMPLATE_ID, type T16AxisPlan } from "./t16-axis-comparison.js";
 import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
+import { hasShuttleDetail } from "./drivingplus-shuttle-facts.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
 import { articleQualityIssues, distanceClaimIssues, titleAxisEvidenceIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, stripUnofferedInternalLinks, normalizeAcademyTerm, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
@@ -420,7 +421,10 @@ export class WorkerService {
         this.db.updateSlotStatus(sid, "failed", message);
         fail++; this.db.updateJobProgress(jobId, { step: `${index + 1}/${slotIds.length} 실패`, slotId: sid, processed: ok, failed: fail }); per_slot.push({ slot_id: sid, ok: false, error: message, ...(draftId ? { draft_id: draftId } : {}) });
       }
-      if (index < slotIds.length - 1) {
+      // 쿨다운은 슬롯 사이에 둔다. 다만 큰 요청은 여러 잡으로 쪼개져 들어오므로(admin.controller
+      // enqueueGenerate), 마지막이 아닌 조각은 **끝에도** 쿨다운을 둬야 잡 경계에서 간격이
+      // 사라지지 않는다. 그러지 않으면 쪼갠 수만큼 쿨다운이 통째로 빠져 LLM 호출이 몰린다.
+      if (index < slotIds.length - 1 || payload.cooldown_after_last) {
         this.db.updateJobProgress(jobId, { step: "다음 글 작성 전 대기 중", slotId: null, processed: ok, failed: fail });
         await sleep(Number(payload.cooldown_sec || 60) * 1000);
       }
@@ -454,7 +458,15 @@ export class WorkerService {
       const imageKeys = remaining > 0 ? firstImageKeys(a, i + 1, Math.min(perAcademyImages, remaining)) : [];
       for (const imageKey of imageKeys) images[imageKey.key] = imageKey.url;
       const parts = [`[${i + 1}] ${displayNames[i] ?? String(a.name || "").trim()}`];
-      for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"]] as const) if (a[key]) parts.push(`${label}: ${a[key]}`);
+      // 셔틀은 "운행한다"까지만 확인되고 지역·경유지가 없으면 넘기지 않는다. 카드 불릿과
+      // 비교표 열의 라벨이 「셔틀 운행 지역」이라, 지역이 없는 값을 주면 모델이 그 칸을
+      // `- **셔틀 운행 지역:** 셔틀 운행` 으로 채운다(실측 6곳). "값이 없는 항목은 만들지
+      // 않는다"는 지침이 이미 있어도 문자열이 비어 있지 않으면 칸은 채워진다 — 아래
+      // 전화번호와 같은 이유이며, 노출 여부는 프롬프트가 아니라 입력에서 끊는다.
+      for (const [label, key] of [["주소", "address"], ["수강료", "price"], ["셔틀", "shuttle"], ["영업시간", "hours"], ["합격률", "pass_rate"], ["SEO 설명", "seo_description"], ["SEO 키워드", "seo_keywords"]] as const) {
+        if (key === "shuttle" && !hasShuttleDetail(a.shuttle)) continue;
+        if (a[key]) parts.push(`${label}: ${a[key]}`);
+      }
       // 공개 글에 노출할 연락처는 안심번호(vphone) 하나뿐이다. 실번호(phone)는 facts 에 아예
       // 넣지 않는다. 두 번호를 다 보내면 프롬프트로 "우선"을 지시해도 모델이 둘을 병기했다
       // (발행 글 20편 중 9편). 노출 여부는 프롬프트가 아니라 입력에서 끊는다.
@@ -479,7 +491,9 @@ export class WorkerService {
       // (전화번호에서 겪었다: 발행 글 20편 중 9편이 실번호와 안심번호를 나란히 적었다).
       const sourceHas = new Set<string>();
       if (a.price) { sourceHas.add("fee_summary"); sourceHas.add("price_disclosed"); }
-      if (a.shuttle) { sourceHas.add("shuttle_summary"); sourceHas.add("shuttle_available"); }
+      // 원천이 "셔틀이 있다"까지만 아는 경우는 조사값을 눌러 두지 않는다. 프롬프트에 원천
+      // 셔틀을 넣지 않았는데 조사값까지 막으면 그 학원만 셔틀 이야기가 통째로 비게 된다.
+      if (hasShuttleDetail(a.shuttle)) { sourceHas.add("shuttle_summary"); sourceHas.add("shuttle_available"); }
       if (a.hours) sourceHas.add("hours");
       if (courses) sourceHas.add("licenses");
       // 단독 소개형(후보 1곳)은 그 학원만 깊게 다루므로 전부 싣는다. 후보가 여럿이면

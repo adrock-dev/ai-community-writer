@@ -36,6 +36,22 @@ const ORIGIN_SUFFIX_RE = /출발$/u;
 /** 안내문에 섞인 실번호(390개 노선 중 389개가 실번호). 공개 글에는 안심번호만 나간다. */
 const PHONE_RE = /(?<![\d-])0\d{1,3}[-\s]?\d{3,4}[-\s]?\d{4}(?![\d-])/g;
 
+/** 셔틀 노선은 있으나 지역·경유지·이용 조건이 하나도 안 잡혔을 때의 값. */
+export const SHUTTLE_NO_DETAIL_FACT = "셔틀 운행(세부 정보는 자료에 없음)";
+
+/**
+ * 독자가 실제로 쓸 수 있는 셔틀 내용(운행 지역·경유지·이용 조건)이 담겼는가.
+ *
+ * 프롬프트에 넣을지 판단하는 데 쓴다. `SHUTTLE_NO_DETAIL_FACT`는 "셔틀이 있다"는
+ * 내부 신호일 뿐이라 카드 불릿·비교표의 값 자리에 들어가면 `- **셔틀 운행 지역:** 셔틀 운행`
+ * 같은 빈 칸이 된다. 라벨이 「셔틀 운행 지역」인데 지역이 없으니 어떤 문자열을 줘도
+ * 빈 칸이 되는 구조다 — 값을 아예 주지 않는 것 말고는 막을 방법이 없다.
+ */
+export function hasShuttleDetail(value: unknown): boolean {
+  const text = String(value ?? "").trim();
+  return Boolean(text) && text !== SHUTTLE_NO_DETAIL_FACT;
+}
+
 const MAX_SIGUNGU = 3;
 const MAX_SUBMUNICIPAL = 4;
 const MAX_STOPS = 4;
@@ -252,6 +268,6 @@ export function formatShuttleFact(
   }
 
   // 셔틀 연락처는 대부분 실번호라 넣지 않는다. 공개 연락처는 학원 안심번호 하나로 통일한다.
-  if (!segments.length) return "셔틀 운행(세부 정보는 자료에 없음)";
+  if (!segments.length) return SHUTTLE_NO_DETAIL_FACT;
   return factSafeText(segments.join(" · "));
 }

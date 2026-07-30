@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatShuttleFact, type RegionDirectoryEntry } from "../src/drivingplus-shuttle-facts.js";
+import { formatShuttleFact, hasShuttleDetail, SHUTTLE_NO_DETAIL_FACT, type RegionDirectoryEntry } from "../src/drivingplus-shuttle-facts.js";
 
 // 표본은 실제 DrivingPlus dev 응답에서 가져왔다.
 // 독자가 알고 싶은 것은 "어느 지역으로 셔틀이 오는가"이고, 노선 수나 내부 라벨이 아니다.
@@ -138,6 +138,26 @@ describe("경유지는 생활권·랜드마크·지역 정보여야 한다", () 
 
   it("쓸 만한 지점이 하나도 없으면 경유지 자체를 내지 않는다", () => {
     expect(stops("06:50 09:40", "BYC", "3")).toBe("셔틀 운행(세부 정보는 자료에 없음)");
+  });
+});
+
+describe("프롬프트에 넣을 값인지 판정", () => {
+  // "셔틀이 있다"는 내부 신호일 뿐이라 값 자리에 들어가면
+  // `- **셔틀 운행 지역:** 셔틀 운행` 같은 빈 불릿이 실린다(실측 6곳).
+  it("지역·경유지·이용 조건이 없는 값은 내용이 없다고 본다", () => {
+    expect(hasShuttleDetail(SHUTTLE_NO_DETAIL_FACT)).toBe(false);
+    expect(hasShuttleDetail(formatShuttleFact([bus({ title: "1호차" })], []))).toBe(false);
+  });
+
+  it("빈 값도 내용이 없다고 본다", () => {
+    for (const empty of [null, undefined, "", "   "]) expect(hasShuttleDetail(empty)).toBe(false);
+  });
+
+  it("운행 지역·경유지·이용 조건 중 하나라도 있으면 내용이 있다고 본다", () => {
+    const 목포시: RegionDirectoryEntry = { region: "전라남도 목포시", sido: "전라남도", sigungu: "목포시", submunicipal: null };
+    expect(hasShuttleDetail(formatShuttleFact([bus({ title: "목포 전지역" })], [목포시]))).toBe(true);
+    expect(hasShuttleDetail(formatShuttleFact([bus({ title: "1호차", times: [{ time: "", runDirection: "마석역" }] })], []))).toBe(true);
+    expect(hasShuttleDetail(formatShuttleFact([bus({ title: "1호차", content: "이용 1시간 전에 미리 연락 주세요" })], []))).toBe(true);
   });
 });
 
