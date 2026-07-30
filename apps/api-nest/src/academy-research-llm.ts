@@ -51,6 +51,7 @@ export interface ResearchResult {
   transit_access?: string | null;
   /** 주차 사정(가능·협소·외부 주차장 등). 편의시설 태그의 "주차"와 달리 실제 안내다. */
   parking_note?: string | null;
+  nearby_landmarks?: string | null;
   courses?: Array<{ course_name?: string; price?: string; exam_fee_included?: string; extra_costs?: string; note?: string; source_url?: string }>;
   shuttle_routes?: Array<{ route_name?: string; waypoints?: unknown; coverage?: unknown; interval_text?: string; source_url?: string }>;
   sources?: Record<string, string>;

@@ -118,6 +118,34 @@ export function shortenTransit(value: string): string {
   return `${trimmed.slice(0, TRANSIT_MAX_CHARS).trim()}…`;
 }
 
+/**
+ * 주변 시설 값에서 **거리와 판단을 걷어낸다.** 남는 것은 "무엇이 곁에 있는가"뿐이다.
+ *
+ * 수집 프롬프트에서도 막지만 소스에 그렇게 적혀 있으면 모델이 옮겨 적는다. 글로 나갈 때
+ * 한 번 더 거르는 이유는 셋 다 우리가 오래 막아 온 종류라서다.
+ *  - 거리·소요시간(`약 2km`, `도보 5분`) — T16 계약이 본문에서 금지한다
+ *  - 근접 판단(`가까운`, `바로 앞`) — 통학 편의 단정이 된다
+ *  - 이용자 구성 추정(`대학생 비중이 높은`) — 검증할 수 없다. 참고 기사가 실제로 이렇게 썼다
+ *
+ * 셋을 걷어내고 남은 지명이 없으면 빈 문자열을 돌려 그 줄을 아예 내보내지 않는다.
+ */
+export function cleanLandmarks(value: string): string {
+  const stripped = String(value || "")
+    // 이용자 구성 추정은 구절째 버린다(낱말만 지우면 문장이 무너진다).
+    .split(/[,·;]/u)
+    .filter((part) => !/(?:비중|많이\s*(?:이용|찾)|주로\s*(?:이용|찾)|선호|수요가)/u.test(part))
+    .join(" · ")
+    .replace(/(?:약\s*)?\d+(?:\.\d+)?\s*(?:km|㎞|m|미터|분|시간)\s*(?:거리|이내|소요|권)?/gu, " ")
+    .replace(/(?:도보|차량|차로|버스로|지하철로)\s*/gu, " ")
+    .replace(/(?:매우\s*)?(?:가까(?:운|워|움|이|은)|인접한?|근접한?|바로\s*(?:앞|옆|근처)|위치해?)/gu, " ")
+    .replace(/\s*[·,]\s*(?=[·,])/gu, " ")
+    .replace(/^[\s·,]+|[\s·,]+$/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+  // 지명이 하나도 안 남으면(전부 거리·판단이었다면) 내보내지 않는다.
+  return /[가-힣A-Za-z]{2,}/u.test(stripped) ? stripped : "";
+}
+
 export interface ArticleResearchField {
   key: string;
   /** 글로 내보내기 직전에 값을 다듬는다. 빈 문자열을 돌려주면 그 줄은 나가지 않는다. */
@@ -147,6 +175,11 @@ export const ARTICLE_RESEARCH_FIELDS: ArticleResearchField[] = [
   { key: "enrollment_prep", label: "등록 준비물(조사)" },
   { key: "transit_access", label: "대중교통 접근(조사)", clean: shortenTransit },
   { key: "parking_note", label: "주차(조사)", clean: cleanParkingNote },
+  // 주변 시설 — 그 학원이 어느 생활권에 있는지를 지명으로 보여준다. 주소만으로는 안 되는 자리다
+  // (도로명·번지는 카드 불릿이 이미 담고, 독자는 "무엇 근처"인지로 위치를 가늠한다).
+  // **거리·소요시간·"가깝다"·이용자 구성 추정은 값에서 걷어낸다** — 수집 프롬프트에서도 막지만,
+  // 소스에 그렇게 적혀 있으면 모델이 옮겨 적을 수 있어 글로 나갈 때 한 번 더 거른다.
+  { key: "nearby_landmarks", label: "주변 시설(조사)", clean: cleanLandmarks },
   // 원천이 이기는 항목. 원천이 그 학원 값을 안 줄 때만 빈 자리를 메운다.
   { key: "hours", label: "영업시간(조사)", sourceWins: true },
   { key: "shuttle_summary", label: "셔틀(조사)", sourceWins: true },

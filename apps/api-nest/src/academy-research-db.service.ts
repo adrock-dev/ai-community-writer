@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS academy_research (
   booking_channel TEXT,
   transit_access TEXT,
   parking_note TEXT,
+  nearby_landmarks TEXT,
   research_engine TEXT,
   research_method TEXT,
   researched_at TEXT,
@@ -224,7 +225,7 @@ export const RESEARCH_FIELDS = new Set<string>([
   "hours", "night_class", "weekend", "closed_days", "shuttle_available", "shuttle_summary",
   "licenses", "self_test", "facilities", "fee_summary", "price_disclosed", "pass_rate",
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
-  "enrollment_prep", "booking_channel", "transit_access", "parking_note",
+  "enrollment_prep", "booking_channel", "transit_access", "parking_note", "nearby_landmarks",
 ]);
 
 export interface BaseAcademyInput {
@@ -377,6 +378,7 @@ export class AcademyResearchDbService implements OnModuleInit {
     // 실제 사정을 말한다("본관 만차 시 외부 주차장", "협소하니 대중교통 이용").
     if (!researchCols.has("transit_access")) this.db.exec("ALTER TABLE academy_research ADD COLUMN transit_access TEXT");
     if (!researchCols.has("parking_note")) this.db.exec("ALTER TABLE academy_research ADD COLUMN parking_note TEXT");
+    if (!researchCols.has("nearby_landmarks")) this.db.exec("ALTER TABLE academy_research ADD COLUMN nearby_landmarks TEXT");
   }
 
   /**

@@ -16,7 +16,7 @@ export const SCALAR_KEYS: Array<keyof ResearchResult> = [
   "hours", "night_class", "weekend", "closed_days", "shuttle_available", "shuttle_summary",
   "licenses", "self_test", "facilities", "fee_summary", "price_disclosed", "pass_rate",
   "pass_rate_scope", "established_year", "scale", "homepage_url", "naver_place_url", "kakao_url",
-  "enrollment_prep", "booking_channel", "transit_access", "parking_note",
+  "enrollment_prep", "booking_channel", "transit_access", "parking_note", "nearby_landmarks",
 ];
 const SCALAR_KEY_SET = new Set<string>(SCALAR_KEYS as string[]);
 

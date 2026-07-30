@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ARTICLE_RESEARCH_FIELDS, CROSS_CHECK_ONLY, NEVER_IN_ARTICLE, usableInArticle } from "../src/academy-research-article-fields.js";
+import { ARTICLE_RESEARCH_FIELDS, CROSS_CHECK_ONLY, NEVER_IN_ARTICLE, cleanLandmarks, usableInArticle } from "../src/academy-research-article-fields.js";
 
 const dir = mkdtempSync(join(tmpdir(), "research-fields-"));
 process.env.SEO_DB_PATH = join(dir, "admin.db");
@@ -55,4 +55,30 @@ it("합격률은 승인해도(verified) 도메인으로 나가지 않는다", ()
 
 it("글에 쓰는 필드는 라벨로 원천 사실과 구분된다", () => {
   for (const f of ARTICLE_RESEARCH_FIELDS) expect(f.label).toContain("(조사)");
+});
+
+// 주변 시설(nearby_landmarks)은 "무엇이 곁에 있는가"만 남겨야 한다. 거리·근접 판단·이용자
+// 구성 추정은 전부 우리가 오래 막아 온 종류라, 소스에 적혀 있어도 글로 나가면 안 된다.
+it("주변 시설에서 거리·소요시간을 걷어낸다", () => {
+  expect(cleanLandmarks("경북대학교 약 2km, 영진전문대 도보 5분")).toBe("경북대학교 · 영진전문대");
+  expect(cleanLandmarks("복현오거리 차로 10분 거리")).toBe("복현오거리");
+});
+
+it("근접 판단('가까운'·'바로 앞')을 걷어낸다", () => {
+  expect(cleanLandmarks("경북대와 가까운 위치, 복현시장 바로 앞")).toBe("경북대와 · 복현시장");
+  expect(cleanLandmarks("산업단지에 인접한 지역")).toBe("산업단지에 지역");
+});
+
+it("이용자 구성 추정은 구절째 버린다 — 검증할 수 없는 주장이다", () => {
+  expect(cleanLandmarks("경북대·영진전문대, 대학생 비중이 높음")).toBe("경북대 · 영진전문대");
+  expect(cleanLandmarks("공단 근로자가 많이 이용, 성서산업단지")).toBe("성서산업단지");
+});
+
+it("지명이 하나도 안 남으면 그 줄을 내보내지 않는다", () => {
+  expect(cleanLandmarks("도보 5분 거리")).toBe("");
+  expect(cleanLandmarks("")).toBe("");
+});
+
+it("멀쩡한 지명 나열은 그대로 둔다", () => {
+  expect(cleanLandmarks("경북대학교 · 복현오거리 · 대구공항")).toBe("경북대학교 · 복현오거리 · 대구공항");
 });

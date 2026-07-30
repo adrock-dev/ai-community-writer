@@ -620,6 +620,10 @@ export const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
   // 독자에게 가장 쓸모 있는데, 요약을 시키면 "교통 편리" 같은 말로 뭉개진다.
   { key: "transit_access", text: `"transit_access": string|null  // 가까운 역·정류장, 노선번호, 도보 시간. 소스에 적힌 대로. 없으면 null` },
   { key: "parking_note", text: `"parking_note": string|null  // 주차 가능·협소·외부 주차장 등 실제 안내 문구. 없으면 null` },
+  // 랜드마크는 **위치 사실만** 받는다. "대학이 가까워 대학생이 많다" 같은 이용자 구성 추정은
+  // 소스에 그렇게 적혀 있어도 검증할 수 없어 글에 실으면 안 되는 종류다(참고 기사에서 실제로
+  // 그렇게 쓰고 있었다). 무엇이 곁에 있는지만 담고, 그게 누구에게 유리한지는 글이 판단하지 않는다.
+  { key: "nearby_landmarks", text: `"nearby_landmarks": string|null  // 학원 주변의 알려진 시설·지명(대학, 역, 산업단지, 주요 상권 등)을 소스에 적힌 대로 2~4개. 거리·소요시간·"가깝다"·이용자 구성 추정은 넣지 말 것. 없으면 null` },
 ];
 
 const COURSES_LINE = `"courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}]`;
