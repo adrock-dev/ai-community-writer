@@ -2,7 +2,7 @@
 
 ## Source of truth
 - Status: Active
-- Last refreshed: 2026-06-24
+- Last refreshed: 2026-07-30 (전체 감사 — 수치·열거값·라우트·컴포넌트를 코드와 대조)
 - Primary product surfaces:
   - NestJS 관리자/공개 API: `apps/api-nest`
   - Next.js 사내 관리자: `apps/admin-next`
@@ -41,7 +41,7 @@
   - 검증된 학원 자료만 사용해 가격·셔틀·합격률 등 민감 정보를 보수적으로 작성한다.
   - 외부 Next.js 사이트가 공개 API로 발행 글을 가져가 렌더링할 수 있게 한다.
 - Non-goals:
-  - 모든 업종을 지원하는 범용 programmatic SEO 도구가 아니다. 현재 운영본은 `driving` 도메인 전용이다.
+  - 모든 업종을 지원하는 범용 programmatic SEO 도구가 아니다. 업종은 DB 레지스트리(`db.getVerticals()`, `settings/verticals`)로 등록·선택하지만 **프리셋·글유형·품질 게이트는 아직 `driving`만 특화**돼 있다(MVP). 즉 "driving 전용"은 하드 제약이 아니라 그 층의 특화를 뜻한다.
   - 사람 편집자의 최종 판단을 완전히 대체하지 않는다.
   - Google Indexing API 실제 제출은 현재 워커에서 의도적으로 보류되어 있으며, URL 수집/설정 저장까지만 존재한다.
   - 외부 원천 API 인증/가용성/데이터 품질을 보장하지 않는다.
@@ -60,7 +60,7 @@
   - 외부 사이트 개발자: 공개 API를 기존 Next.js 사이트에 연결한다.
 - User jobs:
   - 도메인을 생성하고 운전학원 도메인 기본값을 적용한다.
-  - 외부 DrivingPlus/학원 데이터를 동기화한다.
+  - 학원 자료를 준비한다. 원천 수집·AI 심층조사·검토 승인은 「자료 관리」에서 **업종 단위**로 하고, 도메인은 「학원자료 연결」로 그 자료를 가져온다(연결은 원천 API를 다시 부르지 않는다).
   - 지역·키워드 축은 「원천 데이터」 탭에서 확인/수정하고, 의도·페르소나·수식어는 글유형별 편집기에서 관리한다.
   - 글 후보 슬롯을 만들고 우선순위/상태를 확인한다.
   - 1개 테스트 글로 품질을 확인한 뒤 10개/100개 단위로 확장한다.
@@ -73,13 +73,22 @@
   - Codex/Claude CLI 인증 상태에 따라 생성 가능성이 달라지는 개발자 운영 환경.
 
 ## Information architecture
-- Primary navigation:
-  - 관리자 대시보드 `/`
-  - 도메인 개요 `/t/[domain]`
-  - 글 생성 중심 `/t/[domain]/generate`
-  - 작업 큐 `/t/[domain]/jobs`
-  - 검수/내보내기 중심 `/t/[domain]/posts`
-  - 글 상세 `/t/[domain]/post/[postId]`
+- Primary navigation (사이드바 그룹은 **소유 단위**로 나뉜다 — 전체 / 운영 대상 / 업종 / 전역):
+  - 관리자 대시보드 `/` — 그룹 밖. 모든 도메인을 가로질러 본다
+  - 「콘텐츠 운영」 = 운영 대상 선택기에 딸린다
+    - 도메인 개요 `/t/[domain]`
+    - 글 생성 중심 `/t/[domain]/generate`
+    - 작업 큐 `/t/[domain]/jobs`
+    - 검수/내보내기 중심 `/t/[domain]/posts`
+  - 「자료 관리」 = 업종에 딸린다(도메인을 모른다)
+    - 운전학원 자료 `/academies` — 원천 동기화·AI 심층조사·검토 승인
+    - 학원 상세 `/academies/[externalId]`
+  - 「설정」 = 전역
+    - 작업환경 `/settings`
+- 사이드바에 없는 라우트:
+  - 글 상세 `/t/[domain]/post/[postId]` (검수 목록에서 진입)
+  - 격리 검수 `/t/[domain]/drafts` (검수 화면의 「검수 대기(게이트 미통과)」로 진입)
+  - 연동 설정 `/integrations`, 도메인 없음 안내 `/need-domain`
 - Core backend surfaces:
   - 관리자 JSON API: `/api/admin/*`
   - 공개 콘텐츠 API: `/api/v1/:domain/*`
@@ -87,7 +96,7 @@
   - SQLite 원천 DB: 기본 `data/admin.db`, 환경변수 `SEO_DB_PATH`로 변경 가능
 - Content hierarchy:
   1. 도메인/운영 상태
-  2. 데이터 준비 상태(학원 자료, 축, 슬롯)
+  2. 데이터 준비 상태(학원 자료 연결·조사값 신뢰 기준, 축, 슬롯)
   3. 생성 옵션(provider, model, 웹자료, 이미지 생성, timeout/cooldown)
   4. 작업 큐 상태와 실패 원인
   5. 발행 글 검수/내보내기/공개 API
@@ -127,7 +136,7 @@
 
 ## Components
 - Existing components to reuse:
-  - Admin: `AppShell`, `DashboardClient`, `DomainClient`, `JobCard`, `PostDetailClient`
+  - Admin(전체 목록은 `apps/admin-next/components`가 기준): `AppShell`(사이드바·운영 대상 선택기·반영 대기 배너), `DashboardClient`, `DomainClient`(도메인 전 탭 + 운영 튜토리얼), `JobCard`, `PostDetailClient`, `AcademyResearchClient`·`AcademyDetailClient`(자료 관리), `DraftsClient`(격리 검수), `SettingsClient`, `NeedDomainClient`, `IntegrationSettingsClient`
   - CSS primitives: `card`, `btn`, `badge`, `tabs`, `workflow`, `writer-hint`, `table-wrap`, `flow-card`, `next-action`
   - API client: `apps/admin-next/lib/api.ts`
   - Shared types: `apps/admin-next/lib/types.ts`
@@ -139,8 +148,9 @@
   - Provider: `codex`, `claude`
   - Job kind: `generate`, `dedup`, `prune`, `indexing`
   - Job status: `queued`, `running`, `done`, `failed`
-  - Slot status: `planned`, `in_progress`, `published`, `failed`, `pruned`
+  - Slot status: `planned`, `in_progress`, `published`, `failed`, `skipped` (레거시 `pruned`는 `skipped`로 마이그레이션됨 — `db.service.ts` CHECK 제약이 기준)
   - Post status: `published`, `noindex`, `deleted`
+  - Job 일시중지는 status가 아니라 별도 `jobs.paused` 컬럼이다(대기 중인 잡만 멈출 수 있고, 카드에 「일시중지」 배지로 표시된다)
 - Token/component ownership:
   - CSS 변수는 `apps/admin-next/app/globals.css`가 소유.
   - 운영 API 계약은 `docs/admin-json-api.md`와 `apps/api-nest/src/admin.controller.ts`가 기준.
@@ -218,11 +228,12 @@
   - 운영 환경에서 `ADMIN_PASSWORD` 필수.
   - `PUBLIC_WRITE_TOKEN` 설정 시 공개 학원 POST 보호.
   - DB(`data/admin.db`)와 `.env`는 민감 정보로 취급.
-- Test/screenshot expectations:
+- Test/screenshot expectations (커밋 전 필수 게이트는 `CLAUDE.md`가 기준):
+  - `npm run verify:company-clean` · `npm run verify:copy-sync` — pre-commit 훅이 자동 실행, 실패 시 커밋 차단
   - `npm run typecheck`
-  - `npm run build`
-  - `npm run verify:company-clean`
+  - `npm run test` (필요 시 `npm run test:golden`)
   - `npm run qa:posts` 또는 `npm run qa:posts:all`
+  - `npm run build`는 **`npm run dev` 중에 돌리지 않는다** — `next dev`와 청크를 공유해 관리자 화면이 통째로 깨진다(`CLAUDE.md`). 타입 확인 목적이면 `typecheck`로 충분하다.
   - 관리자 주요 플로우 수동 smoke: 도메인 생성/슬롯 생성/작업 등록/작업 큐 확인/글 상세 확인.
 
 ## Open questions
@@ -230,6 +241,6 @@
 - [ ] Codex/Claude 중 기본 생성 provider와 모델 정책 확정 필요 / owner: content/engineering / impact: 비용·품질·인증
 - [ ] DrivingPlus 외부 API의 운영 base URL/인증/장애 대응 정책 확정 필요 / owner: backend / impact: 학원 데이터 신뢰성
 - [ ] Google Indexing 실제 제출 기능을 구현할지, 수동 제출/별도 파이프라인으로 둘지 결정 필요 / owner: SEO/engineering / impact: 색인 자동화 범위
-- [ ] 생성 글 승인/반려 상태를 정식 workflow로 둘지 결정 필요 / owner: product/content / impact: 편집 거버넌스
+- [~] 생성 글 승인/반려 workflow — **부분 구현됨**. 품질 게이트 미통과 글은 폐기하지 않고 격리(`draft_posts`)돼 `/t/[domain]/drafts`에서 확인/발행/반려한다(B급 안전·사실 이슈가 남으면 발행 불가). 게이트를 **통과한** 글에 대한 사람 승인 단계를 별도로 둘지는 미결 / owner: product/content / impact: 편집 거버넌스
 - [ ] `DomainClient` 대형 컴포넌트 분리 우선순위 확정 필요 / owner: frontend / impact: 유지보수성
 - [ ] `data/admin.db`를 운영에서 계속 SQLite로 둘지, Postgres 등으로 이전할지 결정 필요 / owner: engineering / impact: 동시성·백업·운영 안정성
