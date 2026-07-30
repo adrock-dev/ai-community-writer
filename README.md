@@ -22,8 +22,10 @@ integration/
 - **Node.js 24 LTS 이상 권장** (레포 Docker 이미지는 `node:25`).
   저장소는 ORM 없이 **Node 내장 `node:sqlite`** 모듈을 쓰기 때문입니다.
   - Node 22.5 ~ 23.x 에서는 `--experimental-sqlite` 플래그가 필요할 수 있습니다.
-  - **Node 20 이하에서는 API/워커가 기동되지 않습니다.** (단, 단위 테스트는 `node:sqlite`를
-    import하지 않으므로 구버전에서도 `npm test`는 동작합니다.)
+  - **Node 20 이하에서는 API/워커가 기동되지 않습니다.** 단위 테스트도 마찬가지입니다 — 테스트
+    31개 파일이 `DbService`/조사 DB 계열을 import하고 그중 여러 개가 실제로 DB를 열므로
+    `node:sqlite`가 필요합니다(한때 "테스트는 구버전에서도 동작한다"고 적혀 있었으나 테스트가
+    DB를 쓰게 되면서 사실이 아니게 됐습니다).
 - **npm** (각 앱이 자체 `package-lock.json`을 가집니다. 워크스페이스 선언은 없습니다.)
 - **(선택) 콘텐츠 생성용 CLI 인증** — 실제로 글을 생성하려면 `codex`(기본) 또는 `claude` CLI가
   PATH에 설치되어 있고 OAuth/구독 로그인이 되어 있어야 합니다. 생성은 API 키가 아니라 이 CLI를
@@ -107,7 +109,8 @@ cmd.exe 에서는 환경 변수 설정만 다릅니다: `set API_WORKER=1`,
 | `API_WORKER` | API 프로세스에서 워커도 함께 실행 | `1` |
 | `SEO_API_BASE_URL` | 관리자가 호출할 API base | `http://127.0.0.1:8765` |
 | `ADMIN_API_TOKEN` | 관리자 프록시가 API로 전달할 토큰 | (관리자 측) `ADMIN_PASSWORD`와 같은 값 |
-| `SEO_DB_PATH` | SQLite DB 경로 | `data/admin.db` |
+| `SEO_DB_PATH` | 운영 SQLite DB 경로 | `data/admin.db` |
+| `ACADEMY_RESEARCH_DB_PATH` | **학원 심층조사 전용 DB**(admin.db와 분리 — 초기화되지 않는 자산) | `data/academy_research.db` |
 | `WORKER_POLL_INTERVAL` | 워커 폴링 주기(초) | `3` |
 | `PUBLIC_API_ORIGINS` | 공개 API CORS 허용 | `*` — **운영에서는 도메인 제한** |
 
@@ -132,7 +135,7 @@ cmd.exe 에서는 환경 변수 설정만 다릅니다: `set API_WORKER=1`,
 ## 검증 / 테스트
 
 ```bash
-npm test                    # 품질 게이트 단위 테스트(vitest) — Node 20에서도 동작
+npm test                    # 단위 테스트(vitest 69파일). 품질 게이트·글유형·조사·슬롯 전반을 덮는다
 npm run typecheck           # API + 관리자 타입체크(tsc). 린트/포맷 도구가 없는 대신 사실상 유일한 정적 검사
 npm run lint                # Biome 린트  (자동수정: npm run lint:fix)
 npm run qa:posts            # 발행된 글 품질 감사 (전체: npm run qa:posts:all)
@@ -141,8 +144,12 @@ npm run verify:copy-sync    # 화면 안내 문구가 코드와 어긋났는지 
 npm run build               # API(tsc) + 관리자(next build) 빌드
 ```
 
-커밋·제출 전에는 `verify:company-clean` + `verify:copy-sync` + `typecheck` + `qa:posts`를 통과시킵니다.
-앞의 둘은 `npm run hooks:install`로 심은 pre-commit 훅이 자동 실행해 실패 시 커밋을 막습니다.
+커밋·제출 전에는 `verify:company-clean` + `verify:copy-sync` + `typecheck` + **`test`** + `qa:posts`를
+통과시킵니다(정본은 [`CLAUDE.md`](./CLAUDE.md)). 앞의 둘은 `npm run hooks:install`로 심은 pre-commit
+훅이 자동 실행해 실패 시 커밋을 막고, 나머지는 수동입니다.
+
+`npm run build`는 배포 산출물이 필요할 때만 돌립니다 — **`./dev.sh`가 떠 있는 동안에는 돌리지
+마세요.** `next dev`와 `.next` 청크를 공유해 관리자 화면이 통째로 깨집니다.
 
 ### 안내 문구가 코드와 어긋나는 문제
 
@@ -164,6 +171,11 @@ npm run build               # API(tsc) + 관리자(next build) 빌드
 docker compose up --build
 ```
 
-생성(LLM)을 쓰려면 호스트의 인증을 마운트해야 합니다 — `docker-compose.yml`의
-`~/.claude`, `~/.codex` 볼륨 주석을 해제하세요. DB는 `adrock-db` 볼륨에 보존됩니다.
-자세한 내용은 [`DEPLOY.md`](./DEPLOY.md)를 참고하세요.
+이미지에는 **API와 워커만** 들어갑니다(`Dockerfile`이 `apps/api-nest`만 빌드) — 관리자 UI는 별도로
+띄웁니다. 생성(LLM)을 쓰려면 호스트의 인증을 마운트해야 합니다: `docker-compose.yml`의
+`~/.claude`, `~/.codex` 볼륨 주석을 해제하세요.
+
+**DB 두 개**(`admin.db`·`academy_research.db`)가 `adrock-db` 볼륨에 보존됩니다. `.env`의 주석은
+값 뒤가 아니라 **줄 앞**에 쓰세요 — 컴포즈의 `env_file` 파서는 `KEY=value  # 설명`의 주석까지 값으로
+읽어, `ADMIN_PASSWORD`가 주석 문장이 되면 관리자 API가 전부 401이 됩니다. 자세한 내용은
+[`DEPLOY.md`](./DEPLOY.md)를 참고하세요.
