@@ -31,6 +31,9 @@ export interface AcademyBaseRow {
 
 export interface StatusDef { code: string; label: string; rank: number }
 export type ResearchProvider = "auto" | "codex" | "claude";
+// provider 표시 이름. 선택기 옵션과 확인 문구가 같은 출처를 쓰게 한다 — 확인 문구가 값을
+// 그대로 출력해 "auto 로 AI 단건 조사합니다" 로 떴었다. 순서가 곧 선택기 노출 순서다.
+export const RESEARCH_PROVIDER_LABELS: Record<ResearchProvider, string> = { auto: "자동", codex: "Codex", claude: "Claude" };
 
 export interface ResearchRun {
   id: string;

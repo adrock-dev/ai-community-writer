@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
-  type AcademyFull, type ResearchProvider, type ResearchRun, type StatusDef, RESEARCH_FIELD_LABELS,
+  type AcademyFull, type ResearchProvider, type ResearchRun, type StatusDef, RESEARCH_FIELD_LABELS, RESEARCH_PROVIDER_LABELS,
   getAcademyResearch, getResearchRun, listResearchRuns, listStatusDefs, researchOneAcademy,
   setResearchFieldMeta, syncOneAcademy, updateResearchField,
 } from "@/lib/academy-research";
@@ -61,7 +61,7 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
 
   async function onResearch() {
     const targetName = data?.base?.name || externalId;
-    if (!confirm(`${targetName} 학원을 ${researchProvider}로 AI 단건 조사합니다.\n1~2분 걸리며 창을 닫아도 서버에서 계속 진행됩니다. 진행할까요?`)) return;
+    if (!confirm(`${targetName} 학원을 ${RESEARCH_PROVIDER_LABELS[researchProvider]}로 AI 단건 조사합니다.\n1~2분 걸리며 창을 닫아도 서버에서 계속 진행됩니다. 진행할까요?`)) return;
     setBusy("research"); setError(""); setNotice("");
     try {
       const started = await researchOneAcademy(externalId, researchProvider);
@@ -140,9 +140,7 @@ export default function AcademyDetailClient({ externalId }: { externalId: string
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", margin: "8px 0 16px" }}>
         <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
           <select className="select" value={researchProvider} onChange={(e) => setResearchProvider(e.target.value as ResearchProvider)} disabled={busy === "research"} aria-label="AI 조사 CLI 선택" style={{ width: "auto", minWidth: 112 }}>
-            <option value="auto">자동</option>
-            <option value="codex">Codex</option>
-            <option value="claude">Claude</option>
+            {Object.entries(RESEARCH_PROVIDER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
           <button className="btn" onClick={onResearch} disabled={busy === "research"} style={{ whiteSpace: "nowrap" }}>{busy === "research" ? "조사 중… (수분 소요)" : "AI 단건 조사"}</button>
         </div>

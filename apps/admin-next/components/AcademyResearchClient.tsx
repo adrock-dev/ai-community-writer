@@ -7,7 +7,7 @@ import {
   type ManualAcademyInput, type ReviewQueueRow,
   bulkFieldMeta, cancelResearchRun, createManualAcademy, deleteManualAcademy,
   listAcademyResearch, listResearchRuns, listReviewQueue, researchRegion,
-  setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS,
+  setResearchFieldMeta, syncBlogReviews, syncRegion, RESEARCH_FIELD_LABELS, RESEARCH_PROVIDER_LABELS,
 } from "@/lib/academy-research";
 import { getBlogReviewSync } from "@/lib/api";
 import { notifyDomainsChanged } from "@/lib/domain-events";
@@ -126,7 +126,7 @@ export default function AcademyResearchClient() {
     const scope = refreshAll ? "이미 조사한 곳까지 다시" : retryOnly ? "실패·근거 없음 학원만" : "미시도·실패 학원만";
     const size = researchLimit ? `최대 ${researchLimit}곳` : "전체";
     const offset = refreshAll && researchLimit > 0 ? researchOffset : undefined;
-    if (!confirm(`${scope}, ${size}을 ${researchProvider}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요?`)) return;
+    if (!confirm(`${scope}, ${size}을 ${RESEARCH_PROVIDER_LABELS[researchProvider]}로 심층조사합니다(백그라운드).\n학원 1곳당 1분 안팎 걸립니다. 진행할까요?`)) return;
     setBusy("research");
     setError("");
     setNotice("");
@@ -280,9 +280,7 @@ export default function AcademyResearchClient() {
             <span className="muted small" style={{ minWidth: 88, fontWeight: 800 }}>AI 조사</span>
             <div style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap" }}>
               <select className="select" value={researchProvider} onChange={(e) => setResearchProvider(e.target.value as ResearchProvider)} disabled={busy === "research" || Boolean(activeResearchRun)} aria-label="전체 AI 조사 CLI 선택" style={{ width: "auto", minWidth: 112 }}>
-                <option value="auto">자동</option>
-                <option value="codex">Codex</option>
-                <option value="claude">Claude</option>
+                {Object.entries(RESEARCH_PROVIDER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
               </select>
               <select
                 className="select"
