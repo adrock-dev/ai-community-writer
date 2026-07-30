@@ -1463,7 +1463,22 @@ export class DbService implements OnModuleInit {
     let sql = "SELECT * FROM jobs WHERE 1=1"; const args: any[] = [];
     if (opts.domain) { sql += " AND domain=?"; args.push(opts.domain); }
     if (opts.status) { sql += " AND status=?"; args.push(opts.status); }
-    sql += " ORDER BY scheduled_at DESC LIMIT ?"; args.push(opts.limit ?? 100);
+    /*
+      진행·대기를 먼저, 그 다음 최근순.
+
+      예전엔 scheduled_at DESC 하나뿐이어서, 방금 등록한 배치가 목록 상한을 넘으면 **정작 큐를
+      점유하고 있는 앞선 작업**이 화면에서 밀려났다. 워커는 하나라 "내 작업이 왜 안 시작되나"의
+      답은 항상 앞에 있는 작업인데, 그게 안 보이면 목록이 그 질문에 답하지 못한다.
+
+      대기(queued)만 scheduled_at ASC 다 — claimNextJob 이 그 순서로 집으므로 그게 실제 실행
+      순서이고, 목록도 "다음에 돌 것"부터 보여야 한다. 나머지(done/failed)는 최신순 이력이다.
+    */
+    sql += ` ORDER BY
+      CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,
+      CASE WHEN status = 'queued' THEN scheduled_at END ASC,
+      scheduled_at DESC
+      LIMIT ?`;
+    args.push(opts.limit ?? 100);
     return this.all(sql, args);
   }
 }

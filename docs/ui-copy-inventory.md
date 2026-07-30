@@ -11,11 +11,11 @@
 | 급 | 뜻 | 처방 | 건수 |
 | --- | --- | --- | --- |
 | **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 11 |
-| **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 103 |
+| **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 104 |
 | **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 186 |
-| | | **합계** | **300** |
+| | | **합계** | **301** |
 
-파일별: `apps/admin-next/components/DomainClient.tsx` 220 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 10 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/lib/domain-gate.ts` 8 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
+파일별: `apps/admin-next/components/DomainClient.tsx` 220 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 11 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/lib/domain-gate.ts` 8 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/JobCard.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
 
 ## 지금 이미 어긋난 것 (0건)
 
@@ -41,7 +41,7 @@
 | `apps/admin-next/components/DomainClient.tsx:2209` | muted-p | 생성 글 본문·CTA·HTML 내보내기·공개 API에 나가는 이름입니다. 마지막 섹션 CTA에서 3~7회 언급되므로 독자가 브랜드로 읽을 수 있는 고유명이어야 합니다. 비워 두면 표시 이름({effectiveBrand})이 그대로 쓰입니다.<br>_현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다. (종속 표기에서 줄번호를 뗐다 — :1105 로 박혀 있었으나 편집으로 밀려 structureGuide 줄을 가리키고 있었다.)_ | `apps/api-nest/src/brand.ts`<br>`apps/api-nest/src/worker.service.ts#buildPrompt CTA 지침` |
 | `apps/admin-next/components/SettingsClient.tsx:237` | muted-p | 켜면 학원 동기화가 {ACADEMY_SYNC_DURATION}에서 {ACADEMY_SYNC_DURATION_WITH_BLOG}으로 늘어납니다(원천이 동시 요청을 못 견뎌 한 곳씩 받습니다). 이미 수집된 자료는 끄더라도 지워지지 않고 학원 상세에 남습니다.<br>_2026-07-28 수정. 소요시간을 lib/copy-facts.ts 단일 출처로 옮겼다._ | `apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION`<br>`apps/admin-next/lib/copy-facts.ts#ACADEMY_SYNC_DURATION_WITH_BLOG` |
 
-## B — 동작 계약 (103건)
+## B — 동작 계약 (104건)
 
 코드가 강제하는 규칙을 문장으로 다시 설명한다. 파생이 불가능하므로 **종속 대상이 바뀌면 사람이 같이 고쳐야 한다.**
 
@@ -57,6 +57,7 @@
 | `apps/admin-next/components/AcademyResearchClient.tsx:764` | tooltip | 원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번 등)까지 봅니다. 승인해도 글에는 쓰이지 않습니다. | `apps/api-nest/src/academy-research-article-fields.ts`<br>`apps/api-nest/src/academy-research.controller.ts#reviewQueue` |
 | `apps/admin-next/components/AppShell.tsx:179` | jsx-text | 원천 자료가 아직 반영되지 않았습니다. 「학원자료 연결」을 눌러야 글에 쓰입니다. | `apps/api-nest/src/link-freshness.ts`<br>`apps/api-nest/src/admin.controller.ts#pendingLinkFor`<br>`apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies` |
 | `apps/admin-next/components/DashboardClient.tsx:149` | muted-p | 운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 도메인이 있어야 도메인 관리, 글 생성, 검수·보내기 메뉴를 사용할 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/admin.controller.ts 도메인 생성` |
+| `apps/admin-next/components/DashboardClient.tsx:200` | muted-p | 모든 도메인의 작업을 진행·대기 먼저, 그다음 최신순으로 최대 {DASHBOARD_JOB_ROWS}건 보여줍니다. 운영 대상 하나만 보려면 왼쪽 메뉴에서 엽니다.<br>_정렬 규칙(진행 → 대기 실행순 → 최신순)을 그대로 서술한다. listJobs 의 ORDER BY 를 바꾸면 이 문장이 거짓이 된다. 건수는 DASHBOARD_JOB_ROWS 에서 렌더하므로 손으로 맞출 필요가 없다._ | `apps/api-nest/src/db.service.ts#listJobs ORDER BY` |
 | `apps/admin-next/components/DomainClient.tsx:438` | field:body | 이 사이트만의 말투·태도, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 확인된 데이터만 사용·날조 금지 같은 안전·데이터 규칙은 이미 강제되니 여기 적지 않아도 됩니다. 지금 건너뛰고 나중에 정해도 됩니다.<br>_2026-07-28 수정. 투어가 「안전·데이터 원칙을 정하라」고 안내해 바로 아래 입력칸 안내(「이미 강제되니 적지 마라」)와 모순이었다. 입력칸과 같은 기준으로 맞췄다._ | `apps/api-nest/src/worker.service.ts#buildPrompt 공통원칙 주입` |
 | `apps/admin-next/components/DomainClient.tsx:439` | field:body | 글 유형마다 기본 디자인이 자동 적용됩니다. 대부분 그대로 두면 되고, 특별한 레이아웃이 필요할 때만 커스텀 디자인 메모나 커스텀 글유형 복제로 조정합니다.<br>_투어 문구. 아래 디자인 탭 안내와 같은 사실을 말한다 — 한쪽만 고치면 어긋난다._ | `apps/api-nest/src/constants.ts default_design`<br>`docs/design-template-mapping.md` |
 | `apps/admin-next/components/DomainClient.tsx:460` | field:body | 2단계 카드의 작성 엔진·모델·이미지 옵션은 글 작성에만 적용됩니다. 처음엔 「1개 테스트 작성」만 눌러 품질을 확인하세요.<br>_1단계 후보 생성은 LLM·이미지를 쓰지 않는다는 전제. 후보 생성이 LLM을 쓰게 되면 거짓이 된다._ | `apps/api-nest/src/slot.service.ts#generateSlotsForDomain` |
@@ -174,11 +175,11 @@
 | `apps/admin-next/components/DashboardClient.tsx:108` | muted-p | ℹ️ 현재 범위 — 이 관리자는 운전면허·운전학원(driving) 글 생성에 특화되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 이 주제 기준이라, 다른 주제의 글은 생성되더라도 품질을 보장할 수 없습니다. (업종은 추가할 수 있으나 전용 프리셋·품질은 아직 운전면허·운전학원에만 적용) | — |
 | `apps/admin-next/components/DashboardClient.tsx:120` | muted-p | 생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다. | — |
 | `apps/admin-next/components/DashboardClient.tsx:158` | muted-p | 전체 도메인의 후보·대기·발행 상태를 보고 필요한 화면으로 이동합니다. | — |
-| `apps/admin-next/components/DashboardClient.tsx:222` | field:desc | 새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있어요. | — |
-| `apps/admin-next/components/DashboardClient.tsx:223` | field:desc | 글 유형은 켜져 있습니다. 지역을 동기화하고 「학원자료 연결」로 학원 자료를 가져온 뒤 후보를 만드세요. | — |
-| `apps/admin-next/components/DashboardClient.tsx:224` | field:desc | ${(domain.planned_count ?? 0).toLocaleString()}개 대기 후보 중 하나만 먼저 작성해 품질을 확인하세요. | — |
-| `apps/admin-next/components/DashboardClient.tsx:225` | field:desc | ${(domain.published_count ?? 0).toLocaleString()}개 발행 글을 미리보기/export/indexing으로 마감하세요. | — |
-| `apps/admin-next/components/DashboardClient.tsx:226` | field:desc | 운영을 시작할 후보를 먼저 만들어야 합니다. | — |
+| `apps/admin-next/components/DashboardClient.tsx:230` | field:desc | 새 도메인입니다. 원천 데이터·공통 설정(선택)을 준비하고 글 유형을 켜면 후보를 만들 수 있어요. | — |
+| `apps/admin-next/components/DashboardClient.tsx:231` | field:desc | 글 유형은 켜져 있습니다. 지역을 동기화하고 「학원자료 연결」로 학원 자료를 가져온 뒤 후보를 만드세요. | — |
+| `apps/admin-next/components/DashboardClient.tsx:232` | field:desc | ${(domain.planned_count ?? 0).toLocaleString()}개 대기 후보 중 하나만 먼저 작성해 품질을 확인하세요. | — |
+| `apps/admin-next/components/DashboardClient.tsx:233` | field:desc | ${(domain.published_count ?? 0).toLocaleString()}개 발행 글을 미리보기/export/indexing으로 마감하세요. | — |
+| `apps/admin-next/components/DashboardClient.tsx:234` | field:desc | 운영을 시작할 후보를 먼저 만들어야 합니다. | — |
 | `apps/admin-next/components/DomainClient.tsx:71` | field:desc | 글유형 켜기 → 원천 데이터 → 후보 → 테스트 작성까지 순서대로 안내하는 생성 흐름 | — |
 | `apps/admin-next/components/DomainClient.tsx:72` | field:desc | 작업 상태와 완성 글을 확인하고 export/indexing으로 넘기는 마감 흐름 | — |
 | `apps/admin-next/components/DomainClient.tsx:78` | field:desc | 선택 준비(원천·공통설정·디자인) 후 글유형 켜기 → 생성 · 필요한 단계만 눌러도 됩니다 | — |

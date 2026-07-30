@@ -1096,6 +1096,15 @@
         "apps/api-nest/src/db.service.ts#insertDraftPost"
       ],
       "note": "같은 전제의 빈 상태 안내. 격리가 없어지면 이 안내가 사람을 없는 화면으로 보낸다."
+    },
+    {
+      "file": "apps/admin-next/components/DashboardClient.tsx",
+      "match": "진행·대기 먼저",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/db.service.ts#listJobs ORDER BY"
+      ],
+      "note": "정렬 규칙(진행 → 대기 실행순 → 최신순)을 그대로 서술한다. listJobs 의 ORDER BY 를 바꾸면 이 문장이 거짓이 된다. 건수는 DASHBOARD_JOB_ROWS 에서 렌더하므로 손으로 맞출 필요가 없다."
     }
   ]
 }

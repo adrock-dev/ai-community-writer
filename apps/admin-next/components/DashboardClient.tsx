@@ -191,7 +191,15 @@ export default function DashboardClient() {
         {/* 「전체 보기」 버튼은 두지 않는다. 이 표는 전역(도메인 열)인데 작업 큐는 도메인에 딸리므로,
             어느 도메인으로 보내도 스코프가 어긋난다. 상세는 사이드바 「작업 큐」(운영 대상 기준)로 간다.
             이 표가 답하는 질문 — "지금 무엇이 돌고 있나" — 은 최근 몇 건으로 끝난다. */}
-        <div className="spread" style={{ marginBottom: 10 }}><h2>최근 작업 큐</h2></div>
+        {/*
+          제목에 범위를 주장하지 않는다. 「최근」은 정렬이 진행·대기 먼저로 바뀌어 틀렸고,
+          「전체」는 상한이 있어 과장이다. 기준은 아래 한 줄로 드러내고, 건수는 상수에서
+          렌더해 손으로 적은 숫자가 코드와 어긋나지 않게 한다.
+        */}
+        <div className="spread" style={{ marginBottom: 6 }}><h2>작업 큐</h2></div>
+        <p className="muted small" style={{ margin: "0 0 10px" }}>
+          모든 도메인의 작업을 <b>진행·대기 먼저</b>, 그다음 최신순으로 최대 {DASHBOARD_JOB_ROWS}건 보여줍니다. 운영 대상 하나만 보려면 왼쪽 메뉴에서 엽니다.
+        </p>
         <div className="table-wrap">
           <table><thead><tr><th>도메인</th><th>종류</th><th>상태</th><th>예약</th><th>완료</th></tr></thead><tbody>
             {jobs.length === 0 && <tr><td colSpan={5} className="muted">작업 없음</td></tr>}
