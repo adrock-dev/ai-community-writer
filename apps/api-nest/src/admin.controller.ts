@@ -17,7 +17,7 @@ import { articleQualityIssues, postSurfaceQualityIssues, renderedCandidateCount 
 import { blockingClass, classifyIssues } from "./quality-gate-severity.js";
 import { AXIS_TAG_VOCAB, resolveRecipeFlags, resolveTemplateDirection, safeTemplateOverrides, type TaggedAxis } from "./axis-tags.js";
 import { archetypeStructureVariants, getArchetype, writingGuideLines } from "./archetypes.js";
-import { runLlm } from "./llm-runner.js";
+import { resolveLlmProvider, runLlm } from "./llm-runner.js";
 import { adminApiBaseUrl, blogReviewSyncEnabled, BLOG_REVIEW_SYNC_SETTING_KEY, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 import { isT01TemplateFamily, T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
@@ -324,7 +324,7 @@ export class AdminController {
     if (!axes.length) throw new HttpException("axes required (persona/intent/modifier 중 하나 이상)", 400);
     const keywords = (Array.isArray(body.keywords) ? body.keywords : []).map((k: any) => String(k).trim()).filter(Boolean).slice(0, 20);
     const prompt = buildAxisSuggestPrompt({ domainName: publicBrandName({ ...config, domain }), kind, primary: archetype.primary, name: String(body.name || ""), direction: String(body.direction || ""), keywords, axes, commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype) });
-    const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
+    const result = await runLlm(prompt, { provider: parseLlmProvider(body.provider), model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
     if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
     const suggestions = parseAxisSuggestion(result.summary, axes);
     if (!Object.keys(suggestions).length) throw new HttpException("LLM 응답에서 축 값을 추출하지 못했습니다. 다시 시도해 주세요.", 502);
@@ -349,7 +349,7 @@ export class AdminController {
       name: String(body.name || ""), kind, direction, currentDirection: String(body.current_direction || ""),
       commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype), absolutePrinciples,
     });
-    const result = await runLlm(prompt, { provider: String(body.provider || "codex").trim() || "codex", model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
+    const result = await runLlm(prompt, { provider: parseLlmProvider(body.provider), model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
     if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
     const validation = parseDirectionValidation(result.summary);
     if (!validation) throw new HttpException("LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
@@ -902,7 +902,7 @@ export class AdminController {
     }
     const job_id = this.db.enqueueJob(domain, "generate", {
       slot_ids: slotIds,
-      provider: body.provider || "codex",
+      provider: parseLlmProvider(body.provider),
       model: String(body.model || "").trim(),
       design_template_id: body.design_template_id,
       use_web_research: body.use_web_research ?? true,
@@ -1087,6 +1087,27 @@ export function checkAuth(req: Request, headers: Record<string, string>): void {
 }
 
 function clampInt(value: any, fallback: number, min: number, max: number): number { const n = Number(value); return Math.max(min, Math.min(max, Number.isFinite(n) ? Math.trunc(n) : fallback)); }
+
+/**
+ * LLM provider 검증. 비면 기본값 `codex`.
+ *
+ * 러너가 아는 값(`resolveLlmProvider`)만 통과시켜 **오타를 요청 시점에 400으로 끊는다.** 예전에는
+ * 검증이 없어 `codx` 같은 오타가 잡으로 들어가 큐를 한 바퀴 돈 뒤 `unknown_provider` 로 실패했다 —
+ * 슬롯이 failed 로 남고 원인은 작업 상세를 열어야 보였다.
+ *
+ * `openai_responses` 는 **의도적으로 허용**한다. 관리자 화면의 `/options.providers` 에는 없지만
+ * (CLI 가 아닌 HTTP 경로) 설계·검증 기록이 남아 있는 실험 경로이므로 API 직접 호출은 열어 둔다.
+ * 화면에 노출할지는 별개 결정이다.
+ */
+// export 이유: 세 엔드포인트(생성 잡·축 제안·방향성 검증)가 공유하는 관문이라 단위 테스트로 잠근다.
+export function parseLlmProvider(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "codex";
+  if (resolveLlmProvider(raw) === "unknown") {
+    throw new HttpException(`알 수 없는 provider: ${raw} (codex, claude, openai_responses 중 하나)`, 400);
+  }
+  return raw;
+}
 function normalizeDesignOverrides(value: Row): Row {
   const templates = new Set(Object.keys(TEMPLATE_SPECS));
   const designs = new Set<string>(DESIGN_TEMPLATES.map((template) => template.id));
