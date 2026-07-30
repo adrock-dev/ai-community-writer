@@ -856,8 +856,10 @@ export class AdminController {
       q: body.q || undefined,
       template: body.template || undefined,
       limit: clampInt(body.max, 10, 1, 500),
-      balanced: Boolean(body.balanced),
     };
+    // `balanced` 는 없어졌다. 예전에는 「전국 골고루」만 지역 라운드로빈 + 목록 필터 무시였는데,
+    // 자동 선별 규칙을 하나로 합치면서 모든 개수가 같은 규칙(유형 최소 보장 + 지역 골고루 + 필터 반영)을
+    // 쓴다. 옛 클라이언트가 보내는 body.balanced 는 무시하면 되므로 따로 거부하지 않는다.
     if (!slotIds.length) {
       slotIds = this.db.selectSlotsForBatch(domain, batchOpts).map((s) => s.slot_id);
     } else {

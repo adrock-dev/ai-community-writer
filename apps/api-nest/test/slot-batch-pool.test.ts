@@ -71,9 +71,41 @@ describe("배치 선별 후보 풀", () => {
     expect(new Set(picked.map((row) => String(row.template_id)))).toEqual(new Set([CROWDING.template]));
   });
 
-  it("전국 골고루(balanced) 는 지역을 겹치지 않게 고른다", () => {
-    const picked = db.selectSlotsForBatch(DOMAIN, { limit: 20, balanced: true });
-    expect(picked.length).toBe(20);
-    expect(new Set(picked.map((row) => String(row.region))).size).toBe(20);
+  /**
+   * 자동 선별 규칙 통일(개수만 다르고 규칙은 하나)의 회귀 가드.
+   *
+   * 예전에는 「현재 검색 N개」가 글유형 라운드로빈, 「전국 골고루」가 지역 라운드로빈 + 필터 무시로
+   * 규칙이 갈렸다. 각각 한쪽으로 치우쳤다 — 지역 라운드로빈만 쓰면 후보가 적은 유형이 0건이 되고,
+   * 글유형 라운드로빈만 쓰면 특수 유형이 후보 비율을 훨씬 넘겨 뽑힌다(실측 2026-07-30).
+   * 지금은 개수와 무관하게 ①유형 최소 1건 ②지역 골고루 ③같은 주제 1건이다.
+   */
+  describe("규칙 통일 — 개수만 달라진다", () => {
+    for (const limit of [10, 30, 100]) {
+      it(`${limit}개를 뽑아도 지역이 겹치지 않는다`, () => {
+        const picked = db.selectSlotsForBatch(DOMAIN, { limit });
+        expect(picked.length).toBe(limit);
+        // 이 픽스처는 슬롯마다 지역이 달라 지역 수가 후보 수보다 많다 — 겹치면 지역 분산이 깨진 것이다.
+        expect(new Set(picked.map((row) => String(row.region))).size).toBe(limit);
+      });
+
+      it(`${limit}개를 뽑아도 같은 지역+키워드 주제는 한 번만 나온다`, () => {
+        const picked = db.selectSlotsForBatch(DOMAIN, { limit });
+        const topics = new Set(picked.map((row) => `${row.region}::${row.primary_keyword}`));
+        expect(topics.size).toBe(picked.length);
+      });
+
+      it(`${limit}개를 뽑으면 굶는 글유형이 없다`, () => {
+        const templates = new Set(db.selectSlotsForBatch(DOMAIN, { limit }).map((row) => String(row.template_id)));
+        for (const { template } of STARVED) expect(templates).toContain(template);
+        expect(templates).toContain(CROWDING.template);
+      });
+    }
+
+    it("후보가 적은 유형이 개수를 독점하지 않는다 — 대부분은 후보가 많은 유형이다", () => {
+      const picked = db.selectSlotsForBatch(DOMAIN, { limit: 100 });
+      const crowding = picked.filter((row) => String(row.template_id) === CROWDING.template).length;
+      // 유형 라운드로빈이던 시절에는 여기가 39건이었다(특수 유형이 61%). 지금은 최소 보장 1건씩만 준다.
+      expect(crowding).toBe(100 - STARVED.length);
+    });
   });
 });

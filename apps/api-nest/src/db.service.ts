@@ -817,7 +817,28 @@ export class DbService implements OnModuleInit {
     }
     return { where, args };
   }
-  selectSlotsForBatch(domain: string, opts: { q?: string; template?: string; limit?: number; balanced?: boolean } = {}): Row[] {
+  /**
+   * 「글 작성」 자동 선별 — **규칙은 하나이고 버튼은 개수만 다르다.**
+   *
+   * 예전에는 버튼마다 규칙이 달랐다: 「현재 검색 N개」는 글유형 라운드로빈, 「전국 골고루」는 지역
+   * 라운드로빈에 목록 필터 무시. 개수만 다른 것처럼 보이는 버튼들이 서로 다른 글을 뽑아서, 화면에서
+   * 무엇이 나갈지 알 수 없었다. 게다가 둘 다 한쪽으로 치우쳤다 — 실측(2026-07-30, planned 8,288건 =
+   * T16 8,169 / T14 96 / T11 23, 지역 251개, 100건 선별):
+   *   - 지역 라운드로빈만: 지역 100/100 이지만 **T14·T11 이 0건** (굶는 유형이 생긴다)
+   *   - 글유형 라운드로빈만: 후보 비율이 98.6 : 1.2 : 0.3 인데 결과가 39 : 38 : 23 (특수 유형 61%)
+   *
+   * 그래서 지금은 ①각 유형 최소 1건을 먼저 심고 ②나머지를 지역 라운드로빈으로 채운다. 같은 결과에서
+   * 지역 98 · 주제 100 · 유형 98 : 1 : 1 이 나온다(굶는 유형 없음, 비율 왜곡 없음).
+   *
+   * **무작위 추출은 일부러 쓰지 않는다.** 겹침을 정하는 것은 후보 수가 아니라 지역 수(251)라서,
+   * 후보를 100배로 늘려도 랜덤은 100건당 서로 다른 지역이 82.7개에 머문다(생일 문제 —
+   * 251×(1−(250/251)^100)≈82.6, 실측 일치). 같은 지역 글끼리 본문이 0.48 겹치므로 그 16~18건은
+   * 사실상 중복 글이 된다.
+   *
+   * 같은 (지역, 키워드) 주제는 배치 안에서 1건만 나간다. 지금 후보는 주제 776개에 축 조합이 주제당
+   * 평균 10.7건이라, 이 중복 제거가 없으면 축만 다른 같은 주제 글이 한 배치에 여러 건 들어온다.
+   */
+  selectSlotsForBatch(domain: string, opts: { q?: string; template?: string; limit?: number } = {}): Row[] {
     const { where, args } = this.slotFilterClause(domain, { status: "planned", template: opts.template, q: opts.q });
     // 후보 풀은 **글유형당** 상한이다(PARTITION BY template_id).
     //
@@ -835,29 +856,51 @@ export class DbService implements OnModuleInit {
       [...args, BATCH_POOL_PER_TEMPLATE],
     );
     const limit = Math.max(1, Math.min(500, Math.trunc(Number(opts.limit ?? 10))));
-    const groups = new Map<string, Row[]>();
-    for (const row of candidates) {
-      const key = opts.balanced ? String(row.region || "전국") : String(row.template_id || "기타");
-      const bucket = groups.get(key) || [];
-      bucket.push(row);
-      groups.set(key, bucket);
-    }
-    const keys = [...groups.keys()].sort((a, b) => (groups.get(b)?.[0]?.priority_score ?? 0) - (groups.get(a)?.[0]?.priority_score ?? 0));
     const picked: Row[] = [];
     const seenTopic = new Set<string>();
-    while (picked.length < limit && keys.length) {
+    // 같은 (지역, 키워드) 주제는 배치 안에서 한 번만. 이미 담았으면 건너뛴다.
+    const take = (row: Row): boolean => {
+      const topic = `${row.region || ""}::${row.primary_keyword || ""}`;
+      if (seenTopic.has(topic)) return false;
+      seenTopic.add(topic);
+      picked.push(row);
+      return true;
+    };
+
+    const bucketsBy = (key: (row: Row) => string): Map<string, Row[]> => {
+      const groups = new Map<string, Row[]>();
+      for (const row of candidates) {
+        const bucket = groups.get(key(row)) || [];
+        bucket.push(row);
+        groups.set(key(row), bucket);
+      }
+      return groups;
+    };
+
+    // ① 글유형 최소 보장 — 각 유형에서 1건씩 먼저 심는다. 이게 없으면 후보가 압도적으로 많은 유형이
+    //    지역 라운드로빈을 독점해, 후보가 적은 유형은 개수를 늘려도 영구히 안 나간다.
+    const byTemplate = bucketsBy((row) => String(row.template_id || "기타"));
+    const templateKeys = [...byTemplate.keys()].sort(
+      (a, b) => Number(byTemplate.get(b)?.[0]?.priority_score ?? 0) - Number(byTemplate.get(a)?.[0]?.priority_score ?? 0),
+    );
+    for (const key of templateKeys) {
+      if (picked.length >= limit) break;
+      for (const row of byTemplate.get(key) ?? []) if (take(row)) break;
+    }
+
+    // ② 나머지는 지역 라운드로빈. 지역이 겹치면 같은 지역 글끼리 본문이 겹치므로(0.48) 지역을 최대한
+    //    벌리는 것이 이 단계의 목적이다. 지역 수보다 많이 뽑으면 한 바퀴 더 돌며 다음 후보를 쓴다.
+    const byRegion = bucketsBy((row) => String(row.region || "전국"));
+    const regionKeys = [...byRegion.keys()];
+    while (picked.length < limit && regionKeys.length) {
       let progressed = false;
-      for (const key of [...keys]) {
-        const bucket = groups.get(key) || [];
-        let next: Row | undefined;
-        while (bucket.length) {
-          const candidate = bucket.shift()!;
-          const topic = `${candidate.region || ""}::${candidate.primary_keyword || ""}`;
-          if (!seenTopic.has(topic)) { next = candidate; seenTopic.add(topic); break; }
-        }
-        if (next) { picked.push(next); progressed = true; }
-        if (!bucket.length) keys.splice(keys.indexOf(key), 1);
-        if (picked.length >= limit) break;
+      for (let i = 0; i < regionKeys.length && picked.length < limit; i++) {
+        const bucket = byRegion.get(regionKeys[i] as string) ?? [];
+        let took = false;
+        while (bucket.length) if (take(bucket.shift()!)) { took = true; break; }
+        if (took) progressed = true;
+        // 바닥난 지역은 목록에서 뺀다(빈 버킷을 계속 돌면 진행 없이 루프만 돈다).
+        if (!bucket.length) { regionKeys.splice(i, 1); i--; }
       }
       if (!progressed) break;
     }

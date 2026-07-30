@@ -53,13 +53,13 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "이 흐름이 안정적이면 현재 검색",
+      "match": "이 흐름이 안정적이면 ${WRITE_BATCH_MID}개",
       "class": "A",
       "depends": [
-        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_SEARCH",
-        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_NATIONWIDE"
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_MID",
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_LARGE"
       ],
-      "note": "2026-07-28 수정. 버튼 개수를 손으로 적고 있었다. WRITE_BATCH_SEARCH/NATIONWIDE 상수에서 렌더한다."
+      "note": "버튼 개수를 손으로 적지 않고 상수에서 렌더한다. 2026-07-30 규칙 통일로 「현재 검색/전국 골고루」 이름이 사라져 상수명도 MID/LARGE 로 바뀌었다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
@@ -256,15 +256,14 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "우선순위(검색량·경쟁도·weight)가 높은 후보부터",
+      "match": "왼쪽 세 버튼은",
       "class": "B",
       "depends": [
-        "apps/admin-next/components/DomainClient.tsx 작성 버튼 개수",
-        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_NATIONWIDE",
-        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_SEARCH",
-        "apps/api-nest/src/db.service.ts#selectSlotsForBatch 선별·라운드로빈"
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_MID",
+        "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_LARGE",
+        "apps/api-nest/src/db.service.ts#selectSlotsForBatch 선별 규칙"
       ],
-      "note": "같은 문장이 작성 규모(현재 검색 N개 → 전국 M개)도 말한다. 2026-07-28 그 숫자는 상수 렌더로 바꿨고, 남은 종속은 선별·라운드로빈 규칙 쪽이다. 2026-07-30 종속을 slot.service.ts → db.service.ts#selectSlotsForBatch 로 정정했다 — 선별 코드는 처음부터 db 쪽이라 엉뚱한 파일을 보고 있었고, 그래서 선별을 고쳐도 이 문장이 경고에 안 걸렸다. 겸해서 「우선순위 상위 N개」를 「유형을 번갈아」로 고쳤다(선별은 예나 지금이나 유형 라운드로빈인데, 후보 풀이 우선순위 순 단일 상한이라 사실상 상위 N개처럼 보였을 뿐이다)."
+      "note": "「개수만 다르고 규칙은 같다」와 「무작위로 뽑지 않는다」는 주장. 규칙 문장 자체는 lib/copy-facts.ts#WRITE_BATCH_RULE 를 렌더한다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
@@ -746,11 +745,21 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "아래 필터는 목록 표시와",
+      "match": "여기서 고른 필터는 목록 표시와",
       "class": "B",
       "depends": [
-        "apps/api-nest/src/slot.service.ts 선별"
-      ]
+        "apps/api-nest/src/db.service.ts#selectSlotsForBatch 선별 규칙"
+      ],
+      "note": "자동 선별 3개 버튼과 「선택 N개 작성」이 이 필터/체크를 입력으로 쓴다는 주장. 2단계 카드가 목록 아래라는 배치도 포함."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "위 목록에서 체크한 후보만 씁니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts slot_ids"
+      ],
+      "note": "「선택 N개 작성」 툴팁. slot_ids 경로가 슬롯 상태·지역을 보지 않는다는 사실에 종속(자동 선별 3개와 다른 유일한 규칙)."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
@@ -771,10 +780,10 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "글 생성 탭이 두 단계로 나뉩니다",
+      "match": "먼저 후보를 만들고, 「후보 목록」에서 쓸 후보를 검색·체크한 뒤",
       "class": "C",
       "depends": [],
-      "note": "화면 구조 설명. 화면과 함께 바뀐다."
+      "note": "화면 구조(1단계 → 후보 목록 → 2단계 카드 순서) 설명. 카드 순서를 바꾸면 같이 고친다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
@@ -1153,6 +1162,15 @@
         "apps/api-nest/src/db.service.ts#recoverStaleRunningJobs"
       ],
       "note": "응답 없는 잡을 실패로 정리하는 동작의 서술."
+    },
+    {
+      "file": "apps/admin-next/lib/copy-facts.ts",
+      "match": "작성 대기(planned)만 · 위 목록의 상태·유형·검색 필터 반영",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/db.service.ts#selectSlotsForBatch 선별 규칙"
+      ],
+      "note": "자동 선별 규칙을 사람 말로 옮긴 문장. 세 버튼 툴팁·추천 안내가 이것을 읽는다. selectSlotsForBatch 를 고치면 반드시 같이 고쳐라 — 기계가 판정할 수 없다."
     }
   ]
 }

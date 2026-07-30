@@ -19,3 +19,15 @@ export const ACADEMY_SYNC_DURATION = "1~2분";
  * 관측값이라 코드에서 계산되지 않는다 — 동시성이나 대상 학원 수가 바뀌면 여기를 고쳐라.
  */
 export const ACADEMY_SYNC_DURATION_WITH_BLOG = "10~15분";
+
+/**
+ * 「글 작성」 자동 선별 규칙을 사람 말로 옮긴 문장. 버튼 툴팁·추천 안내가 이 하나를 읽는다.
+ *
+ * 정본은 `apps/api-nest/src/db.service.ts` 의 `selectSlotsForBatch` 다 — **선별 코드를 고치면
+ * 이 문장도 같이 고쳐라.** 여기 두는 이유는 두 가지다: 세 버튼(1개·10개·100개)이 같은 규칙을
+ * 쓰므로 문장이 한 곳에 있어야 하고, 컴포넌트 안 템플릿 리터럴로 두면 안내멘트 인벤토리
+ * (`scripts/copy-inventory.mjs` 의 tooltip 추출은 `title="..."` 형태만 본다)에서 빠져
+ * 코드와 어긋나도 아무도 모른다.
+ */
+export const WRITE_BATCH_RULE =
+  "작성 대기(planned)만 · 위 목록의 상태·유형·검색 필터 반영 · 글유형마다 최소 1건 · 나머지는 지역을 골고루 · 같은 지역+키워드는 1건";

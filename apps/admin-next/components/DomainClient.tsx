@@ -2,7 +2,7 @@
 
 import { api, cloneTemplate, createTemplate, deleteTemplate, downloadPostExport, enqueueGenerate, getAcademyCoverage, getCoherence, getDomainDetail, getOptions, getRuntimeApis, listAcademies, listPosts, listSlots, listTemplates, replaceAxis, resetSlot, setBuiltinVisibility, suggestTemplateAxes, updateSlotTitle, validateTemplateDirection, type DirectionValidation, syncDrivingplusAcademies, syncDrivingplusRegions, getSyncRun, listSyncRuns, cancelSyncRun, type SyncRun, getRegionDirectory, syncRegionDirectory, type RegionDirectoryStatus, getSourceFreshness, type SourceFreshness, getResearchSummary, type ResearchSummary, linkAcademies, listAcademyExclusions, unexcludeAcademy, type AcademyExclusion, updateDomain, updateTemplate } from "@/lib/api";
 import { brandNameWarnings, publicBrandName } from "@/lib/brand";
-import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG } from "@/lib/copy-facts";
+import { ACADEMY_SYNC_DURATION, ACADEMY_SYNC_DURATION_WITH_BLOG, WRITE_BATCH_RULE } from "@/lib/copy-facts";
 import { formatDateTime } from "@/lib/date";
 import { DOMAIN_TAB_REQUEST_EVENT, notifyDomainsChanged } from "@/lib/domain-events";
 import { designSettingLabel, getDesignTheme } from "@/lib/design-theme";
@@ -20,12 +20,15 @@ import { createPortal } from "react-dom";
 // 동기화 상태 폴링이 연속으로 이만큼 실패하면 화면 갱신을 포기한다(동기화 자체는 서버에서 계속된다).
 const POLL_MAX_ERRORS_IN_A_ROW = 10;
 
-// 「현재 검색 N개 / 전국 골고루 M개」 작성 규모. 버튼 라벨·큐 요청 수·추천 순서 안내·투어 문구가
+// 자동 선별 「N개 작성」 버튼의 규모. 버튼 라벨·큐 요청 수·추천 순서 안내·투어 문구가
 // 이 하나를 같이 읽는다 — 각자 적어 두면 개수를 바꿀 때 문구만 옛 숫자로 남는다.
-const WRITE_BATCH_SEARCH = 10;
-const WRITE_BATCH_NATIONWIDE = 100;
-const WRITE_BATCH_SEARCH_LABEL = `현재 검색 ${WRITE_BATCH_SEARCH}개 작성`;
-const WRITE_BATCH_NATIONWIDE_LABEL = `전국 골고루 ${WRITE_BATCH_NATIONWIDE}개 작성`;
+// 자동 선별 3개 버튼은 **개수만** 다르다. 규칙은 서버 한 곳(db.service.selectSlotsForBatch)에
+// 하나뿐이므로, 이름에 규칙을 적지 않는다 — 예전 「현재 검색 N개」·「전국 골고루 N개」는 버튼마다
+// 규칙이 다르던 시절의 이름이고, 실제로 뽑히는 글이 이름과 달라 오해를 만들었다.
+const WRITE_BATCH_MID = 10;
+const WRITE_BATCH_LARGE = 100;
+const WRITE_BATCH_MID_LABEL = `${WRITE_BATCH_MID}개 작성`;
+const WRITE_BATCH_LARGE_LABEL = `${WRITE_BATCH_LARGE}개 작성`;
 
 /**
  * 동기화가 "성공"으로 끝났어도 운영자가 알아야 하는 것을 문장으로 만든다.
@@ -359,8 +362,8 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
       {view === "generate" && <div className="grid">
         <div className="card card-pad">
           <p className="eyebrow">생성 전용 페이지</p>
-          <h2>1단계 후보 만들기 → 2단계 글 작성 순서로 진행하세요</h2>
-          <p className="muted">글 생성 탭이 두 단계로 나뉩니다. 먼저 후보를 만들고, 2단계 카드에서 1개 테스트 작성으로 품질을 확인한 뒤 확장하세요.</p>
+          <h2>1단계 후보 만들기 → 후보 목록에서 고르기 → 2단계 글 작성</h2>
+          <p className="muted">먼저 후보를 만들고, 「후보 목록」에서 쓸 후보를 검색·체크한 뒤, 2단계 카드에서 1개 테스트 작성으로 품질을 확인하고 확장하세요.</p>
         </div>
         <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />
       </div>}
@@ -446,7 +449,7 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     body: hasSlots
       ? "아래 목록에 후보가 있으면 1단계는 건너뛰어도 됩니다. 더 필요할 때만 「글유형」과 「개수」를 정하고 「글 후보 만들기」로 추가하세요."
       : "1단계 카드에서 「글유형」을 고르고 「개수」를 정한 뒤 「글 후보 만들기」를 누르세요. LLM은 호출하지 않고 기획 축·글유형 조합만 만듭니다.",
-    action: hasSlots ? "후보가 충분하면 다음 단계(2단계 글 작성)로 이동하세요." : "실행 후 맨 아래 후보 목록에 행이 생겼는지 확인하세요.",
+    action: hasSlots ? "후보가 충분하면 다음 단계(2단계 글 작성)로 이동하세요." : "실행 후 바로 아래 「후보 목록」에 행이 생겼는지 확인하세요.",
   };
   const testWrite: TourStep = {
     focus: "test-write",
@@ -458,8 +461,8 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     // 예전 문구는 "자동 실행한다"고 했는데, 하필 후보가 0인 새 도메인에서만 뜨는 문장이라
     // 튜토리얼이 가장 필요한 사람이 정확히 그 거짓말을 보고 눌렀다가 실패했다.
     body: hasSlots
-      ? "2단계 카드의 작성 엔진·모델·이미지 옵션은 글 작성에만 적용됩니다. 처음엔 「1개 테스트 작성」만 눌러 품질을 확인하세요."
-      : "후보가 없으면 이 버튼은 실패합니다 — 위 1단계에서 후보를 먼저 만드세요. 대량 버튼은 1개 테스트로 품질을 확인한 뒤 사용하세요.",
+      ? "2단계 카드의 작성 엔진·모델·이미지 옵션은 글 작성에만 적용됩니다. 작성 대상은 바로 위 「후보 목록」의 필터·체크가 정합니다. 처음엔 「1개 테스트 작성」만 눌러 품질을 확인하세요."
+      : "후보가 없으면 이 버튼은 실패합니다 — 맨 위 1단계에서 후보를 먼저 만드세요. 대량 버튼은 1개 테스트로 품질을 확인한 뒤 사용하세요.",
     action: "버튼을 누르면 작업 큐 탭에서 진행 상태를 확인합니다.",
   };
   const jobsBoard: TourStep = { focus: "jobs", tab: "jobs", target: "jobs-board", title: "작업 상태 확인", body: "큐에 등록된 글 생성 작업이 대기·진행·완료·실패 중 어디에 있는지 봅니다. 실패하면 상세 카드의 에러를 확인하고 같은 조건으로 다시 시도합니다.", action: "완료 후 검수·내보내기 탭에서 결과를 검수합니다." };
@@ -473,7 +476,7 @@ function buildOperatorTourSteps(mode: TourMode, counts?: SlotCounts): TourStep[]
     body: hasPosts
       ? "제목을 눌러 상세 미리보기를 확인하고, 필요한 글을 선택해 Markdown/HTML로 내보내거나 색인 요청을 등록합니다. 글 상세의 「이 글의 근거」는 그 글이 학원·후기·이미지를 얼마나 썼는지와, 「검토 필요」라 못 쓴 값이 무엇인지 보여줍니다. 게이트를 통과 못한 글은 이 목록에 없고 「검수 대기(게이트 미통과)」에 있습니다."
       : "테스트 작성이 끝나면 이 화면에 글이 나타납니다. 작업은 끝났는데 목록이 비어 있다면 게이트에서 걸린 것이니 「검수 대기(게이트 미통과)」를 확인하세요.",
-    action: `이 흐름이 안정적이면 현재 검색 ${WRITE_BATCH_SEARCH}개, 이후 ${WRITE_BATCH_NATIONWIDE}개로 확장하세요.`,
+    action: `이 흐름이 안정적이면 ${WRITE_BATCH_MID}개, 이후 ${WRITE_BATCH_LARGE}개로 확장하세요 — 선별 규칙은 같고 개수만 다릅니다.`,
   };
 
   if (mode === "review") {
@@ -659,7 +662,7 @@ function Overview({ domain, counts, onTab, onStartFlow }: { domain: DomainConfig
       <div className="card card-pad"><h2>공통 작성 원칙</h2><p className="muted">{domain.common_principles || "아직 공통 원칙이 없습니다."}</p><button className="btn" onClick={() => onTab("plan")}>글 공통 설정 열기</button></div>
       <div className="card card-pad"><h2>글 유형/디자인</h2><p className="muted">글 유형 {domain.templates_enabled.length}개 · 디자인 {designSettingLabel(domain.design_template_id)}</p><button className="btn" onClick={() => onTab("templates")}>글유형/디자인 열기</button></div>
     </div>
-    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>(선택) 원천 데이터 탭에서 지역 동기화 → 「학원자료 연결」 (수집·조사·승인은 「운전학원 자료」에서)</li><li>(선택) 글 공통 설정 탭에서 공통원칙·제외어·키워드 정리</li><li>(선택) 글유형/디자인 탭에서 디자인 확인</li><li>글유형/디자인 탭에서 만들 글 유형 켜기(새 도메인 필수)</li><li>글 생성 탭: 1단계 후보 만들기 → 2단계 글 작성 → 후보 목록 확인</li><li>작업 큐 → 검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「글 생성 흐름 시작」을 누르면 위 순서대로 카드 영역을 포커싱합니다.</p></div>
+    <div className="card card-pad" data-tour="overview-quickstart"><h2>빠른 시작</h2><ol className="muted"><li>(선택) 원천 데이터 탭에서 지역 동기화 → 「학원자료 연결」 (수집·조사·승인은 「운전학원 자료」에서)</li><li>(선택) 글 공통 설정 탭에서 공통원칙·제외어·키워드 정리</li><li>(선택) 글유형/디자인 탭에서 디자인 확인</li><li>글유형/디자인 탭에서 만들 글 유형 켜기(새 도메인 필수)</li><li>글 생성 탭: 1단계 후보 만들기 → 후보 목록에서 검색·선택 → 2단계 글 작성</li><li>작업 큐 → 검수·내보내기 탭에서 검수하고 색인/중복/가지치기 실행</li></ol><p className="muted small">「글 생성 흐름 시작」을 누르면 위 순서대로 카드 영역을 포커싱합니다.</p></div>
   </div>;
 }
 
@@ -1986,7 +1989,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
    * 선택한 후보를 planned 로 되돌린다(오류 메시지도 지운다).
    *
    * 「선택 글 작성」은 상태를 보지 않으므로 재작성 자체는 이것 없이도 된다. 이 동작이 필요한 이유는
-   * **자동 선별 풀에 되돌리기** 위해서다 — 「1개 테스트」·「현재 검색 N개」·「전국 골고루」는 planned 만
+   * **자동 선별 풀에 되돌리기** 위해서다 — 「1개 테스트」·「N개 작성」 버튼은 planned 만
    * 고르므로, failed 로 남은 후보는 사람이 매번 직접 체크하지 않는 한 다시 뽑히지 않는다.
    *
    * 이미 발행된 후보를 되돌리면 자동 선별이 그 후보를 다시 골라 **같은 자리에 글을 새로 쓴다.**
@@ -2036,37 +2039,11 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
       </div>
 
-      <div className="card card-pad grid slot-panel" data-tour="slots-writer">
-        <div>
-          <p className="eyebrow">2단계</p>
-          <h2>글 작성</h2>
-          <p className="muted small">후보를 골라 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 1단계 ‘글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.)</p>
-        </div>
-        <div className="grid grid-4">
-          <Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field>
-          <Field label="모델"><select className="select" value={model} onChange={(e) => setModel(e.target.value)}>{modelChoices.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select></Field>
-          <Field label="제한시간(초)"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field>
-          <Field label="대량 대기시간(초)"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field>
-        </div>
-        <div className="row">
-          <button className="btn primary" data-tour="slots-test" disabled={queueBusy || busy} onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>{queueBusy ? "큐 등록 중..." : "1개 테스트 작성"}</button>
-          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue(WRITE_BATCH_SEARCH_LABEL, { max: WRITE_BATCH_SEARCH, q, template })}>{WRITE_BATCH_SEARCH_LABEL}</button>
-          <button className="btn" disabled={queueBusy || busy} onClick={() => smartQueue(WRITE_BATCH_NATIONWIDE_LABEL, { max: WRITE_BATCH_NATIONWIDE, balanced: true })}>{WRITE_BATCH_NATIONWIDE_LABEL}</button>
-        </div>
-        <div className="row">
-          <label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label>
-          <label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => { const checked = e.target.checked; setImageGen(checked); setTimeout((value) => recommendedGenerationTimeoutSec(checked, value)); }} /> Codex 이미지 생성</label>
-          <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
-        </div>
-        <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>제한 {effectiveTimeout}초</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
-        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → 현재 검색 {WRITE_BATCH_SEARCH}개 → 전국 골고루 {WRITE_BATCH_NATIONWIDE}개. 작성 대상은 무작위가 아니라 글유형을 번갈아 가며, 각 유형 안에서 우선순위(검색량·경쟁도·weight)가 높은 후보부터 고릅니다. 전국 작성은 유형 대신 지역을 라운드로빈으로 섞습니다.</p>
-      </div>
-
       <div className="card card-pad grid" data-tour="slots-list">
         <div data-tour="slots-list-head">
           <p className="eyebrow">후보 목록</p>
           <h2>후보 검색·선택</h2>
-          <p className="muted small">아래 필터는 목록 표시와 「현재 검색 N개 작성」 선별에 쓰입니다.</p>
+          <p className="muted small">여기서 고른 필터는 목록 표시와 아래 2단계 자동 선별(「1개 테스트」·「{WRITE_BATCH_MID}개」·「{WRITE_BATCH_LARGE}개」)에 함께 쓰입니다. 체크한 후보는 2단계 「선택 N개 작성」으로 씁니다.</p>
         </div>
         <div className="row" data-tour="slots-filter">
           <select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","skipped"].map((s) => <option key={s}>{s}</option>)}</select>
@@ -2074,17 +2051,50 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <input className="input" style={{ width: 320 }} placeholder="지역/키워드/후보 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />
           {["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}
           <span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span>
-          <button className="btn primary" disabled={!selected.size || queueBusy || busy} onClick={() => queue(Array.from(selected))}>{queueBusy ? "큐 등록 중..." : "선택 글 작성"}</button>
-          <button className="btn" disabled={!selected.size || busy || queueBusy} title="선택한 후보를 작성 대기(planned)로 되돌리고 오류 메시지를 지웁니다. 실패한 후보는 이걸 해야 「1개 테스트」·「현재 검색 N개」·「전국 골고루」의 자동 선별에 다시 들어옵니다." onClick={resetSelected}>{busy ? "처리 중..." : "다시 대기로"}</button>
+          <button className="btn" disabled={!selected.size || busy || queueBusy} title="선택한 후보를 작성 대기(planned)로 되돌리고 오류 메시지를 지웁니다. 실패한 후보는 이걸 해야 「1개 테스트」·「N개 작성」의 자동 선별에 다시 들어옵니다." onClick={resetSelected}>{busy ? "처리 중..." : "다시 대기로"}</button>
           <button className="btn danger" disabled={!selected.size || busy || queueBusy} onClick={delSelected}>{busy ? "삭제 중..." : "삭제"}</button>
         </div>
         {slotError && <p className="small" style={{ color: "var(--danger)" }}>후보 검색 오류: {slotError}</p>}
-        <div className="table-wrap">
+        {/* 표 높이를 제한한다(slot-table-wrap). 목록이 2단계 위로 온 뒤로는 후보가 많을 때
+            표가 그대로 늘어나면 정작 작성 버튼이 화면 밖으로 밀린다. limit 은 1000이다. */}
+        <div className="table-wrap slot-table-wrap">
           <table>
             <thead><tr><th><input type="checkbox" checked={selectedAllVisible} onChange={toggleAllVisible} /></th><th>유형</th><th>키워드</th><th>지역</th><th>페르소나</th><th>점수</th><th>제목(수동)</th><th>상태</th></tr></thead>
             <tbody>{filtered.map((s) => <tr key={s.slot_id}><td><input type="checkbox" checked={selected.has(s.slot_id)} onChange={() => setSelected((p) => { const n = new Set(p); n.has(s.slot_id) ? n.delete(s.slot_id) : n.add(s.slot_id); return n; })} /></td><td><span className="badge">{s.template_id}</span></td><td><b>{s.primary_keyword}</b><p className="muted small mono">{s.slot_id}</p>{s.last_error && <p className="small" style={{ color: "var(--danger)" }}>{s.last_error}</p>}</td><td>{s.region ?? "-"}</td><td>{s.persona ?? "-"}</td><td>{s.priority_score?.toFixed(1) ?? "-"}</td><td><SlotTitleCell domain={domain.domain} slot={s} onSaved={applySlotTitle} /></td><td><Status status={s.status} /></td></tr>)}</tbody>
           </table>
         </div>
+      </div>
+
+      {/* 2단계는 후보 목록 '아래'에 둔다. 「N개 작성」·「선택 N개」가 위 목록의 필터/체크를
+          그대로 입력으로 쓰므로(같은 q·template·selected 상태), 버튼이 목록보다 위에 있으면
+          무엇을 대상으로 쓰는지 화면에서 확인할 수 없다. 작성 진입점 4개도 여기 한 줄에 모은다. */}
+      <div className="card card-pad grid slot-panel" data-tour="slots-writer">
+        <div>
+          <p className="eyebrow">2단계</p>
+          <h2>글 작성</h2>
+          <p className="muted small">위 목록에서 고른 후보를 생성 작업 큐에 넣습니다. 후보가 없으면 먼저 1단계 ‘글 후보 만들기’로 후보를 만든 뒤 작성하세요. (작성 버튼은 후보를 자동 생성하지 않습니다.)</p>
+        </div>
+        <div className="grid grid-4">
+          <Field label="작성 엔진"><select className="select" value={provider} onChange={(e) => setProvider(e.target.value as Provider)}>{options.providers.map((p) => <option key={p}>{p}</option>)}</select></Field>
+          <Field label="모델"><select className="select" value={model} onChange={(e) => setModel(e.target.value)}>{modelChoices.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}</select></Field>
+          <Field label="제한시간(초)"><input className="input" type="number" value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field>
+          <Field label="대량 대기시간(초)"><input className="input" type="number" value={cooldown} onChange={(e) => setCooldown(Number(e.target.value))} /></Field>
+        </div>
+        {/* 왼쪽 3개는 같은 규칙(WRITE_BATCH_RULE)으로 개수만 다르다. 맨 오른쪽만 규칙이 다르다 —
+            사람이 체크한 후보를 그대로 쓰므로 상태도 지역도 보지 않는다. */}
+        <div className="row">
+          <button className="btn primary" data-tour="slots-test" disabled={queueBusy || busy} title={`1건만 먼저 써서 품질을 확인하는 버튼입니다. 선별 규칙은 10개·100개와 같습니다 — ${WRITE_BATCH_RULE}.`} onClick={() => smartQueue("1개 테스트 작성", { max: 1, q, template })}>{queueBusy ? "큐 등록 중..." : "1개 테스트 작성"}</button>
+          <button className="btn" disabled={queueBusy || busy} title={`${WRITE_BATCH_RULE}.`} onClick={() => smartQueue(WRITE_BATCH_MID_LABEL, { max: WRITE_BATCH_MID, q, template })}>{WRITE_BATCH_MID_LABEL}</button>
+          <button className="btn" disabled={queueBusy || busy} title={`${WRITE_BATCH_RULE}.`} onClick={() => smartQueue(WRITE_BATCH_LARGE_LABEL, { max: WRITE_BATCH_LARGE, q, template })}>{WRITE_BATCH_LARGE_LABEL}</button>
+          <button className={`btn ${selected.size ? "primary" : ""}`} disabled={!selected.size || queueBusy || busy} title="위 목록에서 체크한 후보만 씁니다. 왼쪽 3개와 달리 상태·지역을 보지 않으므로 이미 발행된 후보도 다시 씁니다." onClick={() => queue(Array.from(selected))}>{queueBusy ? "큐 등록 중..." : `선택 ${selected.size}개 작성`}</button>
+        </div>
+        <div className="row">
+          <label className="row small"><input type="checkbox" checked={web} onChange={(e) => setWeb(e.target.checked)} /> 웹 자료 수집 후 작성</label>
+          <label className="row small"><input type="checkbox" checked={imageGen} onChange={(e) => { const checked = e.target.checked; setImageGen(checked); setTimeout((value) => recommendedGenerationTimeoutSec(checked, value)); }} /> Codex 이미지 생성</label>
+          <Field label="이미지 크기"><select className="select" value={imageSize} onChange={(e) => setImageSize(e.target.value)}><option value="1024x1024">1024 정방형</option><option value="1536x1024">1536 가로형</option><option value="1024x1536">1024 세로형</option></select></Field>
+        </div>
+        <div className="writer-hint"><b>작성 옵션</b><span>{provider}{model ? ` / ${model}` : " / 기본"}</span><span>디자인 {designSettingLabel(domain.design_template_id)}</span><span>웹자료 {web ? "사용" : "미사용"}</span><span>이미지 {imageGen ? `생성 / ${imageSize}` : "미사용"}</span><span>제한 {effectiveTimeout}초</span><span>선택 기준 예상 {expectedMinutes}분</span></div>
+        <p className="muted small">추천: 1개 테스트 작성 → QA 확인 → {WRITE_BATCH_MID}개 → {WRITE_BATCH_LARGE}개. 왼쪽 세 버튼은 <b>개수만 다르고 선별 규칙은 같습니다</b> — {WRITE_BATCH_RULE}. 무작위로 뽑지 않습니다: 지역이 겹치면 같은 지역 글끼리 내용이 겹치기 때문에 지역을 최대한 벌립니다.</p>
       </div>
     </div>
   );

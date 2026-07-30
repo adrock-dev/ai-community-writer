@@ -98,9 +98,9 @@ export const updateSlotTitle = (domain: string, slotId: string, title: string | 
 /**
  * 슬롯을 planned 로 되돌리고 last_error 를 지운다.
  *
- * 「선택 글 작성」은 슬롯 상태를 보지 않으므로(worker 가 넘겨받은 slot_id 를 그대로 처리한다)
+ * 「선택 N개 작성」은 슬롯 상태를 보지 않으므로(worker 가 넘겨받은 slot_id 를 그대로 처리한다)
  * 재작성 자체는 이것 없이도 된다. 이 호출이 필요한 이유는 **자동 선별 풀에 되돌리기** 위해서다 —
- * 「1개 테스트」·「현재 검색 N개」·「전국 골고루」는 planned 만 고르므로, failed 로 남은 후보는
+ * 「1개 테스트」·「N개 작성」은 planned 만 고르므로, failed 로 남은 후보는
  * 사람이 직접 체크해 주지 않는 한 영영 다시 뽑히지 않는다.
  */
 export const resetSlot = (domain: string, slotId: string) =>
