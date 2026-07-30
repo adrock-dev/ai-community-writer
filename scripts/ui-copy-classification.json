@@ -46,8 +46,10 @@
       "match": "3초마다 자동 새로고침",
       "class": "A",
       "depends": [
-        "apps/admin-next/components/DomainClient.tsx:1896 setInterval(…, 3000)"
-      ]
+        "apps/admin-next/components/DomainClient.tsx#Jobs setInterval 3000",
+        "apps/api-nest/src/worker.service.ts job types"
+      ],
+      "note": "3초는 Jobs 컴포넌트의 폴링 주기, 작업 종류 4가지는 JobKind 를 한국어로 나열한 것이다. 전역 작업 화면(JobsClient)을 없애면서 그 파일의 같은 분류를 여기로 합쳤다. 줄번호를 적지 않는다 — 예전에 :1896 으로 박아 뒀다가 편집으로 밀려 무관한 코드를 가리키고 있었다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
@@ -65,9 +67,9 @@
       "class": "A",
       "depends": [
         "apps/api-nest/src/brand.ts",
-        "apps/api-nest/src/worker.service.ts:1105 CTA 지침"
+        "apps/api-nest/src/worker.service.ts#buildPrompt CTA 지침"
       ],
-      "note": "현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다."
+      "note": "현재 프롬프트와 일치(3~7회). 같은 문장이 브랜드 폴백 동작(brand.ts)도 함께 설명한다. (종속 표기에서 줄번호를 뗐다 — :1105 로 박혀 있었으나 편집으로 밀려 structureGuide 줄을 가리키고 있었다.)"
     },
     {
       "file": "apps/admin-next/components/AcademyResearchClient.tsx",
@@ -585,14 +587,6 @@
       "class": "B",
       "depends": [
         "draft 격리 훅"
-      ]
-    },
-    {
-      "file": "apps/admin-next/components/JobsClient.tsx",
-      "match": "generate/dedup/prune/indexing",
-      "class": "B",
-      "depends": [
-        "apps/api-nest/src/worker.service.ts job types"
       ]
     },
     {

@@ -11,6 +11,8 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 const DEFAULT_BRAND_COLOR = "#2563eb";
+// 「최근 작업 큐」에 보여줄 줄 수. 전역 작업 화면을 없앤 뒤로 이 표가 유일한 도메인 교차 창구다.
+const DASHBOARD_JOB_ROWS = 20;
 
 export default function DashboardClient() {
   const [domains, setDomains] = useState<DomainConfig[]>([]);
@@ -27,7 +29,10 @@ export default function DashboardClient() {
     const [opts, domainRes, jobRes] = await Promise.all([
       getOptions(),
       listDomains(),
-      api<{ count: number; items: Job[] }>("/jobs?limit=8"),
+      // 전역 작업 화면을 없앤 뒤로 이 표가 유일한 도메인 교차 창구다. 8건이던 것을 늘린다 —
+      // 정렬이 scheduled_at DESC 라서, 방금 등록한 배치가 8건을 넘으면 정작 점유의 원인인
+      // "먼저 등록돼 아직 대기 중인 작업"이 표에서 밀려났다.
+      api<{ count: number; items: Job[] }>(`/jobs?limit=${DASHBOARD_JOB_ROWS}`),
     ]);
     setOptions(opts);
     setDomains(domainRes.items);
@@ -183,7 +188,10 @@ export default function DashboardClient() {
       )}
 
       <section style={{ marginTop: 28 }}>
-        <div className="spread" style={{ marginBottom: 10 }}><h2>최근 작업 큐</h2><Link className="btn" href="/jobs">전체 보기</Link></div>
+        {/* 「전체 보기」 버튼은 두지 않는다. 이 표는 전역(도메인 열)인데 작업 큐는 도메인에 딸리므로,
+            어느 도메인으로 보내도 스코프가 어긋난다. 상세는 사이드바 「작업 큐」(운영 대상 기준)로 간다.
+            이 표가 답하는 질문 — "지금 무엇이 돌고 있나" — 은 최근 몇 건으로 끝난다. */}
+        <div className="spread" style={{ marginBottom: 10 }}><h2>최근 작업 큐</h2></div>
         <div className="table-wrap">
           <table><thead><tr><th>도메인</th><th>종류</th><th>상태</th><th>예약</th><th>완료</th></tr></thead><tbody>
             {jobs.length === 0 && <tr><td colSpan={5} className="muted">작업 없음</td></tr>}

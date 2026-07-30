@@ -199,12 +199,12 @@ const DESIGN_BLUEPRINTS: Record<string, {
 };
 
 
-type DomainPageView = "overview" | "generate" | "posts";
+type DomainPageView = "overview" | "generate" | "posts" | "jobs";
 
 export default function DomainClient({ domain, view = "overview", initialTab: initialTabProp }: { domain: string; view?: DomainPageView; initialTab?: string }) {
   // ?tab= 로 넘어온 유효한 탭이면 우선(다른 라우트의 탭으로 딥링크). 없으면 view 기반 기본 탭.
   const requestedTab = initialTabProp && TABS.some(([id]) => id === initialTabProp) ? initialTabProp : undefined;
-  const initialTab = requestedTab ?? (view === "generate" ? "slots" : view === "posts" ? "posts" : "overview");
+  const initialTab = requestedTab ?? (view === "generate" ? "slots" : view === "posts" ? "posts" : view === "jobs" ? "jobs" : "overview");
   const [payload, setPayload] = useState<DomainDetailPayload | null>(null);
   const [options, setOptions] = useState<AdminOptions | null>(null);
   const [tab, setTab] = useState(initialTab);
@@ -332,10 +332,10 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
     finally { setBusy(false); }
   }
 
-  const title = view === "generate" ? "글 생성" : view === "posts" ? "검수·내보내기" : domainConfig.display_name;
+  const title = view === "generate" ? "글 생성" : view === "posts" ? "검수·내보내기" : view === "jobs" ? "작업 큐" : domainConfig.display_name;
   const eyebrow = view === "overview" ? "← 대시보드" : `← ${domainConfig.display_name}`;
   const backHref = view === "overview" ? "/" : `/t/${encodeURIComponent(domainConfig.domain)}`;
-  const focusedPage = view === "generate" || view === "posts";
+  const focusedPage = view === "generate" || view === "posts" || view === "jobs";
 
   return (
     <div>
@@ -363,6 +363,14 @@ export default function DomainClient({ domain, view = "overview", initialTab: in
           <p className="muted">글 생성 탭이 두 단계로 나뉩니다. 먼저 후보를 만들고, 2단계 카드에서 1개 테스트 작성으로 품질을 확인한 뒤 확장하세요.</p>
         </div>
         <Slots domain={domainConfig} slots={payload.slots ?? []} options={options} onRefresh={refresh} onTab={setTab} />
+      </div>}
+      {view === "jobs" && <div className="grid">
+        <div className="card card-pad">
+          <p className="eyebrow">작업 전용 페이지</p>
+          <h2>이 도메인에 등록된 작업의 진행 상태를 확인하세요</h2>
+          <p className="muted">작업은 도메인에 등록됩니다. 워커는 하나라 여러 도메인 작업이 순서대로 처리되므로, 대기가 길면 대시보드 「최근 작업 큐」에서 다른 도메인 작업이 앞서 있는지 볼 수 있습니다.</p>
+        </div>
+        <Jobs domain={domainConfig} jobs={payload.jobs ?? []} onRefresh={refresh} />
       </div>}
       {view === "posts" && <div className="grid">
         {/* 「검수 대기(게이트 미통과)」 링크는 Posts 안(목록 위 버튼 줄)으로 옮겼다 — 개요의
@@ -2097,7 +2105,6 @@ function Jobs({ domain, jobs, onRefresh }: { domain: DomainConfig; jobs: Job[]; 
     <div className="row">
       <select className="select" style={{ width: 180 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["queued", "running", "done", "failed"].map((s) => <option key={s}>{s}</option>)}</select>
       <span className="muted small">{filtered.length}개 표시 / 전체 {jobs.length}개</span>
-      <Link href="/jobs" className="btn">전체 작업 큐 열기</Link>
     </div>
     {filtered.length === 0 && <div className="card card-pad muted">아직 작업이 없습니다. 글 생성 탭에서 “1개 테스트 작성”부터 등록하세요.</div>}
     <div className="grid">{filtered.map((job) => <JobCard key={job.id} job={job} designFallback={domain.design_template_id} onChanged={onRefresh} />)}</div>

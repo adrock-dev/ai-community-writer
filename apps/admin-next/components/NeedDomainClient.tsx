@@ -61,7 +61,6 @@ export default function NeedDomainClient() {
       <div className="gate-actions">
         <Link className="btn primary" href="/?create=domain">대시보드에서 도메인 만들기</Link>
         <Link className="btn" href="/">대시보드로 이동</Link>
-        <Link className="btn" href="/jobs">작업 큐 보기</Link>
       </div>
     </div>
   );

@@ -77,12 +77,14 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
   const manageHref = hasDomain ? domainBase : needDomainHref("manage");
   const generationHref = hasDomain ? `${domainBase}/generate` : needDomainHref("generate");
   const reviewHref = hasDomain ? `${domainBase}/posts` : needDomainHref("review");
+  const jobsHref = hasDomain ? `${domainBase}/jobs` : needDomainHref("jobs");
   const onNeedDomainPage = pathname === "/need-domain";
   // /t/{domain} 접두를 뗀 하위 경로로 정확 매칭한다(도메인 이름에 generate/posts 가 들어가도 오판정 방지).
   const domainSubPath = pathname.startsWith("/t/") ? pathname.replace(/^\/t\/[^/]+/, "") : null;
   const onDomainOverview = domainSubPath === "";
   const onGenerate = domainSubPath === "/generate";
   const onReview = domainSubPath === "/posts" || (domainSubPath?.startsWith("/post/") ?? false);
+  const onJobs = domainSubPath === "/jobs";
   const activeDomainRow = domains.find((d) => d.domain === activeDomain);
   const activeDomainColor = activeDomainRow?.brand_color ?? "var(--primary)";
   /*
@@ -100,7 +102,7 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
     rememberDomain(next);
     setRecentDomain(next);
     // 현재 보던 하위 화면을 유지한다(글 상세는 목록으로, 도메인 무관 페이지는 관리 화면으로).
-    const sub = onGenerate ? "/generate" : onReview ? "/posts" : "";
+    const sub = onGenerate ? "/generate" : onReview ? "/posts" : onJobs ? "/jobs" : "";
     router.push(`/t/${encodeURIComponent(next)}${sub}`);
   }
 
@@ -149,14 +151,13 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           <SidebarLink href={manageHref} active={onDomainOverview || (onNeedDomainPage && menuFrom === "manage")} tabIndex={sidebarOpen ? 0 : -1}>도메인 관리</SidebarLink>
           <SidebarLink href={generationHref} active={onGenerate || (onNeedDomainPage && menuFrom === "generate")} tabIndex={sidebarOpen ? 0 : -1}>글 생성</SidebarLink>
           <SidebarLink href={reviewHref} active={onReview || (onNeedDomainPage && menuFrom === "review")} tabIndex={sidebarOpen ? 0 : -1}>검수·보내기</SidebarLink>
-          <p style={{ marginTop: 12 }}>작업 관리</p>
           {/*
-            작업 큐는 위 「콘텐츠 운영」이 아니라 여기 있다. 그룹은 소유 단위로 나뉘는데(콘텐츠=도메인,
-            자료=업종), 작업은 워커에 딸린다 — 워커는 하나뿐이고 도메인을 가로질러 처리한다.
-            도메인 종속 메뉴 사이에 두면 바로 위 「운영 대상」이 적용될 것처럼 읽혀, 실제로
-            "왜 다른 도메인 작업이 보이지" 로 이어졌다. 도메인별 큐는 「도메인 관리」의 작업 큐 탭이 맡는다.
+            작업 큐도 운영 대상에 딸린다 — 작업은 도메인에 등록되기 때문이다. 한때 전역 화면(/jobs)이
+            따로 있었지만, 도메인별 큐와 겹치면서 이 그룹의 유일한 예외가 됐고 "왜 다른 도메인 작업이
+            보이지"로 이어졌다. 전역으로 필요한 것은 "지금 무엇이 돌고 있나" 하나이고, 그건 대시보드
+            「최근 작업 큐」가 도메인 열과 함께 보여준다 — 오래된 목록은 점유 판정과 무관하다.
           */}
-          <SidebarLink href="/jobs" active={pathname === "/jobs"} tabIndex={sidebarOpen ? 0 : -1}>작업 큐</SidebarLink>
+          <SidebarLink href={jobsHref} active={onJobs || (onNeedDomainPage && menuFrom === "jobs")} tabIndex={sidebarOpen ? 0 : -1}>작업 큐</SidebarLink>
           <p style={{ marginTop: 12 }}>자료 관리</p>
           {/* 자료는 도메인이 아니라 업종에 딸린다. 업종이 늘면 여기 업종 선택이 붙는다. */}
           <SidebarLink href="/academies" active={pathname.startsWith("/academies")} tabIndex={sidebarOpen ? 0 : -1}>운전학원 자료</SidebarLink>
