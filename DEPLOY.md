@@ -48,17 +48,17 @@ cp .env.example .env
 docker compose up --build
 ```
 
+**`.env`의 주석은 줄 앞에만 씁니다.** `KEY=value   # 설명`처럼 값 뒤에 붙이면 `dev.sh`(셸 로드)는 주석으로 버리지만 **컴포즈의 `env_file` 파서는 그 문장까지 값으로 읽습니다.** 그러면 `ADMIN_PASSWORD`가 주석 문장이 되어 관리자 API가 그 문장을 토큰으로 요구하고(프록시 토큰과 달라 전부 401), `PUBLIC_API_ORIGINS`도 `*`와 달라져 CORS가 막힙니다. 같은 파일을 로컬은 정상·Docker는 고장으로 읽는 구조라 원인 찾기가 어렵습니다. 해석 결과는 `docker compose config`로 확인할 수 있습니다.
+
 **이미지에는 API와 워커만 들어갑니다.** `Dockerfile`이 `apps/api-nest`만 복사·빌드하므로 `docker compose up`으로 뜨는 것은 API(+워커)뿐입니다. 사내 관리자(`apps/admin-next`)는 이 컴포즈에 없으니 별도로 실행하고 `SEO_API_BASE_URL`을 컨테이너 API로 향하게 하세요.
 
 ### 저장소 볼륨 — DB는 두 개입니다
 
-`adrock-db` 볼륨이 `/data`에 붙고, 컴포즈가 `SEO_DB_PATH=/data/admin.db`를 넣어 운영 DB를 그 볼륨에 둡니다.
+`adrock-db` 볼륨이 `/data`에 붙고, 컴포즈가 **DB 두 개를 모두** 그 볼륨에 둡니다 — `SEO_DB_PATH=/data/admin.db`와 `ACADEMY_RESEARCH_DB_PATH=/data/academy_research.db`(학원 심층조사 전용 DB).
 
-**학원 심층조사는 별도 DB(`academy_research.db`)를 쓰는데, 이 값은 컴포즈가 설정하지 않습니다.** 비워 두면 컨테이너 내부 경로(`/app/data/academy_research.db`)에 생겨 **컨테이너를 다시 만들면 조사 데이터가 사라집니다.** 원천에서 다시 받을 수 있는 자료와 달리 **AI 심층조사값과 검증완료 승인은 복구가 불가능합니다**(380곳 재조사 ≈ 4~5시간 + LLM 비용, 승인은 사람이 다시 판단 — `docs/data-portability.md`). 조사 데이터를 `admin.db`가 초기화돼도 살아남게 하려고 일부러 분리한 것이므로, 컨테이너로 운영하려면 `.env`에서 다음 줄의 주석을 반드시 풀어 볼륨 안으로 보내세요.
+조사 DB 기본값은 2026-07-30에 컴포즈로 옮겼습니다. **그전 컴포즈로 컨테이너를 돌렸다면** 조사 DB가 컨테이너 내부(`/app/data/academy_research.db`)에 있었고, 컨테이너를 다시 만들 때 사라집니다 — 원천에서 다시 받을 수 있는 자료와 달리 **AI 심층조사값과 검증완료 승인은 복구가 불가능**하므로(380곳 재조사 ≈ 4~5시간 + LLM 비용, 승인은 사람이 다시 판단 — `docs/data-portability.md`), 그 컨테이너가 아직 있으면 `docker cp`로 먼저 꺼내 볼륨에 옮기세요.
 
-```bash
-ACADEMY_RESEARCH_DB_PATH=/data/academy_research.db
-```
+`.env`에서 `ACADEMY_RESEARCH_DB_PATH`를 직접 지정했으면 그 값이 이깁니다(컴포즈가 `${ACADEMY_RESEARCH_DB_PATH:-/data/academy_research.db}` 형태로 읽습니다). 볼륨 밖 경로를 넣으면 위와 같은 유실이 다시 생깁니다.
 
 ### 생성(LLM)을 쓰려면 인증 마운트가 필요합니다
 
