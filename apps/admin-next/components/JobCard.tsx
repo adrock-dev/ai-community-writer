@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { cancelJob, pauseJob, prioritizeJob, resumeJob } from "@/lib/api";
 import { isJobCollapsed, setJobCollapsed } from "@/lib/collapsed-jobs";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
@@ -77,6 +77,8 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
       </div>
     </summary>
     <div className="card-pad grid" style={{ borderTop: "1px solid var(--line)" }}>
+      {/* 「언제까지 기다리면 되는지」는 옵션 칩들 사이에 두면 묻힌다 — 오류로 오해받던 상태라 카드 맨 위에 따로 세운다. */}
+      {activity.deadline && <p className="uploaded-notice" style={{ padding: "10px 12px", margin: 0 }}>{activity.deadline}</p>}
       <div className="progress"><span style={{ width: `${percent}%` }} /></div>
       <div className="grid grid-5">
         <Stat label="대상" value={total} />
@@ -92,7 +94,6 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         {job.current_slot_id && <span>현재 후보 <b className="mono">{job.current_slot_id}</b></span>}
         <span>마지막 활동 {activity.lastSeen}</span>
         <span>처리 {processed}/{total}</span>
-        {activity.deadline && <span>{activity.deadline}</span>}
       </div>
       <div className="writer-hint">
         <b>작업 옵션</b>
@@ -129,7 +130,7 @@ export function jobLabel(job: Job): string {
 
 function num(value: unknown): number { const n = Number(value); return Number.isFinite(n) ? n : 0; }
 
-function jobActivity(job: Job): { label: string; lastSeen: string; stale: boolean; deadline?: string } {
+function jobActivity(job: Job): { label: string; lastSeen: string; stale: boolean; deadline?: ReactNode } {
   if (job.status === "queued") return { label: job.paused ? "대기 중지" : "대기열에 있음", lastSeen: "-", stale: false };
   if (job.status === "done") return { label: "완료", lastSeen: formatDateTime(job.finished_at ?? job.heartbeat_at), stale: false };
   if (job.status === "failed") return { label: job.cancel_requested ? "취소/실패 처리됨" : "실패", lastSeen: formatDateTime(job.finished_at ?? job.heartbeat_at), stale: false };
@@ -154,11 +155,13 @@ function jobActivity(job: Job): { label: string; lastSeen: string; stale: boolea
  * 자동 정리 시각(`stale_recover_at`, 마지막 활동 + 제한시간 + 여유)을 상한으로 보여준다.
  * 화면이 임계를 다시 계산하지 않는 이유는 lib/types.ts 의 필드 주석 참고.
  */
-function recoverDeadline(job: Job, stale: boolean): string | undefined {
+function recoverDeadline(job: Job, stale: boolean): ReactNode | undefined {
   const at = job.stale_recover_at ? formatDateTime(job.stale_recover_at) : "";
   if (!at) return undefined;
-  if (job.cancel_requested) return `취소 확정 늦어도 ${at} — 현재 글이 끝나면 그보다 먼저 멈춥니다`;
-  if (stale) return `응답이 계속 없으면 ${at}에 실패로 정리됩니다`;
+  if (job.cancel_requested) {
+    return <>⏳ <b>취소 처리 중</b>입니다. 쓰고 있던 글이 끝나면 그 자리에서 멈추고, 작업자가 응답하지 않더라도 <b>{at}</b>까지는 자동으로 정리됩니다. 그때까지는 오류가 아닙니다.</>;
+  }
+  if (stale) return <>⚠️ 작업자 응답이 끊겼습니다. 이대로면 <b>{at}</b>에 실패로 정리됩니다.</>;
   return undefined;
 }
 

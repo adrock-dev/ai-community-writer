@@ -1115,6 +1115,34 @@
         "apps/api-nest/src/db.service.ts#listJobs ORDER BY"
       ],
       "note": "정렬 규칙(진행 → 대기 실행순 → 최신순)을 그대로 서술한다. listJobs 의 ORDER BY 를 바꾸면 이 문장이 거짓이 된다. 건수는 DASHBOARD_JOB_ROWS 에서 렌더하므로 손으로 맞출 필요가 없다."
+    },
+    {
+      "file": "apps/admin-next/components/JobCard.tsx",
+      "match": "까지는 자동으로 정리됩니다. 그때까지는 오류가 아닙니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/db.service.ts#jobStaleRecovery",
+        "apps/api-nest/src/db.service.ts#recoverStaleRunningJobs"
+      ],
+      "note": "시각 자체는 서버가 계산한 stale_recover_at 을 렌더한다. 자동 정리가 사라지거나 조건이 바뀌면 이 문장이 거짓이 된다."
+    },
+    {
+      "file": "apps/admin-next/components/JobCard.tsx",
+      "match": "쓰고 있던 글이 끝나면 그 자리에서 멈추고",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/worker.service.ts#processGenerate"
+      ],
+      "note": "취소는 협조적이라 슬롯 경계에서만 확인한다. 즉시 중단으로 바꾸면 이 문장이 거짓이 된다."
+    },
+    {
+      "file": "apps/admin-next/components/JobCard.tsx",
+      "match": "작업자 응답이 끊겼습니다. 이대로면",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/db.service.ts#recoverStaleRunningJobs"
+      ],
+      "note": "응답 없는 잡을 실패로 정리하는 동작의 서술."
     }
   ]
 }
