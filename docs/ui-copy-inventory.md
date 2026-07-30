@@ -326,7 +326,7 @@
 | `apps/admin-next/components/DraftsClient.tsx:67` | muted-p | 검수 대기 목록에서 반려한 글이 여기에 모입니다. 반려해도 본문은 지워지지 않아 나중에 다시 열어볼 수 있습니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:74` | muted-p | 검수 후 발행한 글이 여기에 기록됩니다. 발행된 글 자체는 검수·내보내기 화면에서 확인합니다. | — |
 | `apps/admin-next/components/DraftsClient.tsx:85` | jsx-text | 최근 생성에서 게이트에 걸린 글이 없음 — 정상입니다.<br>_빈 상태 해석._ | — |
-| `apps/admin-next/components/JobCard.tsx:81` | muted-p | 예약 {formatDateTime(job.scheduled_at)} · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)} · 대기 {String(job.payload_obj?.cooldown_sec ?? "-")}초 · 제한 {String… | — |
+| `apps/admin-next/components/JobCard.tsx:104` | muted-p | 예약 {formatDateTime(job.scheduled_at)} · 시작 {formatDateTime(job.started_at)} · 완료 {formatDateTime(job.finished_at)} · 대기 {String(job.payload_obj?.cooldown_sec ?? "-")}초 · 제한 {String… | — |
 | `apps/admin-next/components/NeedDomainClient.tsx:57` | jsx-text | 백엔드가 실행 중인지, `SEO_API_BASE_URL` 설정을 확인하세요. | — |
 | `apps/admin-next/components/PostDetailClient.tsx:60` | muted-p | 원문은 상단의 복사/다운로드 버튼으로 확인합니다. 상세 화면에는 발행 디자인만 표시합니다. | — |
 | `apps/admin-next/components/PostDetailClient.tsx:81` | muted-p | 학원 {insight.used.academies}곳 · 후기 인용 {insight.used.quotes}건 · 이미지 {insight.used.images}장 · {insight.used.chars.toLocaleString()}자 | — |

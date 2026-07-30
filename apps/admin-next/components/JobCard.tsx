@@ -1,18 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cancelJob, pauseJob, prioritizeJob, resumeJob } from "@/lib/api";
+import { isJobCollapsed, setJobCollapsed } from "@/lib/collapsed-jobs";
 import { formatDateTime, parseUtcTimestamp } from "@/lib/date";
 import { designSettingLabel } from "@/lib/design-theme";
 import type { Job } from "@/lib/types";
 
 const CTL_STYLE = { minHeight: 34, padding: "7px 14px", fontSize: 13, fontWeight: 800 } as const;
 
-// 작업 큐 카드 — 전역 작업 큐(/jobs)와 도메인 관리 > 작업 탭이 공유하는 상세 뷰.
+// 작업 큐 카드 — 도메인 작업 큐 화면과 도메인 관리 > 작업 탭이 공유하는 상세 뷰.
 // 차이는 컨텍스트뿐이므로 showDomain 으로 도메인 링크 노출만 토글한다.
 export function JobCard({ job, showDomain = false, designFallback, onChanged }: { job: Job; showDomain?: boolean; designFallback?: string; onChanged?: () => void }) {
   const [acting, setActing] = useState(false);
+  // 진행 중·실패는 펼쳐서 보여준다. 단 사용자가 접었으면 그 선택을 따른다(collapsed-jobs).
+  // 초기값은 prop 에서만 계산한다 — localStorage 는 서버 렌더에서 못 읽으므로 마운트 후 보정한다
+  // (lib/tour.ts 의 useTourEnabled 와 같은 방식).
+  const autoOpen = job.status === "running" || job.status === "failed";
+  const [open, setOpen] = useState(autoOpen);
+  useEffect(() => { setOpen(autoOpen && !isJobCollapsed(job.id)); }, [autoOpen, job.id]);
   const ctl = (e: React.MouseEvent, fn: (id: string) => Promise<unknown>, confirmMessage: string) => {
     e.preventDefault(); e.stopPropagation();
     if (acting || !window.confirm(confirmMessage)) return; setActing(true);
@@ -31,7 +38,23 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
       : 5;
   const slotIds = Array.isArray(job.payload_obj?.slot_ids) ? job.payload_obj.slot_ids : [];
   const activity = jobActivity(job);
-  return <details className="card" open={job.status === "running" || job.status === "failed"}>
+  return <details
+    className="card"
+    open={open}
+    onToggle={(e) => {
+      const next = (e.currentTarget as HTMLDetailsElement).open;
+      /*
+        toggle 은 사용자 조작뿐 아니라 **React 가 open 을 적용할 때도** 발생한다. 그걸 구분하지
+        않으면 마운트 순간의 자동 펼침이 "사용자가 펼쳤다"로 기록돼 접어 둔 기억을 지운다
+        (실제로 그래서 다른 메뉴에 다녀오면 다시 펼쳐졌다). 프로그램에 의한 변경이면 React 의
+        open 상태가 이미 그 값이므로, 다를 때만 사용자 조작이다.
+      */
+      if (next === open) return;
+      setOpen(next);
+      // 접은 것만 기억한다. 펼치면 기억에서 지워져 기본(펼침)으로 돌아간다.
+      setJobCollapsed(job.id, !next);
+    }}
+  >
     <summary className="spread" style={{ padding: 16, cursor: "pointer" }}>
       <div className="row">
         <JobStatusBadge status={job.status} />
