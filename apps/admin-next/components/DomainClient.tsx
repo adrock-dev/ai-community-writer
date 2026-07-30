@@ -1992,6 +1992,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <p className="eyebrow">1단계</p>
           <h2>글 후보 만들기</h2>
           <p className="muted small">글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM을 호출하지 않습니다.</p>
+          <p className="muted small">지역을 쓰는 글유형은 지역을 골고루 돌며 만듭니다. 개수가 지역 수보다 적으면 그만큼의 지역이 지역당 하나씩 덮이고, 다시 누르면 아직 후보가 없는 지역부터 이어서 채웁니다(기존 후보는 그대로 남습니다).</p>
         </div>
         <div className="row slot-panel-actions">
           <Field label="글유형">

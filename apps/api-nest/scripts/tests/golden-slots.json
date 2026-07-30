@@ -33,37 +33,26 @@
   "score": 80.46
  },
  {
-  "slot_id": "T01_1528f445",
+  "slot_id": "T01_167e1ac5",
   "template_id": "T01",
-  "primary_keyword": "대전 자동차학원",
-  "region": "대전",
-  "persona": "자녀의 면허 취득을 알아보는 보호자",
+  "primary_keyword": "송파 운전면허학원",
+  "region": "송파",
+  "persona": "대학생 방학 특강을 찾는 학생",
   "intent": null,
-  "m1": "비용절약",
-  "m2": "셔틀편리",
-  "score": 78.98
+  "m1": "상담전확인",
+  "m2": "야간반",
+  "score": 73.84
  },
  {
-  "slot_id": "T01_1b4e5b50",
+  "slot_id": "T01_1b2d8603",
   "template_id": "T01",
-  "primary_keyword": "노원 자동차학원",
-  "region": "노원",
-  "persona": "교대근무 직장인",
+  "primary_keyword": "용인 자동차운전전문학원",
+  "region": "용인",
+  "persona": "운전면허 비용을 비교하는 사용자",
   "intent": null,
   "m1": "가까운",
   "m2": "셔틀편리",
-  "score": 75.81
- },
- {
-  "slot_id": "T01_1b8c3837",
-  "template_id": "T01",
-  "primary_keyword": "안산 자동차학원",
-  "region": "안산",
-  "persona": "학원 후기를 확인하는 사용자",
-  "intent": null,
-  "m1": "비용절약",
-  "m2": "야간반",
-  "score": 78.44
+  "score": 77.69
  },
  {
   "slot_id": "T01_1dd09fe2",
@@ -77,17 +66,6 @@
   "score": 68.47
  },
  {
-  "slot_id": "T01_1fa3e3eb",
-  "template_id": "T01",
-  "primary_keyword": "인천 자동차학원",
-  "region": "인천",
-  "persona": "시간 조정이 필요한 자영업자",
-  "intent": null,
-  "m1": "근처",
-  "m2": "야간반",
-  "score": 77.67
- },
- {
   "slot_id": "T01_2c4503db",
   "template_id": "T01",
   "primary_keyword": "안산 운전면허학원",
@@ -99,15 +77,15 @@
   "score": 78.44
  },
  {
-  "slot_id": "T01_389b3467",
+  "slot_id": "T01_35d8f23d",
   "template_id": "T01",
-  "primary_keyword": "부산 자동차학원",
-  "region": "부산",
-  "persona": "처음 면허를 취득하는 대학생",
+  "primary_keyword": "울산 자동차운전전문학원",
+  "region": "울산",
+  "persona": "당일 상담이 가능한 학원을 찾는 사용자",
   "intent": null,
   "m1": "가까운",
   "m2": "셔틀편리",
-  "score": 80.46
+  "score": 75.67
  },
  {
   "slot_id": "T01_41b6aa94",
@@ -154,26 +132,15 @@
   "score": 79.45
  },
  {
-  "slot_id": "T01_5106cce4",
+  "slot_id": "T01_55898390",
   "template_id": "T01",
-  "primary_keyword": "서울 자동차학원",
-  "region": "서울",
-  "persona": "학원 후기를 확인하는 사용자",
+  "primary_keyword": "세종 자동차운전전문학원",
+  "region": "세종",
+  "persona": "친절한 강사를 찾는 초보자",
   "intent": null,
-  "m1": "가까운",
-  "m2": "셔틀편리",
-  "score": 75.38
- },
- {
-  "slot_id": "T01_54a3b9ba",
-  "template_id": "T01",
-  "primary_keyword": "광주 자동차학원",
-  "region": "광주",
-  "persona": "학원 후기를 확인하는 사용자",
-  "intent": null,
-  "m1": "상담전확인",
+  "m1": "근처",
   "m2": "야간반",
-  "score": 78.6
+  "score": 74.91
  },
  {
   "slot_id": "T01_58439fe3",
@@ -209,15 +176,26 @@
   "score": 77.14
  },
  {
-  "slot_id": "T01_6e8ce021",
+  "slot_id": "T01_694fcfba",
   "template_id": "T01",
-  "primary_keyword": "마포 자동차학원",
-  "region": "마포",
-  "persona": "충분한 연습 시간을 제공하는 학원을 찾는 수강생",
+  "primary_keyword": "송파 자동차운전전문학원",
+  "region": "송파",
+  "persona": "운전면허학원을 비교 중인 수강생",
   "intent": null,
   "m1": "가까운",
-  "m2": "근처",
-  "score": 74.46
+  "m2": "셔틀편리",
+  "score": 73.84
+ },
+ {
+  "slot_id": "T01_7ff7b28e",
+  "template_id": "T01",
+  "primary_keyword": "울산 운전면허학원",
+  "region": "울산",
+  "persona": "퇴근 후 수강하려는 직장인",
+  "intent": null,
+  "m1": "비용절약",
+  "m2": "주말반",
+  "score": 75.67
  },
  {
   "slot_id": "T01_835df96e",
@@ -231,17 +209,6 @@
   "score": 68.47
  },
  {
-  "slot_id": "T01_87404dfb",
-  "template_id": "T01",
-  "primary_keyword": "대구 자동차학원",
-  "region": "대구",
-  "persona": "충분한 연습 시간을 제공하는 학원을 찾는 수강생",
-  "intent": null,
-  "m1": "셔틀편리",
-  "m2": "야간반",
-  "score": 79.46
- },
- {
   "slot_id": "T01_8a4ced6b",
   "template_id": "T01",
   "primary_keyword": "수원 자동차운전전문학원",
@@ -251,6 +218,17 @@
   "m1": "야간반",
   "m2": "주말반",
   "score": 78.51
+ },
+ {
+  "slot_id": "T01_949963e8",
+  "template_id": "T01",
+  "primary_keyword": "제주 운전면허학원",
+  "region": "제주",
+  "persona": "집 근처에서 셔틀을 이용하려는 수강생",
+  "intent": null,
+  "m1": "가까운",
+  "m2": "야간반",
+  "score": 74.42
  },
  {
   "slot_id": "T01_967d936f",
@@ -308,6 +286,17 @@
   "score": 78.6
  },
  {
+  "slot_id": "T01_b5283efa",
+  "template_id": "T01",
+  "primary_keyword": "성남 자동차운전전문학원",
+  "region": "성남",
+  "persona": "충분한 연습 시간을 제공하는 학원을 찾는 수강생",
+  "intent": null,
+  "m1": "비용절약",
+  "m2": "셔틀편리",
+  "score": 77.22
+ },
+ {
   "slot_id": "T01_bc8bc8bd",
   "template_id": "T01",
   "primary_keyword": "부천 자동차운전전문학원",
@@ -317,6 +306,17 @@
   "m1": "가까운",
   "m2": "야간반",
   "score": 77.14
+ },
+ {
+  "slot_id": "T01_bd6bf518",
+  "template_id": "T01",
+  "primary_keyword": "용인 운전면허학원",
+  "region": "용인",
+  "persona": "수능 후 면허를 준비하는 학생",
+  "intent": null,
+  "m1": "근처",
+  "m2": "비용절약",
+  "score": 77.69
  },
  {
   "slot_id": "T01_bf0a3505",
@@ -385,15 +385,15 @@
   "score": 78.98
  },
  {
-  "slot_id": "T01_de22d6d6",
+  "slot_id": "T01_dac7a572",
   "template_id": "T01",
-  "primary_keyword": "부천 자동차학원",
-  "region": "부천",
-  "persona": "학원 후기를 확인하는 사용자",
+  "primary_keyword": "제주 자동차운전전문학원",
+  "region": "제주",
+  "persona": "자체시험이 가능한 운전전문학원을 찾는 수강생",
   "intent": null,
-  "m1": "상담전확인",
-  "m2": "셔틀편리",
-  "score": 77.14
+  "m1": "셔틀편리",
+  "m2": "야간반",
+  "score": 74.42
  },
  {
   "slot_id": "T01_dec9d078",
@@ -407,6 +407,17 @@
   "score": 75.81
  },
  {
+  "slot_id": "T01_ec8e44df",
+  "template_id": "T01",
+  "primary_keyword": "세종 운전면허학원",
+  "region": "세종",
+  "persona": "대학생 방학 특강을 찾는 학생",
+  "intent": null,
+  "m1": "비용절약",
+  "m2": "상담전확인",
+  "score": 74.91
+ },
+ {
   "slot_id": "T01_fab3395e",
   "template_id": "T01",
   "primary_keyword": "성남 운전면허학원",
@@ -416,17 +427,6 @@
   "m1": "가까운",
   "m2": "주말반",
   "score": 77.22
- },
- {
-  "slot_id": "T01_fb50eb79",
-  "template_id": "T01",
-  "primary_keyword": "수원 자동차학원",
-  "region": "수원",
-  "persona": "집과 가까운 학원을 찾는 수강생",
-  "intent": null,
-  "m1": "가까운",
-  "m2": "근처",
-  "score": 78.51
  },
  {
   "slot_id": "T01_fcb56086",
@@ -1595,26 +1595,15 @@
   "score": 85.26
  },
  {
-  "slot_id": "T07_11547dc8",
+  "slot_id": "T07_09abc943",
   "template_id": "T07",
-  "primary_keyword": "부천 운전면허시험장",
-  "region": "부천",
+  "primary_keyword": "제주 운전면허학원",
+  "region": "제주",
   "persona": null,
-  "intent": "비용확인",
+  "intent": "근처학원",
   "m1": null,
   "m2": null,
-  "score": 83.85
- },
- {
-  "slot_id": "T07_16bbff63",
-  "template_id": "T07",
-  "primary_keyword": "광주 운전면허시험장",
-  "region": "광주",
-  "persona": null,
-  "intent": "준비물",
-  "m1": null,
-  "m2": null,
-  "score": 85.44
+  "score": 80.89
  },
  {
   "slot_id": "T07_17074b80",
@@ -1639,6 +1628,17 @@
   "score": 85.85
  },
  {
+  "slot_id": "T07_1ce88adc",
+  "template_id": "T07",
+  "primary_keyword": "성남 운전면허",
+  "region": "성남",
+  "persona": null,
+  "intent": "비교추천",
+  "m1": null,
+  "m2": null,
+  "score": 83.94
+ },
+ {
   "slot_id": "T07_207a9645",
   "template_id": "T07",
   "primary_keyword": "대구 운전면허학원",
@@ -1648,17 +1648,6 @@
   "m1": null,
   "m2": null,
   "score": 86.37
- },
- {
-  "slot_id": "T07_20d7bf94",
-  "template_id": "T07",
-  "primary_keyword": "대전 운전면허시험장",
-  "region": "대전",
-  "persona": null,
-  "intent": "셔틀확인",
-  "m1": null,
-  "m2": null,
-  "score": 85.85
  },
  {
   "slot_id": "T07_371c5062",
@@ -1683,15 +1672,37 @@
   "score": 84.42
  },
  {
-  "slot_id": "T07_3e13272e",
+  "slot_id": "T07_478a8844",
   "template_id": "T07",
-  "primary_keyword": "안산 운전면허시험장",
-  "region": "안산",
+  "primary_keyword": "세종 운전면허",
+  "region": "세종",
   "persona": null,
-  "intent": "비교추천",
+  "intent": "비용확인",
   "m1": null,
   "m2": null,
-  "score": 85.26
+  "score": 81.43
+ },
+ {
+  "slot_id": "T07_500559bd",
+  "template_id": "T07",
+  "primary_keyword": "세종 운전면허학원",
+  "region": "세종",
+  "persona": null,
+  "intent": "비용확인",
+  "m1": null,
+  "m2": null,
+  "score": 81.43
+ },
+ {
+  "slot_id": "T07_50cb1e6d",
+  "template_id": "T07",
+  "primary_keyword": "울산 운전면허",
+  "region": "울산",
+  "persona": null,
+  "intent": "준비물",
+  "m1": null,
+  "m2": null,
+  "score": 82.25
  },
  {
   "slot_id": "T07_5601fa0d",
@@ -1716,6 +1727,28 @@
   "score": 86.37
  },
  {
+  "slot_id": "T07_65771996",
+  "template_id": "T07",
+  "primary_keyword": "용인 운전면허학원",
+  "region": "용인",
+  "persona": null,
+  "intent": "준비물",
+  "m1": null,
+  "m2": null,
+  "score": 84.44
+ },
+ {
+  "slot_id": "T07_65a43ddf",
+  "template_id": "T07",
+  "primary_keyword": "송파 운전면허",
+  "region": "송파",
+  "persona": null,
+  "intent": "준비물",
+  "m1": null,
+  "m2": null,
+  "score": 80.26
+ },
+ {
   "slot_id": "T07_6bf37988",
   "template_id": "T07",
   "primary_keyword": "수원 운전면허",
@@ -1738,15 +1771,15 @@
   "score": 81.93
  },
  {
-  "slot_id": "T07_89a02b67",
+  "slot_id": "T07_8085605d",
   "template_id": "T07",
-  "primary_keyword": "인천 운전면허시험장",
-  "region": "인천",
+  "primary_keyword": "송파 운전면허학원",
+  "region": "송파",
   "persona": null,
-  "intent": "비용확인",
+  "intent": "근처학원",
   "m1": null,
   "m2": null,
-  "score": 84.42
+  "score": 80.26
  },
  {
   "slot_id": "T07_8a3f6a6b",
@@ -1782,17 +1815,6 @@
   "score": 84.42
  },
  {
-  "slot_id": "T07_8f0b4e05",
-  "template_id": "T07",
-  "primary_keyword": "부산 운전면허시험장",
-  "region": "부산",
-  "persona": null,
-  "intent": "근처학원",
-  "m1": null,
-  "m2": null,
-  "score": 87.46
- },
- {
   "slot_id": "T07_91e9a7ba",
   "template_id": "T07",
   "primary_keyword": "안산 운전면허학원",
@@ -1815,6 +1837,17 @@
   "score": 74.42
  },
  {
+  "slot_id": "T07_a3d1fcb7",
+  "template_id": "T07",
+  "primary_keyword": "울산 운전면허학원",
+  "region": "울산",
+  "persona": null,
+  "intent": "비용확인",
+  "m1": null,
+  "m2": null,
+  "score": 82.25
+ },
+ {
   "slot_id": "T07_a41b5591",
   "template_id": "T07",
   "primary_keyword": "경기 운전면허",
@@ -1826,15 +1859,15 @@
   "score": 86.36
  },
  {
-  "slot_id": "T07_adf54791",
+  "slot_id": "T07_a51b5119",
   "template_id": "T07",
-  "primary_keyword": "서울 운전면허시험장",
-  "region": "서울",
+  "primary_keyword": "제주 운전면허",
+  "region": "제주",
   "persona": null,
-  "intent": "준비물",
+  "intent": "셔틀확인",
   "m1": null,
   "m2": null,
-  "score": 81.93
+  "score": 80.89
  },
  {
   "slot_id": "T07_af8d9818",
@@ -1892,17 +1925,6 @@
   "score": 83.94
  },
  {
-  "slot_id": "T07_cc79f962",
-  "template_id": "T07",
-  "primary_keyword": "수원 운전면허시험장",
-  "region": "수원",
-  "persona": null,
-  "intent": "비용확인",
-  "m1": null,
-  "m2": null,
-  "score": 85.34
- },
- {
   "slot_id": "T07_cfa69ea9",
   "template_id": "T07",
   "primary_keyword": "광주 운전면허",
@@ -1936,15 +1958,15 @@
   "score": 82.41
  },
  {
-  "slot_id": "T07_d9a83f07",
+  "slot_id": "T07_dd3252ca",
   "template_id": "T07",
-  "primary_keyword": "대구 운전면허시험장",
-  "region": "대구",
+  "primary_keyword": "용인 운전면허",
+  "region": "용인",
   "persona": null,
-  "intent": "비용확인",
+  "intent": "근처학원",
   "m1": null,
   "m2": null,
-  "score": 86.37
+  "score": 84.44
  },
  {
   "slot_id": "T07_df217ec1",
@@ -1978,28 +2000,6 @@
   "m1": null,
   "m2": null,
   "score": 83.85
- },
- {
-  "slot_id": "T07_f1f836c9",
-  "template_id": "T07",
-  "primary_keyword": "마포 운전면허시험장",
-  "region": "마포",
-  "persona": null,
-  "intent": "근처학원",
-  "m1": null,
-  "m2": null,
-  "score": 80.94
- },
- {
-  "slot_id": "T07_f2809f52",
-  "template_id": "T07",
-  "primary_keyword": "노원 운전면허시험장",
-  "region": "노원",
-  "persona": null,
-  "intent": "셔틀확인",
-  "m1": null,
-  "m2": null,
-  "score": 82.41
  },
  {
   "slot_id": "T07_fb37f7a7",
@@ -3201,15 +3201,15 @@
   "score": 19.6
  },
  {
-  "slot_id": "T15_03bc49a7",
+  "slot_id": "T15_0bd6837b",
   "template_id": "T15",
-  "primary_keyword": "인천 운전면허 도로주행",
-  "region": "인천",
-  "persona": "주말만 가능한 직장인",
-  "intent": "근처학원",
+  "primary_keyword": "성남 운전면허 필기시험",
+  "region": "성남",
+  "persona": "처음 면허 따는 대학생",
+  "intent": "준비물",
   "m1": "가까운",
   "m2": null,
-  "score": 64.16
+  "score": 63.79
  },
  {
   "slot_id": "T15_108e76e4",
@@ -3245,15 +3245,37 @@
   "score": 62.63
  },
  {
-  "slot_id": "T15_1ee94f45",
+  "slot_id": "T15_1b358b4a",
   "template_id": "T15",
-  "primary_keyword": "서울 운전면허학원",
-  "region": "서울",
+  "primary_keyword": "성남 운전면허 기능시험",
+  "region": "성남",
+  "persona": "주말만 가능한 직장인",
+  "intent": "준비물",
+  "m1": "가까운",
+  "m2": null,
+  "score": 63.79
+ },
+ {
+  "slot_id": "T15_1e50ea1c",
+  "template_id": "T15",
+  "primary_keyword": "울산 운전면허 기능시험",
+  "region": "울산",
   "persona": "운전면허학원 비교 중인 수강생",
   "intent": "근처학원",
   "m1": "도로주행",
   "m2": null,
-  "score": 62.27
+  "score": 62.51
+ },
+ {
+  "slot_id": "T15_1f75933a",
+  "template_id": "T15",
+  "primary_keyword": "마포 운전면허 기능시험",
+  "region": "마포",
+  "persona": "운전면허학원 비교 중인 수강생",
+  "intent": "근처학원",
+  "m1": "가까운",
+  "m2": null,
+  "score": 61.51
  },
  {
   "slot_id": "T15_275d4057",
@@ -3267,17 +3289,6 @@
   "score": 64.86
  },
  {
-  "slot_id": "T15_28dc1a06",
-  "template_id": "T15",
-  "primary_keyword": "안산 운전면허학원",
-  "region": "안산",
-  "persona": "운전면허학원 비교 중인 수강생",
-  "intent": "근처학원",
-  "m1": "필기시험부터",
-  "m2": null,
-  "score": 64.8
- },
- {
   "slot_id": "T15_2cf6107a",
   "template_id": "T15",
   "primary_keyword": "안산 운전면허 필기시험",
@@ -3289,50 +3300,6 @@
   "score": 64.8
  },
  {
-  "slot_id": "T15_2e906a15",
-  "template_id": "T15",
-  "primary_keyword": "광주 운전면허 도로주행",
-  "region": "광주",
-  "persona": "처음 면허 따는 대학생",
-  "intent": "근처학원",
-  "m1": "가까운",
-  "m2": null,
-  "score": 64.93
- },
- {
-  "slot_id": "T15_37e362da",
-  "template_id": "T15",
-  "primary_keyword": "노원 운전면허 도로주행",
-  "region": "노원",
-  "persona": "시험이 걱정되는 수험생",
-  "intent": "기능시험",
-  "m1": "가까운",
-  "m2": null,
-  "score": 62.63
- },
- {
-  "slot_id": "T15_3a52011e",
-  "template_id": "T15",
-  "primary_keyword": "수원 운전면허 도로주행",
-  "region": "수원",
-  "persona": "처음 면허 따는 대학생",
-  "intent": "도로주행",
-  "m1": "도로주행",
-  "m2": null,
-  "score": 64.86
- },
- {
-  "slot_id": "T15_3b64eb94",
-  "template_id": "T15",
-  "primary_keyword": "대구 운전면허학원",
-  "region": "대구",
-  "persona": "주말만 가능한 직장인",
-  "intent": "근처학원",
-  "m1": "필기시험부터",
-  "m2": null,
-  "score": 65.64
- },
- {
   "slot_id": "T15_3c03dc6b",
   "template_id": "T15",
   "primary_keyword": "인천 운전면허 필기시험",
@@ -3342,6 +3309,28 @@
   "m1": "필기시험부터",
   "m2": null,
   "score": 64.16
+ },
+ {
+  "slot_id": "T15_527a1c50",
+  "template_id": "T15",
+  "primary_keyword": "송파 운전면허 필기시험",
+  "region": "송파",
+  "persona": "처음 면허 따는 대학생",
+  "intent": "준비물",
+  "m1": "도로주행",
+  "m2": null,
+  "score": 61
+ },
+ {
+  "slot_id": "T15_5421277f",
+  "template_id": "T15",
+  "primary_keyword": "제주 운전면허 기능시험",
+  "region": "제주",
+  "persona": "주말만 가능한 직장인",
+  "intent": "근처학원",
+  "m1": "필기시험부터",
+  "m2": null,
+  "score": 61.48
  },
  {
   "slot_id": "T15_54f4d94b",
@@ -3377,6 +3366,39 @@
   "score": 66.47
  },
  {
+  "slot_id": "T15_622112ad",
+  "template_id": "T15",
+  "primary_keyword": "용인 운전면허 기능시험",
+  "region": "용인",
+  "persona": "처음 면허 따는 대학생",
+  "intent": "근처학원",
+  "m1": "가까운",
+  "m2": null,
+  "score": 64.17
+ },
+ {
+  "slot_id": "T15_64c1fbda",
+  "template_id": "T15",
+  "primary_keyword": "제주 운전면허 필기시험",
+  "region": "제주",
+  "persona": "운전면허학원 비교 중인 수강생",
+  "intent": "도로주행",
+  "m1": "도로주행",
+  "m2": null,
+  "score": 61.48
+ },
+ {
+  "slot_id": "T15_661ce8cc",
+  "template_id": "T15",
+  "primary_keyword": "울산 운전면허 필기시험",
+  "region": "울산",
+  "persona": "운전면허학원 비교 중인 수강생",
+  "intent": "도로주행",
+  "m1": "도로주행",
+  "m2": null,
+  "score": 62.51
+ },
+ {
   "slot_id": "T15_66aa2aac",
   "template_id": "T15",
   "primary_keyword": "강남 운전면허 필기시험",
@@ -3386,6 +3408,39 @@
   "m1": "필기시험부터",
   "m2": null,
   "score": 56.56
+ },
+ {
+  "slot_id": "T15_6836d7fe",
+  "template_id": "T15",
+  "primary_keyword": "마포 운전면허 필기시험",
+  "region": "마포",
+  "persona": "주말만 가능한 직장인",
+  "intent": "도로주행",
+  "m1": "도로주행",
+  "m2": null,
+  "score": 61.51
+ },
+ {
+  "slot_id": "T15_69090935",
+  "template_id": "T15",
+  "primary_keyword": "송파 운전면허 기능시험",
+  "region": "송파",
+  "persona": "집 근처 학원을 찾는 수강생",
+  "intent": "기능시험",
+  "m1": "도로주행",
+  "m2": null,
+  "score": 61
+ },
+ {
+  "slot_id": "T15_6e269129",
+  "template_id": "T15",
+  "primary_keyword": "대전 운전면허 필기시험",
+  "region": "대전",
+  "persona": "주말만 가능한 직장인",
+  "intent": "도로주행",
+  "m1": "도로주행",
+  "m2": null,
+  "score": 65.24
  },
  {
   "slot_id": "T15_771d3b47",
@@ -3443,15 +3498,15 @@
   "score": 64.93
  },
  {
-  "slot_id": "T15_9845b0fa",
+  "slot_id": "T15_aab8451e",
   "template_id": "T15",
-  "primary_keyword": "부산 운전면허 도로주행",
-  "region": "부산",
+  "primary_keyword": "대전 운전면허 기능시험",
+  "region": "대전",
   "persona": "운전면허학원 비교 중인 수강생",
   "intent": "근처학원",
   "m1": "가까운",
   "m2": null,
-  "score": 66.47
+  "score": 65.24
  },
  {
   "slot_id": "T15_aac4859b",
@@ -3476,17 +3531,6 @@
   "score": 64.16
  },
  {
-  "slot_id": "T15_b1443c84",
-  "template_id": "T15",
-  "primary_keyword": "안산 운전면허 도로주행",
-  "region": "안산",
-  "persona": "주말만 가능한 직장인",
-  "intent": "근처학원",
-  "m1": "셔틀편리",
-  "m2": null,
-  "score": 64.8
- },
- {
   "slot_id": "T15_b148428f",
   "template_id": "T15",
   "primary_keyword": "서울 운전면허 필기시험",
@@ -3507,39 +3551,6 @@
   "m1": "가까운",
   "m2": null,
   "score": 65.64
- },
- {
-  "slot_id": "T15_b20f037f",
-  "template_id": "T15",
-  "primary_keyword": "강남 운전면허학원",
-  "region": "강남",
-  "persona": "처음 면허 따는 대학생",
-  "intent": "기능시험",
-  "m1": "도로주행",
-  "m2": null,
-  "score": 56.56
- },
- {
-  "slot_id": "T15_b39c1238",
-  "template_id": "T15",
-  "primary_keyword": "수원 운전면허학원",
-  "region": "수원",
-  "persona": "처음 면허 따는 대학생",
-  "intent": "도로주행",
-  "m1": "도로주행",
-  "m2": null,
-  "score": 64.86
- },
- {
-  "slot_id": "T15_b66414a8",
-  "template_id": "T15",
-  "primary_keyword": "경기 운전면허학원",
-  "region": "경기",
-  "persona": "집 근처 학원을 찾는 수강생",
-  "intent": "근처학원",
-  "m1": "가까운",
-  "m2": null,
-  "score": 65.63
  },
  {
   "slot_id": "T15_bb0f9e53",
@@ -3564,17 +3575,6 @@
   "score": 56.56
  },
  {
-  "slot_id": "T15_d60f8298",
-  "template_id": "T15",
-  "primary_keyword": "부산 운전면허학원",
-  "region": "부산",
-  "persona": "시험이 걱정되는 수험생",
-  "intent": "기능시험",
-  "m1": "필기시험부터",
-  "m2": null,
-  "score": 66.47
- },
- {
   "slot_id": "T15_d70c3b19",
   "template_id": "T15",
   "primary_keyword": "서울 운전면허 기능시험",
@@ -3586,59 +3586,70 @@
   "score": 62.27
  },
  {
-  "slot_id": "T15_dbe29d1e",
+  "slot_id": "T15_e157689e",
   "template_id": "T15",
-  "primary_keyword": "노원 운전면허학원",
-  "region": "노원",
+  "primary_keyword": "부천 운전면허 필기시험",
+  "region": "부천",
   "persona": "시험이 걱정되는 수험생",
-  "intent": "기능시험",
-  "m1": "가까운",
+  "intent": "준비물",
+  "m1": "도로주행",
   "m2": null,
-  "score": 62.63
+  "score": 63.72
  },
  {
-  "slot_id": "T15_dbfd9b00",
+  "slot_id": "T15_ef897792",
   "template_id": "T15",
-  "primary_keyword": "대구 운전면허 도로주행",
-  "region": "대구",
+  "primary_keyword": "부천 운전면허 기능시험",
+  "region": "부천",
   "persona": "주말만 가능한 직장인",
   "intent": "근처학원",
-  "m1": "필기시험부터",
-  "m2": null,
-  "score": 65.64
- },
- {
-  "slot_id": "T15_e2d451ca",
-  "template_id": "T15",
-  "primary_keyword": "광주 운전면허학원",
-  "region": "광주",
-  "persona": "시험이 걱정되는 수험생",
-  "intent": "준비물",
   "m1": "셔틀편리",
   "m2": null,
-  "score": 64.93
+  "score": 63.72
  },
  {
-  "slot_id": "T15_e766a7fa",
+  "slot_id": "T15_f5b19f5a",
   "template_id": "T15",
-  "primary_keyword": "인천 운전면허학원",
-  "region": "인천",
-  "persona": "처음 면허 따는 대학생",
+  "primary_keyword": "세종 운전면허 기능시험",
+  "region": "세종",
+  "persona": "주말만 가능한 직장인",
   "intent": "도로주행",
-  "m1": "필기시험부터",
-  "m2": null,
-  "score": 64.16
- },
- {
-  "slot_id": "T15_ed12b899",
-  "template_id": "T15",
-  "primary_keyword": "서울 운전면허 도로주행",
-  "region": "서울",
-  "persona": "집 근처 학원을 찾는 수강생",
-  "intent": "준비물",
   "m1": "셔틀편리",
   "m2": null,
-  "score": 62.27
+  "score": 61.89
+ },
+ {
+  "slot_id": "T15_fca36ef9",
+  "template_id": "T15",
+  "primary_keyword": "용인 운전면허 필기시험",
+  "region": "용인",
+  "persona": "주말만 가능한 직장인",
+  "intent": "기능시험",
+  "m1": "셔틀편리",
+  "m2": null,
+  "score": 64.17
+ },
+ {
+  "slot_id": "T15_ff9d2f00",
+  "template_id": "T15",
+  "primary_keyword": "세종 운전면허 필기시험",
+  "region": "세종",
+  "persona": "주말만 가능한 직장인",
+  "intent": "근처학원",
+  "m1": "도로주행",
+  "m2": null,
+  "score": 61.89
+ },
+ {
+  "slot_id": "T16_028303ac",
+  "template_id": "T16",
+  "primary_keyword": "용인 운전면허학원",
+  "region": "용인",
+  "persona": "수능 후 면허를 준비하는 학생",
+  "intent": "학원유형",
+  "m1": "셔틀편리",
+  "m2": "상담전확인",
+  "score": 81.06
  },
  {
   "slot_id": "T16_063e6ce3",
@@ -3672,6 +3683,17 @@
   "m1": "셔틀편리",
   "m2": "가까운",
   "score": 81.85
+ },
+ {
+  "slot_id": "T16_0ff890f6",
+  "template_id": "T16",
+  "primary_keyword": "성남 자동차운전전문학원",
+  "region": "성남",
+  "persona": "가성비 좋은 학원을 찾는 수강생",
+  "intent": "과정선택",
+  "m1": "상담전확인",
+  "m2": "가까운",
+  "score": 80.58
  },
  {
   "slot_id": "T16_1480c199",
@@ -3718,28 +3740,6 @@
   "score": 82.92
  },
  {
-  "slot_id": "T16_346b13c5",
-  "template_id": "T16",
-  "primary_keyword": "서울 자동차학원",
-  "region": "서울",
-  "persona": "학원 후기를 확인하는 사용자",
-  "intent": "학원유형",
-  "m1": "비용절약",
-  "m2": "가까운",
-  "score": 78.66
- },
- {
-  "slot_id": "T16_39a350d8",
-  "template_id": "T16",
-  "primary_keyword": "광주 자동차학원",
-  "region": "광주",
-  "persona": "학원 후기를 확인하는 사용자",
-  "intent": "과정선택",
-  "m1": "비용절약",
-  "m2": "주말반",
-  "score": 82.02
- },
- {
   "slot_id": "T16_47665eae",
   "template_id": "T16",
   "primary_keyword": "수원 자동차운전전문학원",
@@ -3760,17 +3760,6 @@
   "m1": "셔틀편리",
   "m2": "가까운",
   "score": 82.9
- },
- {
-  "slot_id": "T16_507bb3a4",
-  "template_id": "T16",
-  "primary_keyword": "수원 자동차학원",
-  "region": "수원",
-  "persona": "집과 가까운 학원을 찾는 수강생",
-  "intent": "후기확인",
-  "m1": "주말반",
-  "m2": "상담전확인",
-  "score": 81.93
  },
  {
   "slot_id": "T16_51c97d26",
@@ -3817,15 +3806,15 @@
   "score": 79.11
  },
  {
-  "slot_id": "T16_6234f800",
+  "slot_id": "T16_60e16ebc",
   "template_id": "T16",
-  "primary_keyword": "부천 자동차학원",
-  "region": "부천",
-  "persona": "학원 후기를 확인하는 사용자",
-  "intent": "일정확인",
+  "primary_keyword": "울산 자동차운전전문학원",
+  "region": "울산",
+  "persona": "가성비 좋은 학원을 찾는 수강생",
+  "intent": "과정선택",
   "m1": "비용절약",
-  "m2": "가까운",
-  "score": 80.49
+  "m2": "주말반",
+  "score": 78.96
  },
  {
   "slot_id": "T16_63d08257",
@@ -3837,17 +3826,6 @@
   "m1": "셔틀편리",
   "m2": "상담전확인",
   "score": 80.49
- },
- {
-  "slot_id": "T16_6b1cf27b",
-  "template_id": "T16",
-  "primary_keyword": "인천 자동차학원",
-  "region": "인천",
-  "persona": "시간 조정이 필요한 자영업자",
-  "intent": "비용구성",
-  "m1": "야간반",
-  "m2": "가까운",
-  "score": 81.04
  },
  {
   "slot_id": "T16_704bd6e1",
@@ -3872,26 +3850,15 @@
   "score": 80.49
  },
  {
-  "slot_id": "T16_7e8f976f",
+  "slot_id": "T16_7c8d743a",
   "template_id": "T16",
-  "primary_keyword": "대전 자동차학원",
-  "region": "대전",
-  "persona": "자녀의 면허 취득을 알아보는 보호자",
+  "primary_keyword": "제주 운전면허학원",
+  "region": "제주",
+  "persona": "집 근처에서 셔틀을 이용하려는 수강생",
   "intent": "비용구성",
-  "m1": "야간반",
-  "m2": "가까운",
-  "score": 82.41
- },
- {
-  "slot_id": "T16_83e98b87",
-  "template_id": "T16",
-  "primary_keyword": "마포 자동차학원",
-  "region": "마포",
-  "persona": "충분한 연습 시간을 제공하는 학원을 찾는 수강생",
-  "intent": "후기확인",
   "m1": "주말반",
-  "m2": "상담전확인",
-  "score": 77.7
+  "m2": "가까운",
+  "score": 77.66
  },
  {
   "slot_id": "T16_85322e60",
@@ -3949,15 +3916,37 @@
   "score": 82.9
  },
  {
-  "slot_id": "T16_98aa5764",
+  "slot_id": "T16_986964a1",
   "template_id": "T16",
-  "primary_keyword": "부산 자동차학원",
-  "region": "부산",
-  "persona": "처음 면허를 취득하는 대학생",
-  "intent": "일정확인",
+  "primary_keyword": "용인 자동차운전전문학원",
+  "region": "용인",
+  "persona": "운전면허 비용을 비교하는 사용자",
+  "intent": "후기확인",
   "m1": "셔틀편리",
+  "m2": "주말반",
+  "score": 81.06
+ },
+ {
+  "slot_id": "T16_9df6fdfd",
+  "template_id": "T16",
+  "primary_keyword": "제주 자동차운전전문학원",
+  "region": "제주",
+  "persona": "자체시험이 가능한 운전전문학원을 찾는 수강생",
+  "intent": "비용구성",
+  "m1": "셔틀편리",
+  "m2": "야간반",
+  "score": 77.66
+ },
+ {
+  "slot_id": "T16_a5ab0285",
+  "template_id": "T16",
+  "primary_keyword": "세종 운전면허학원",
+  "region": "세종",
+  "persona": "가성비 좋은 학원을 찾는 수강생",
+  "intent": "과정선택",
+  "m1": "주말반",
   "m2": "상담전확인",
-  "score": 83.96
+  "score": 78.17
  },
  {
   "slot_id": "T16_a5fd9e0e",
@@ -3982,26 +3971,37 @@
   "score": 80.58
  },
  {
-  "slot_id": "T16_beff88b8",
+  "slot_id": "T16_af0649d0",
   "template_id": "T16",
-  "primary_keyword": "대구 자동차학원",
-  "region": "대구",
-  "persona": "충분한 연습 시간을 제공하는 학원을 찾는 수강생",
-  "intent": "후기확인",
-  "m1": "비용절약",
+  "primary_keyword": "송파 운전면허학원",
+  "region": "송파",
+  "persona": "대학생 방학 특강을 찾는 학생",
+  "intent": "비용구성",
+  "m1": "야간반",
   "m2": "상담전확인",
-  "score": 82.92
+  "score": 77.05
  },
  {
-  "slot_id": "T16_caad88c8",
+  "slot_id": "T16_c36a1467",
   "template_id": "T16",
-  "primary_keyword": "노원 자동차학원",
-  "region": "노원",
-  "persona": "교대근무 직장인",
-  "intent": "후기확인",
-  "m1": "야간반",
-  "m2": "주말반",
-  "score": 79.11
+  "primary_keyword": "세종 자동차운전전문학원",
+  "region": "세종",
+  "persona": "친절한 강사를 찾는 초보자",
+  "intent": "학원유형",
+  "m1": "비용절약",
+  "m2": "야간반",
+  "score": 78.17
+ },
+ {
+  "slot_id": "T16_c79d36d4",
+  "template_id": "T16",
+  "primary_keyword": "송파 자동차운전전문학원",
+  "region": "송파",
+  "persona": "운전면허학원을 비교 중인 수강생",
+  "intent": "학원유형",
+  "m1": "주말반",
+  "m2": "가까운",
+  "score": 77.05
  },
  {
   "slot_id": "T16_cb3e39b8",
@@ -4015,17 +4015,6 @@
   "score": 82.41
  },
  {
-  "slot_id": "T16_cfb71028",
-  "template_id": "T16",
-  "primary_keyword": "안산 자동차학원",
-  "region": "안산",
-  "persona": "학원 후기를 확인하는 사용자",
-  "intent": "과정선택",
-  "m1": "셔틀편리",
-  "m2": "가까운",
-  "score": 81.85
- },
- {
   "slot_id": "T16_d3956efd",
   "template_id": "T16",
   "primary_keyword": "인천 운전면허학원",
@@ -4035,6 +4024,17 @@
   "m1": "비용절약",
   "m2": "상담전확인",
   "score": 81.04
+ },
+ {
+  "slot_id": "T16_dbd0863c",
+  "template_id": "T16",
+  "primary_keyword": "울산 운전면허학원",
+  "region": "울산",
+  "persona": "퇴근 후 수강하려는 직장인",
+  "intent": "일정확인",
+  "m1": "셔틀편리",
+  "m2": "가까운",
+  "score": 78.96
  },
  {
   "slot_id": "T16_e0f02ec6",

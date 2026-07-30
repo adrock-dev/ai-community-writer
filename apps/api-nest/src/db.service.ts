@@ -846,6 +846,18 @@ export class DbService implements OnModuleInit {
     for (const r of this.all("SELECT status, COUNT(*) AS n FROM slots WHERE domain=? GROUP BY status", [domain])) out[r.status] = r.n;
     return out;
   }
+  /**
+   * 한 글유형의 지역별 기존 슬롯 수. 후보 생성이 "아직 덜 덮인 지역"부터 돌기 위한 입력이다
+   * (slot.service.generateSlotsForDomain 참조). status 로 걸르지 않는다 — 발행이든 실패든 그
+   * 지역에는 이미 후보가 있으므로 커버리지 관점에서는 같다.
+   */
+  countSlotsByRegion(domain: string, templateId: string): Map<string, number> {
+    const rows = this.all(
+      "SELECT IFNULL(region,'') AS region, COUNT(*) AS n FROM slots WHERE domain=? AND template_id=? GROUP BY IFNULL(region,'')",
+      [domain, templateId],
+    );
+    return new Map(rows.map((r) => [String(r.region), Number(r.n) || 0]));
+  }
   bulkUpsertSlots(rows: Row[]): number {
     if (!rows.length) return 0;
     // prepared statement 1회 재사용 + 단일 트랜잭션. 한 행씩 개별 커밋하면 행마다 fsync 가 일어나

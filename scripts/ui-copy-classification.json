@@ -145,6 +145,16 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "지역을 쓰는 글유형은 지역을 골고루 돌며 만듭니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/slot.service.ts#groupTopicsByRegion 지역 인터리브",
+        "apps/api-nest/src/db.service.ts#countSlotsByRegion 커버리지 순서"
+      ],
+      "note": "2026-07-30 추가. 예전엔 인터리브 그룹이 지역×키워드 토픽이라 상한 40에 지역 14곳만 덮였고, 다시 눌러도 같은 지역만 재-upsert 돼 후보가 늘지 않았다. 그 동작을 되돌리면 이 문장이 거짓이 된다."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "생성 품질 게이트가 이 문구를 감지해",
       "class": "B",
       "depends": [

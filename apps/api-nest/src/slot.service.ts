@@ -70,38 +70,34 @@ export class SlotService {
       const personaValues = recipe.use_persona ? (personaPool.length ? personaPool : [{ value: null }]) : [{ value: null }];
       const intentValues = recipe.with_intent ? (intentPool.length ? intentPool : [{ value: null }]) : [{ value: null }];
       const modifierCombos = modifierPairs(modifierPool, recipe.modifier_count);
-      const candidatesByPrimary: Row[][] = [];
-      // interleaveByPrimary 는 그룹(토픽)당 최대 ceil(maxPerTemplate/그룹수) 개만 읽는다(그룹 길이 동일).
-      // 전체 데카르트곱(수백만)을 다 만들지 않도록 토픽별 생성량을 그만큼(+여유 1)으로 제한한다.
-      const perTopicCap = Math.max(1, Math.ceil(maxPerTemplate / topicUnits.length) + 1);
       const comboCount = personaValues.length * intentValues.length * modifierCombos.length;
-      for (const topic of topicUnits) {
-        const primaryRows: Row[] = [];
-        // 토픽마다 조합 열거의 '시작점'을 흩어 놓는다.
-        //
-        // interleaveByPrimary 는 모든 그룹의 index 0 을 먼저 훑고 index 1 로 넘어간다. 토픽 수가
-        // maxPerTemplate 보다 많으면(지역 251곳 vs 상한 40) index 0 에서 상한이 차 index 1 에
-        // 도달하지 못한다. 예전에는 모든 토픽이 같은 지점에서 열거를 시작해 index 0 이 항상
-        // persona[0]·intent[0]·modifier[0] 이었고, 그 결과 전 슬롯이 동일 축 조합을 가졌다
-        // (실측: 골든 T01/T07/T14/T15 각 40건이 persona·intent·수식어 모두 1종류, 운영 DB T01 100/100 동일).
-        // 축이 프롬프트에 들어가도 글을 구분하지 못하던 원인이 이것이다.
-        //
-        // 시작점은 토픽 문자열 해시라 (a) 재생성 시 동일 결과 = slot_id idempotency 유지,
-        // (b) 축 값 배열의 순서가 바뀌어도 흔들리지 않는다.
-        const comboStart = comboCount > 1 ? axisComboOffset(topic.hashKey, comboCount) : 0;
-        for (let step = 0; step < comboCount && primaryRows.length < perTopicCap; step++) {
-          const { persona, intent, m1, m2 } = axisComboAt(comboStart + step, personaValues, intentValues, modifierCombos);
-          // 축이 서로 다른 일을 해야 하는데 modifier 와 intent 가 같은 데이터를 가리키면 한 축이 낭비된다
-          // (예: 비용절약 × 비용구성). 그런 조합은 건너뛰고 다음 조합을 본다.
-          if (isConflictingAxisPair(m1, intent) || isConflictingAxisPair(m2, intent)) continue;
-          const parts = [topic.hashKey, persona || "", intent || "", m1 || "", m2 || ""];
-          primaryRows.push({
-            slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: topic.primaryKeyword,
-            region: topic.region, persona, intent,
-            modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(topic.sv, topic.kd, spec.weight)
-          });
-        }
-        if (primaryRows.length) candidatesByPrimary.push(primaryRows);
+      // 인터리브 단위는 **토픽이 아니라 지역**이다.
+      //
+      // keyword_filter 가 여러 개인 지역형은 토픽이 지역×키워드로 쪼개진다(T16 = 251지역 × 3키워드 = 753토픽).
+      // interleaveByPrimary 는 모든 그룹의 index 0 을 먼저 훑으므로, 토픽이 그룹이던 예전에는 상한 40에서
+      // index 0 한 바퀴가 차 **지역 14곳만** 덮였다(골든 실측: T01/T07/T16 40슬롯 14지역, T15 40슬롯 10지역).
+      // 지역으로 묶으면 같은 상한에서 지역 40곳이 덮인다.
+      const groups = groupTopicsByRegion(topicUnits);
+      // 그리고 아직 후보가 적은 지역부터 돈다. 지역 축은 전부 weight 가 같고 검색량이 비어 있어 정렬이
+      // 사실상 가나다순이라, 예전에는 상한에 걸릴 때마다 늘 앞쪽 지역이 뽑혔다. 게다가 slot_id 가 조합 해시라
+      // 「글 후보 만들기」를 다시 눌러도 같은 지역이 재-upsert 될 뿐 후보가 늘지 않았다.
+      // 기존 슬롯 수 오름차순으로 돌면 재실행이 자연히 다음 지역으로 커버리지를 넓힌다.
+      // slot_id 는 순서와 무관한 조합 해시라 이 정렬로 idempotency 가 깨지지 않는다(같은 조합 → 같은 id).
+      const existingByRegion = this.db.countSlotsByRegion(domain, tid);
+      const groupOrder = groups
+        .map((group, index) => ({ group, index, existing: group.region ? (existingByRegion.get(group.region) ?? 0) : 0 }))
+        .sort((a, b) => a.existing - b.existing || a.index - b.index);
+      // 그룹(지역)당 생성량 상한. 전체 데카르트곱(수백만)을 다 만들지 않기 위한 방어다.
+      // 지역 안에 토픽이 하나뿐이면 groups.length === topicUnits.length 라 예전 공식과 정확히 같아진다
+      // — keyword 주도 유형(T03·T05·T12·T13 등)의 출력이 불변이어야 하므로 그 경우 groupCap 을 그대로 쓴다.
+      const groupCap = Math.max(1, Math.ceil(maxPerTemplate / groupOrder.length) + 1);
+      const candidatesByPrimary: Row[][] = [];
+      for (const { group } of groupOrder) {
+        const perTopicCap = group.topics.length === 1 ? groupCap : Math.max(1, Math.ceil(groupCap / group.topics.length) + 1);
+        // 그룹 안에서도 토픽(키워드)을 교차시킨다 — 지역당 1개만 뽑히는 상황에서 키워드가 한쪽으로 몰리지 않게.
+        const buckets = group.topics.map((topic) => this.buildTopicRows(domain, tid, spec, topic, personaValues, intentValues, modifierCombos, comboCount, perTopicCap));
+        const merged = interleaveByPrimary(buckets, buckets.reduce((n, bucket) => n + bucket.length, 0));
+        if (merged.length) candidatesByPrimary.push(merged);
       }
       const distributed = interleaveByPrimary(candidatesByPrimary, maxPerTemplate);
       rows.push(...distributed);
@@ -112,6 +108,43 @@ export class SlotService {
     summary._excluded_total = filtered.excluded.length;
     summary._inserted_total = this.db.bulkUpsertSlots(filtered.kept);
     return summary;
+  }
+
+  /**
+   * 한 토픽의 슬롯 후보 행 — 축 조합을 최대 `cap` 개까지 열거한다.
+   *
+   * 토픽마다 조합 열거의 '시작점'을 흩어 놓는다.
+   *
+   * interleaveByPrimary 는 모든 그룹의 index 0 을 먼저 훑고 index 1 로 넘어간다. 그룹 수가
+   * maxPerTemplate 보다 많으면(지역 251곳 vs 상한 40) index 0 에서 상한이 차 index 1 에
+   * 도달하지 못한다. 예전에는 모든 토픽이 같은 지점에서 열거를 시작해 index 0 이 항상
+   * persona[0]·intent[0]·modifier[0] 이었고, 그 결과 전 슬롯이 동일 축 조합을 가졌다
+   * (실측: 골든 T01/T07/T14/T15 각 40건이 persona·intent·수식어 모두 1종류, 운영 DB T01 100/100 동일).
+   * 축이 프롬프트에 들어가도 글을 구분하지 못하던 원인이 이것이다.
+   *
+   * 시작점은 토픽 문자열 해시라 (a) 재생성 시 동일 조합 = slot_id idempotency 유지,
+   * (b) 축 값 배열의 순서가 바뀌어도 흔들리지 않는다.
+   */
+  private buildTopicRows(
+    domain: string, tid: string, spec: TemplateSpecShape, topic: TopicUnit,
+    personaValues: Row[], intentValues: Row[], modifierCombos: Array<[string | null, string | null]>,
+    comboCount: number, cap: number,
+  ): Row[] {
+    const rows: Row[] = [];
+    const comboStart = comboCount > 1 ? axisComboOffset(topic.hashKey, comboCount) : 0;
+    for (let step = 0; step < comboCount && rows.length < cap; step++) {
+      const { persona, intent, m1, m2 } = axisComboAt(comboStart + step, personaValues, intentValues, modifierCombos);
+      // 축이 서로 다른 일을 해야 하는데 modifier 와 intent 가 같은 데이터를 가리키면 한 축이 낭비된다
+      // (예: 비용절약 × 비용구성). 그런 조합은 건너뛰고 다음 조합을 본다.
+      if (isConflictingAxisPair(m1, intent) || isConflictingAxisPair(m2, intent)) continue;
+      const parts = [topic.hashKey, persona || "", intent || "", m1 || "", m2 || ""];
+      rows.push({
+        slot_id: slotId(domain, tid, parts), domain: domain, template_id: tid, primary_keyword: topic.primaryKeyword,
+        region: topic.region, persona, intent,
+        modifier_1: m1, modifier_2: m2, entity_id: null, priority_score: priority(topic.sv, topic.kd, spec.weight)
+      });
+    }
+    return rows;
   }
 
   /**
@@ -427,6 +460,28 @@ function buildTopicUnits(spec: TemplateSpecShape, archetype: Archetype | undefin
     }
   }
   return units;
+}
+/**
+ * 토픽을 지역 단위로 묶는다 — 후보 생성의 인터리브 그룹이 지역이 되게 하는 것이 목적이다.
+ * 같은 지역의 여러 키워드(지역 × keyword_filter)가 한 그룹으로 합쳐지므로, 상한이 작아도
+ * 지역이 먼저 폭 우선으로 덮인다.
+ *
+ * 지역이 없는 유형(keyword 주도)은 토픽마다 그룹 하나 = 예전 동작 그대로다. 그룹 등장 순서는
+ * topicUnits 순서를 보존한다(호출부의 정렬이 stable 해야 골든 출력이 흔들리지 않는다).
+ */
+function groupTopicsByRegion(topicUnits: TopicUnit[]): Array<{ region: string | null; topics: TopicUnit[] }> {
+  const out: Array<{ region: string | null; topics: TopicUnit[] }> = [];
+  const byRegion = new Map<string, { region: string | null; topics: TopicUnit[] }>();
+  for (const topic of topicUnits) {
+    const region = topic.region ? String(topic.region).trim() : "";
+    if (!region) { out.push({ region: null, topics: [topic] }); continue; }
+    const found = byRegion.get(region);
+    if (found) { found.topics.push(topic); continue; }
+    const created = { region, topics: [topic] };
+    byRegion.set(region, created);
+    out.push(created);
+  }
+  return out;
 }
 function numberOrNull(v: any): number | null { const n = Number(v); return Number.isFinite(n) ? n : null; }
 function priority(sv: number | null, kd: number | null, weight: number): number {
