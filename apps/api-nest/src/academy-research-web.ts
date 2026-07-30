@@ -623,7 +623,7 @@ export const SCHEMA_FIELDS: Array<{ key: string; text: string }> = [
   // 랜드마크는 **위치 사실만** 받는다. "대학이 가까워 대학생이 많다" 같은 이용자 구성 추정은
   // 소스에 그렇게 적혀 있어도 검증할 수 없어 글에 실으면 안 되는 종류다(참고 기사에서 실제로
   // 그렇게 쓰고 있었다). 무엇이 곁에 있는지만 담고, 그게 누구에게 유리한지는 글이 판단하지 않는다.
-  { key: "nearby_landmarks", text: `"nearby_landmarks": string|null  // 학원 주변의 알려진 시설·지명(대학, 역, 산업단지, 주요 상권 등)을 소스에 적힌 대로 2~4개. 거리·소요시간·"가깝다"·이용자 구성 추정은 넣지 말 것. 없으면 null` },
+  { key: "nearby_landmarks", text: `"nearby_landmarks": string|null  // 이 시설이 **어느 생활권에 있는지** 보여주는 지명 2~4개. 판단 기준: 찾아가는 길 안내가 아니라 위치 감각이다. 넣을 것 = 그 지역에서 널리 통하는 곳(대학·역·터미널·산업단지·행정기관·큰 상권·유명 공원). 넣지 말 것 = 교회·개별 상점·간판·골목·"○○ 뒤편"처럼 국지적인 표식과 경로 설명, 거리·소요시간·"가깝다", 이용자 구성 추정("대학생이 많다"). 소스에 그렇게 적혀 있어도 옮기지 말 것. 해당하는 지명이 없으면 null` },
 ];
 
 const COURSES_LINE = `"courses": [{"course_name": string, "price": string|null, "exam_fee_included": "yes"|"no"|"partial"|null, "extra_costs": string|null, "note": string|null, "source_url": string|null}]`;
