@@ -75,9 +75,9 @@
 ## Information architecture
 - Primary navigation:
   - 관리자 대시보드 `/`
-  - 작업 큐 `/jobs`
   - 도메인 개요 `/t/[domain]`
   - 글 생성 중심 `/t/[domain]/generate`
+  - 작업 큐 `/t/[domain]/jobs`
   - 검수/내보내기 중심 `/t/[domain]/posts`
   - 글 상세 `/t/[domain]/post/[postId]`
 - Core backend surfaces:
@@ -127,7 +127,7 @@
 
 ## Components
 - Existing components to reuse:
-  - Admin: `AppShell`, `DashboardClient`, `DomainClient`, `JobsClient`, `PostDetailClient`
+  - Admin: `AppShell`, `DashboardClient`, `DomainClient`, `JobCard`, `PostDetailClient`
   - CSS primitives: `card`, `btn`, `badge`, `tabs`, `workflow`, `writer-hint`, `table-wrap`, `flow-card`, `next-action`
   - API client: `apps/admin-next/lib/api.ts`
   - Shared types: `apps/admin-next/lib/types.ts`

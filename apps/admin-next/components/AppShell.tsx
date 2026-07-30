@@ -19,7 +19,7 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [domains, setDomains] = useState<Awaited<ReturnType<typeof listDomains>>["items"]>([]);
   const [domainsReady, setDomainsReady] = useState(false);
-  // 마지막으로 연 도메인(localStorage). 도메인이 URL에 없는 페이지(/jobs, /settings 등)에서 앵커로 쓴다.
+  // 마지막으로 연 도메인(localStorage). 도메인이 URL에 없는 페이지(/, /academies, /settings)에서 앵커로 쓴다.
   // pathname 이 바뀔 때마다 다시 읽어, 방금 보던 도메인을 반영한다.
   const [recentDomain, setRecentDomain] = useState<string | null>(null);
 

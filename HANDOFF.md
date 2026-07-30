@@ -84,7 +84,7 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | `apps/admin-next/components/AcademyResearchClient.tsx` | 「운전학원 자료」 — 원천 동기화·AI 심층조사·검토 승인(업종 단위, 도메인 무관) |
 | `apps/admin-next/components/AcademyDetailClient.tsx` | 학원 1곳의 조사값 확인/수정/승인 해제 |
 | `apps/admin-next/components/DraftsClient.tsx` | 격리(`draft_posts`) 검수 — 게이트 미통과 글 확인/발행/반려 |
-| `apps/admin-next/components/JobsClient.tsx` · `JobCard.tsx` | 작업 큐 UI |
+| `apps/admin-next/components/JobCard.tsx` | 작업 카드 — 진행률·옵션·제어(취소/일시중지/우선). 접은 선택은 `lib/collapsed-jobs`에 기억된다 |
 | `apps/admin-next/components/PostDetailClient.tsx` | 글 상세/렌더링 확인 + 「이 글의 근거」 |
 | `apps/admin-next/components/SettingsClient.tsx` | 작업환경(튜토리얼·생성 기본값·업종 레지스트리·블로그리뷰 수집) |
 | `apps/admin-next/components/NeedDomainClient.tsx` · `IntegrationSettingsClient.tsx` | 도메인 없음 안내 / 연동 설정 |
@@ -108,7 +108,7 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | 라우트 | 역할 |
 | --- | --- |
 | `/` | 대시보드, 도메인 목록/생성, 시작 플로우 |
-| `/jobs` | 전체 작업 큐, 3초 폴링/수동 새로고침 |
+| `/t/[domain]/jobs` | 작업 큐 — **도메인 스코프**, 3초 폴링/수동 새로고침. 전역 작업 화면은 없다(대시보드 표가 도메인 교차 요약을 맡는다) |
 | `/academies` | 「운전학원 자료」 — 원천 동기화·AI 심층조사·검토 승인. **업종 단위 전역 화면이라 도메인을 모른다** |
 | `/academies/[externalId]` | 학원 1곳의 조사값 상세 |
 | `/settings` | 작업환경(튜토리얼·생성 기본값·업종·블로그리뷰 수집) |
