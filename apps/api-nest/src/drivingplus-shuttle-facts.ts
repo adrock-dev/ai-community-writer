@@ -31,6 +31,8 @@ const PROMOTIONAL_RE = /모시|편안|안전하게|감사합니다|최고|친절
 const RESERVATION_RE = /예약|미리\s*연락|사전\s*(?:연락|문의)|\d+\s*시간\s*전|하루\s*전|전화\s*(?:주|한통|해)|신청/u;
 /** 출발지 표기라 경유 지점이 아니다. */
 const ORIGIN_STOP_RE = /^(?:학원\s*출발|출발|학원)$/u;
+/** "성문학원 출발"·"부산대성학원출발"처럼 앞에 학원명이 붙은 출발지 표기. */
+const ORIGIN_SUFFIX_RE = /출발$/u;
 /** 안내문에 섞인 실번호(390개 노선 중 389개가 실번호). 공개 글에는 안심번호만 나간다. */
 const PHONE_RE = /(?<![\d-])0\d{1,3}[-\s]?\d{3,4}[-\s]?\d{4}(?![\d-])/g;
 
@@ -64,14 +66,45 @@ function regionSearchText(buses: DrivingplusShuttleBus[]): string {
  * 방면" 한 줄로 구리시의 갈매동·교문동·사노동·아천동까지 '확인된 것처럼' 나열하게 된다.
  * 실제로 확인된 것은 "수택" 하나뿐이다. 없는 사실을 만드는 셈이라 반드시 분리한다.
  */
+/**
+ * 사전의 `submunicipal`은 구를 둔 일반시에서 `"서북구 두정동"` 복합형으로 저장된다
+ * (`db.service.ts`의 `upsertRegionDirectory`가 `region`을 공백으로 쪼개 3번째 조각부터
+ * 이어 붙이기 때문이다). 그런데 정류장명에는 `"두정동"`만 적히므로 복합형 그대로는
+ * 절대 걸리지 않는다 — 실측 결과 사전 5,068건 중 736건(14.5%)이 이 형태였고,
+ * 그 토큰으로 매칭에 성공한 학원은 0곳이었다. 그 도시 학원들은 운행 지역이 시 단위
+ * ("천안시")로만 남고 동 단위 상세는 경유지에만 있었다(23곳).
+ *
+ * 그래서 복합형에서는 뒤쪽 지명만 떼어 대조·표기한다. 같은 시 안의 동명이지역은 반경
+ * 25km 제한(`SHUTTLE_REGION_RADIUS_KM`)이 이미 걸러 주고, 걸러지지 않더라도 묶는 키가
+ * 같은 시·군이라 표기가 달라지지 않는다. 광역시는 `sigungu`가 "강남구"라 무관하다.
+ */
+function submunicipalName(entry: RegionDirectoryEntry): string {
+  const raw = String(entry.submunicipal ?? "").trim();
+  // 공백이 있을 때만 복합형이다. "동남구"처럼 구 이름만 있는 행은 그대로 둔다.
+  return (raw.match(/^\S+구\s+(\S.*)$/u)?.[1] ?? raw).trim();
+}
+
+/**
+ * 지명 토큰은 낱말 앞머리에서 시작해야 인정한다. 앞에 한글이 붙어 있으면 더 긴 지명의
+ * 꼬리를 잘라 읽은 것이다 — 복합형 토큰을 열자 "오산 방면(세교동·청호동)" 한 줄이
+ * 수원시 교동(세**교동**)과 용인시 호동(청**호동**)으로 잡혔다.
+ *
+ * 뒤쪽은 막지 않는다. 지명 뒤에 말이 이어붙는 것은 정상이라("교동시가지", "두정동 우체국")
+ * 뒤를 막으면 실제 매칭이 사라진다. 강릉 교동이 이 경우다.
+ */
+function includesRegionToken(text: string, token: string): boolean {
+  if (!token) return false;
+  return new RegExp(`(?<![가-힣])${token.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}`, "u").test(text);
+}
+
 type RegionMatch = { entry: RegionDirectoryEntry; via: "submunicipal" | "sigungu" };
 function matchedRegions(text: string, regions: RegionDirectoryEntry[]): RegionMatch[] {
   const found: RegionMatch[] = [];
   for (const entry of regions) {
-    const submunicipal = String(entry.submunicipal ?? "").trim();
+    const submunicipal = submunicipalName(entry);
     const sigungu = String(entry.sigungu ?? "").trim();
     let via: RegionMatch["via"] | null = null;
-    if (submunicipal && text.includes(submunicipal)) via = "submunicipal";
+    if (submunicipal && includesRegionToken(text, submunicipal)) via = "submunicipal";
     else if (sigungu && text.includes(sigungu)) via = "sigungu";
     else if (sigungu) {
       // "목포 전지역"처럼 접미사를 뗀 형태. 두 글자 이상일 때만, 그리고 지역을 가리키는 말이
@@ -94,7 +127,7 @@ function describeRegions(matches: RegionMatch[]): string {
     const key = String(entry.sigungu ?? entry.sido ?? "").trim() || entry.region;
     if (!grouped.has(key)) grouped.set(key, []);
     if (via !== "submunicipal") continue;
-    const sub = String(entry.submunicipal ?? "").trim();
+    const sub = submunicipalName(entry);
     if (sub && !grouped.get(key)!.includes(sub)) grouped.get(key)!.push(sub);
   }
   const parts: string[] = [];
@@ -107,12 +140,24 @@ function describeRegions(matches: RegionMatch[]): string {
   return parts.join(", ");
 }
 
+/**
+ * 노선명을 운행 지역으로 승격할 최소 조건 — 행정구역이나 운행 범위를 가리키는 말이어야 한다.
+ *
+ * `OPERATIONAL_LABEL_RE`는 앞머리만 보기 때문에 "학원셔틀"처럼 다른 글자가 앞에 붙으면
+ * 그대로 통과했고, 요일("토요일")과 랜드마크("GTX-A 킨텍스")도 지역으로 실렸다(실측 3곳).
+ * 글에는 `- **셔틀 운행 지역:** 학원셔틀` 로 나가 독자에게는 오류로 읽힌다.
+ */
+const REGION_LIKE_RE = /[가-힣]{2,}(?:시|군|구|읍|면|동|리)|전\s?지역|전역|방면|시내|일대/u;
+const NON_REGION_TITLE_RE = /셔틀|버스|노선|요일|학원/u;
+
 /** 노선명 중 운영 라벨이 아닌 것 — 학원이 지역명을 그대로 쓴 경우다. */
 function placeLikeTitles(buses: DrivingplusShuttleBus[]): string[] {
   const titles: string[] = [];
   for (const bus of buses) {
     const title = scrub(bus.title);
-    if (title && !OPERATIONAL_LABEL_RE.test(title) && !titles.includes(title)) titles.push(title);
+    if (!title || OPERATIONAL_LABEL_RE.test(title) || titles.includes(title)) continue;
+    if (NON_REGION_TITLE_RE.test(title) || !REGION_LIKE_RE.test(title)) continue;
+    titles.push(title);
   }
   return titles;
 }
@@ -130,12 +175,28 @@ function reservationConditions(buses: DrivingplusShuttleBus[]): string[] {
   return found.slice(0, 1);
 }
 
+/**
+ * 경유지로 인정할 값 — 독자가 자기 출발지를 찾는 데 쓸 수 있는 생활권·랜드마크·지역 정보여야 한다.
+ *
+ * 원천의 정류장 필드에는 지점이 아닌 값이 섞여 들어온다(실측 735개 중 25개):
+ * 시각표("06:50 09:40 12:40 15:40"), 노선 조각("3지구"·"4출구)"·"6단지"), 상호 약어("BYC"·"NC"),
+ * 학원 출발지("성문학원 출발"). 그대로 실으면 공개 글에 오류로 읽히고, 특히 운행 지역이
+ * 잡히지 않아 경유지가 셔틀 정보의 전부인 학원에서 치명적이다.
+ */
+function isPlaceLikeStop(name: string): boolean {
+  if (ORIGIN_STOP_RE.test(name) || ORIGIN_SUFFIX_RE.test(name)) return false;
+  const hangul = (name.match(/[가-힣]/gu) ?? []).length;
+  if (hangul >= 3) return true;
+  // 두 글자는 지명 접미사로 끝날 때만 인정한다("학동"은 지명, "3지구"·"6단지"는 조각이다).
+  return hangul === 2 && /[동읍면리역가]$/u.test(name);
+}
+
 function stopNames(buses: DrivingplusShuttleBus[]): string[] {
   const stops: string[] = [];
   for (const bus of buses) {
     for (const stop of bus.times ?? []) {
       const name = scrub(stop?.runDirection);
-      if (!name || ORIGIN_STOP_RE.test(name) || stops.includes(name)) continue;
+      if (!name || !isPlaceLikeStop(name) || stops.includes(name)) continue;
       stops.push(name);
     }
   }
@@ -153,26 +214,42 @@ export function formatShuttleFact(
 
   // 1) 운행 지역 — 사전 매칭이 우선, 없으면 학원이 노선명에 적은 지역명.
   const regions = nearbyRegions.length ? matchedRegions(regionSearchText(routes), nearbyRegions) : [];
-  if (regions.length) segments.push(`운행 지역(자료 기준) ${describeRegions(regions)}`);
+  let hasRegion = false;
+  if (regions.length) { segments.push(`운행 지역(자료 기준) ${describeRegions(regions)}`); hasRegion = true; }
   else {
     const titles = placeLikeTitles(routes);
-    if (titles.length) segments.push(`운행 지역(자료 기준) ${titles.slice(0, MAX_SIGUNGU).join(", ")}`);
+    if (titles.length) { segments.push(`운행 지역(자료 기준) ${titles.slice(0, MAX_SIGUNGU).join(", ")}`); hasRegion = true; }
   }
 
   // 2) 예약·이용 조건 — 학원 안내문에 있을 때만.
   const conditions = reservationConditions(routes);
   if (conditions.length) segments.push(`이용 조건 ${conditions[0]}`);
 
-  // 3) 경유지 — 지역이 안 잡힌 학원에서 특히 유용한 보조 정보.
+  // 3) 경유지 — 운행 지역을 만들지 못한 학원에서만 낸다.
   //
-  // 총 개수는 넣지 않는다. 학원끼리 수강료·운영 과정이 거의 같은 지역에서는 경유지 수가
-  // 유일하게 눈에 띄는 숫자라, 넣어 두면 모델이 그걸 그 학원의 강점으로 집어 든다
-  // (발행 14건 중 3건: "161곳으로 가장 많고", "경유지 100곳", "67곳 경유지").
+  // 둘을 함께 내면 같은 사실이 두 번 실린다. 운행 지역은 별도 원천이 아니라 이 정류장
+  // 텍스트를 사전과 대조해 만든 값이라(`regionSearchText`가 정류장명을 포함한다), 정류장이
+  // 동 이름이면 그 동이 운행 지역으로 올라간 뒤 여기서 또 나열된다. 실제로 발행 글에
+  // "원주시 개운동·단계동·단구동·명륜동 등을 운행 지역으로 안내하고, 명륜동·개운동·구곡택지·
+  // 봉산동 등을 경유지로 제시하고"가 그대로 나갔다. 프롬프트에 "대표 지역 몇 곳만" 지시가
+  // 이미 있었지만 지시로는 막히지 않았다 — 입력에서 하나만 주는 것이 유일한 방법이다.
   //
-  // 독자에게 중요한 것은 "내 출발지가 경유지에 있느냐"이지 총 개수가 아니다. 161곳은
-  // 내 동네를 지난다는 뜻이 아니고, 오히려 노선이 길어 타는 시간이 길다는 뜻일 수도 있다.
-  const stops = stopNames(routes);
-  if (stops.length) segments.push(`경유지 ${stops.slice(0, MAX_STOPS).join(", ")} 등`);
+  // 어느 쪽을 남길지는 해상도가 정한다. 운행 지역은 동 단위로 커버리지를 말하고 잘리지
+  // 않는 반면, 경유지는 최대 4개만 실린다(실측: 170곳 중 149곳이 상한에 걸렸고 실제 정류장은
+  // 67~161곳까지 간다). 그래서 운행 지역이 있으면 그쪽이 낫다.
+  //
+  // 반대로 운행 지역이 비는 학원에서는 경유지가 셔틀 정보의 전부다. 반경 25km 밖에서
+  // 태워 오는 원거리 픽업(포천 학원의 강남 경유지, 가평 학원의 잠실 경유지)이 대표적인데,
+  // 사전 대조가 구조적으로 닿지 못하는 자리라 여기서 지우면 그 사실이 사라진다.
+  //
+  // 총 개수는 어느 경우에도 넣지 않는다. 학원끼리 수강료·운영 과정이 거의 같은 지역에서는
+  // 경유지 수가 유일하게 눈에 띄는 숫자라, 넣어 두면 모델이 그걸 강점으로 집어 든다
+  // (발행 14건 중 3건: "161곳으로 가장 많고", "경유지 100곳", "67곳 경유지"). 독자에게
+  // 중요한 것은 "내 출발지가 경유지에 있느냐"이지 총 개수가 아니다.
+  if (!hasRegion) {
+    const stops = stopNames(routes);
+    if (stops.length) segments.push(`경유지 ${stops.slice(0, MAX_STOPS).join(", ")} 등`);
+  }
 
   // 셔틀 연락처는 대부분 실번호라 넣지 않는다. 공개 연락처는 학원 안심번호 하나로 통일한다.
   if (!segments.length) return "셔틀 운행(세부 정보는 자료에 없음)";

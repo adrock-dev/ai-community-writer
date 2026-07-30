@@ -40,11 +40,126 @@ describe("운행 지역 판별", () => {
   });
 });
 
+describe("사전의 복합 토큰(구를 둔 일반시)", () => {
+  // db.service.ts 가 region 을 공백으로 쪼개 3번째 조각부터 이어 붙이므로
+  // "충청남도 천안시 서북구 두정동" → submunicipal "서북구 두정동" 이 된다.
+  // 정류장명에는 "두정동"만 적히므로 복합형 그대로 대조하면 영원히 안 걸린다.
+  const 천안두정: RegionDirectoryEntry = { region: "충청남도 천안시 서북구 두정동", sido: "충청남도", sigungu: "천안시", submunicipal: "서북구 두정동" };
+  const 천안원성: RegionDirectoryEntry = { region: "충청남도 천안시 동남구 원성동", sido: "충청남도", sigungu: "천안시", submunicipal: "동남구 원성동" };
+
+  it("복합 토큰의 동 이름으로 매칭한다", () => {
+    const text = formatShuttleFact(
+      [bus({ title: "1호차", times: [{ time: "", runDirection: "두정동" }, { time: "5분", runDirection: "원성동" }] })],
+      [천안두정, 천안원성],
+    );
+    expect(text).toContain("운행 지역(자료 기준) 천안시(두정동·원성동)");
+  });
+
+  it("표기에도 구 접두사를 남기지 않는다", () => {
+    const text = formatShuttleFact([bus({ title: "1호차", times: [{ time: "", runDirection: "두정동 우체국" }] })], [천안두정]);
+    expect(text).not.toContain("서북구");
+  });
+
+  it("구 이름만 있는 행은 그대로 쓴다", () => {
+    const 동남구: RegionDirectoryEntry = { region: "충청남도 천안시 동남구", sido: "충청남도", sigungu: "천안시", submunicipal: "동남구" };
+    const text = formatShuttleFact([bus({ title: "1호차", times: [{ time: "", runDirection: "동남구 방면" }] })], [동남구]);
+    expect(text).toContain("천안시(동남구)");
+  });
+
+  it("더 긴 지명의 꼬리를 잘라 읽지 않는다", () => {
+    // 실제 오탐: "오산 방면(세교동·청호동)" 한 줄이 수원시 교동(세교동)과
+    // 용인시 호동(청호동)으로 잡혔다. 앞에 한글이 붙으면 지명의 시작이 아니다.
+    const 수원교동: RegionDirectoryEntry = { region: "경기도 수원시 팔달구 교동", sido: "경기도", sigungu: "수원시", submunicipal: "팔달구 교동" };
+    const text = formatShuttleFact([bus({ title: "3호차", runDirection: "오산 방면(세교동·청호동)" })], [수원교동]);
+    expect(text).not.toContain("수원시");
+  });
+
+  it("지명 뒤에 말이 이어붙는 것은 정상 매칭이다", () => {
+    // 강릉 교동은 정류장 안내에 "교동시가지"로만 등장한다. 뒤를 막으면 이 매칭이 사라진다.
+    const 강릉교동: RegionDirectoryEntry = { region: "강원특별자치도 강릉시 교동", sido: "강원특별자치도", sigungu: "강릉시", submunicipal: "교동" };
+    const text = formatShuttleFact([bus({ title: "1호차", times: [{ time: "", runDirection: "교동시가지" }] })], [강릉교동]);
+    expect(text).toContain("강릉시(교동)");
+  });
+});
+
+describe("운행 지역과 경유지를 함께 내지 않는다", () => {
+  // 실제 발행 사고: "원주시 개운동·단계동·단구동·명륜동 등을 운행 지역으로 안내하고,
+  // 명륜동·개운동·구곡택지·봉산동 등을 경유지로 제시하고" — 운행 지역이 정류장 텍스트에서
+  // 파생되므로 둘을 함께 내면 같은 사실이 두 번 실린다.
+  const 원주 = (submunicipal: string): RegionDirectoryEntry =>
+    ({ region: `강원특별자치도 원주시 ${submunicipal}`, sido: "강원특별자치도", sigungu: "원주시", submunicipal });
+
+  it("운행 지역이 잡히면 경유지를 넣지 않는다", () => {
+    const text = formatShuttleFact(
+      [bus({ title: "1호차", times: [{ time: "", runDirection: "명륜동" }, { time: "5분", runDirection: "개운동" }] })],
+      [원주("명륜동"), 원주("개운동")],
+    );
+    expect(text).toContain("운행 지역(자료 기준) 원주시(명륜동·개운동)");
+    expect(text).not.toContain("경유지");
+  });
+
+  it("노선명으로만 지역이 잡힌 경우에도 경유지를 넣지 않는다", () => {
+    const text = formatShuttleFact([bus({ title: "안산 전지역", times: [{ time: "", runDirection: "고잔역" }] })], []);
+    expect(text).toContain("운행 지역(자료 기준) 안산 전지역");
+    expect(text).not.toContain("경유지");
+  });
+
+  it("운행 지역이 비면 경유지가 셔틀 정보를 대신한다", () => {
+    // 반경 25km 밖에서 태워 오는 원거리 픽업은 사전 대조가 구조적으로 닿지 못한다.
+    const text = formatShuttleFact([bus({ title: "1호차", times: [
+      { time: "", runDirection: "삼성역(무역센터)1번출구" }, { time: "10분", runDirection: "잠실새내역1번출구" },
+    ] })], []);
+    expect(text).toContain("경유지 삼성역(무역센터)1번출구, 잠실새내역1번출구 등");
+  });
+});
+
+describe("경유지는 생활권·랜드마크·지역 정보여야 한다", () => {
+  const stops = (...names: string[]) =>
+    formatShuttleFact([bus({ title: "1호차", times: names.map((runDirection) => ({ time: "", runDirection })) })], []);
+
+  it("시각표·번호·라틴 약어는 지점이 아니다", () => {
+    // 원천 정류장 필드에 실제로 섞여 있던 값들이다.
+    for (const junk of ["06:50 09:40 12:40 15:40", "3", "2", "BYC", "NC", "3지구", "6단지", "4출구)"]) {
+      expect(stops(junk, "마석역")).not.toContain(junk);
+    }
+  });
+
+  it("학원 출발지 표기는 경유지가 아니다", () => {
+    for (const origin of ["성문학원 출발", "부산대성학원출발"]) {
+      expect(stops(origin, "마석역")).not.toContain(origin);
+    }
+  });
+
+  it("두 글자 지명과 번호가 붙은 실제 지점은 남긴다", () => {
+    expect(stops("학동")).toContain("학동");
+    expect(stops("3호선 대화역 6번출구")).toContain("3호선 대화역 6번출구");
+    expect(stops("구곡택지")).toContain("구곡택지");
+  });
+
+  it("쓸 만한 지점이 하나도 없으면 경유지 자체를 내지 않는다", () => {
+    expect(stops("06:50 09:40", "BYC", "3")).toBe("셔틀 운행(세부 정보는 자료에 없음)");
+  });
+});
+
 describe("운영 라벨 배제", () => {
   it("차량번호·일반 라벨은 지역으로 쓰지 않는다", () => {
     for (const label of ["1호차", "3호차", "셔틀버스", "셔틀노선", "노선", "버스문의", "기타"]) {
       const text = formatShuttleFact([bus({ title: label })], []);
       expect(text).toBe("셔틀 운행(세부 정보는 자료에 없음)");
+    }
+  });
+
+  it("앞에 다른 글자가 붙은 운영 라벨도 지역으로 쓰지 않는다", () => {
+    // 실측: "학원셔틀"·"토요일"·"GTX-A 킨텍스"가 운행 지역으로 실려
+    // 글에 `- **셔틀 운행 지역:** 학원셔틀` 로 나갔다(3곳).
+    for (const label of ["학원셔틀", "토요일", "GTX-A 킨텍스"]) {
+      expect(formatShuttleFact([bus({ title: label })], [])).toBe("셔틀 운행(세부 정보는 자료에 없음)");
+    }
+  });
+
+  it("학원이 적은 운행 범위 표기는 그대로 인정한다", () => {
+    for (const label of ["광주 전지역", "옥계방면", "시내방면", "안산시 일대"]) {
+      expect(formatShuttleFact([bus({ title: label })], [])).toContain(label);
     }
   });
 
