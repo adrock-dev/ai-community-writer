@@ -283,6 +283,12 @@ export interface Job {
   paused?: number;
   cancel_requested?: number;
   heartbeat_at?: string | null;
+  /**
+   * 진행 중인 잡만 내려온다. 작업자가 응답하지 않는 채로 두면 서버가 자동으로 실패(취소) 처리하는
+   * 시각(UTC). 화면이 직접 계산하지 않는다 — 여유값(`WORKER_CANCEL_EXTRA_GRACE_SEC`)은 서버
+   * 환경변수라 브라우저가 모른다. 계산은 `db.service.ts` 의 `jobStaleRecovery` 한 곳.
+   */
+  stale_recover_at?: string | null;
   current_slot_id?: string | null;
   current_step?: string | null;
   processed_count?: number;

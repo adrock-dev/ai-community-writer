@@ -1401,15 +1401,14 @@ export class DbService implements OnModuleInit {
       return { ...row, status: "running", started_at: now, heartbeat_at: now, current_step: "작업자 시작", payload_obj: safeJson(row.payload, {}) };
     });
   }
-  recoverStaleRunningJobs(maxExtraGraceSeconds = Number(process.env.WORKER_CANCEL_EXTRA_GRACE_SEC || 300)): number {
-    const extraGraceSec = Math.max(60, Math.min(60 * 60, Math.trunc(Number(maxExtraGraceSeconds) || 300)));
+  recoverStaleRunningJobs(maxExtraGraceSeconds = process.env.WORKER_CANCEL_EXTRA_GRACE_SEC): number {
+    const extraGraceSec = staleExtraGraceSeconds(maxExtraGraceSeconds);
     const rows = this.all("SELECT id, payload, started_at, heartbeat_at, cancel_requested FROM jobs WHERE status='running' AND started_at IS NOT NULL")
       .filter((row) => isRunningJobStale(row, extraGraceSec));
     if (!rows.length) return 0;
     for (const row of rows) {
       const payload = safeJson(row.payload, {});
-      const timeoutSec = clampJobTimeoutSeconds(payload.timeout_sec);
-      const staleAfterMin = Math.ceil((timeoutSec + extraGraceSec) / 60);
+      const staleAfterMin = jobStaleRecovery(row, extraGraceSec)?.afterMin ?? 0;
       const cancelled = Number(row.cancel_requested ?? 0) === 1;
       const message = cancelled
         ? `취소됨(작업자 요청, 제한시간+여유 ${staleAfterMin}분 이상 응답 없음)`
@@ -1636,7 +1635,14 @@ export function customTemplateOut(row: Row): Row {
     custom: true,
   };
 }
-export function jobOut(row: Row): Row { return { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) }; }
+export function jobOut(row: Row): Row {
+  const out = { ...row, domain: row.domain, payload_obj: safeJson(row.payload, {}), result_obj: safeJson(row.result, {}) };
+  // 진행 중인 잡만: 응답이 끊긴 채로 두면 언제 자동 정리되는지. 화면이 직접 계산하면 여유값
+  // (WORKER_CANCEL_EXTRA_GRACE_SEC)을 모르는 채 추측하게 되므로 서버가 계산해 내려보낸다.
+  if (row.status !== "running") return out;
+  const recovery = jobStaleRecovery(row);
+  return recovery ? { ...out, stale_recover_at: recovery.at } : out;
+}
 export function syncRunOut(row: Row): Row {
   return { ...row, cancel_requested: Number(row.cancel_requested ?? 0) === 1, result_obj: safeJson(row.result, null) };
 }
@@ -1809,10 +1815,28 @@ function fallbackRegionFromAddress(address: string | null): string | null {
 }
 
 function isRunningJobStale(job: Row, extraGraceSec: number): boolean {
+  const recovery = jobStaleRecovery(job, extraGraceSec);
+  return !!recovery && Date.now() > recovery.atMs;
+}
+
+/** 워커가 죽었다고 볼 때까지의 여유(초). 잡 제한시간에 더해진다. 기본 300초. */
+function staleExtraGraceSeconds(value: unknown = process.env.WORKER_CANCEL_EXTRA_GRACE_SEC): number {
+  return Math.max(60, Math.min(60 * 60, Math.trunc(Number(value) || 300)));
+}
+
+/**
+ * 이 잡이 "응답 없음"으로 자동 정리되는 시각과 그 임계(분).
+ *
+ * 화면 안내(JobCard 의 「자동 정리 예정」)와 실제 정리(recoverStaleRunningJobs)가 **같은 값**을
+ * 쓰도록 여기 한 곳에서만 계산한다. 취소 요청은 협조적이라(슬롯 경계에서만 확인) 워커가 죽어 있으면
+ * 이 시각까지 `취소 중`으로 남는데, 그 대기가 오류로 오해받아 안내가 필요해졌다.
+ */
+export function jobStaleRecovery(job: Row, extraGraceSec = staleExtraGraceSeconds()): { at: string; atMs: number; afterMin: number } | null {
   const lastSeenAt = Date.parse(`${String(job.heartbeat_at || job.started_at || "").replace(" ", "T")}Z`);
-  if (!Number.isFinite(lastSeenAt)) return false;
-  const timeoutSec = clampJobTimeoutSeconds(safeJson(job.payload, {})?.timeout_sec);
-  return Date.now() - lastSeenAt > (timeoutSec + extraGraceSec) * 1000;
+  if (!Number.isFinite(lastSeenAt)) return null;
+  const totalSec = clampJobTimeoutSeconds(safeJson(job.payload, {})?.timeout_sec) + extraGraceSec;
+  const atMs = lastSeenAt + totalSec * 1000;
+  return { at: new Date(atMs).toISOString().replace("T", " ").slice(0, 19), atMs, afterMin: Math.ceil(totalSec / 60) };
 }
 
 function clampJobTimeoutSeconds(value: unknown): number {

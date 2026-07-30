@@ -71,7 +71,7 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
             ? <button className="btn primary" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, resumeJob, `${jobLabel(job)} 작업을 재개할까요?`)}>▶ 재개</button>
             : <button className="btn" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, pauseJob, `${jobLabel(job)} 작업을 일시중지할까요?`)}>⏸ 일시중지</button>)}
           {job.status === "queued" && <button className="btn" style={CTL_STYLE} disabled={acting} onClick={(e) => ctl(e, prioritizeJob, `${jobLabel(job)} 작업을 먼저 실행하도록 순서를 변경할까요?`)}>⏫ 먼저 실행</button>}
-          <button className="btn danger" style={CTL_STYLE} disabled={acting || Boolean(job.cancel_requested)} onClick={(e) => ctl(e, cancelJob, `${jobLabel(job)} 작업을 취소할까요?\n\n진행 중인 작업은 현재 처리 중인 글이 끝난 뒤 취소될 수 있습니다.`)}>{job.cancel_requested ? "취소 중..." : "✕ 취소"}</button>
+          <button className="btn danger" style={CTL_STYLE} disabled={acting || Boolean(job.cancel_requested)} onClick={(e) => ctl(e, cancelJob, cancelConfirm(job))}>{job.cancel_requested ? "취소 중..." : "✕ 취소"}</button>
         </>}
         <span className="muted small">{formatDateTime(job.scheduled_at)}</span>
       </div>
@@ -92,6 +92,7 @@ export function JobCard({ job, showDomain = false, designFallback, onChanged }: 
         {job.current_slot_id && <span>현재 후보 <b className="mono">{job.current_slot_id}</b></span>}
         <span>마지막 활동 {activity.lastSeen}</span>
         <span>처리 {processed}/{total}</span>
+        {activity.deadline && <span>{activity.deadline}</span>}
       </div>
       <div className="writer-hint">
         <b>작업 옵션</b>
@@ -128,7 +129,7 @@ export function jobLabel(job: Job): string {
 
 function num(value: unknown): number { const n = Number(value); return Number.isFinite(n) ? n : 0; }
 
-function jobActivity(job: Job): { label: string; lastSeen: string; stale: boolean } {
+function jobActivity(job: Job): { label: string; lastSeen: string; stale: boolean; deadline?: string } {
   if (job.status === "queued") return { label: job.paused ? "대기 중지" : "대기열에 있음", lastSeen: "-", stale: false };
   if (job.status === "done") return { label: "완료", lastSeen: formatDateTime(job.finished_at ?? job.heartbeat_at), stale: false };
   if (job.status === "failed") return { label: job.cancel_requested ? "취소/실패 처리됨" : "실패", lastSeen: formatDateTime(job.finished_at ?? job.heartbeat_at), stale: false };
@@ -141,7 +142,32 @@ function jobActivity(job: Job): { label: string; lastSeen: string; stale: boolea
     label: job.cancel_requested ? "취소 요청 처리 대기" : stale ? "최근 활동 지연" : "작업자 처리 중",
     lastSeen: ageLabel(ageSec),
     stale,
+    deadline: recoverDeadline(job, stale),
   };
+}
+
+/**
+ * 「언제까지 기다리면 되는지」 한 줄.
+ *
+ * 취소는 협조적이라 작업자가 슬롯 경계에서 확인해야 반영된다. 작업자가 죽어 있으면 그 확인이
+ * 영영 오지 않아 「취소 중」이 멈춘 것처럼 보이고, 오류로 오해받는다. 그래서 서버가 계산해 준
+ * 자동 정리 시각(`stale_recover_at`, 마지막 활동 + 제한시간 + 여유)을 상한으로 보여준다.
+ * 화면이 임계를 다시 계산하지 않는 이유는 lib/types.ts 의 필드 주석 참고.
+ */
+function recoverDeadline(job: Job, stale: boolean): string | undefined {
+  const at = job.stale_recover_at ? formatDateTime(job.stale_recover_at) : "";
+  if (!at) return undefined;
+  if (job.cancel_requested) return `취소 확정 늦어도 ${at} — 현재 글이 끝나면 그보다 먼저 멈춥니다`;
+  if (stale) return `응답이 계속 없으면 ${at}에 실패로 정리됩니다`;
+  return undefined;
+}
+
+/** 취소 버튼의 확인 문구. 대기 중은 즉시, 진행 중은 현재 글이 끝난 뒤 — 상한까지 함께 알린다. */
+function cancelConfirm(job: Job): string {
+  const head = `${jobLabel(job)} 작업을 취소할까요?`;
+  if (job.status !== "running") return `${head}\n\n대기 중인 작업은 바로 취소됩니다.`;
+  const at = job.stale_recover_at ? formatDateTime(job.stale_recover_at) : "";
+  return `${head}\n\n진행 중인 작업은 현재 처리 중인 글이 끝난 뒤 멈춥니다.${at ? `\n작업자가 응답하지 않더라도 늦어도 ${at}에는 자동으로 정리됩니다.` : ""}`;
 }
 
 function ageLabel(ageSec: number): string {
