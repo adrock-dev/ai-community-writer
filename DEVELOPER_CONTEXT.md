@@ -196,10 +196,10 @@ POST /api/admin/domains/:domain/jobs/prune
 POST /api/admin/domains/:domain/jobs/indexing
 GET  /api/admin/jobs
 GET  /api/admin/settings/indexing
-POST /api/admin/settings/indexing
+PUT  /api/admin/settings/indexing
 ```
 
-상세는 `docs/admin-json-api.md`를 기준으로 유지해야 합니다.
+위는 **일부**입니다. 실제 컨트롤러에는 글유형 CRUD(`/domains/:domain/templates/*`), 격리 검수(`/domains/:domain/drafts/*`), 학원자료 연결(`/domains/:domain/academies/link`), 동기화 실행 이력(`/domains/:domain/sync/runs/*`), 잡 제어(`/jobs/:id/cancel|pause|resume|prioritize`), 업종 레지스트리(`/settings/verticals`) 등이 더 있습니다. 상세는 `docs/admin-json-api.md`를 기준으로 유지해야 합니다.
 
 ## 5.2 공개 API
 
@@ -261,12 +261,13 @@ DRIVINGPLUS_API_TIMEOUT_MS
 
 ## 5.4 LLM CLI API
 
-워커는 SDK가 아니라 로컬 CLI를 호출합니다.
+워커는 SDK가 아니라 로컬 CLI를 호출합니다. 호출 주체는 `llm-runner.ts`의 `runLlm()`이고, 워커와 관리자(축 값 제안 등)가 함께 씁니다.
 
 Provider:
 
 - `codex`: `codex exec`
-- `claude`: `claude --print`
+- `claude`: `claude --print` (OAuth 강제를 위해 서브프로세스 env의 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`을 삭제)
+- `openai_responses`: CLI가 아닌 HTTP 경로(`openai-responses-provider.ts`). 러너에는 있지만 `/options`의 `providers`가 `["codex","claude"]`라 **관리자 화면에서는 고를 수 없습니다.** 잡 payload로 직접 넣는 경로만 살아 있습니다(설계·보안 검토는 `docs/content-generation/openai-responses-provider-*.md`).
 
 의도:
 
@@ -398,9 +399,11 @@ job payload 확인
 → repair prompt 재시도
 → 제외 키워드 검사
 → 최종 surface gate
-→ posts 저장
+→ (통과) posts 저장 / (실패) draft_posts 격리 보관
 → slot published/failed 반영
 ```
+
+게이트를 통과하지 못한 본문은 **버리지 않고 격리**합니다(`draft_posts`). 공개 경로와 분리된 테이블이며 관리자 `/t/[domain]/drafts`에서 확인·발행·반려합니다. 격리 저장이 실패해도 기존 실패 처리(슬롯 `failed`, 잡 카운트)는 그대로 진행됩니다.
 
 품질 게이트가 보는 것:
 
@@ -431,15 +434,19 @@ job payload 확인
 
 ## 8. 슬롯/템플릿 설계 의도
 
-템플릿은 `T01`~`T15`로 구성되어 있습니다.
+빌트인 글유형은 `constants.ts`의 `TEMPLATE_SPECS` 15종입니다(`T01`, `T03`~`T16` — **`T02`는 없습니다**). 여기에 도메인이 직접 만든 커스텀 글유형(`custom_templates` 테이블)이 더해지고, 둘을 같은 형태로 정규화해 쓰는 리졸버가 `constants.ts`에 있습니다.
 
 예:
 
-- `T01`: 지역 운전학원 BEST 비교
+- `T16`: 지역 운전학원 축 기반 소개 — **학원 소개·비교 글의 정본이고, 노출 기본값(`DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS`)도 이것 하나뿐입니다.** 축(persona/modifier/intent)이 비교표 열·강조 섹션·제목 부제를 실제로 결정하며, 축 해석·게이팅은 `t16-axis-comparison.ts`가 소유합니다.
+- `T01`: 지역 운전학원 BEST 비교 — **폐기됐습니다.** `DEPRECATED_BUILTIN_TEMPLATE_IDS`에 있고, 노출 목록에 넣어도 서버가 걸러냅니다. 코드(`t01-*.ts`)는 과거 발행 글·슬롯이 참조하므로 남겨 둔 것입니다. **학원 글 규칙을 여기서 고치면 아무 효과가 없습니다** — 지금 도는 학원 글은 전부 T16입니다(자세한 함정은 `CLAUDE.md`).
 - `T03`: 운전면허 가이드 총정리
 - `T05`: 비용 및 시간 절약 전략
 - `T07`: 지역 허브 총정리
+- `T11`: 지역 운전면허시험장 소개
 - `T14`: 전문학원 단독 소개
+
+글의 섹션 구조는 글유형이 아니라 **아키타입**이 소유하고, 글유형은 `kind`로 아키타입에 연결됩니다(`archetypes.ts`의 `ARCHETYPES` — `local`·`local_single`·`local_hub`·`local_axis`·`guide`·`compare`·`exam`. T16은 `local_axis`).
 
 슬롯은 다음 축의 조합입니다. 단 **도메인 레벨 축은 `region`/`keyword`만** 관리하고(「원천 데이터」 탭), `intent`/`persona`/`modifier`는 도메인 축이 아니라 **글유형별 `axis_values` 데이터**입니다.
 
@@ -477,11 +484,12 @@ job payload 확인
 - 합격률
 - 일반 리뷰
 - 리뷰 JSON
-- 블로그 리뷰
 - 사진
 - 위경도
 - 학원 유형
 - source URL/name
+
+`academies.blog_reviews` 컬럼도 남아 있지만 **블로그 리뷰는 수집·사용 모두 중단됐습니다.** 자료 자체가 오배정 10%·중복배정이 있어 근거로 쓸 수 없다고 판단해 프롬프트·게이트·수집에서 뺐습니다(영구 제거가 아니라 조건부 보류). 판단 근거와 재개 조건은 `docs/source-field-usage.md` §3.6이 정본입니다.
 
 의도:
 
@@ -539,7 +547,7 @@ job payload 확인
 - 도메인 상세 데이터 include/limit 최적화
 - 작업 실패 원인 UI 개선
 - 품질 게이트 결과를 관리자에서 더 잘 보여주기
-- 승인/반려 상태 추가 검토
+- 승인/반려 — 게이트 **미통과** 글의 격리 검수는 이미 있습니다(`draft_posts`, `/t/[domain]/drafts`). 남은 검토 대상은 게이트를 **통과한** 글에 사람 승인 단계를 둘지입니다
 
 ### 11.3 장기: 운영 확장
 
@@ -567,9 +575,12 @@ job payload 확인
 
 ## 13. 배포 전 체크리스트
 
+커밋 전 필수 게이트는 `CLAUDE.md`가 기준입니다. 아래는 배포 시점 확인 목록입니다.
+
+- [ ] `npm run verify:company-clean` · `npm run verify:copy-sync` (pre-commit 훅이 자동 실행 — 실패 시 커밋 차단)
 - [ ] `npm run typecheck`
-- [ ] `npm run build`
-- [ ] `npm run verify:company-clean`
+- [ ] `npm run test` (필요 시 `npm run test:golden`)
+- [ ] `npm run build` — **`npm run dev` 중에는 돌리지 않습니다.** `next dev`와 `.next` 청크를 공유해 관리자 화면이 통째로 깨집니다. 타입만 볼 목적이면 `typecheck`로 충분합니다
 - [ ] `npm run qa:posts` 또는 `npm run qa:posts:all`
 - [ ] `.env` 운영값 확인
 - [ ] `ADMIN_PASSWORD` 설정

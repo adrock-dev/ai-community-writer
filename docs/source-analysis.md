@@ -1,8 +1,9 @@
 # 현재 소스 분석
 
-- 검토일: 2026-06-23
+- 검토일: 2026-07-30 (이전 갱신 2026-07-15 · 그 이전 기재 2026-06-23)
 - 범위: 현재 저장소의 백엔드, 관리자 화면, 공개 연동 키트, 실행/검증 스크립트
-- 기준: 로컬 작업트리에 반영된 최신 UI 라우트 분리 변경까지 포함
+- 기준: 코드와 대조해 갱신. 파일·테이블·라우트·컴포넌트 목록은 **전수 대조**했다
+- 주의: 이 문서는 구조 스냅샷이다. `apps/api-nest/src`는 파일이 55개까지 늘었고 자주 바뀐다 — 목록이 코드보다 낡았을 수 있으니 **파일 목록으로 판단하기 전에 실제 디렉터리를 먼저 확인**한다
 
 ## 1. 요약
 
@@ -45,7 +46,8 @@ flowchart LR
 5. 생성 요청은 `jobs` 테이블에 쌓이고, `apps/api-nest/src/worker.service.ts`의 워커 루프가 큐를 폴링한다.
 6. 워커는 슬롯을 글로 변환하고 품질 게이트를 통과한 결과를 `posts` 테이블과 산출물 파일로 저장한다.
 7. 외부 사이트는 `apps/api-nest/src/public.controller.ts`의 공개 API를 통해 발행 글과 렌더링 HTML을 조회한다.
-8. 학원 동기화로 들어온 일반 리뷰와 블로그 리뷰는 `academies`에 저장되고, 워커가 글 생성 근거로 요약해 사용한다.
+8. 학원 자료는 **업종 단위**로 별도 조사 DB(`data/academy_research.db`)에 모이고, 도메인은 「학원자료 연결」로 그중 필요한 것만 `academies`로 가져온다(연결 시점에 지역 배정·셔틀 운행 지역 같은 파생값이 계산돼 박힌다).
+9. 워커는 후기 근거로 `academies.review`/`review_json`(자체 수강생 리뷰)만 쓴다. **`blog_reviews`는 수집·사용 모두 중단됐다** — 자료 오배정·중복배정 때문이며 판단 근거는 `docs/source-field-usage.md` §3.6이 정본이다.
 
 ## 4. 백엔드 분석
 
@@ -60,9 +62,20 @@ flowchart LR
 | `apps/api-nest/src/db.service.ts` | SQLite 스키마 생성/마이그레이션/CRUD |
 | `apps/api-nest/src/slot.service.ts` | 축 조합 기반 슬롯 생성, 우선순위, 제외 규칙 |
 | `apps/api-nest/src/worker.service.ts` | 생성/중복/색인/정리 작업 실행 |
-| `apps/api-nest/src/post-rendering.ts` | Markdown을 공개 HTML로 렌더링 |
+| `apps/api-nest/src/post-rendering.ts` | Markdown을 공개 HTML로 렌더링. **`scripts/qa-posts.mjs`에 통째로 복제돼 있어 고칠 때 두 쪽을 함께 고쳐야 한다**(`test/gate-parity.test.ts`가 대조) |
+| `apps/api-nest/src/quality-gate.ts` · `quality-gate-severity.ts` | 런타임 품질 게이트와 차단 등급(A/B). qa-posts.mjs와 상수·판정을 공유 |
+| `apps/api-nest/src/llm-runner.ts` | `runLlm()` — codex/claude CLI spawn과 stream JSON 파싱. 워커와 관리자가 공유 |
+| `apps/api-nest/src/openai-responses-provider.ts` | CLI가 아닌 HTTP 생성 경로(`openai_responses`). 관리자 화면에는 노출되지 않는다 |
+| `apps/api-nest/src/archetypes.ts` | 글의 섹션 구조(아키타입)와 `writing_guide`. 글유형의 `kind`가 여기로 연결된다 |
+| `apps/api-nest/src/t16-axis-comparison.ts` | T16(학원 소개·비교 글의 정본) 전용 축 해석·게이팅·문체 계약 |
+| `apps/api-nest/src/t01-*.ts` | 폐기된 T01 계열. 과거 글·슬롯 참조용으로만 남아 있다(고쳐도 현재 글에 영향 없음) |
 | `apps/api-nest/src/image-generation.service.ts` | 선택형 이미지 생성과 저장 |
-| `apps/api-nest/src/drivingplus-api.service.ts` | 외부 학원 데이터 동기화 |
+| `apps/api-nest/src/drivingplus-api.service.ts` · `drivingplus-sync.service.ts` | 외부 학원/지역 원천 조회와 동기화 |
+| `apps/api-nest/src/academy-research*.ts` (9개) | 학원 심층조사 — 전용 DB, LLM/웹 조사, 근거·필드 상태, 조사값 사용 판정 |
+| `apps/api-nest/src/academy-link.service.ts` | 조사 DB → 도메인 `academies` 연결. **두 글 계열이 공유해야 하는 판정은 여기 둔다** |
+| `apps/api-nest/src/region-directory.service.ts` | 읍·면·동 전역 지역 사전 |
+
+전체 목록은 디렉터리가 기준이다(현재 55개). 위 표는 구조 파악에 필요한 것만 골랐다.
 
 ### 4.2 데이터 모델
 
@@ -74,12 +87,19 @@ flowchart LR
 | `axes` | 지역, 키워드, 의도, 페르소나, 수식어 등 생성 축 |
 | `slots` | 생성 후보 글 단위. 상태는 `planned`, `in_progress`, `published`, `failed`, `skipped` 중심 |
 | `posts` | 발행 글 본문, 메타, 렌더링 자료, 색인 상태 |
-| `jobs` | `generate`, `dedup`, `indexing`, `prune` 작업 큐 |
+| `draft_posts` | 품질 게이트 미통과로 **격리**된 글. 공개 경로와 분리돼 있고 `/t/[domain]/drafts`에서 검수한다 |
+| `custom_templates` | 도메인이 직접 만든 글유형 |
+| `jobs` | `generate`, `dedup`, `indexing`, `prune` 작업 큐. 일시중지는 status가 아니라 `paused` 컬럼 |
 | `app_settings` | 앱 전역 설정 |
-| `academies` | 글 생성에 참고하는 학원 자료. 일반 리뷰, 상세 리뷰 JSON, 블로그 리뷰 자료 포함 |
+| `academies` | 글 생성에 참고하는 학원 자료. 일반 리뷰·상세 리뷰 JSON 포함(`blog_reviews` 컬럼은 남아 있으나 사용 중단) |
+| `academy_exclusions` | 도메인별로 뺀 학원. 연결이 이 목록을 건너뛴다(행만 지우면 재연결 때 되살아나므로) |
 | `seo_regions` | 지역 보조 데이터 |
+| `region_directory` | 읍·면·동 공용 지역 사전. 도메인과 무관한 전역 자료 |
+| `sync_runs` | 원천 동기화 실행 이력. 워커가 claim하는 `jobs` 큐와 분리돼 있다 |
 
 SQLite 파일 경로는 기본 `data/admin.db`이며, 배포 환경에서는 `SEO_DB_PATH`로 바꿀 수 있다.
+
+**DB는 하나가 아니다.** 학원 심층조사는 `data/academy_research.db`에 따로 있고(`academy-research-db.service.ts`), `admin.db`와 완전히 분리돼 있다 — `admin.db`는 테스트로 자주 초기화되는데 조사 데이터는 영구 보존해야 하기 때문이다. 테이블은 `academy_base`, `academy_research`, `academy_courses`, `academy_reviews`, `academy_shuttle_routes`, `academy_sources`, `academy_field_meta`, `field_status_defs`, `research_runs`다. **백업 대상은 두 파일 모두다.**
 
 ### 4.3 관리자 API
 
@@ -113,7 +133,7 @@ SQLite 파일 경로는 기본 `data/admin.db`이며, 배포 환경에서는 `SE
 | 학원 목록 | `academy_type`, `q`, `has_photos` 필터와 `academy_types` 집계 포함 | `apps/api-nest/src/admin.controller.ts`, `apps/api-nest/src/db.service.ts` |
 | 외부 동기화 | 학원 동기화, 지역 동기화, 통합 동기화 엔드포인트가 분리되어 있음 | `apps/api-nest/src/admin.controller.ts` |
 | 생성 작업 | 이미지 생성 옵션(`enable_image_generation`, `image_generation_required`, `image_count`, `image_size`, `image_model`, `image_provider`) 포함 | `apps/api-nest/src/admin.controller.ts`, `apps/admin-next/lib/types.ts` |
-| 리뷰 데이터 | 학원 자료에 `review`, `review_json`, `blog_reviews`가 있으며 워커가 후기 근거로 요약해 글 생성에 사용 | `apps/api-nest/src/db.service.ts`, `apps/api-nest/src/worker.service.ts` |
+| 리뷰 데이터 | 학원 자료에 `review`, `review_json`, `blog_reviews` 컬럼이 있으나 **워커가 후기 근거로 쓰는 것은 `review`/`review_json`(자체 수강생 리뷰)뿐**이다. `blog_reviews`는 수집·사용 모두 중단 | `apps/api-nest/src/db.service.ts`, `apps/api-nest/src/worker.service.ts`, `docs/source-field-usage.md` §3.6 |
 | 공개 API | 공개 학원 쓰기 `POST /api/v1/:domain/academies`가 있고, `PUBLIC_WRITE_TOKEN`으로 보호 가능 | `apps/api-nest/src/public.controller.ts` |
 
 세부 요청/응답 계약은 `docs/admin-json-api.md`에 현재 코드 기준으로 갱신했다.
@@ -125,7 +145,9 @@ SQLite 파일 경로는 기본 `data/admin.db`이며, 배포 환경에서는 `SE
 주요 특징:
 
 - 업종은 현재 운전 학원 도메인에 맞춰 구성되어 있다.
-- 템플릿 코드는 `T01`, `T03`, `T04`, `T05`, `T06`, `T07`, `T08`, `T09`, `T10`, `T11`, `T12`, `T13`, `T14`, `T15`가 정의되어 있다.
+- 빌트인 글유형은 `T01`, `T03`~`T16` 15종이다(`T02`는 없다). 여기에 도메인별 `custom_templates`가 더해진다.
+- **`T01`은 폐기됐고 학원 소개·비교 글의 정본은 `T16`이다.** 노출 기본값(`DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS`)도 `T16` 하나이며, `T01`은 노출 목록에 넣어도 서버가 걸러낸다.
+- 섹션 구조는 글유형이 아니라 아키타입(`archetypes.ts`)이 소유하고 글유형의 `kind`로 연결된다.
 - 대표 키워드가 한쪽으로 몰리지 않도록 인터리빙 순서를 적용한다.
 - 제외 키워드와 도메인 설정을 반영해 부적절한 슬롯을 거른다.
 - 이미 존재하는 슬롯은 대량 upsert 흐름으로 갱신한다.
@@ -153,9 +175,11 @@ SQLite 파일 경로는 기본 `data/admin.db`이며, 배포 환경에서는 `SE
 - 검증되지 않은 가격/후기/합격률 주장 여부
 - 이미지 슬롯 사용 여부
 
-LLM 실행은 로컬 CLI에 의존한다. Codex 경로는 `codex exec`를 사용하고, Claude 경로는 `claude --print`를 사용한다. 생성 이미지는 선택 기능이며 인증 파일과 외부 백엔드 접근 가능 여부에 영향을 받는다.
+게이트를 통과하지 못한 본문은 버리지 않고 `draft_posts`에 **격리**된다(관리자 `/t/[domain]/drafts`에서 확인·발행·반려). 격리 저장이 실패해도 기존 실패 처리(슬롯 `failed`, 잡 카운트)는 그대로 진행된다.
 
-근거 파일: `apps/api-nest/src/worker.service.ts`, `apps/api-nest/src/image-generation.service.ts`.
+LLM 실행은 로컬 CLI에 의존하며 호출 주체는 `llm-runner.ts`의 `runLlm()`이다(워커와 관리자가 공유). Codex 경로는 `codex exec`, Claude 경로는 `claude --print`를 쓰고 Claude 경로는 OAuth 강제를 위해 서브프로세스 env의 API 키를 삭제한다. 러너에는 CLI가 아닌 HTTP 경로(`openai_responses`)도 있으나 `/options`의 `providers`에 없어 관리자 화면에서는 고를 수 없다(잡 payload로 직접 넣는 경로만 살아 있다 — 컨트롤러가 provider를 검증하지 않는다). 생성 이미지는 선택 기능이며 인증 파일과 외부 백엔드 접근 가능 여부에 영향을 받는다.
+
+근거 파일: `apps/api-nest/src/worker.service.ts`, `apps/api-nest/src/llm-runner.ts`, `apps/api-nest/src/quality-gate.ts`, `apps/api-nest/src/image-generation.service.ts`.
 
 ### 4.6 공개 API와 렌더링
 
@@ -176,26 +200,40 @@ LLM 실행은 로컬 CLI에 의존한다. Codex 경로는 `codex exec`를 사용
 
 ### 5.1 라우트
 
-| 라우트 | 파일 | 역할 |
-| --- | --- | --- |
-| `/` | `apps/admin-next/app/page.tsx` | 대시보드 |
-| `/jobs` | `apps/admin-next/app/jobs/page.tsx` | 작업 큐 |
-| `/t/[domain]` | `apps/admin-next/app/t/[domain]/page.tsx` | 도메인 상세 개요 |
-| `/t/[domain]/generate` | `apps/admin-next/app/t/[domain]/generate/page.tsx` | 글 생성 중심 화면 |
-| `/t/[domain]/posts` | `apps/admin-next/app/t/[domain]/posts/page.tsx` | 검수/내보내기 중심 화면 |
-| `/t/[domain]/post/[postId]` | `apps/admin-next/app/t/[domain]/post/[postId]/page.tsx` | 글 상세 |
+라우트는 12개다(`app/**/page.tsx` 전수).
 
-최근 UI 변경으로 도메인 상세의 탭만 쓰던 흐름에서, 운영자가 바로 접근하기 쉬운 `글 생성`과 `검수·내보내기` 전용 라우트가 추가되어 있다.
+| 라우트 | 소유 단위 | 역할 |
+| --- | --- | --- |
+| `/` | 전체 | 대시보드. 모든 도메인을 가로질러 본다 |
+| `/t/[domain]` | 도메인 | 도메인 상세 개요(사이드바 라벨 「도메인 관리」) |
+| `/t/[domain]/generate` | 도메인 | 글 생성 중심 화면(「글 생성」) |
+| `/t/[domain]/posts` | 도메인 | 검수/내보내기 중심 화면(「검수·보내기」) |
+| `/t/[domain]/jobs` | 도메인 | 작업 큐. **도메인 스코프이며 전역 `/jobs` 화면은 폐기됐다** |
+| `/t/[domain]/drafts` | 도메인 | 격리 검수(게이트 미통과 글). 사이드바에 없고 검수 화면에서 진입 |
+| `/t/[domain]/post/[postId]` | 도메인 | 글 상세. 사이드바에 없고 검수 목록에서 진입 |
+| `/academies` | 업종 | 「운전학원 자료」 — 원천 동기화·AI 심층조사·검토 승인. **도메인을 모른다** |
+| `/academies/[externalId]` | 업종 | 학원 1곳의 조사값 상세 |
+| `/settings` | 전역 | 작업환경(튜토리얼·생성 기본값·업종 레지스트리·수집 설정) |
+| `/integrations` | 전역 | 연동 설정. 사이드바에 없다 |
+| `/need-domain` | 전역 | 도메인이 없을 때의 안내. 사이드바에 없다 |
+
+전역 작업 큐 화면(`/jobs`)은 한때 있었으나 도메인별 큐와 겹쳐 "왜 다른 도메인 작업이 보이지"로 이어져 폐기됐다. 전역으로 필요한 "지금 무엇이 돌고 있나"는 대시보드 「최근 작업 큐」가 도메인 열과 함께 보여준다(사유는 `AppShell.tsx` 주석).
 
 ### 5.2 주요 컴포넌트
 
+`apps/admin-next/components`에 11개가 있다(전수).
+
 | 컴포넌트 | 역할 |
 | --- | --- |
-| `AppShell` | 좌측 사이드바, 전역 레이아웃, 기본 도메인 기반 메뉴 링크 |
+| `AppShell` | 좌측 사이드바(소유 단위별 그룹), 운영 대상 선택기, 「반영 대기」 배너 |
 | `DashboardClient` | 도메인 카드, 시작 흐름, 최근 작업, 도메인 생성 |
-| `DomainClient` | 도메인 운영 화면. 개요/생성/검수 화면 모드를 처리 |
-| `JobsClient` | 작업 큐 상태 확인 |
-| `PostDetailClient` | 글 상세와 공개 렌더링 확인 |
+| `DomainClient` | 도메인 운영 화면. 개요/생성/검수 화면 모드와 운영 튜토리얼을 처리 |
+| `JobCard` | 작업 카드 — 진행률·옵션·제어(취소/일시중지/우선). 전용 `JobsClient`는 없다 |
+| `PostDetailClient` | 글 상세와 공개 렌더링 확인 + 「이 글의 근거」 |
+| `DraftsClient` | 격리 검수 — 게이트 미통과 글 확인/발행/반려 |
+| `AcademyResearchClient` · `AcademyDetailClient` | 「운전학원 자료」 — 원천 동기화·AI 심층조사·검토 승인, 학원 1곳 조사값 |
+| `SettingsClient` | 작업환경 |
+| `NeedDomainClient` · `IntegrationSettingsClient` | 도메인 없음 안내 / 연동 설정 |
 
 `DomainClient`는 현재 많은 하위 기능을 한 파일에서 관리한다. 기능은 풍부하지만 파일 책임이 커지고 있어, 추후 슬롯/글/설정/학원 영역을 컴포넌트로 나누면 유지보수가 쉬워진다.
 
@@ -244,11 +282,16 @@ LLM 실행은 로컬 CLI에 의존한다. Codex 경로는 `codex exec`를 사용
 
 | 스크립트 | 역할 |
 | --- | --- |
+| `npm run verify:company-clean` | 금지된 이전 명칭/표현 유입 검사. **pre-commit 훅이 자동 실행** |
+| `npm run verify:copy-sync` | 화면 안내멘트가 코드와 어긋났는지 검사. **pre-commit 훅이 자동 실행** |
 | `npm run typecheck` | API와 관리자 화면 타입 검사 |
-| `npm run build` | API와 관리자 화면 빌드 |
-| `npm run qa:posts` | DB의 생성 글 품질 검사 |
-| `npm run verify:company-clean` | 금지된 이전 명칭/표현 유입 검사 |
+| `npm run test` / `test:golden` | vitest 단위 테스트 / 골든 스냅샷 대조 |
+| `npm run qa:posts` / `qa:posts:all` | DB의 생성 글 품질 검사(마크다운을 HTML로 재렌더링해 검사) |
+| `npm run build` | API와 관리자 화면 빌드. **`npm run dev` 중에는 돌리지 않는다** — `.next` 청크를 공유해 관리자 화면이 깨진다 |
 | `npm run worker:once` | 워커 단발 실행 |
+| `npm run hooks:install` | pre-commit 훅 설치. `.git/hooks`는 버전 관리되지 않으므로 클론·장비 이전 후 다시 심어야 한다 |
+
+CI는 없다. 로컬 게이트가 전부다.
 
 ## 8. 현재 구조의 강점
 
@@ -295,7 +338,7 @@ LLM 실행은 로컬 CLI에 의존한다. Codex 경로는 `codex exec`를 사용
 3. **목적별 페이지도 데이터 요청은 아직 넓다.** 생성/검수 페이지가 같은 상세 데이터 호출을 재사용하므로, 도메인 규모가 커지면 화면별 API 분리가 필요할 수 있다.
 4. **LLM 실행은 로컬 CLI와 인증 상태에 의존한다.** 운영 환경에서 `codex` 또는 `claude` 실행 가능 여부가 생성 안정성에 직접 영향을 준다.
 5. **이미지 생성은 선택 기능이며 외부 인증 의존성이 있다.** 인증 파일과 백엔드 접근이 없으면 텍스트 중심 생성으로 운영해야 한다.
-6. **브라우저 기반 회귀 테스트가 부족하다.** 현재 검증 축은 타입 검사, 빌드, 스크립트 검사 중심이다.
+6. **브라우저 기반 회귀 테스트가 없다.** 단위 테스트는 `apps/api-nest/test`에 69개 파일까지 늘었고 골든 스냅샷 대조와 게이트 드리프트 가드(`gate-parity.test.ts`)도 있지만, 관리자 화면 플로우는 여전히 수동 확인에 의존한다.
 
 ## 11. 권장 개선 순서
 
@@ -308,8 +351,8 @@ LLM 실행은 로컬 CLI에 의존한다. Codex 경로는 `codex exec`를 사용
    - 목표: 도메인 데이터가 커져도 화면 응답성을 유지.
 
 3. **작업 큐 테스트 보강**
-   - `generate`, `dedup`, `prune`, `indexing`별 fixture 기반 테스트를 추가한다.
-   - 목표: 워커 정책 변경 시 품질 게이트 회귀 방지.
+   - 품질 게이트·글유형·조사값 쪽은 테스트가 두껍고(`quality-gate*`, `t16-*`, `academy-research-*`) 잡 쪽은 `job-heartbeat.test.ts` 하나다. `dedup`·`prune`·`indexing`은 fixture 기반 테스트가 없다.
+   - 목표: 워커 정책 변경 시 잡 종류별 회귀 방지.
 
 4. **공개 API 계약 테스트 추가**
    - 목록, 상세, 렌더링 HTML, 사이트맵 응답을 고정 샘플로 검증한다.
