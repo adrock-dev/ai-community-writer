@@ -50,7 +50,7 @@ export class SlotService {
       // 단독 소개형은 지역이 아니라 시설 1곳당 슬롯 하나다(archetype.entity_per_slot 주석 참조).
       if (archetype?.entity_per_slot) {
         const entityRows = this.buildEntitySlots(domain, tid, spec, override, maxPerTemplate);
-        rows.push(...entityRows);
+        appendAll(rows, entityRows);
         summary[tid] = entityRows.length;
         continue;
       }
@@ -100,7 +100,7 @@ export class SlotService {
         if (merged.length) candidatesByPrimary.push(merged);
       }
       const distributed = interleaveByPrimary(candidatesByPrimary, maxPerTemplate);
-      rows.push(...distributed);
+      appendAll(rows, distributed);
       summary[tid] = distributed.length;
     }
     rows.sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0));
@@ -535,6 +535,16 @@ function modifierPairs(values: Row[], count: number): Array<[string | null, stri
   return out;
 }
 
+/**
+ * `target.push(...source)` 대신 쓴다 — 스프레드는 배열을 **인자 목록으로 펼치기 때문에** 원소가
+ * 많으면 콜스택 한계를 넘어 `RangeError: Maximum call stack size exceeded` 로 즉시 죽는다.
+ * 부하로 느려지다 실패하는 게 아니라 임계값을 넘는 순간 크래시라, 관리자에게는 원인을 알 수 없는
+ * 500 으로 보인다(실측: maxPerTemplate 10만은 651ms 로 통과, 30만에서 크래시).
+ * MAX_SLOTS_PER_TEMPLATE 을 올릴 때 가장 먼저 터지던 자리다.
+ */
+function appendAll(target: Row[], source: Row[]): void {
+  for (const row of source) target.push(row);
+}
 function interleaveByPrimary(groups: Row[][], limit: number): Row[] {
   const out: Row[] = [];
   const active = groups.filter((group) => group.length);
