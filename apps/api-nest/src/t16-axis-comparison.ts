@@ -86,11 +86,11 @@ type IntentSpec = {
 };
 
 export const T16_INTENTS: Record<string, IntentSpec> = {
-  과정선택: { question: "이 지역에서 딸 수 있는 면허 과정과 그 차이", requires: ["course"], fallback: null, subtitle: "내게 맞는 면허 과정까지" },
-  학원유형: { question: "전문학원과 일반학원의 차이와 고르는 기준", requires: ["academyType"], fallback: "과정선택", subtitle: "전문학원 차이까지" },
-  비용구성: { question: "수강료에 무엇이 포함되고 무엇이 따로인지", requires: ["price"], fallback: "과정선택", subtitle: "수강료 구성까지" },
-  후기확인: { question: "수강생 반응에서 확인할 수 있는 점", requires: ["review"], fallback: "과정선택", subtitle: "생생한 수강생 후기까지" },
-  일정확인: { question: "언제 다닐 수 있는지(운영 요일·시간)", requires: ["hours"], fallback: "과정선택", subtitle: "다닐 수 있는 시간표까지" },
+  과정선택: { question: "이 지역에서 딸 수 있는 면허 과정과 그 차이", requires: ["course"], fallback: null, subtitle: "내게 맞는 면허 과정" },
+  학원유형: { question: "전문학원과 일반학원의 차이와 고르는 기준", requires: ["academyType"], fallback: "과정선택", subtitle: "전문학원 차이" },
+  비용구성: { question: "수강료에 무엇이 포함되고 무엇이 따로인지", requires: ["price"], fallback: "과정선택", subtitle: "수강료 구성" },
+  후기확인: { question: "수강생 반응에서 확인할 수 있는 점", requires: ["review"], fallback: "과정선택", subtitle: "생생한 수강생 후기" },
+  일정확인: { question: "언제 다닐 수 있는지(운영 요일·시간)", requires: ["hours"], fallback: "과정선택", subtitle: "다닐 수 있는 시간표" },
 };
 
 /**
@@ -153,21 +153,42 @@ function resolveWithFallback<T extends { requires: EvidenceKey[]; fallback: stri
 
 // 부제 변형: 같은 축이라도 슬롯마다 다른 문구가 나오게 슬롯 시드로 회전시킨다(제목 완전중복·부제 반복 완화).
 // slot_id 해시라 결정론적 — 같은 슬롯은 재생성해도 같은 부제(재현성·golden 유지). 각 배열 첫 항목이 기본형.
-const MODIFIER_SUBTITLE_VARIANTS: Record<string, string[]> = {
-  비용절약: ["수강료 아끼기부터", "가성비 따지기부터", "비용 먼저 챙기기부터"],
-  셔틀편리: ["우리 동네 셔틀부터", "셔틀 되는 곳부터", "통학 셔틀부터"],
-  야간반: ["야간반 여부부터", "퇴근 후 수업부터", "야간 운영부터"],
-  주말반: ["주말 수업부터", "주말반 여부부터", "주말 운영부터"],
-  상담전확인: ["상담 전 체크부터", "상담 전 기본 정보부터", "상담 준비부터"],
-  가까운: ["가까운 학원부터", "우리 동네부터", "가까운 곳부터"],
+//
+// **어미를 담지 않는다.** 예전에는 "수강료 아끼기부터"·"면허 과정 고르기까지" 처럼 조사를 품고 있어
+// 부제 틀이 `A부터 B까지!` 하나로 고정됐다. 어휘는 9가지로 회전해도 리듬이 늘 같아, 후보 1,000개를
+// 대량 생성하면 목록·검색결과가 한 패턴으로 보인다. 어간만 두고 어미는 SUBTITLE_TEMPLATES 가 붙인다.
+const MODIFIER_SUBTITLE_STEMS: Record<string, string[]> = {
+  비용절약: ["수강료 아끼기", "가성비 따지기", "비용 먼저 챙기기"],
+  셔틀편리: ["우리 동네 셔틀", "셔틀 되는 곳", "통학 셔틀"],
+  야간반: ["야간반 여부", "퇴근 후 수업", "야간 운영"],
+  주말반: ["주말 수업", "주말반 여부", "주말 운영"],
+  상담전확인: ["상담 전 체크", "상담 전 기본 정보", "상담 준비"],
+  가까운: ["가까운 학원", "우리 동네", "가까운 곳"],
 };
-const INTENT_SUBTITLE_VARIANTS: Record<string, string[]> = {
-  과정선택: ["내게 맞는 면허 과정까지", "필요한 면허 과정까지", "면허 과정 고르기까지"],
-  학원유형: ["전문학원 차이까지", "학원 유형 비교까지", "전문·일반 차이까지"],
-  비용구성: ["수강료 구성까지", "무엇이 포함되는지까지", "수강료 항목까지"],
-  후기확인: ["생생한 수강생 후기까지", "실제 후기로 골라보기까지", "수강생 반응까지"],
-  일정확인: ["다닐 수 있는 시간표까지", "가능한 교육 일정까지", "운영 시간표까지"],
+const INTENT_SUBTITLE_STEMS: Record<string, string[]> = {
+  과정선택: ["내게 맞는 면허 과정", "필요한 면허 과정", "면허 과정 고르기"],
+  학원유형: ["전문학원 차이", "학원 유형 비교", "전문·일반 차이"],
+  비용구성: ["수강료 구성", "무엇이 포함되는지", "수강료 항목"],
+  후기확인: ["생생한 수강생 후기", "실제 후기로 골라보기", "수강생 반응"],
+  일정확인: ["다닐 수 있는 시간표", "가능한 교육 일정", "운영 시간표"],
 };
+
+/**
+ * 부제 틀 — 어간(수식어 A · 의도 B)에 어미를 붙여 완성한다.
+ *
+ * 조사 '와/과'를 쓰는 틀은 넣지 않았다(앞 글자 받침에 따라 갈려 판정 로직이 필요하다).
+ * 뒤쪽 둘은 **한 축만** 드러내는 틀이다. 부제에서 빠진 축도 글에는 그대로 전달된다 —
+ * t16PromptContract 가 관점(angle)·강조 섹션(focus)·필수 응답(question)을 따로 주입하므로
+ * 본문 구성은 유지되고, 약해지는 것은 "제목이 약속한 것을 본문이 지키는" 쪽뿐이다.
+ */
+const SUBTITLE_TEMPLATES: ReadonlyArray<(modifier: string, intent: string) => string> = [
+  (m, i) => `${m}부터 ${i}까지!`,
+  (m, i) => `${m}, ${i}까지 한 번에`,
+  (m, i) => `${i}, ${m}까지 확인하세요`,
+  (m, i) => `${m} · ${i}`,
+  (m) => `${m} 먼저 확인!`,
+  (_m, i) => `${i} 한눈에`,
+];
 // FNV-1a 해시로 시드 → 인덱스(결정론적, Math.random 금지 — golden/재현성 보호).
 function subtitleVariantIndex(seed: string, n: number): number {
   if (n <= 1) return 0;
@@ -175,23 +196,27 @@ function subtitleVariantIndex(seed: string, n: number): number {
   for (let i = 0; i < seed.length; i++) { h ^= seed.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
   return h % n;
 }
-// 수식어·의도 변형을 하나의 조합 공간(nMod×nInt)으로 보고 시드로 기준 칸을 정한 뒤 형제 서수만큼
-// 회전한다. eff∈[0,total)이 (수식어칸, 의도칸)에 일대일 대응하므로, 같은 (지역·축) 슬롯이 서로 다른
-// variantOffset(형제 서수)을 받으면 부제 문자열이 반드시 달라진다 → 제목 완전중복 0(형제 수 ≤ total일 때).
-function pickSubtitlePair(
-  modVariants: string[] | undefined,
+// 틀·수식어·의도를 하나의 조합 공간(nTemplate×nMod×nInt)으로 보고 시드로 기준 칸을 정한 뒤 형제
+// 서수만큼 회전한다. eff∈[0,total)이 (틀, 수식어칸, 의도칸)에 일대일 대응하므로, 같은 (지역·축)
+// 슬롯이 서로 다른 variantOffset(형제 서수)을 받으면 부제가 반드시 달라진다 → 제목 완전중복 0.
+// 틀을 차원에 넣어 조합이 9 → 54가지가 됐다(틀 6 × 수식어 3 × 의도 3).
+function pickSubtitle(
+  modStems: string[] | undefined,
   modFallback: string,
-  intVariants: string[] | undefined,
+  intStems: string[] | undefined,
   intFallback: string,
   seed: string,
   offset: number,
-): { modSub: string; intSub: string } {
-  const mods = modVariants && modVariants.length ? modVariants : [modFallback];
-  const ints = intVariants && intVariants.length ? intVariants : [intFallback];
-  const total = mods.length * ints.length;
+): string {
+  const mods = modStems && modStems.length ? modStems : [modFallback];
+  const ints = intStems && intStems.length ? intStems : [intFallback];
+  const perTemplate = mods.length * ints.length;
+  const total = SUBTITLE_TEMPLATES.length * perTemplate;
   const base = subtitleVariantIndex(seed, total);
   const eff = (((base + offset) % total) + total) % total;
-  return { modSub: mods[Math.floor(eff / ints.length)]!, intSub: ints[eff % ints.length]! };
+  const template = SUBTITLE_TEMPLATES[Math.floor(eff / perTemplate)]!;
+  const rest = eff % perTemplate;
+  return template(mods[Math.floor(rest / ints.length)]!, ints[rest % ints.length]!).replace(/\s+/g, " ").trim();
 }
 
 export function buildT16AxisPlan(slot: Row, academies: Row[], opts?: { variantOffset?: number }): T16AxisPlan {
@@ -209,14 +234,6 @@ export function buildT16AxisPlan(slot: Row, academies: Row[], opts?: { variantOf
   // 축별 부제 변형을 슬롯 시드로 회전하고, 같은 (지역·축) 형제 서수(variantOffset)만큼 더 밀어
   // 형제끼리 부제 조합이 겹치지 않게 한다(제목 완전중복 방지).
   const subtitleSeed = String(slot.slot_id ?? slot.id ?? `${slot.region}|${slot.persona}|${rawModifier}|${rawIntent}`);
-  const { modSub, intSub } = pickSubtitlePair(
-    MODIFIER_SUBTITLE_VARIANTS[mod.key],
-    modifierSubtitle(mod.key),
-    INTENT_SUBTITLE_VARIANTS[int.key],
-    int.spec.subtitle,
-    subtitleSeed,
-    opts?.variantOffset ?? 0,
-  );
   return {
     modifier: mod.key,
     intent: int.key,
@@ -224,22 +241,30 @@ export function buildT16AxisPlan(slot: Row, academies: Row[], opts?: { variantOf
     summaryColumns,
     focus: mod.spec.focus,
     question: int.spec.question,
-    // 유혹형 부제 "{benefit}부터 {action}까지!" + 슬롯 시드로 축별 변형 회전(제목/부제 반복 완화).
-    subtitle: ((s) => (s ? `${s}!` : s))(`${modSub} ${intSub}`.replace(/\s+/g, " ").trim()),
+    // 부제 = 틀 6종 × 수식어 어간 3 × 의도 어간 3 을 슬롯 시드로 회전(제목/부제 반복 완화).
+    // 어미는 틀이 붙인다 — 여기서 "!"를 덧붙이지 않는다(틀마다 맺음이 다르다).
+    subtitle: pickSubtitle(
+      MODIFIER_SUBTITLE_STEMS[mod.key],
+      modifierSubtitleStem(mod.key),
+      INTENT_SUBTITLE_STEMS[int.key],
+      int.spec.subtitle,
+      subtitleSeed,
+      opts?.variantOffset ?? 0,
+    ),
     demoted,
   };
 }
 
-// 제목 부제 앞부분(modifier) — "…부터"로 끝나 뒤 intent("…까지!")와 이어져 유혹형 카피가 된다.
-// "비교"라는 단어를 쓰지 않는다(정량 비교 프레이밍 유발). 미검증 단정(최저가 등)은 넣지 않는다.
-function modifierSubtitle(modifier: string): string {
+// 수식어 어간 폴백 — MODIFIER_SUBTITLE_STEMS 에 없는 키(커스텀 유형 등)일 때 쓴다. 어미는 틀이 붙이므로
+// 여기도 어간만 둔다. "비교"라는 낱말은 쓰지 않는다(정량 비교 프레이밍 유발). 미검증 단정(최저가 등) 금지.
+function modifierSubtitleStem(modifier: string): string {
   const map: Record<string, string> = {
-    비용절약: "수강료 아끼기부터",
-    셔틀편리: "우리 동네 셔틀부터",
-    야간반: "야간반 여부부터",
-    주말반: "주말 수업부터",
-    상담전확인: "상담 전 체크부터",
-    가까운: "가까운 학원부터",
+    비용절약: "수강료 아끼기",
+    셔틀편리: "우리 동네 셔틀",
+    야간반: "야간반 여부",
+    주말반: "주말 수업",
+    상담전확인: "상담 전 체크",
+    가까운: "가까운 학원",
   };
   return map[modifier] ?? "";
 }
