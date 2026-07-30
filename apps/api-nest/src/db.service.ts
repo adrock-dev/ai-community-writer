@@ -26,6 +26,14 @@ function slugify(text: string): string {
 const PROJECT_DIR = resolve(new URL("../../..", import.meta.url).pathname);
 const DEFAULT_DB = resolve(PROJECT_DIR, "data/admin.db");
 
+/**
+ * 「글 작성」 배치 선별이 읽어들이는 후보 풀의 **글유형당** 상한(`selectSlotsForBatch`).
+ * 한 번에 큐에 넣을 수 있는 글은 최대 500건이므로 유형당 이만큼이면 넉넉하다 — 같은
+ * 지역×키워드를 걸러내는 중복 제거를 감안해도 여유가 크다. 슬롯 생성 상한
+ * (`MAX_SLOTS_PER_TEMPLATE`)과는 무관한 값이며, 숫자가 같았던 것은 우연이다.
+ */
+const BATCH_POOL_PER_TEMPLATE = 10000;
+
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -811,7 +819,21 @@ export class DbService implements OnModuleInit {
   }
   selectSlotsForBatch(domain: string, opts: { q?: string; template?: string; limit?: number; balanced?: boolean } = {}): Row[] {
     const { where, args } = this.slotFilterClause(domain, { status: "planned", template: opts.template, q: opts.q });
-    const candidates = this.all(`SELECT slot_id, region, template_id, primary_keyword, priority_score FROM slots ${where} ORDER BY priority_score DESC, slot_id LIMIT ?`, [...args, 10000]);
+    // 후보 풀은 **글유형당** 상한이다(PARTITION BY template_id).
+    //
+    // 예전에는 도메인 전체에서 priority_score 순으로 BATCH_POOL_PER_TEMPLATE 건만 읽었다. 그러면
+    // 후보가 많고 우선순위가 높은 유형 하나가 풀을 통째로 차지해 다른 유형이 **한 건도 못 들어온다.**
+    // 아래 선별은 유형별 라운드로빈이지만 풀에 없는 유형은 라운드로빈에도 없다 — 에러도 경고도 없이
+    // 조용히 빠진다. (실측 2026-07-30: T16 planned 9,991건이 풀을 채워 T14 57건 전량과 T11 15건이
+    // 작성 대상에서 영구 제외돼 있었다. T16 은 priority 48, T14·T11 은 19.6·20 이라 정렬에서 늘 뒤였다.)
+    const candidates = this.all(
+      `SELECT slot_id, region, template_id, primary_keyword, priority_score FROM (
+         SELECT slot_id, region, template_id, primary_keyword, priority_score,
+                ROW_NUMBER() OVER (PARTITION BY template_id ORDER BY priority_score DESC, slot_id) AS pool_rank
+         FROM slots ${where}
+       ) WHERE pool_rank <= ? ORDER BY priority_score DESC, slot_id`,
+      [...args, BATCH_POOL_PER_TEMPLATE],
+    );
     const limit = Math.max(1, Math.min(500, Math.trunc(Number(opts.limit ?? 10))));
     const groups = new Map<string, Row[]>();
     for (const row of candidates) {
