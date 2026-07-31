@@ -256,14 +256,14 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "왼쪽 세 버튼은",
+      "match": "「자동 선별」 세 버튼은",
       "class": "B",
       "depends": [
         "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_MID",
         "apps/admin-next/components/DomainClient.tsx#WRITE_BATCH_LARGE",
         "apps/api-nest/src/db.service.ts#selectSlotsForBatch 선별 규칙"
       ],
-      "note": "「개수만 다르고 규칙은 같다」와 「무작위로 뽑지 않는다」는 주장. 규칙 문장 자체는 lib/copy-facts.ts#WRITE_BATCH_RULE 를 렌더한다."
+      "note": "「개수만 다르고 규칙은 같다」와 「무작위로 뽑지 않는다」는 주장. 규칙 문장 자체는 lib/copy-facts.ts#WRITE_BATCH_RULE 를 렌더한다. 버튼이 「자동 선별」·「직접 선택」 두 줄로 나뉘어 있어 이름으로 그 묶음을 가리킨다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",

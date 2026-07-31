@@ -94,6 +94,10 @@ p { line-height: 1.6; }
    밀린다. 높이를 제한하고 헤더를 고정해 표 안에서만 스크롤되게 한다. */
 .slot-table-wrap { max-height: min(60vh, 520px); }
 .slot-table-wrap th { position: sticky; top: 0; z-index: 1; box-shadow: inset 0 -1px 0 var(--line); }
+/* 「자동 선별」·「직접 선택」 버튼 묶음. 규칙이 다른 두 묶음을 라벨 없이 한 줄에 놓으면 개수만
+   다른 버튼으로 읽힌다(자동 3개는 서버가 고르고, 직접 선택은 사람이 체크한 것만 쓴다). */
+.btn-group-row { align-items: center; }
+.btn-group-label { flex: 0 0 auto; min-width: 60px; color: var(--muted); font-size: 12px; font-weight: 800; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th { text-align: left; padding: 12px; background: #f8fafc; color: #475569; font-size: 12px; white-space: nowrap; }
 td { border-top: 1px solid #edf2f7; padding: 12px; vertical-align: top; }
