@@ -1171,6 +1171,16 @@
         "apps/api-nest/src/db.service.ts#selectSlotsForBatch 선별 규칙"
       ],
       "note": "자동 선별 규칙을 사람 말로 옮긴 문장. 세 버튼 툴팁·추천 안내가 이것을 읽는다. selectSlotsForBatch 를 고치면 반드시 같이 고쳐라 — 기계가 판정할 수 없다."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "개수는 이번에 만들 후보 수이며",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/constants.ts#MAX_SLOTS_PER_TEMPLATE",
+        "apps/api-nest/src/slot.service.ts#generateSlots 조합 소진 동작"
+      ],
+      "note": "상한 숫자는 /options 의 slot_limits 를 렌더하므로 값이 바뀌어도 따라온다(A급 아님). 사람이 지켜야 할 부분은 「이번에 만들 개수」·「기존 후보는 남는다」·「조합이 적으면 중복으로 채우지 않는다」는 동작 서술이다."
     }
   ]
 }

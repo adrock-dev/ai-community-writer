@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { Inject, Injectable } from "@nestjs/common";
 import { DbService, safeJson } from "./db.service.js";
-import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, MAX_SLOTS_PER_TEMPLATE, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
+import { ACADEMY_MAX_CANDIDATES, ACADEMY_MIN_FOR_BEST, ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_USED_PER_POST, DEFAULT_SLOTS_PER_TEMPLATE, MAX_SLOTS_PER_TEMPLATE, PRESETS, TEMPLATE_SPECS, VERTICAL_TO_PRESET, type AxisName, type TemplateSpecShape } from "./constants.js";
 import { filterExcludedSlots } from "./exclusions.js";
 import { resolveAcceptedTags, resolveAxisPool, resolveRecipeFlags, safeTemplateOverrides } from "./axis-tags.js";
 import { academyMin, academyPool, getArchetype, buildKeyword, type Archetype } from "./archetypes.js";
@@ -36,7 +36,7 @@ export class SlotService {
     const templateIds = enabled;
     // 글유형당 상한. 축 조합이 수백만까지 폭발할 수 있으므로 MAX_SLOTS_PER_TEMPLATE 로 클램프해
     // 메모리 폭주/동기 삽입 지연으로 인한 500 을 방지한다(호출자가 큰 값을 넘겨도 여기서 방어).
-    const maxPerTemplate = Math.min(MAX_SLOTS_PER_TEMPLATE, Math.max(1, opts.maxPerTemplate ?? 200));
+    const maxPerTemplate = Math.min(MAX_SLOTS_PER_TEMPLATE, Math.max(1, opts.maxPerTemplate ?? DEFAULT_SLOTS_PER_TEMPLATE));
     const overrides = safeTemplateOverrides(domainConfig.template_overrides);
     const summary: Record<string, number> = {};
     const rows: Row[] = [];

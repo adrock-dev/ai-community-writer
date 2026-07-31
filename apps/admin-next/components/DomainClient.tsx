@@ -1903,6 +1903,8 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     return catalog.some((m) => m.id === model) ? catalog : [...catalog, { id: model, label: `${model} (직접 지정)` }];
   }, [options.generation_models, provider, model]);
   const [max, setMax] = useState(30); // 1단계: 선택 글유형의 후보 생성 개수(유형당 상한)
+  // 상한·기본값은 서버 상수다(env 로 덮인다). 못 받았을 때만 화면 기본값으로 버틴다.
+  const slotMax = options.slot_limits?.max_per_template ?? 10000;
   const [remoteSlots, setRemoteSlots] = useState(slots);
   const [remoteTotal, setRemoteTotal] = useState(slots.length);
   const [loadingSlots, setLoadingSlots] = useState(false);
@@ -1925,6 +1927,8 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     const spec = options.template_specs[id];
     return { id, name: meta?.name ?? spec?.name ?? id, upper: meta?.estimated_slot_upperbound };
   });
+  // 고른 글유형이 축 조합으로 만들 수 있는 추정 최대치(coherence). 상한과 뜻이 다르므로 함께 안내한다.
+  const selectedTypeUpper = enabledTypes.find((t) => t.id === genType)?.upper;
   // 후보 목록 '유형' 필터: 빌트인+커스텀 전 유형(getCoherence). 로드 전이면 빌트인 id 로 폴백.
   const typeFilterOptions = Object.keys(typeMeta).length
     ? Object.values(typeMeta).map((t) => ({ id: t.template_id, name: t.name }))
@@ -2050,11 +2054,16 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
               {enabledTypes.map((t) => <option key={t.id} value={t.id}>{t.name}{typeof t.upper === "number" ? ` · 후보 상한 ~${t.upper.toLocaleString()}` : ""}</option>)}
             </select>
           </Field>
+          {/* 개수 상한은 서버 상수(env 로 덮인다)라 화면이 적지 않고 /options 로 받아 쓴다.
+              예전에는 입력칸에 max 도 안내도 없어, 상한을 넘겨 누른 뒤 alert 로만 잘렸다는 걸 알았다. */}
           <Field label="개수">
-            <input className="input" type="number" min={1} value={max} onChange={(e) => setMax(Math.max(1, Number(e.target.value) || 1))} style={{ width: 100 }} />
+            <input className="input" type="number" min={1} max={slotMax} value={max}
+              onChange={(e) => setMax(Math.min(slotMax, Math.max(1, Number(e.target.value) || 1)))} style={{ width: 110 }} />
           </Field>
+          <button className="btn" disabled={busy || queueBusy || max >= slotMax} title={`글유형당 한 번에 만들 수 있는 최대치(${slotMax.toLocaleString()}개)로 채웁니다.`} onClick={() => setMax(slotMax)}>최대 {slotMax.toLocaleString()}개</button>
           <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy || !genType} onClick={gen}>{busy ? "만드는 중..." : "글 후보 만들기"}</button>
         </div>
+        <p className="muted small">개수는 <b>이번에 만들 후보 수</b>이며 글유형당 한 번에 {slotMax.toLocaleString()}개까지입니다(기존 후보는 그대로 남습니다). 조합이 그보다 적으면 있는 만큼만 만들고 중복으로 채우지 않습니다.{selectedTypeUpper !== undefined && ` 지금 고른 글유형이 만들 수 있는 조합은 최대 약 ${selectedTypeUpper.toLocaleString()}개로 추정됩니다.`}</p>
         {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <Link className="btn" href={`/t/${encodeURIComponent(domain.domain)}?tab=templates`}>글유형/디자인 탭</Link>에서 유형을 켜세요.</p>}
         <p className="muted small">조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}

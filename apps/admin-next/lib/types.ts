@@ -336,6 +336,8 @@ export interface AdminOptions {
   academy_types?: string[];
   // 후보 선정 규칙(서버 상수). 안내멘트가 반경·상한을 손으로 적지 않도록 값으로 내려받는다.
   candidate_rules?: { nearby_km: number; min_guarantee_km: number; used_per_post: number };
+  // 「글 후보 만들기」 개수의 상한·기본값(서버 상수). 상한은 env 로 덮이므로 화면이 적지 않고 받아 쓴다.
+  slot_limits?: { max_per_template: number; default_per_template: number };
   axis_tag_vocab: { persona: string[]; intent: string[]; modifier: string[] };
   design_templates: DesignTemplateOption[];
   providers: Provider[];

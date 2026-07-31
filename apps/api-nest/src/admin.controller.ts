@@ -9,7 +9,7 @@ import { AcademyResearchDbService } from "./academy-research-db.service.js";
 import { AcademyLinkService } from "./academy-link.service.js";
 import { parseResearchUsage } from "./academy-research-usage.js";
 import { isAheadOfLink } from "./link-freshness.js";
-import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEPRECATED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATE_JOB_MAX_SLOTS, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
+import { ACADEMY_MIN_GUARANTEE_MAX_KM, ACADEMY_NEARBY_MAX_KM, ACADEMY_TYPES, ACADEMY_USED_PER_POST, AUTO_DESIGN_TEMPLATE_ID, DEFAULT_DRIVING_BRAND_COLOR, DEFAULT_DRIVING_COMMON_PRINCIPLES, DEFAULT_DRIVING_TEMPLATE_IDS, DEFAULT_EXPOSED_BUILTIN_TEMPLATE_IDS, DEPRECATED_BUILTIN_TEMPLATE_IDS, DEFAULT_DRIVING_VERTICAL, DEFAULT_SLOTS_PER_TEMPLATE, DESIGN_TEMPLATES, DRIVING_ABSOLUTE_PRINCIPLES, DRIVING_ACADEMY_PRINCIPLES, GENERATE_JOB_MAX_SLOTS, GENERATION_MODEL_OPTIONS, MAX_SLOTS_PER_TEMPLATE, TEMPLATE_SPECS, TITLE_RULES, type AxisName } from "./constants.js";
 import { SlotService } from "./slot.service.js";
 import { ensureImageSlotsForRender, fallbackImagesForPost, renderMarkdown, stripPseudoSlotsForRender } from "./post-rendering.js";
 import { findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
@@ -98,6 +98,10 @@ export class AdminController {
       // 있었는데, 셋 다 env 로 덮이는 값이라 환경변수를 바꾸면 화면만 옛 숫자로 남는다. 같은 이유로
       // 상수를 그대로 내려 안내멘트가 값에서 렌더되게 한다(docs/ui-copy-inventory.md A급).
       candidate_rules: { nearby_km: ACADEMY_NEARBY_MAX_KM, min_guarantee_km: ACADEMY_MIN_GUARANTEE_MAX_KM, used_per_post: ACADEMY_USED_PER_POST },
+      // 「글 후보 만들기」 개수의 상한·기본값(읽기 전용). 상한은 env(SEO_MAX_SLOTS_PER_TEMPLATE)로
+      // 덮이는 값이라 화면이 손으로 적으면 환경변수를 바꾸는 순간 거짓이 된다. 값을 내려 입력칸의
+      // max 와 안내멘트가 이것을 렌더하게 한다.
+      slot_limits: { max_per_template: MAX_SLOTS_PER_TEMPLATE, default_per_template: DEFAULT_SLOTS_PER_TEMPLATE },
       // 전역 빌트인 노출 허용 목록(검증용 임시). null = 전체 노출. 카탈로그/커스텀 시작점/아키타입 목록에서 필터.
       exposed_builtin_template_ids: this.exposedBuiltinIds(),
       // 폐기된 빌트인(다시 켤 수 없음). 화면은 이 목록으로 취소선·비활성 표시만 한다 — 판정은 서버가 한다.
@@ -492,7 +496,7 @@ export class AdminController {
     const rawTemplates = Array.isArray(body.templates) ? body.templates : (body.template ? [body.template] : []);
     const templates = rawTemplates.map((t: any) => String(t).trim()).filter(Boolean);
     // 글유형당 상한은 MAX_SLOTS_PER_TEMPLATE 로 클램프한다(축 조합 폭발 → 메모리/삽입 폭주로 인한 500 방지).
-    const maxPerTemplate = clampInt(body.max_per_template, 200, 1, MAX_SLOTS_PER_TEMPLATE);
+    const maxPerTemplate = clampInt(body.max_per_template, DEFAULT_SLOTS_PER_TEMPLATE, 1, MAX_SLOTS_PER_TEMPLATE);
     const opts: { templates?: string[]; maxPerTemplate: number } = { maxPerTemplate };
     if (templates.length) opts.templates = templates;
     const summary = this.slots.generateSlotsForDomain(domain, opts);

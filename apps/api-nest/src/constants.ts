@@ -124,6 +124,10 @@ export const ACADEMY_NEARBY_MAX_KM = Number(process.env.SEO_ACADEMY_NEARBY_MAX_K
 // (조합이 이보다 적으면 있는 만큼만 생성 — 중복으로 채우지 않는다.)
 export const MAX_SLOTS_PER_TEMPLATE = Number(process.env.SEO_MAX_SLOTS_PER_TEMPLATE) || 10000;
 
+// 「글 후보 만들기」 개수를 안 보냈을 때의 기본값. 컨트롤러와 slot.service 가 각자 200 을 적고
+// 있어 한쪽만 바꾸면 조용히 어긋났다. 화면 입력칸 기본값도 /options 로 이 값을 받아 쓴다.
+export const DEFAULT_SLOTS_PER_TEMPLATE = 200;
+
 /**
  * 작성 잡 하나가 담는 최대 슬롯 수. 요청이 이보다 많으면 **여러 잡으로 쪼개** 큐에 넣는다.
  *
