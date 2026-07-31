@@ -718,11 +718,32 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "입력한 방향성이 이미 강제되는 절대 원칙",
+      "match": "문체가 뒤집힙니다",
       "class": "B",
       "depends": [
-        "apps/api-nest/src/admin.controller.ts 방향성 검증"
-      ]
+        "apps/api-nest/src/t16-axis-comparison.ts#t16ToneFromDirection",
+        "apps/api-nest/src/admin.controller.ts#directionValidationWithWarnings"
+      ],
+      "note": "톤 뒤집힘 경고. 문체 스위치가 방향성 문자열이 아니게 되거나 판정 어휘가 바뀌면 이 경고의 전제가 사라진다."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "덜어낼 중복이 없어 제안을 만들지 않았습니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts#parseDirectionValidation"
+      ],
+      "note": "no_change 를 정식 결과로 받는다는 계약에 매달린다. 파서가 다시 '제안 없으면 실패'로 돌아가면 거짓이 된다."
+    },
+    {
+      "file": "apps/admin-next/components/DomainClient.tsx",
+      "match": "입력한 방향성이 이 유형에 이미 강제되는",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/admin.controller.ts 방향성 검증",
+        "apps/api-nest/src/worker.service.ts#effectiveWritingGuide"
+      ],
+      "note": "\"요약하지 않는다\"·\"문체 규칙까지 대조\"를 단정한다. 검증 프롬프트(buildDirectionValidatePrompt)나 대조 소스(effectiveWritingGuide·commonToneGuide)가 바뀌면 거짓이 된다."
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",

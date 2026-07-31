@@ -160,7 +160,20 @@ export const getAcademyCoverage = (domain: string, templateId: string) =>
   api<import("./types").AcademyCoverage>(`/domains/${encodeURIComponent(domain)}/templates/${encodeURIComponent(templateId)}/academy-coverage`);
 export const suggestTemplateAxes = (domain: string, body: { kind: string; name?: string; direction?: string; keywords?: string[]; axes: string[]; provider?: string; model?: string }) =>
   api<{ ok: true; suggestions: { persona?: string[]; intent?: string[]; modifier?: string[] }; provider: string; model: string }>(`/domains/${encodeURIComponent(domain)}/templates/suggest-axes`, { method: "POST", body: JSON.stringify(body) });
-export type DirectionValidation = { redundant: Array<{ text: string; overlaps: string }>; conflicting: Array<{ text: string; reason: string }>; suggested_direction: string; summary: string };
+/**
+ * 방향성 검증 결과. `no_change` 는 덜어낼 중복이 없어 제안을 만들지 않았다는 뜻이고, `tone_shift` 는
+ * 제안을 적용하면 문체(대화체↔전문가)가 뒤집힌다는 서버 계산 경고다(T16 계열만 — 방향성 문구가 문체 스위치라서).
+ */
+export type DirectionValidation = {
+  redundant: Array<{ text: string; overlaps: string }>;
+  conflicting: Array<{ text: string; reason: string }>;
+  suggested_direction: string;
+  summary: string;
+  no_change: boolean;
+  tone_shift: { from: string; to: string } | null;
+  length_before: number;
+  length_after: number;
+};
 export const validateTemplateDirection = (domain: string, body: { kind: string; name?: string; direction: string; current_direction?: string; has_academy?: boolean; provider?: string; model?: string }) =>
   api<{ ok: true; validation: DirectionValidation; provider: string; model: string }>(`/domains/${encodeURIComponent(domain)}/templates/validate-direction`, { method: "POST", body: JSON.stringify(body) });
 export const exportTemplates = (domain: string) =>

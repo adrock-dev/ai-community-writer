@@ -1323,19 +1323,26 @@ function CustomTemplateForm({ mode, domain, initial, kindOptions, designChoices,
     <Field label="방향성 (선택)">
       <textarea className="textarea" rows={2} value={direction} onChange={(e) => setDirection(e.target.value)} placeholder="예: 옆자리 선배가 이야기해 주듯 친근하게 쓰고, 지역 학원을 하나씩 소개하며 상담에서 물어볼 것으로 잇는다" />
       <div className="row" style={{ gap: 8, marginTop: 4 }}>
-        <button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={dirBusy || busy || !direction.trim()} onClick={() => void validateDirection()} title="입력한 방향성이 이미 강제되는 절대 원칙·공통원칙·작성 지침과 겹치는지 대조하고, 이 글유형만의 방향만 남긴 개선안을 제안합니다.">{dirBusy ? "검증 중..." : "🔎 방향성 검증"}</button>
+        <button type="button" className="btn" style={{ whiteSpace: "nowrap" }} disabled={dirBusy || busy || !direction.trim()} onClick={() => void validateDirection()} title="입력한 방향성이 이 유형에 이미 강제되는 절대 원칙·공통원칙·작성 지침·문체 규칙과 겹치는지 대조하고, 중복 문장만 덜어낸 안을 제안합니다(요약하지 않습니다).">{dirBusy ? "검증 중..." : "🔎 방향성 검증"}</button>
       </div>
       <p className="muted small">✍️ <b>여기서 정해지는 것</b>: 이 글유형의 <b>말투 격식</b>과 <b>다루는 각도·전개 방식</b>입니다. 말투는 방향성이 최종 결정권을 갖습니다 — “옆자리 선배가 이야기해 주듯”이라고 쓰면 대화체(반말체 아님·이모지 허용)로, “차분한 전문가 설명”이라고 쓰면 전문가 톤(격식체·이모지 절제)으로 글이 달라집니다.</p>
       <p className="muted small">🔒 <b>방향성으로 바뀌지 않는 것</b>: 제목 규칙·H2 구성·표/이미지 배치 같은 <b>필수 출력 구조</b>, 축(의도·수식어)이 정하는 강조 섹션과 필수 응답, 그리고 <b>품질 게이트</b>입니다. 게이트는 프롬프트 밖에서 완성된 글을 검사하므로, 방향성에 예외를 적어도 통과되지 않습니다.</p>
-      <p className="muted small">🔎 <b>방향성 검증</b>: 방향성은 <b>이 글유형만의 방향</b>을 적는 자리입니다. 날조 금지·데이터 검증 같은 <b>안전·데이터 규칙은 이미 모든 글에 강제(절대 원칙)</b>되니 방향성에 다시 쓰면 중복이고, 여기서만 전달되는 톤·관점 지시가 묻힙니다. 버튼을 누르면 <b>절대 원칙·공통원칙·아키타입 작성 지침</b>(학원 후보를 다루는 유형이면 학원 전용 원칙까지)과 대조해 중복/충돌을 짚고, 고유 방향만 남긴 개선안을 제안합니다. (제안일 뿐 자동 저장 안 함 · codex/claude CLI 인증 필요)</p>
+      <p className="muted small">🔎 <b>방향성 검증</b>: 방향성은 <b>이 글유형만의 방향</b>을 적는 자리입니다. 날조 금지·데이터 검증 같은 <b>안전·데이터 규칙은 이미 모든 글에 강제(절대 원칙)</b>되니 방향성에 다시 쓰면 중복이고, 여기서만 전달되는 톤·관점 지시가 묻힙니다. 버튼을 누르면 <b>이 유형이 실제로 받는 작성 지침·문체 규칙</b>과 절대 원칙·공통원칙(학원 후보를 다루는 유형이면 학원 전용 원칙까지)에 대조해 <b>중복 문장만 덜어낸 안</b>을 제안합니다 — <b>요약하지 않으며</b>, 톤·이모지·도입 구성 지시는 방향성의 역할이라 남깁니다. 덜어낼 게 없으면 「바꿀 것 없음」으로 답합니다. (제안일 뿐 자동 저장 안 함 · codex/claude CLI 인증 필요)</p>
       {dirError && <p className="toast-warn small">{dirError}</p>}
       {dirResult && <div className="info-panel grid" style={{ gap: 6, marginTop: 4 }}>
         {dirResult.summary && <p className="small" style={{ margin: 0 }}><b>진단:</b> {dirResult.summary}</p>}
         {dirResult.redundant.length > 0 && <div className="small"><b>중복(이미 강제됨):</b><ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{dirResult.redundant.map((r, i) => <li key={i}>{r.text}{r.overlaps ? <span className="muted"> — {r.overlaps}</span> : null}</li>)}</ul></div>}
         {dirResult.conflicting.length > 0 && <div className="small" style={{ color: "var(--danger)" }}><b>충돌:</b><ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{dirResult.conflicting.map((r, i) => <li key={i}>{r.text}{r.reason ? <span className="muted"> — {r.reason}</span> : null}</li>)}</ul></div>}
-        <div className="small"><b>제안 방향성:</b><p className="preview-block" style={{ margin: "4px 0 0" }}>{dirResult.suggested_direction}</p></div>
+        {dirResult.no_change
+          ? <p className="small" style={{ margin: 0 }}>✅ <b>바꿀 것 없음</b> — 덜어낼 중복이 없어 제안을 만들지 않았습니다. 지금 방향성을 그대로 두세요.</p>
+          : <>
+            {/* 톤 뒤집힘은 서버가 실제 문체 판정 함수로 계산한다. 화면에는 "중복을 정리했습니다"로만 보여서 놓치기 쉬운 변화라 따로 세운다. */}
+            {dirResult.tone_shift && <p className="toast-warn small" style={{ margin: 0 }}>⚠️ <b>문체가 뒤집힙니다</b>: 이 제안을 적용하면 글이 <b>{dirResult.tone_shift.from === "expert" ? "전문가 톤" : "대화체"}</b>에서 <b>{dirResult.tone_shift.to === "expert" ? "전문가 톤" : "대화체"}</b>로 바뀝니다. 종결어미·이모지·응원 문구가 통째로 달라지니, 의도한 변경이 아니면 적용하지 마세요.</p>}
+            {dirResult.length_after < dirResult.length_before && <p className="muted small" style={{ margin: 0 }}>길이 {dirResult.length_before}자 → {dirResult.length_after}자 ({Math.round((1 - dirResult.length_after / Math.max(1, dirResult.length_before)) * 100)}% 덜어냄). 방향성은 톤·이모지 배치·도입 구성까지 담는 자리라, 많이 줄었다면 무엇이 사라졌는지 확인하세요.</p>}
+            <div className="small"><b>제안 방향성:</b><p className="preview-block" style={{ margin: "4px 0 0" }}>{dirResult.suggested_direction}</p></div>
+          </>}
         <div className="row" style={{ gap: 8 }}>
-          <button type="button" className="btn primary" disabled={busy} onClick={() => { setDirection(dirResult.suggested_direction); setDirResult(null); }}>제안으로 변경</button>
+          {!dirResult.no_change && <button type="button" className="btn primary" disabled={busy} onClick={() => { setDirection(dirResult.suggested_direction); setDirResult(null); }}>제안으로 변경</button>}
           <button type="button" className="btn" onClick={() => setDirResult(null)}>닫기</button>
         </div>
       </div>}

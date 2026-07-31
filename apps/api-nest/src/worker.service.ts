@@ -270,7 +270,7 @@ export class WorkerService {
           // 문체는 T16 전용 스토리텔링 지침(t16WritingGuide)으로 확장한다. 격식 수준(대화체/전문가)은
           // 글유형 방향성이 정한다 — 기본 T16=대화체, 복제한 전문가판 커스텀 유형=전문가.
           structureGuide: t16StructureGuide(structureGuideForArchetype(archetype, structureSeed(slot)), t16Plan),
-          writingGuide: t16WritingGuide(slot, t16ToneFromDirection(templateDirection)),
+          writingGuide: effectiveWritingGuide({ archetype, direction: templateDirection, isRegionPrimary: Boolean(slot.region), isT16: true }),
           articlePatternGuide: legacyPlusArticlePatternGuide(),
           designGuide: legacyPlusDesignGuide(),
           reviewInstruction: t16ReviewPromptInstruction(),
@@ -1048,6 +1048,27 @@ function isT16Slot(slot: Row, archetype?: Archetype): boolean {
   return String(slot.template_id || "") === T16_TEMPLATE_ID || archetype?.id === "local_axis";
 }
 
+/**
+ * 이 글유형이 **실제로 받는** 작성 지침 — 생성과 「방향성 검증」이 공유하는 단일 소스.
+ *
+ * 검증(admin.controller#validateDirection)이 아키타입 writing_guide 만 보고 중복을 판정하던 때,
+ * T16 계열은 그 지침을 아예 쓰지 않는데도(아래 분기) 그것과 대조했다. 그래서 **강제되지 않는 것을
+ * "이미 강제됨"이라 부르고 정작 강제되는 것은 놓쳤다** — 사용자가 쓴 고유한 톤 지시가 중복으로 잘려
+ * 나가는 원인이었다. 두 경로가 같은 함수를 부르게 해서 그 어긋남을 없앤다.
+ *
+ * T16 지침은 방향성이 정한 톤(`t16ToneFromDirection`)에 따라 내용이 갈린다. 즉 방향성을 고치면
+ * 지침도 바뀌므로, 검증은 **검증 대상 방향성**을 넣어 호출해야 실제와 같은 것을 본다.
+ *
+ * `isT16`을 아키타입에서 유추하지 않고 받는 이유: 생성 판정(`isT16Slot`)은 template_id 로도 T16 을
+ * 인정한다(spec 이 없어 아키타입이 undefined 인 경우). 여기서 유추하면 그 경로만 조용히 달라진다.
+ *
+ * 예외: T01 Legacy Plus 는 별도 지침(`legacyPlusWritingGuide`)을 쓰는데 후보 목록이 있어야 만들어져
+ * 검증 시점에는 재현할 수 없다. T01 계열은 폐기됐으므로(`DEPRECATED_BUILTIN_TEMPLATE_IDS`) 다루지 않는다.
+ */
+export function effectiveWritingGuide(o: { archetype?: Archetype; direction: string; isRegionPrimary: boolean; isT16: boolean }): string {
+  return o.isT16 ? t16WritingGuide({}, t16ToneFromDirection(o.direction)) : writingGuideForArchetype(o.archetype, o.isRegionPrimary);
+}
+
 function structureSeed(slot: Row): string {
   return String(slot.slot_id ?? slot.id ?? `${slot.region ?? ""}|${slot.primary_keyword ?? ""}`);
 }
@@ -1226,7 +1247,9 @@ ${commonToneGuide()}
  * 있어서, 모델은 독자에게 말을 거는 표현을 통째로 피했다(실측: 표본 4건에서 질문형 0·2인칭 0).
  * 금지는 실제 상투구만 남기고, 어떤 문체를 쓰라는 지시를 함께 준다.
  */
-function commonToneGuide(): string {
+// export 이유: 「방향성 검증」이 '이미 강제되는 문체 규칙'으로 이 원문을 대조한다(admin.controller#validateDirection).
+// 이 블록이 이미 종결어미·이모지·2인칭 호칭을 규정하므로, 검증에서 빼면 진짜 중복을 놓친다.
+export function commonToneGuide(): string {
   const banned = '- AI가 쓴 티가 나는 판박이 표현을 쓰지 말 것. 금지 예: "이번 글에서는/이 글에서는", "~에 대해 알아보겠습니다/살펴보겠습니다/정리해보겠습니다", "~살펴보았습니다", "도움이 되셨기를 바랍니다/참고하시기 바랍니다", "이번 포스팅/본 포스팅".';
   if (String(process.env.SEO_PROMPT_STYLE || "").trim() === "formal") {
     return `${banned.replace('"~살펴보았습니다"', '"~살펴보았습니다", "여러분"')} 대신 실제 사람이 쓴 블로그처럼 지역 상황·고민·구체 정보로 바로 들어가고 자연스럽게 마무리한다.`;

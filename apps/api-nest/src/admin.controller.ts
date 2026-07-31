@@ -1436,38 +1436,92 @@ function buildAxisSuggestPrompt(o: { domainName: string; kind: string; primary: 
   ].filter(Boolean).join("\n\n");
 }
 
-// 방향성 검증 프롬프트: 방향성 ↔ (절대 원칙·공통원칙·writing_guide) 대조 + 고유 방향만 남긴 개선안 요청.
-function buildDirectionValidatePrompt(o: { name: string; kind: string; direction: string; currentDirection?: string; commonPrinciples?: string; writingGuide?: string[]; absolutePrinciples: string }): string {
-  const guide = (o.writingGuide ?? []).map((g) => `- ${g}`).join("\n");
+/**
+ * 방향성 검증 프롬프트: 방향성 ↔ (절대 원칙·공통원칙·작성 지침·문체 규칙) 대조 + **중복 문장만 덜어낸** 안 요청.
+ *
+ * **요약을 시키지 않는다.** 예전엔 "1~3문장으로 제안하라"였는데, 실제로 쓰이는 방향성은 T16 638자·T11/T14 는
+ * 그 이상이고 그 안에 톤·이모지 배치·도입 문단 수처럼 글을 좌우하는 명세가 들어 있다. 요약하면 그게 통째로
+ * 사라져 **제안이 원본보다 나빠진다.** 그래서 재작성이 아니라 '문장 단위 삭제'로 못박고, 남긴 문장은 원문
+ * 그대로 쓰게 한다(톤 어휘가 T16 문체 스위치라 바꿔 쓰면 글 전체가 뒤집힌다 — `t16ToneFromDirection`).
+ *
+ * **"바꿀 것 없음"을 낼 수 있게 한다.** 예전엔 제안이 없으면 파서가 실패로 봐서, 모델은 무조건 무언가 바꾼
+ * 안을 만들어야 했다. no_change 를 정식 결과로 둔다.
+ */
+export function buildDirectionValidatePrompt(o: { name: string; kind: string; direction: string; currentDirection?: string; commonPrinciples?: string; writingGuide?: string; toneGuide?: string; absolutePrinciples: string }): string {
+  const guide = String(o.writingGuide || "").trim();
+  const tone = String(o.toneGuide || "").trim();
   const principles = String(o.commonPrinciples || "").trim();
   const current = String(o.currentDirection || "").trim();
   return [
     "너는 한국 운전면허·운전학원 SEO 콘텐츠 시스템에서 '글유형 방향성(direction)'을 검증하는 도우미다.",
-    "방향성은 '이 글유형만의 방향(무엇을 어떤 각도로 다루고, 어떤 전환으로 잇는지)'을 적는 자리다. 아래 '이미 강제되는 규칙'을 다시 진술하면 중복(불필요)이다.",
+    "방향성은 '이 글유형만의 방향(무엇을 어떤 각도로 다루고, 어떤 문체로, 어떤 전환으로 잇는지)'을 적는 자리이고, 그대로 글 생성 프롬프트에 들어간다. 아래 '이미 강제되는 규칙'을 다시 진술한 부분만 군더더기다.",
     `대상 글유형: "${o.name || o.kind}" (아키타입 kind=${o.kind}).`,
     `[이 유형에 이미 강제되는 절대 원칙 — 방향성에 다시 쓰면 중복]\n${o.absolutePrinciples}`,
-    principles ? `[도메인 공통 원칙(톤·정책) — 다시 쓰면 중복]\n${principles}` : "",
-    guide ? `[이 아키타입 작성 지침(writing_guide) — 다시 쓰면 중복]\n${guide}` : "",
-    current ? `[이 글유형의 현재 방향성(참고)]\n${current}` : "",
+    principles ? `[도메인 공통 원칙(정책) — 다시 쓰면 중복. 단 "톤은 글유형 방향성에서 정한다"는 위임이므로, 방향성이 톤을 지시하는 것은 중복이 아니다]\n${principles}` : "",
+    guide ? `[이 유형이 실제로 받는 작성 지침 — 다시 쓰면 중복]\n${guide}` : "",
+    tone ? `[모든 글에 들어가는 문체 규칙 — 다시 쓰면 중복. 단 이 규칙은 격식 수준을 방향성에 위임하므로, 방향성의 톤 지시 자체는 중복이 아니다]\n${tone}` : "",
+    current ? `[이 글유형의 현재 저장된 방향성(참고용 — 검증 대상이 아니다)]\n${current}` : "",
     `[검증할 방향성 — 사용자 입력]\n${o.direction}`,
-    "작업: (1) '검증할 방향성'의 각 요소가 위 절대 원칙/공통 원칙/작성 지침과 중복(이미 강제됨)되는지, 충돌하는지 판단하라. (2) 중복·충돌을 제거하고 이 글유형만의 고유 방향만 남긴 개선된 방향성을 1~3문장으로 제안하라. 고유 방향이 없으면 현재 방향성을 유지하는 제안을 하라.",
-    "규칙: 안전·데이터 규칙(날조 금지, 내부흔적 금지 등)은 방향성에 넣지 않는다(이미 강제됨). 제안은 한국어로 간결하게.",
-    '출력은 오직 JSON 하나: {"redundant":[{"text":"중복 부분","overlaps":"절대원칙|공통원칙|작성지침"}],"conflicting":[{"text":"충돌 부분","reason":"이유"}],"suggested_direction":"개선된 방향성 문장","summary":"한 문장 요약"}. JSON 외 텍스트·코드펜스 금지.',
+    [
+      "작업:",
+      "(1) '검증할 방향성'을 문장 단위로 보고, 각 문장이 위 규칙에 이미 있어 다시 말할 뿐인지(중복), 위 규칙과 어긋나는지(충돌) 판단하라.",
+      "(2) 중복·충돌 문장만 덜어낸 안을 suggested_direction 으로 내라. **남기는 문장은 원문 그대로 옮겨 적는다 — 요약·압축·바꿔쓰기 금지.** 길이를 줄이는 것이 목적이 아니다.",
+      "(3) 덜어낼 것이 없으면 no_change 를 true 로 두고 suggested_direction 을 빈 문자열로 둔다. 억지로 고쳐 쓰지 마라.",
+    ].join("\n"),
+    [
+      "판정 규칙:",
+      "- 안전·데이터 규칙(날조 금지, 내부 흔적 금지, 후보 수 부풀리기 금지 등)을 방향성이 다시 적었다면 중복이다.",
+      "- **문체·톤·이모지·종결어미·도입 구성처럼 이 글유형이 어떻게 쓰일지 정하는 지시는 방향성의 본래 역할이다. 위 규칙이 '방향성을 따른다'고 위임한 것이므로 중복으로 판정하지 마라.** 특히 '전문가 설명 톤/차분하게/격식' 같은 말과 '친근한 대화체/옆자리 선배가 이야기해 주듯' 같은 말은 시스템이 문체를 가르는 신호라 지우거나 다른 말로 바꾸면 글 전체가 달라진다.",
+      "- 구체적인 예시·목록(어떤 이모지를 어디에 쓰는지, 도입을 몇 문단으로 쓰는지 등)은 지침이 같은 말을 하고 있을 때만 중복이다. 단지 길다는 이유로 지우지 마라.",
+    ].join("\n"),
+    '출력은 오직 JSON 하나: {"redundant":[{"text":"중복 문장(원문 그대로)","overlaps":"절대원칙|공통원칙|작성지침|문체규칙"}],"conflicting":[{"text":"충돌 문장","reason":"이유"}],"no_change":false,"suggested_direction":"덜어낸 뒤 남은 방향성(원문 문장 그대로 이어 붙임)","summary":"한 문장 요약"}. JSON 외 텍스트·코드펜스 금지.',
   ].filter(Boolean).join("\n\n");
 }
 
-// 방향성 검증 응답 파싱. 첫 JSON 블록 추출 후 필드 정규화. suggested_direction 이 없으면 실패(null).
-function parseDirectionValidation(text: string): { redundant: Array<{ text: string; overlaps: string }>; conflicting: Array<{ text: string; reason: string }>; suggested_direction: string; summary: string } | null {
+type DirectionValidationResult = {
+  redundant: Array<{ text: string; overlaps: string }>;
+  conflicting: Array<{ text: string; reason: string }>;
+  suggested_direction: string;
+  summary: string;
+  no_change: boolean;
+};
+
+// 방향성 검증 응답 파싱. 첫 JSON 블록 추출 후 필드 정규화.
+// suggested_direction 이 비어도 no_change(또는 지적 0건)면 '바꿀 것 없음'으로 받는다 — 예전엔 이 경우를
+// 실패로 봐서 모델이 항상 무언가 바꾼 안을 내놓아야 했고, 그게 멀쩡한 방향성이 깎이는 원인 중 하나였다.
+export function parseDirectionValidation(text: string): DirectionValidationResult | null {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return null;
   let obj: any;
   try { obj = JSON.parse(m[0]); } catch { return null; }
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
   const suggested = String(obj.suggested_direction ?? "").trim();
-  if (!suggested) return null;
   const redundant = Array.isArray(obj.redundant) ? obj.redundant.map((r: any) => ({ text: String(r?.text ?? "").trim(), overlaps: String(r?.overlaps ?? "").trim() })).filter((r: any) => r.text).slice(0, 12) : [];
   const conflicting = Array.isArray(obj.conflicting) ? obj.conflicting.map((r: any) => ({ text: String(r?.text ?? "").trim(), reason: String(r?.reason ?? "").trim() })).filter((r: any) => r.text).slice(0, 12) : [];
-  return { redundant, conflicting, suggested_direction: suggested, summary: String(obj.summary ?? "").trim() };
+  const noChange = obj.no_change === true || (!suggested && !redundant.length && !conflicting.length);
+  if (!suggested && !noChange) return null;
+  return { redundant, conflicting, suggested_direction: noChange ? "" : suggested, summary: String(obj.summary ?? "").trim(), no_change: noChange };
+}
+
+/**
+ * 제안을 적용하면 무엇이 달라지는지 기계로 계산해 붙인다 — LLM 의 자기 보고를 믿지 않는다.
+ *
+ * - `tone_shift`: T16 계열은 방향성 문자열이 문체 스위치라(`t16ToneFromDirection`), 제안이 톤 어휘를
+ *   빼거나 새로 들이면 대화체↔전문가가 통째로 뒤집힌다. 화면에는 "중복을 정리했습니다"로만 보이므로
+ *   여기서 잡아 경고한다. T16 계열이 아니면 이 스위치가 없어 계산하지 않는다(null).
+ * - `length_before/after`: 방향성은 톤·이모지·도입 구성까지 담는 자리라 짧아지는 것 자체가 정보 손실이다.
+ *   얼마나 덜어냈는지 숫자로 보여 주고 판단은 사람이 한다.
+ */
+export function directionValidationWithWarnings(v: DirectionValidationResult, direction: string, isT16: boolean) {
+  const suggested = v.suggested_direction;
+  const toneBefore = t16ToneFromDirection(direction);
+  const toneAfter = t16ToneFromDirection(suggested);
+  return {
+    ...v,
+    tone_shift: isT16 && suggested && toneBefore !== toneAfter ? { from: toneBefore, to: toneAfter } : null,
+    length_before: direction.length,
+    length_after: suggested.length,
+  };
 }
 
 // LLM 응답 텍스트에서 첫 JSON 블록을 추출·검증해 요청한 축의 문자열 배열만 반환(코드펜스/설명 섞여도 방어).
