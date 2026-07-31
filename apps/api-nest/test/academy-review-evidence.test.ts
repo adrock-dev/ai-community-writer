@@ -129,6 +129,34 @@ describe("리뷰 100자 말줄임", () => {
   });
 });
 
+describe("낱말 없이 남들 말을 가리키는 논평도 뺀다", () => {
+  // 발행 글 실측(강남 삼일). 후기 3건 중 점수 1위로 뽑혀 카드가 방어적인 문장으로 닫혔다.
+  // "리뷰/후기" 라는 낱말이 없어 기존 두 규칙이 못 잡았다.
+  it("지시대명사로 남들 말을 옮기고 반박하면 걸러낸다", () => {
+    expect(isReviewAboutOtherReviews("강사분이 뭐 뭐라한다 틱틱댄다 다들 이러는데 그정도는 아님 배우는데 지장없고")).toBe(true);
+  });
+
+  it("전언 어미만으로는 걸러내지 않는다", () => {
+    // 넓히면 평범한 호평까지 걸린다(실측: 넓혀도 새로 잡히는 후기 0건이라 넓힐 이유도 없다).
+    expect(isReviewAboutOtherReviews("다들 친절하시던데 저도 만족했어요")).toBe(false);
+    expect(isReviewAboutOtherReviews("강사님이 잘 알려주신다고 하던데 정말 그랬어요")).toBe(false);
+  });
+
+  it("부정 방향 지시어가 붙은 리뷰 언급을 걸러낸다", () => {
+    // 기존 규칙의 부정 어휘는 활용형을 못 따라가 "나쁜" 을 놓쳤다(`나쁘` 만 있었다).
+    expect(isReviewAboutOtherReviews("후기나쁜이유는 모르겠고 강사님들 잘 알려주세요")).toBe(true);
+    expect(isReviewAboutOtherReviews("다 친절하시고 좋기만 하던데 리뷰가 왜그런지ㅠㅠ")).toBe(true);
+    expect(isReviewAboutOtherReviews("리뷰가 왜 이런지는 모르겠지만 강사님은 너무 좋았어요")).toBe(true);
+    expect(isReviewAboutOtherReviews("아래 후기들 왜 그런지 모르겠을 정도로 친절하고 잘 알려주세요")).toBe(true);
+  });
+
+  it("긍정 논평과 자기 후기 얘기는 걸러내지 않는다", () => {
+    // 카드를 부정적 인상으로 열지 않으므로 뺄 이유가 없다.
+    expect(isReviewAboutOtherReviews("학원 알아보면서 후기 많이 찾아봤는데 왜 평이 좋은지 직접 다녀보니 알겠더라고요")).toBe(false);
+    expect(isReviewAboutOtherReviews("앱에서 남기는 후기들도 학원에서 보는지는 잘 모르겠지만 일단 남기고 갈게요")).toBe(false);
+  });
+});
+
 describe("평판이 나쁘다고 알리는 후기는 인용에서 뺀다", () => {
   // 발행 글 실측(홍천, 평균 3.3점). 5점 호평인데 첫 문장이 "이 학원 후기가 나쁘다"를 알렸다.
   it("'후기를 봤을 때는 걱정' 처럼 후기를 부정적 반응과 함께 말하면 걸러낸다", () => {
