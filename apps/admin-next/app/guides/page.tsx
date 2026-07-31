@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { GUIDES, readGuide } from "@/lib/guides";
+import AdminNoteCount from "@/components/AdminNoteCount";
 
 // 서버 컴포넌트다 — 저장소의 docs/*.md 를 직접 읽는다(lib/guides 참조).
 export default function GuidesPage() {
@@ -18,7 +19,8 @@ export default function GuidesPage() {
       <div className="card card-pad grid">
         <div className="row" style={{ gap: 8, alignItems: "center" }}>
           <h2 style={{ margin: 0 }}>인수인계 메모</h2>
-          <span className="badge warn">사람이 적는 것</span>
+          <span className="badge">사람이 적는 것</span>
+          <AdminNoteCount />
         </div>
         <p className="muted small">
           아래 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적어 둡니다.

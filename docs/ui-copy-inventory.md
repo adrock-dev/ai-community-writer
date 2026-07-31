@@ -168,9 +168,9 @@
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
-| `apps/admin-next/app/guides/page.tsx:12` | muted-p | 저장소의 문서를 그대로 읽어 보여줍니다. 화면용으로 따로 옮겨 적지 않으므로 문서를 고치면 여기도 함께 바뀝니다. | — |
-| `apps/admin-next/app/guides/page.tsx:23` | muted-p | 아래 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적어 둡니다. 문서와 달리 코드와 대조되지 않으므로 적은 시점을 함께 봅니다. | — |
-| `apps/admin-next/app/guides/page.tsx:42` | muted-p | 문서 파일을 찾지 못했습니다. 배포에 docs/가 포함됐는지 확인하세요. | — |
+| `apps/admin-next/app/guides/page.tsx:13` | muted-p | 저장소의 문서를 그대로 읽어 보여줍니다. 화면용으로 따로 옮겨 적지 않으므로 문서를 고치면 여기도 함께 바뀝니다. | — |
+| `apps/admin-next/app/guides/page.tsx:25` | muted-p | 아래 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적어 둡니다. 문서와 달리 코드와 대조되지 않으므로 적은 시점을 함께 봅니다. | — |
+| `apps/admin-next/app/guides/page.tsx:44` | muted-p | 문서 파일을 찾지 못했습니다. 배포에 docs/가 포함됐는지 확인하세요. | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:257` | muted-p | 조사된 셔틀 노선이 없습니다. | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:273` | jsx-text | 수집된 후기가 없습니다. 원천에서 이 학원만 다시 받아 볼 수 있습니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:106` | confirm | DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요? | — |
