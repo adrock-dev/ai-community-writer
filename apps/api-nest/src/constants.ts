@@ -146,7 +146,20 @@ export const GENERATE_JOB_MAX_SLOTS = Math.max(1, Number(process.env.SEO_GENERAT
 // 생성·미리보기 공통. 밀집 지역이 반경 안 학원을 과다 표시/사용하지 않도록 캡 역할.
 export const ACADEMY_MAX_CANDIDATES = Number(process.env.SEO_ACADEMY_MAX_CANDIDATES) || 7;
 // 한 글에 실제로 쓰는 학원 수. 풀(ACADEMY_MAX_CANDIDATES)에서 슬롯별 시드 랜덤으로 이만큼 뽑아 글마다 조합을 달리한다.
-export const ACADEMY_USED_PER_POST = Number(process.env.SEO_ACADEMY_USED_PER_POST) || 5;
+//
+// **5에서 4로 낮췄다(2026-07-31) — 카드 수가 글의 분량 예산을 정하기 때문이다.**
+// 카드가 5개면 카드당 쓸 수 있는 분량이 절반으로 줄어(카드당 1,179자 vs 1~4개 글의 2,162자),
+// 모델이 기본 정보 불릿을 버렸다. 실측: 발행 26편 중 불릿 0개가 9편이었고 그중 8편이 카드 5개였다.
+// 불릿 요구를 강조해 되살리자 이번엔 5,600자 상한을 넘겨 격리됐다(평택 5,713자). 카드 5개는
+// 불릿과 길이를 동시에 만족시키지 못한다 — 실측 범위가 4,832~5,713자로 상한에 걸쳐 있다.
+//
+// 카드 4개 이하 글은 3,553~5,095자로 상한 안에 들어오고, 일반적으로 권장되는 블로그 분량
+// (네이버 기준 600~1,900자, 상한 제시값 4,000~4,500자)에도 더 가깝다. 학원 한 곳을 덜 다루는
+// 대신 남은 넷을 불릿까지 갖춰 제대로 쓴다.
+//
+// 제목의 `{개수}`는 `facts.academyCount`(실제 사용 수)로 치환되므로 자동으로 "BEST 4"가 된다.
+// 되돌리려면 코드를 고칠 것 없이 `SEO_ACADEMY_USED_PER_POST=5` 로 덮으면 된다.
+export const ACADEMY_USED_PER_POST = Number(process.env.SEO_ACADEMY_USED_PER_POST) || 4;
 // 지역이 '충분'하다고 보는 최소 학원 수(비교/BEST 성립 기준).
 export const ACADEMY_MIN_FOR_BEST = 2;
 // 최소 보장 확장 상한(km). 직접+인근(ACADEMY_NEARBY_MAX_KM)이 ACADEMY_MIN_FOR_BEST 미만이면

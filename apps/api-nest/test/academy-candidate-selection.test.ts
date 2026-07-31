@@ -89,7 +89,8 @@ describe("Phase A: 실제 후보 선택 fixture", () => {
     expect(result.trace.supplementCandidates.map((candidate) => candidate.academyName)).toEqual(["근거리1", "근거리2", "근거리3", "근거리4", "근거리5"]);
     expect(result.trace.farCandidates).toEqual([]);
     expect(result.candidates).toHaveLength(7);
-    expect((factText(domain).match(/^\[\d+\]/gm) || [])).toHaveLength(5);
+    // 풀은 7곳이지만 한 글에 싣는 수는 ACADEMY_USED_PER_POST 가 정한다(상수에서 파생 — 값이 바뀌어도 안 깨진다).
+    expect((factText(domain).match(/^\[\d+\]/gm) || [])).toHaveLength(ACADEMY_USED_PER_POST);
   });
 
   it("C: 20km 보충은 타입 필터·중복 제거를 유지하고 좌표 없는 후보는 선택하지 않는다", () => {
@@ -171,7 +172,7 @@ describe("Phase A: 실제 후보 선택 fixture", () => {
     insert(domain, Array.from({ length: 7 }, (_, index) => academy(`후보${index + 1}`, { region: targetRegion, address: `${targetRegion} ${index + 1}로` })));
     const slot = { slot_id: "T01_v2_parity", region: targetRegion, primary_keyword: `${targetRegion} 운전면허학원`, modifier_1: "상담전확인", modifier_2: null };
     const selection = selectAcademiesForRegion(db, domain, targetRegion, 7, types, 2);
-    const expected = seededCandidateSample(selection.candidates, 5, slot.slot_id).map((candidate) => candidate.external_id);
+    const expected = seededCandidateSample(selection.candidates, ACADEMY_USED_PER_POST, slot.slot_id).map((candidate) => candidate.external_id);
     const worker = new WorkerService(db, {} as never) as Worker;
     const context = (worker as any).buildT01DataGatedContext(domain, slot, types, getArchetype("local"));
     expect(context.candidates.map((candidate: any) => candidate.academyId)).toEqual(expected);

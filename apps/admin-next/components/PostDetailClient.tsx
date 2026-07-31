@@ -109,7 +109,7 @@ function InsightCard({ insight }: { insight: PostInsight }) {
         : <details>
             <summary className="muted small" style={{ cursor: "pointer" }}>본문이 쓰지 않은 조사 근거 {insight.unused.length}건</summary>
             <p className="muted small" style={{ margin: "6px 0" }}>
-              보냈지만 본문에 나타나지 않은 값입니다. <b>결함이 아닙니다</b> — 5곳이 다 가진 편의시설처럼 비교 정보가 아니면 모델이 버리는 것이 맞습니다.
+              보냈지만 본문에 나타나지 않은 값입니다. <b>결함이 아닙니다</b> — 후보가 다 같이 가진 편의시설처럼 비교 정보가 아니면 모델이 버리는 것이 맞습니다.
             </p>
             <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
               {insight.unused.map((item, i) => <li key={i}><b>{item.academy}</b> · {item.label}: {item.value}</li>)}
