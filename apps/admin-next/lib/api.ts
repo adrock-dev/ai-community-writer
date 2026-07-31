@@ -25,6 +25,9 @@ export const updateAdminNote = (
   api<{ ok: true; note: AdminNote }>(`/settings/notes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
 export const deleteAdminNote = (id: string) =>
   api<{ ok: true }>(`/settings/notes/${encodeURIComponent(id)}`, { method: "DELETE" });
+/** 내보낸 JSON 을 되돌린다. 제목이 같으면 건너뛰므로 같은 파일을 두 번 넣어도 늘어나지 않는다. */
+export const importAdminNotes = (items: unknown[]) =>
+  api<{ ok: true; added: number; skipped: number }>("/settings/notes/import", { method: "POST", body: JSON.stringify({ items }) });
 
 export const listVerticals = () => api<{ items: Vertical[] }>("/settings/verticals");
 export const addVertical = (key: string, label: string) => api<{ ok: true; items: Vertical[] }>("/settings/verticals", { method: "POST", body: JSON.stringify({ key, label }) });

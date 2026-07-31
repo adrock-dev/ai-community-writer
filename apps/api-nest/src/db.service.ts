@@ -1132,6 +1132,35 @@ export class DbService implements OnModuleInit {
   deleteAdminNote(id: string): boolean {
     return (this.run("DELETE FROM admin_notes WHERE id=?", [id]).changes ?? 0) > 0;
   }
+  /**
+   * 내보낸 파일에서 메모를 되살린다.
+   *
+   * 메모는 사람이 적은 판단이라 **다시 받아올 원천이 아예 없다.** DB 초기화·경로 이동으로
+   * 날아가면 끝이므로 파일로 내보내 두고 여기로 되돌린다(`docs/data-portability.md`).
+   *
+   * - **제목이 같으면 건너뛴다.** 같은 파일을 두 번 넣어도 늘어나지 않아야 한다 — 복원은 대개
+   *   불안할 때 하는 일이라 두 번 누르기 쉽다.
+   * - **적은 날짜를 보존한다.** 시점이 밀리면 "언제부터 있던 우려인지"가 사라져 메모의 값이 준다.
+   */
+  importAdminNotes(items: Array<{ title: string; body?: string; status?: string; pinned?: boolean; created_at?: string }>): { added: number; skipped: number } {
+    const existing = new Set(this.all("SELECT title FROM admin_notes").map((r) => String(r.title)));
+    let added = 0;
+    let skipped = 0;
+    for (const item of items) {
+      const title = String(item.title || "").trim();
+      if (!title) { skipped++; continue; }
+      if (existing.has(title)) { skipped++; continue; }
+      const status = item.status === "resolved" ? "resolved" : "open";
+      const createdAt = typeof item.created_at === "string" && item.created_at.trim() ? item.created_at.trim() : nowSql();
+      this.run(
+        "INSERT INTO admin_notes (id, title, body, status, pinned, created_at, updated_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [randomUUID(), title, String(item.body || ""), status, item.pinned ? 1 : 0, createdAt, createdAt, status === "resolved" ? createdAt : null],
+      );
+      existing.add(title);
+      added++;
+    }
+    return { added, skipped };
+  }
 
   getSetting(key: string): string | null { return this.get("SELECT value FROM app_settings WHERE key=?", [key])?.value ?? null; }
   setSetting(key: string, value: string | null): void {

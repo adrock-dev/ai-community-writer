@@ -150,9 +150,9 @@ Base: `/api/admin`
 - `POST /domains/:domain/jobs/generate|dedup|prune|indexing`
 - `GET /jobs`, `POST /jobs/:id/cancel|pause|resume|prioritize`
 - `GET/PUT /settings/indexing`, `GET/PUT /settings/blog-review-sync`, `GET/POST /settings/verticals`
-- `GET/POST /settings/notes`, `PATCH/DELETE /settings/notes/:id` — 인수인계 메모(전역)
+- `GET/POST /settings/notes`, `PATCH/DELETE /settings/notes/:id`, `POST /settings/notes/import` — 인수인계 메모(전역). DB 에만 있어 내보내기/가져오기가 유일한 보험이다
 
-**위는 일부입니다.** 실제 엔드포인트는 99개(관리자 92 + 공개 7)이고, 학원 심층조사는 별도 컨트롤러(`/api/admin/academy-research/*`, 18개)에 있습니다. 전수 목록과 상세 계약은 `docs/admin-json-api.md`(「엔드포인트 전수 색인」)를 기준으로 봅니다.
+**위는 일부입니다.** 실제 엔드포인트는 100개(관리자 93 + 공개 7)이고, 학원 심층조사는 별도 컨트롤러(`/api/admin/academy-research/*`, 18개)에 있습니다. 전수 목록과 상세 계약은 `docs/admin-json-api.md`(「엔드포인트 전수 색인」)를 기준으로 봅니다.
 
 ## 7. 공개 API 요약
 

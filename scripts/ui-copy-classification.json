@@ -1180,6 +1180,15 @@
       "class": "C",
       "depends": [],
       "note": "관리자 가이드 목록에 뜨는 문서 한 줄 소개다. 코드 동작이 아니라 그 문서가 무엇을 다루는지를 말하므로 종속이 없다. 문서 자체의 최신성은 npm run verify:doc-sync 가 본다."
+    },
+    {
+      "file": "apps/admin-next/components/AdminNotesClient.tsx",
+      "match": "제목이 같은 메모는 건너뜁니다",
+      "class": "B",
+      "depends": [
+        "apps/api-nest/src/db.service.ts#importAdminNotes"
+      ],
+      "note": "가져오기의 중복 판정 기준(제목)을 말한다. importAdminNotes 는 기존 제목 집합과 대조해 건너뛴다 — 같은 파일을 두 번 넣어도 늘어나지 않게 하려는 것이고, 복원은 대개 불안할 때 하는 일이라 두 번 누르기 쉽다. 판정 기준을 id 나 내용으로 바꾸면 이 문장이 거짓이 된다."
     }
   ]
 }

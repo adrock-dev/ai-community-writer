@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { listAdminNotes, createAdminNote, updateAdminNote, deleteAdminNote, type AdminNote } from "@/lib/api";
+import { listAdminNotes, createAdminNote, updateAdminNote, deleteAdminNote, importAdminNotes, type AdminNote } from "@/lib/api";
 
 /**
  * 인수인계 메모 — 가이드 문서가 담지 못하는 것을 사람이 적는 자리.
@@ -16,6 +16,38 @@ import { listAdminNotes, createAdminNote, updateAdminNote, deleteAdminNote, type
 const DELETE_CONFIRM =
   "이 메모를 삭제할까요?\n\n삭제하면 복구할 수 없고 어디에도 남지 않습니다.\n기록을 남기려면 「해결됨으로」를 쓰세요 — 아래 「해결됨」에 보관됩니다.";
 
+function download(name: string, text: string, mime: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 사람이 읽는 인수인계용. 확인 필요한 것을 먼저, 「꼭 볼 것」에 표시를 남긴다. */
+function toMarkdown(notes: AdminNote[]): string {
+  const section = (title: string, rows: AdminNote[]) =>
+    rows.length
+      ? `## ${title}\n\n${rows
+          .map((n) => [
+            `### ${n.pinned ? "★ " : ""}${n.title}`,
+            n.body ? `\n${n.body}\n` : "",
+            `\n_적은 날 ${n.created_at}${n.resolved_at ? ` · 해결 ${n.resolved_at}` : ""}_\n`,
+          ].join(""))
+          .join("\n")}`
+      : "";
+  return [
+    "# 인수인계 메모",
+    "",
+    "> 관리자 화면(설정 › 관리자 가이드 › 인수인계 메모)에서 내보냈다.",
+    "> 가이드 문서와 달리 **코드와 대조되지 않은 사람의 판단**이므로 적은 날짜와 함께 읽는다.",
+    "",
+    section("확인 필요", notes.filter((n) => n.status === "open")),
+    section("해결됨", notes.filter((n) => n.status === "resolved")),
+  ].filter(Boolean).join("\n");
+}
+
 export default function AdminNotesClient() {
   const [notes, setNotes] = useState<AdminNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +58,7 @@ export default function AdminNotesClient() {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ title: "", body: "" });
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -89,6 +122,48 @@ export default function AdminNotesClient() {
             {busy ? "저장 중..." : "메모 추가"}
           </button>
         </div>
+      </div>
+
+      {/* 메모는 DB 에만 있고 저장소가 아니라 git 이 따라가지 않는다. 원천이 없어 DB 가 날아가면
+          끝이므로 파일이 유일한 보험이다(docs/data-portability.md). */}
+      <div className="card card-pad grid">
+        <h2>내보내기 · 가져오기</h2>
+        <p className="muted small" style={{ margin: 0 }}>
+          메모는 저장소가 아니라 <b>DB에만</b> 있습니다. DB를 초기화하거나 다른 경로로 옮기면 사라지고,
+          가이드 문서와 달리 <b>다시 받아올 원천이 없습니다</b>. 인수인계 전이나 이전 전에 내보내 두세요.
+        </p>
+        <div className="row">
+          <button className="btn" disabled={busy || !notes.length} onClick={() => download("인수인계-메모.md", toMarkdown(notes), "text/markdown;charset=utf-8")}>
+            Markdown 내보내기
+          </button>
+          <button className="btn" disabled={busy || !notes.length} onClick={() => download("admin-notes.json", JSON.stringify(notes, null, 2), "application/json")}>
+            JSON 내보내기
+          </button>
+          <button className="btn" disabled={busy} onClick={() => fileRef.current?.click()}>JSON 가져오기</button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (!file) return;
+              void run(async () => {
+                const text = await file.text();
+                let parsed: unknown;
+                try { parsed = JSON.parse(text); } catch { throw new Error("JSON 파일이 아닙니다. 「JSON 내보내기」로 받은 파일을 올리세요."); }
+                const items = Array.isArray(parsed) ? parsed : (parsed as { items?: unknown[] })?.items;
+                if (!Array.isArray(items)) throw new Error("메모 배열을 찾지 못했습니다. 「JSON 내보내기」로 받은 파일을 올리세요.");
+                const res = await importAdminNotes(items);
+                alert(`가져오기 완료 — 추가 ${res.added}건 · 건너뜀 ${res.skipped}건(제목이 같은 메모).`);
+              });
+            }}
+          />
+        </div>
+        <p className="muted small" style={{ margin: 0 }}>
+          Markdown은 사람이 읽는 인수인계용, JSON은 다시 가져오기용입니다. 가져올 때 제목이 같은 메모는 건너뜁니다.
+        </p>
       </div>
 
       {error && <p className="toast-warn">{error}</p>}

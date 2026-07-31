@@ -21,6 +21,9 @@ import { resolveLlmProvider, runLlm } from "./llm-runner.js";
 import { adminApiBaseUrl, blogReviewSyncEnabled, BLOG_REVIEW_SYNC_SETTING_KEY, drivingplusApiBaseUrl } from "./runtime-config.js";
 import { getDesignTheme, resolveDesignId } from "./design-theme.js";
 import { isT01TemplateFamily, T01_LEGACY_PLUS_MODE } from "./t01-legacy-plus.js";
+// 방향성 검증이 대조하는 지침·문체 규칙은 생성이 실제로 주입하는 것과 같은 함수에서 나와야 한다(어긋나면 오판정).
+import { commonToneGuide, effectiveWritingGuide } from "./worker.service.js";
+import { t16ToneFromDirection } from "./t16-axis-comparison.js";
 
 type Row = Record<string, any>;
 const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "").trim();
@@ -335,8 +338,19 @@ export class AdminController {
     return { ok: true, suggestions, provider: result.provider, model: result.model };
   }
 
-  // 방향성 검증: 입력한 방향성이 절대 원칙(하드코딩 보편 바닥)·공통원칙·아키타입 writing_guide 와 중복/충돌하는지 LLM 으로 대조하고,
-  // 이 글유형 고유 방향만 남긴 개선안을 제안한다. 저장하지 않음(프론트가 사용자 확인 후 방향성 폼에 반영).
+  /**
+   * 방향성 검증: 입력한 방향성이 **실제로 이 유형에 주입되는** 규칙(절대 원칙·공통원칙·작성 지침·문체 규칙)과
+   * 중복/충돌하는지 LLM 으로 대조하고, 중복 문장만 덜어낸 안을 제안한다. 저장하지 않는다(사용자가 확인 후 반영).
+   *
+   * **대조 대상은 생성과 같은 소스여야 한다.** 아키타입 writing_guide 만 대조하던 때는 T16 계열이 그 지침을
+   * 쓰지 않는데도 그것과 견줬고(→ `effectiveWritingGuide`), 문체 규칙(`commonToneGuide`)은 아예 빠져 있어
+   * 진짜 중복을 놓쳤다. region_overlay 도 빠져 있었다.
+   *
+   * **제안이 원본보다 나빠질 수 있다는 점을 응답에 담는다.** T16 계열은 방향성 문자열이 문체 스위치라
+   * (`t16ToneFromDirection` — "전문가·격식·차분·설명 톤" 어휘 유무로 갈린다) 재작성이 톤을 뒤집을 수 있고,
+   * 방향성은 이모지·종결어미·도입 문단 수까지 명세하는 자리라 짧아지는 것 자체가 손실이다. 그래서
+   * 톤 변동(`tone_shift`)과 길이 변화(`length_before/after`)를 계산해 화면이 경고할 수 있게 한다.
+   */
   @Post("domains/:domain/templates/validate-direction")
   async validateDirection(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("domain") domain: string, @Body() body: Row) {
     checkAuth(req, headers);
@@ -349,15 +363,18 @@ export class AdminController {
     // 유형이 학원 후보를 다루면(has_academy) 학원 전용 규칙도 함께 대조. 기본값은 아키타입 academy_centric.
     const hasAcademy = typeof body.has_academy === "boolean" ? body.has_academy : Boolean(archetype.academy_centric);
     const absolutePrinciples = DRIVING_ABSOLUTE_PRINCIPLES + (hasAcademy ? `\n${DRIVING_ACADEMY_PRINCIPLES}` : "");
+    // T16 계열(local_axis)은 문체 지침이 방향성의 톤에 따라 갈리므로, 검증 대상 방향성을 넣어 실제 지침을 만든다.
+    const isT16 = archetype.id === "local_axis";
+    const writingGuide = effectiveWritingGuide({ archetype, direction, isRegionPrimary: archetype.primary === "region", isT16 });
     const prompt = buildDirectionValidatePrompt({
       name: String(body.name || ""), kind, direction, currentDirection: String(body.current_direction || ""),
-      commonPrinciples: String(config.common_principles || ""), writingGuide: writingGuideLines(archetype), absolutePrinciples,
+      commonPrinciples: String(config.common_principles || ""), writingGuide, toneGuide: commonToneGuide(), absolutePrinciples,
     });
     const result = await runLlm(prompt, { provider: parseLlmProvider(body.provider), model: String(body.model || "").trim(), timeoutSec: clampInt(body.timeout_sec, 180, 30, 600) });
     if (!result.ok || !result.summary.trim()) throw new HttpException(`LLM 호출 실패: ${result.error || "빈 응답"} (codex/claude CLI 설치·인증 확인)`, 502);
-    const validation = parseDirectionValidation(result.summary);
-    if (!validation) throw new HttpException("LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
-    return { ok: true, validation, provider: result.provider, model: result.model };
+    const parsed = parseDirectionValidation(result.summary);
+    if (!parsed) throw new HttpException("LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요.", 502);
+    return { ok: true, validation: directionValidationWithWarnings(parsed, direction, isT16), provider: result.provider, model: result.model };
   }
 
   // 레시피↔데이터 정합성(coherence) — 읽기/계산 전용. 생성 전에 얇은/근거없는 조합을 사전 경고(전 빌트인+커스텀).
@@ -1076,6 +1093,15 @@ export class AdminController {
     const title = String(body.title || "").trim();
     if (!title) throw new HttpException("메모 제목을 입력하세요.", 400);
     return { ok: true, note: this.db.createAdminNote(title, String(body.body || "").trim(), Boolean(body.pinned)) };
+  }
+  // 내보낸 파일에서 되살린다. 메모는 원천이 없어 DB 가 날아가면 끝이므로 파일이 유일한 보험이다.
+  @Post("settings/notes/import")
+  importAdminNotes(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const items = Array.isArray(body.items) ? body.items : null;
+    if (!items) throw new HttpException("items 배열이 필요합니다. 내보낸 JSON 파일을 그대로 올리세요.", 400);
+    const result = this.db.importAdminNotes(items);
+    return { ok: true, ...result };
   }
   @Patch("settings/notes/:id")
   updateAdminNote(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string, @Body() body: Row) {
