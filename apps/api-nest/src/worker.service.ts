@@ -9,6 +9,7 @@ import { buildT16AxisPlan, normalizeT16ReviewAttribution, t16FactsForPrompt, t16
 import { academyMin, academyPool, getArchetype, structureGuideForArchetype, writingGuideForArchetype, type Archetype } from "./archetypes.js";
 import { DbService, safeJson } from "./db.service.js";
 import { hasShuttleDetail } from "./drivingplus-shuttle-facts.js";
+import { ensureT16CardBullets } from "./t16-card-bullets.js";
 import { ImageGenerationService } from "./image-generation.service.js";
 import { findMatchedExclusionTerms, findSlotExclusionTerms, parseExclusionTerms, parseMonitoredPhrases } from "./exclusions.js";
 import { articleQualityIssues, distanceClaimIssues, titleAxisEvidenceIssues, postSurfaceQualityIssues, renderedCandidateCount, candidateNamesFromFacts, internalLinkIssues, stripUnofferedInternalLinks, normalizeAcademyTerm, REVIEW_SUPPLEMENT_LEAK_PATTERN, stripPublicReviewAttribution } from "./quality-gate.js";
@@ -290,6 +291,9 @@ export class WorkerService {
         let markdown = normalizeGeneratedMarkdown(result.summary, images, domain);
         if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
         if (t16Plan) markdown = normalizeT16ReviewAttribution(markdown);
+        // 카드 기본 정보 불릿은 프롬프트 계약만으로는 안 지켜진다(실측: 발행 5편 중 3편이 0개).
+        // 빠진 카드에만 facts 의 값을 같은 자리에 놓는다 — 근거는 t16-card-bullets.ts 주석.
+        if (t16Plan) markdown = ensureT16CardBullets(markdown, facts.academies, humanAcademyType);
         // 제공한 '관련 글 후보' 밖의 지어낸 /community/ 내부링크(미생성 글) 해제 — 발행 글의 죽은 링크 방지.
         markdown = stripUnofferedInternalLinks(markdown, factsText);
         // 학원형 글: 내부 용어 '후보'가 본문·소제목에 새면 독자용 '학원'으로 보정(비학원형은 '정답 후보' 등 정상 용례라 제외).
@@ -325,6 +329,8 @@ export class WorkerService {
           if (repair.ok && repair.summary.trim()) {
             markdown = normalizeGeneratedMarkdown(repair.summary, images, domain);
             if (t01LegacyPlusContext) markdown = finalizeLegacyPlusMarkdown(markdown, t01LegacyPlusContext);
+            // 품질 보정은 본문을 통째로 다시 쓰므로 불릿도 다시 사라질 수 있다. 생성 직후와 같게 채운다.
+            if (t16Plan) markdown = ensureT16CardBullets(normalizeT16ReviewAttribution(markdown), facts.academies, humanAcademyType);
             markdown = stripUnofferedInternalLinks(markdown, factsText);
             if (academyTypes.length > 0) markdown = normalizeAcademyTerm(markdown);
             t01Issues = t01LegacyPlusContext ? t01LegacyPlusQualityIssues(markdown, t01LegacyPlusContext) : [];
