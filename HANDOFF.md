@@ -92,6 +92,7 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | `apps/admin-next/lib/api.ts` | Admin API client |
 | `apps/admin-next/lib/types.ts` | UI 타입 계약 |
 | `docs/admin-ui-guide.md` | 관리자 화면 안내 — 메뉴·탭·영역이 각각 무엇을 하는 곳인지(운영자·개발자 공용) |
+| `docs/generation-prompt-guide.md` | 글 생성 프롬프트 안내 — 프롬프트의 층·소유자, 무엇을 고치면 글이 달라지는지 |
 | `docs/admin-json-api.md` | 관리자 API 상세 명세 |
 | `docs/source-analysis.md` | 현재 소스 구조 분석 |
 | `docs/source-field-usage.md` | 원천 학원 필드가 어디에 저장되고 어디에 쓰이는지 대조표(안 쓰는 이유 포함) |

@@ -13,6 +13,7 @@ integration/
   nextjs-community-kit/  공개 사이트에서 /api/v1/* 콘텐츠를 가져오는 Next.js 키트
 docs/
   admin-ui-guide.md      관리자 화면 안내(메뉴·탭·영역이 하는 일)
+  generation-prompt-guide.md  글 생성 프롬프트 안내(층·소유자·고칠 곳)
   admin-json-api.md      관리자 JSON API 명세
 scripts/
   verify-company-clean.mjs  회사 제출/운전 도메인 전용 흔적 검증
