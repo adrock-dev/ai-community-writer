@@ -61,6 +61,36 @@ describe("작성 잡 쪼개기", () => {
   });
 });
 
+// 쿨다운을 둘지 판정하는 세 갈래. 호출부는 LLM 을 부르는 루프 한복판이라 통째로는 못 떼어내고,
+// 판정만 shouldCooldownAfterSlot 으로 빼서 검증한다.
+//
+// (첫 시도는 존재하지 않는 slot_id 로 processGenerate 를 돌려 검증하려 했으나 **아무것도 잡지
+//  못했다** — 슬롯이 없으면 continue 로 빠져 쿨다운 블록에 도달조차 하지 않는다. 조건을 되돌려도
+//  그대로 통과하는 것을 보고 알았다.)
+describe("쿨다운을 둘지", () => {
+  const decide = async (opts: { index: number; total: number; cooldownAfterLast?: unknown; cancelRequested: boolean }) => {
+    const { shouldCooldownAfterSlot } = await import("../src/worker.service.js");
+    return shouldCooldownAfterSlot(opts);
+  };
+
+  it("중간 슬롯 뒤에는 둔다 — 다음 글과의 간격이 필요하다", async () => {
+    expect(await decide({ index: 0, total: 3, cancelRequested: false })).toBe(true);
+  });
+
+  it("마지막 슬롯 뒤에는 두지 않는다 — 다음 글이 없다", async () => {
+    expect(await decide({ index: 2, total: 3, cancelRequested: false })).toBe(false);
+  });
+
+  it("쪼개진 조각이면 마지막 슬롯 뒤에도 둔다 — 다음 잡이 이어진다", async () => {
+    expect(await decide({ index: 2, total: 3, cooldownAfterLast: true, cancelRequested: false })).toBe(true);
+  });
+
+  it("취소가 들어왔으면 어느 경우에도 두지 않는다", async () => {
+    expect(await decide({ index: 0, total: 3, cancelRequested: true })).toBe(false);
+    expect(await decide({ index: 2, total: 3, cooldownAfterLast: true, cancelRequested: true })).toBe(false);
+  });
+});
+
 describe("취소 요청된 잡의 stale 정리 메시지", () => {
   // 위 describe 가 남긴 queued 잡이 있으면 claimNextJob 이 그쪽을 집어간다(오래된 순).
   beforeEach(() => db.run("DELETE FROM jobs"));

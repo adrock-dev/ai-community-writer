@@ -424,7 +424,11 @@ export class WorkerService {
       // 쿨다운은 슬롯 사이에 둔다. 다만 큰 요청은 여러 잡으로 쪼개져 들어오므로(admin.controller
       // enqueueGenerate), 마지막이 아닌 조각은 **끝에도** 쿨다운을 둬야 잡 경계에서 간격이
       // 사라지지 않는다. 그러지 않으면 쪼갠 수만큼 쿨다운이 통째로 빠져 LLM 호출이 몰린다.
-      if (index < slotIds.length - 1 || payload.cooldown_after_last) {
+      // 판정은 shouldCooldownAfterSlot 한 곳에 있다(세 갈래 + 취소). break 가 아니라 대기만
+      // 건너뛰는 이유: 루프 상단의 취소 처리가 skipped 집계와 per_slot 기록을 담당하므로 거기로
+      // 흘려보내야 결과 기록이 그대로 남는다(마지막 슬롯이면 자연 종료).
+      const cancelRequested = Boolean(jobId && this.db.isJobCancelRequested(jobId));
+      if (shouldCooldownAfterSlot({ index, total: slotIds.length, cooldownAfterLast: payload.cooldown_after_last, cancelRequested })) {
         this.db.updateJobProgress(jobId, { step: "다음 글 작성 전 대기 중", slotId: null, processed: ok, failed: fail });
         await sleep(Number(payload.cooldown_sec || 60) * 1000);
       }
@@ -707,6 +711,25 @@ function humanAcademyType(value: unknown): string {
  * '치른다'로 서술한다 — 비교글 out-of-scope 게이트가 막는 '시험 접수·응시' 표현을 피하면서
  * "시험을 어디서 보는가"라는 차이를 전달한다. 등장하지 않는 유형은 넣지 않는다.
  */
+/**
+ * 슬롯 하나를 처리한 뒤 쿨다운을 둘지.
+ *
+ * 세 갈래가 겹쳐 있어 조건을 호출부에 늘어놓으면 읽기 어렵고, 무엇보다 **검증할 수가 없다**
+ * (호출부는 LLM 을 부르는 루프 한복판이라 단위 테스트로 못 떼어낸다).
+ *
+ *  - 중간 슬롯: 다음 글과의 간격이 필요하다 → 둔다.
+ *  - 마지막 슬롯: 다음 글이 없다 → 두지 않는다. 단 **쪼개진 조각**이면 다음 잡이 이어지므로
+ *    끝에도 둬야 잡 경계에서 간격이 사라지지 않는다(admin.controller 의 cooldown_after_last).
+ *  - 취소가 들어온 뒤: 벌리려던 다음 LLM 호출 자체가 없다 → 두지 않는다. 기다리면 취소가
+ *    cooldown_sec 만큼 늦게 반영될 뿐이다(실측 2026-07-31: 취소한 잡 116초 중 60초가 이 대기).
+ */
+export function shouldCooldownAfterSlot(opts: {
+  index: number; total: number; cooldownAfterLast?: unknown; cancelRequested: boolean;
+}): boolean {
+  if (opts.cancelRequested) return false;
+  return opts.index < opts.total - 1 || Boolean(opts.cooldownAfterLast);
+}
+
 export function academyTypeGlossary(academies: Row[]): string {
   const types = new Set(academies.map((academy) => String(academy.academy_type || "").trim()));
   const lines: string[] = [];
