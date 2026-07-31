@@ -887,9 +887,8 @@ Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로(`UND_ERR_HEADE
 {
   "slot_ids": ["slot-id-1"],
   "q": "서울",
-  "template": "T01",
+  "template": "T16",
   "max": 10,
-  "balanced": true,
   "provider": "codex",
   "model": "",
   "design_template_id": "local-guide",
@@ -908,13 +907,18 @@ Node fetch 는 헤더를 300초 안에 못 받으면 끊으므로(`UND_ERR_HEADE
 동작:
 
 - `slot_ids`가 있으면 해당 슬롯을 대상으로 큐에 넣는다.
-- `slot_ids`가 없으면 `q`, `template`, `max`, `balanced` 기준으로 `planned` 슬롯을 자동 선택한다.
+- `slot_ids`가 없으면 `q`, `template`, `max` 기준으로 `planned` 슬롯을 자동 선택한다.
+  선별 규칙은 하나뿐이다(글유형마다 최소 1건 → 나머지는 지역 라운드로빈 → 같은 지역+키워드는 1건).
+  **`balanced` 는 없어졌다** — 예전에는 이 값으로 「전국 골고루」만 다르게 뽑았으나 규칙을 통일했다.
+  옛 클라이언트가 보내도 거부하지 않고 무시한다.
 - 도메인의 제외 키워드에 걸리는 슬롯은 제외된다.
+- **요청이 잡 하나가 담는 상한(`GENERATE_JOB_MAX_SLOTS`)을 넘으면 여러 잡으로 쪼개 넣는다.**
+  응답의 `job_id` 는 첫 조각이고, 몇 개로 나뉘었는지는 `job_count`·`job_ids` 로 알 수 있다.
 
 응답:
 
 ```json
-{ "ok": true, "job_id": "...", "slot_count": 10 }
+{ "ok": true, "job_id": "...", "job_ids": ["..."], "job_count": 1, "slot_count": 10, "max_slots_per_job": 25 }
 ```
 
 ### `POST /api/admin/domains/{domain}/jobs/dedup`
