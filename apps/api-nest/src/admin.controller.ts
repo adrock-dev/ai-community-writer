@@ -1063,6 +1063,46 @@ export class AdminController {
 
   // 업종 레지스트리(라벨 MVP): 작업환경에서 key/label 추가·삭제. key 는 프리셋 선택·프롬프트에 쓰인다.
   // 주의: 새 key 는 프리셋(PRESETS)이 없어 해당 도메인은 축이 빈 상태로 시작한다(생성은 driving 프리셋만 실효).
+  // 인수인계 메모 — 가이드 문서가 담지 못하는 '아직 확인하지 못한 것'을 사람이 적는다.
+  // 전역이다(도메인에 딸리지 않는다) — 대개 시스템 전반의 우려이고, 도메인마다 나누면 같은 걱정이
+  // 여러 벌로 흩어진다.
+  @Get("settings/notes")
+  listAdminNotes(@Req() req: Request, @Headers() headers: Record<string, string>) {
+    checkAuth(req, headers); return { items: this.db.listAdminNotes() };
+  }
+  @Post("settings/notes")
+  createAdminNote(@Req() req: Request, @Headers() headers: Record<string, string>, @Body() body: Row) {
+    checkAuth(req, headers);
+    const title = String(body.title || "").trim();
+    if (!title) throw new HttpException("메모 제목을 입력하세요.", 400);
+    return { ok: true, note: this.db.createAdminNote(title, String(body.body || "").trim()) };
+  }
+  @Patch("settings/notes/:id")
+  updateAdminNote(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string, @Body() body: Row) {
+    checkAuth(req, headers);
+    const patch: { title?: string; body?: string; status?: "open" | "resolved" } = {};
+    if (body.title !== undefined) {
+      const title = String(body.title).trim();
+      if (!title) throw new HttpException("메모 제목을 입력하세요.", 400);
+      patch.title = title;
+    }
+    if (body.body !== undefined) patch.body = String(body.body);
+    if (body.status !== undefined) {
+      const status = String(body.status);
+      if (status !== "open" && status !== "resolved") throw new HttpException("status 는 open 또는 resolved 여야 합니다.", 400);
+      patch.status = status;
+    }
+    const note = this.db.updateAdminNote(id, patch);
+    if (!note) throw new HttpException("메모를 찾을 수 없습니다.", 404);
+    return { ok: true, note };
+  }
+  @Delete("settings/notes/:id")
+  deleteAdminNote(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string) {
+    checkAuth(req, headers);
+    if (!this.db.deleteAdminNote(id)) throw new HttpException("메모를 찾을 수 없습니다.", 404);
+    return { ok: true };
+  }
+
   @Get("settings/verticals")
   listVerticals(@Req() req: Request, @Headers() headers: Record<string, string>) {
     checkAuth(req, headers); return { items: this.db.getVerticals() };

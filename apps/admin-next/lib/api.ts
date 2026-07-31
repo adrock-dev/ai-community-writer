@@ -1,5 +1,26 @@
 import type { AcademyListPayload, AdminOptions, Axis, AxisValue, SlotListPayload, DomainDetailPayload, RuntimeApis, CustomTemplate, CoherenceReport, Vertical } from "./types";
 
+/**
+ * 인수인계 메모. 가이드 문서와 달리 **검증되지 않은 사람의 판단**이라 저장소가 아니라 DB 에 둔다.
+ * created_at 을 항상 함께 받아 화면에 시점을 붙인다 — 시점 없는 우려는 오래되면 사실처럼 굳는다.
+ */
+export type AdminNote = {
+  id: string;
+  title: string;
+  body: string;
+  status: "open" | "resolved";
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
+};
+export const listAdminNotes = () => api<{ items: AdminNote[] }>("/settings/notes");
+export const createAdminNote = (title: string, body: string) =>
+  api<{ ok: true; note: AdminNote }>("/settings/notes", { method: "POST", body: JSON.stringify({ title, body }) });
+export const updateAdminNote = (id: string, patch: Partial<Pick<AdminNote, "title" | "body" | "status">>) =>
+  api<{ ok: true; note: AdminNote }>(`/settings/notes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
+export const deleteAdminNote = (id: string) =>
+  api<{ ok: true }>(`/settings/notes/${encodeURIComponent(id)}`, { method: "DELETE" });
+
 export const listVerticals = () => api<{ items: Vertical[] }>("/settings/verticals");
 export const addVertical = (key: string, label: string) => api<{ ok: true; items: Vertical[] }>("/settings/verticals", { method: "POST", body: JSON.stringify({ key, label }) });
 export const deleteVertical = (key: string) => api<{ ok: true; items: Vertical[] }>(`/settings/verticals/${encodeURIComponent(key)}`, { method: "DELETE" });

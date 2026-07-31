@@ -12,10 +12,10 @@
 | --- | --- | --- | --- |
 | **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 11 |
 | **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 111 |
-| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 190 |
-| | | **합계** | **312** |
+| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 195 |
+| | | **합계** | **317** |
 
-파일별: `apps/admin-next/components/DomainClient.tsx` 222 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 11 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/lib/domain-gate.ts` 8 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/JobCard.tsx` 4 · `apps/admin-next/lib/guides.ts` 3 · `apps/admin-next/app/guides/page.tsx` 2 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/admin-next/lib/copy-facts.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
+파일별: `apps/admin-next/components/DomainClient.tsx` 222 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 11 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/lib/domain-gate.ts` 8 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/AdminNotesClient.tsx` 4 · `apps/admin-next/components/JobCard.tsx` 4 · `apps/admin-next/app/guides/page.tsx` 3 · `apps/admin-next/lib/guides.ts` 3 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/admin-next/lib/copy-facts.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
 
 ## 지금 이미 어긋난 것 (0건)
 
@@ -144,7 +144,7 @@
 | `apps/admin-next/components/SettingsClient.tsx:196` | muted-p | 도메인 생성 시 고르는 업종 목록입니다. key는 프리셋·프롬프트에 쓰는 슬러그, 표시명은 화면 표시용입니다. 새 업종은 전용 프리셋이 없어 도메인이 빈 축으로 시작합니다(현재 실질 생성은 driving 기준). 이 설정은 서버에 저장되어 즉시 반영됩니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/admin.controller.ts` |
 | `apps/admin-next/components/SettingsClient.tsx:227` | muted-p | 수집만 켜고 끕니다. 글 생성에는 어느 쪽이든 쓰지 않습니다. 생성 프롬프트와 품질 게이트에서 이미 빠져 있어, 켜도 글 내용이 달라지지 않습니다. 글에 다시 쓰려면 블로그 글이 실제 그 학원의 글인지 건별로 가려내는 검증 기능이 먼저 필요합니다. 그런 기능이 생긴다면 검증을 통과한 것만 골라 쓰는 방식을 검토해볼 만합니… | `apps/api-nest/src/worker.service.ts 프롬프트`<br>`apps/api-nest/src/quality-gate.ts` |
 | `apps/admin-next/components/SettingsClient.tsx:251` | jsx-text | 서버에 저장되어 즉시 반영됩니다(재시작 불필요). | `apps/api-nest/src/admin.controller.ts settings/verticals` |
-| `apps/admin-next/lib/api.ts:23` | lib-string | 콘텐츠 API에 연결할 수 없습니다<br>_프록시·base URL 설정에 매달린 진단 문구다._ | `apps/admin-next/app/api/admin/[...path]/route.ts`<br>`SEO_API_BASE_URL` |
+| `apps/admin-next/lib/api.ts:44` | lib-string | 콘텐츠 API에 연결할 수 없습니다<br>_프록시·base URL 설정에 매달린 진단 문구다._ | `apps/admin-next/app/api/admin/[...path]/route.ts`<br>`SEO_API_BASE_URL` |
 | `apps/admin-next/lib/copy-facts.ts:33` | lib-string | 작성 대기(planned)만 · 위 목록의 상태·유형·검색 필터 반영 · 글유형마다 최소 1건 · 나머지는 지역을 골고루 · 같은 지역+키워드는 1건<br>_자동 선별 규칙을 사람 말로 옮긴 문장. 세 버튼 툴팁·추천 안내가 이것을 읽는다. selectSlotsForBatch 를 고치면 반드시 같이 고쳐라 — 기계가 판정할 수 없다._ | `apps/api-nest/src/db.service.ts#selectSlotsForBatch 선별 규칙` |
 | `apps/admin-next/lib/domain-gate.ts:12` | lib-string | 도메인을 만든 뒤 원천 데이터 동기화 → 후보 생성 → 테스트 작성 순서로 진행하세요.<br>_권장 순서를 단정한다 — 후보 생성이 선행 조건이라는 사실에 매달린다._ | `apps/api-nest/src/slot.service.ts` |
 | `apps/api-nest/src/admin.controller.ts:155` | api-error | 등록되지 않은 업종입니다. 작업환경에서 먼저 추가하세요.<br>_업종 레지스트리 검증 결과를 사용자에게 설명한다._ | `apps/api-nest/src/admin.controller.ts 업종 검증`<br>`apps/api-nest/src/db.service.ts getVerticals` |
@@ -154,22 +154,23 @@
 | `apps/api-nest/src/admin.controller.ts:359` | api-error | LLM 응답을 해석하지 못했습니다. 다시 시도해 주세요. | `apps/api-nest/src/admin.controller.ts 방향성 검증` |
 | `apps/api-nest/src/admin.controller.ts:613` | api-error | 안전·사실(B) 이슈가 남아 있어 발행할 수 없습니다. 본문을 수정해 재검증하세요.<br>_DraftsClient 의 같은 규칙 설명 2건과 한 몸이다 — 등급 기준이 바뀌면 세 곳을 같이 고쳐야 한다._ | `apps/api-nest/src/quality-gate.ts`<br>`draft 격리 게이트` |
 | `apps/api-nest/src/admin.controller.ts:882` | api-error | 작성할 planned 후보가 없습니다. 먼저 「글 생성」 탭 1단계의 「글 후보 만들기」로 후보를 만든 뒤 작성하세요. (검색어·유형·제외 목록도 확인하세요.)<br>_후보가 없을 때의 대처를 안내하며 버튼 이름(「글 후보 만들기」)과 그 위치(「글 생성」 탭 1단계)를 부른다 — 화면 흐름·버튼 이름이 바뀌면 같이 고쳐야 한다._ | `apps/api-nest/src/slot.service.ts` |
-| `apps/api-nest/src/admin.controller.ts:1075` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
-| `apps/api-nest/src/admin.controller.ts:1086` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
-| `apps/api-nest/src/admin.controller.ts:1088` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
-| `apps/api-nest/src/admin.controller.ts:1090` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:1115` | api-error | 업종 key는 영문 소문자·숫자·하이픈만 사용하세요.<br>_검증 정규식과 한 몸이다._ | `apps/api-nest/src/admin.controller.ts 업종 key 검증` |
+| `apps/api-nest/src/admin.controller.ts:1126` | api-error | 기본 업종(driving)은 삭제할 수 없습니다. | `apps/api-nest/src/constants.ts#DEFAULT_DRIVING_VERTICAL` |
+| `apps/api-nest/src/admin.controller.ts:1128` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
+| `apps/api-nest/src/admin.controller.ts:1130` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 
-## C — 순수 안내 (190건)
+## C — 순수 안내 (195건)
 
 흐름 설명·투어 문구·빈 상태 문구. 사실을 주장하지 않으므로 코드 변경과 무관하다.
 새로 추가된 문장이 사실을 주장하는데 C 로 남아 있는지는 `node scripts/copy-inventory.mjs --untagged` 로 점검한다.
 
-<details><summary>전체 190건 펼치기</summary>
+<details><summary>전체 195건 펼치기</summary>
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
 | `apps/admin-next/app/guides/page.tsx:12` | muted-p | 저장소의 문서를 그대로 읽어 보여줍니다. 화면용으로 따로 옮겨 적지 않으므로 문서를 고치면 여기도 함께 바뀝니다. | — |
-| `apps/admin-next/app/guides/page.tsx:29` | muted-p | 문서 파일을 찾지 못했습니다. 배포에 docs/가 포함됐는지 확인하세요. | — |
+| `apps/admin-next/app/guides/page.tsx:23` | muted-p | 아래 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적어 둡니다. 문서와 달리 코드와 대조되지 않으므로 적은 시점을 함께 봅니다. | — |
+| `apps/admin-next/app/guides/page.tsx:42` | muted-p | 문서 파일을 찾지 못했습니다. 배포에 docs/가 포함됐는지 확인하세요. | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:257` | muted-p | 조사된 셔틀 노선이 없습니다. | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:273` | jsx-text | 수집된 후기가 없습니다. 원천에서 이 학원만 다시 받아 볼 수 있습니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:106` | confirm | DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요? | — |
@@ -180,6 +181,10 @@
 | `apps/admin-next/components/AcademyResearchClient.tsx:413` | jsx-text | 동기화된 학원이 없습니다. 원천에서 학원 목록과 후기를 먼저 받아야 합니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:485` | muted-p | 원천 동기화 목록에 없는 학원을 직접 넣습니다. 필수는 이름 하나이며, 나머지는 근거로 확인한 것만 채우세요. 여기 등록한 학원은 동기화를 다시 돌려도 사라지지 않고, AI 조사 대상에도 함께 들어갑니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:698` | confirm | ${label} ${selected.length}건을 「검증완료」로 올립니다.\n체크를 푼 ${unchecked.size}건은 그대로 둡니다. 진행할까요? | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:53` | muted-p | 가이드 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적습니다. 가이드는 저장소 문서라 코드와 대조되지만 메모는 검증되지 않은 판단이라 작성 시점을 함께 봅니다. | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:63` | placeholder | 예: 색인 제출이 아직 구현되지 않았음 | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:67` | placeholder | 무엇을 확인해야 하는지, 왜 걱정되는지, 지금 어떤 상태인지 | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:85` | muted-p | 확인이 필요한 메모가 없습니다. | — |
 | `apps/admin-next/components/DashboardClient.tsx:102` | muted-p | 운전면허·운전학원 도메인의 콘텐츠 생성·발행 작업을 운영하는 내부 관리자 화면입니다. | — |
 | `apps/admin-next/components/DashboardClient.tsx:108` | muted-p | ℹ️ 현재 범위 — 이 관리자는 운전면허·운전학원(driving) 글 생성에 특화되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 이 주제 기준이라, 다른 주제의 글은 생성되더라도 품질을 보장할 수 없습니다. (업종은 추가할 수 있으나 전용 프리셋·품질은 아직 운전면허·운전학원에만 적용) | — |
 | `apps/admin-next/components/DashboardClient.tsx:120` | muted-p | 생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다. | — |

@@ -148,6 +148,24 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+-- 인수인계 메모. 가이드 문서(docs/*.md)가 담지 못하는 것 — 아직 확인하지 못한 우려, 다음 사람이
+-- 짚어야 할 것 — 을 사람이 화면에서 적는다.
+--
+-- **가이드와 성격이 정반대라 저장소를 나눴다.** 가이드는 파일이 정본이고 verify:doc-sync 가
+-- 코드와 대조하는 '확정된 사실'이지만, 이건 검증할 수 없는 '사람의 판단'이다. 섞어 두면 다음
+-- 사람이 둘을 같은 무게로 읽는다.
+--
+-- created_at 을 반드시 함께 보여준다 — 시점 없는 우려는 언제까지 유효한지 알 수 없어, 오래되면
+-- 사실처럼 굳거나 반대로 통째로 무시된다.
+CREATE TABLE IF NOT EXISTS admin_notes (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TEXT
+);
 CREATE TABLE IF NOT EXISTS academies (
   id TEXT PRIMARY KEY,
   domain TEXT NOT NULL,
@@ -1076,6 +1094,33 @@ export class DbService implements OnModuleInit {
   listPostsForDedup(domain: string, includeNoindex = false): Row[] {
     const statuses = includeNoindex ? "('published','noindex')" : "('published')";
     return this.all(`SELECT p.id, p.slug, p.title, p.body_markdown, p.status, p.generated_at, s.priority_score AS priority_score FROM posts p LEFT JOIN slots s ON s.slot_id = p.slot_id WHERE p.domain=? AND p.status IN ${statuses} ORDER BY p.generated_at ASC`, [domain]);
+  }
+
+  // 인수인계 메모 — 확인 필요한 것을 먼저, 그 안에서 최신순. 해결된 것은 아래로 내린다.
+  listAdminNotes(): Row[] {
+    return this.all(
+      "SELECT * FROM admin_notes ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, created_at DESC",
+    );
+  }
+  createAdminNote(title: string, body: string): Row {
+    const id = randomUUID();
+    this.run("INSERT INTO admin_notes (id, title, body) VALUES (?, ?, ?)", [id, title, body]);
+    // 방금 넣은 행이라 반드시 있다.
+    return this.get("SELECT * FROM admin_notes WHERE id=?", [id])!;
+  }
+  /** 제목·본문·상태를 부분 수정. status 가 바뀔 때만 resolved_at 을 손댄다(해결 시점이 편집 때마다 밀리면 안 된다). */
+  updateAdminNote(id: string, patch: { title?: string; body?: string; status?: "open" | "resolved" }): Row | null {
+    const current = this.get("SELECT * FROM admin_notes WHERE id=?", [id]);
+    if (!current) return null;
+    const title = patch.title ?? current.title;
+    const body = patch.body ?? current.body;
+    const status = patch.status ?? current.status;
+    const resolvedAt = status === current.status ? current.resolved_at : status === "resolved" ? nowSql() : null;
+    this.run("UPDATE admin_notes SET title=?, body=?, status=?, resolved_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [title, body, status, resolvedAt, id]);
+    return this.get("SELECT * FROM admin_notes WHERE id=?", [id]) ?? null;
+  }
+  deleteAdminNote(id: string): boolean {
+    return (this.run("DELETE FROM admin_notes WHERE id=?", [id]).changes ?? 0) > 0;
   }
 
   getSetting(key: string): string | null { return this.get("SELECT value FROM app_settings WHERE key=?", [key])?.value ?? null; }

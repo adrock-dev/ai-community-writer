@@ -115,6 +115,7 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | `/academies/[externalId]` | 학원 1곳의 조사값 상세 |
 | `/settings` | 작업환경(튜토리얼·생성 기본값·업종·블로그리뷰 수집) |
 | `/guides` | 관리자 가이드 목록 — 저장소 `docs/*.md`를 그대로 읽어 보여준다(사본 없음) |
+| `/guides/notes` | 인수인계 메모 — 사람이 적는 미확인 우려(DB 저장, 문서와 분리) |
 | `/guides/[slug]` | 가이드 문서 본문 |
 | `/integrations` | 연동 설정 |
 | `/need-domain` | 도메인이 없을 때의 안내 |
@@ -149,8 +150,9 @@ Base: `/api/admin`
 - `POST /domains/:domain/jobs/generate|dedup|prune|indexing`
 - `GET /jobs`, `POST /jobs/:id/cancel|pause|resume|prioritize`
 - `GET/PUT /settings/indexing`, `GET/PUT /settings/blog-review-sync`, `GET/POST /settings/verticals`
+- `GET/POST /settings/notes`, `PATCH/DELETE /settings/notes/:id` — 인수인계 메모(전역)
 
-**위는 일부입니다.** 실제 엔드포인트는 95개(관리자 88 + 공개 7)이고, 학원 심층조사는 별도 컨트롤러(`/api/admin/academy-research/*`, 18개)에 있습니다. 전수 목록과 상세 계약은 `docs/admin-json-api.md`(「엔드포인트 전수 색인」)를 기준으로 봅니다.
+**위는 일부입니다.** 실제 엔드포인트는 99개(관리자 92 + 공개 7)이고, 학원 심층조사는 별도 컨트롤러(`/api/admin/academy-research/*`, 18개)에 있습니다. 전수 목록과 상세 계약은 `docs/admin-json-api.md`(「엔드포인트 전수 색인」)를 기준으로 봅니다.
 
 ## 7. 공개 API 요약
 
@@ -202,6 +204,7 @@ data/admin.db
 - `custom_templates` — 도메인이 직접 만든 글유형
 - `jobs`
 - `app_settings`
+- `admin_notes` — 인수인계 메모. 가이드 문서(`docs/*.md`)가 담지 못하는 미확인 우려를 사람이 화면에서 적는다
 - `academies`
 - `academy_exclusions` — 도메인별로 뺀 학원. 연결이 이 목록을 건너뛴다(행만 지우면 재연결 때 되살아나므로)
 - `seo_regions`

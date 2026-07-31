@@ -14,6 +14,19 @@ export default function GuidesPage() {
         </p>
       </div>
 
+      {/* 메모는 가이드와 성격이 반대라(검증 안 되는 사람의 판단) 문서 카드와 섞지 않고 위에 따로 둔다. */}
+      <div className="card card-pad grid">
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          <h2 style={{ margin: 0 }}>인수인계 메모</h2>
+          <span className="badge warn">사람이 적는 것</span>
+        </div>
+        <p className="muted small">
+          아래 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적어 둡니다.
+          문서와 달리 코드와 대조되지 않으므로 적은 시점을 함께 봅니다.
+        </p>
+        <div className="row"><Link className="btn" href="/guides/notes">메모 열기</Link></div>
+      </div>
+
       <div className="grid grid-2">
         {items.map(({ guide, available }) => (
           <div className="card card-pad grid" key={guide.slug}>
