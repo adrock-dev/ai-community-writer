@@ -71,6 +71,29 @@ describe("T16 카드 기본 정보 불릿", () => {
     expect(same).not.toContain("- **운영 형태:**");
   });
 
+  it("수강료의 공통 단서는 카드 불릿에서 뗀다 — 글에서 한 번만 밝히는 것이 계약이다", () => {
+    const lines = academyCardBulletLines(
+      { ...학원A, price: "2종 보통 650,000원 (부가세 별도, 검정료 포함, 2026년 1분기 기준)" },
+      false,
+      label,
+    );
+    const fee = lines.find((l) => l.includes("수강료")) ?? "";
+    expect(fee).toContain("650,000원");
+    expect(fee).not.toContain("부가세");
+    expect(fee).not.toContain("기준");
+  });
+
+  it("셔틀 운행 지역은 대표 몇 곳 + 등으로 줄인다 — 길이 게이트를 넘기던 자리", () => {
+    const many = "북구 칠성동, 북구 산격동, 동구 신암동, 서구 내당동, 남구 대명동, 수성구 범어동";
+    const lines = academyCardBulletLines({ ...학원A, shuttle: many }, false, label);
+    const shuttle = lines.find((l) => l.includes("셔틀")) ?? "";
+    expect(shuttle).toContain("등");
+    expect(shuttle).not.toContain("수성구 범어동");
+    // 적을 때는 그대로 둔다 — 굳이 "등"을 붙이면 더 있는 것처럼 읽힌다.
+    const few = academyCardBulletLines({ ...학원A, shuttle: "북구 칠성동, 동구 신암동" }, false, label).find((l) => l.includes("셔틀")) ?? "";
+    expect(few).not.toContain("등");
+  });
+
   it("자료에 없는 학원의 카드는 건드리지 않는다 — 오배정이 빈 불릿보다 나쁘다", () => {
     const md = ["### 이름이 전혀 다른 학원", "", "소개 문장.", ""].join("\n");
     expect(ensureT16CardBullets(md, [학원A], label)).toBe(md);

@@ -36,6 +36,29 @@ function text(value: unknown): string {
 }
 
 /**
+ * 수강료에서 공통 단서를 뗀다.
+ *
+ * "(부가세 별도, 검정료 포함, 2026년 1분기 기준)" 같은 단서는 **글에서 한 번만** 밝히는 것이
+ * 계약이다(표 아래 한 줄). 카드마다 되풀이하면 다섯 장이 같은 각주를 지고, 실측에서 카드 불릿
+ * 1,555자 중 수강료가 385자를 차지한 주범이었다 — 길이 게이트(5,600자)를 넘겨 글이 격리됐다.
+ */
+function priceWithoutCommonNote(value: string): string {
+  return value.replace(/\s*[（(][^)）]*(?:부가세|검정료|기준)[^)）]*[)）]/g, "").trim();
+}
+
+/**
+ * 셔틀 운행 지역을 대표 몇 곳으로 줄인다 — 계약이 모델에게 요구하는 것과 같은 규칙이다.
+ *
+ * 독자에게 중요한 것은 자기 출발지가 경유지에 있는지이지 전체 목록이 아니다. 원본을 통째로 넣으면
+ * 한 카드에서만 90자를 넘기도 한다(실측: 다섯 카드 448자).
+ */
+function shuttleSummary(value: string, max = 4): string {
+  const parts = value.split(/[,·]/).map((v) => v.trim()).filter(Boolean);
+  if (parts.length <= max) return parts.join(", ");
+  return `${parts.slice(0, max).join(", ")} 등`;
+}
+
+/**
  * 학원 한 곳의 기본 정보 불릿 줄을 만든다. 값이 없는 항목은 만들지 않는다(계약과 같다).
  *
  * `includeOperationType` 는 호출자가 정한다 — 계약이 "모든 학원이 같은 운영 형태면 카드 불릿에
@@ -52,9 +75,9 @@ export function academyCardBulletLines(
   push("주소", text(academy.address));
   // 공개 글에 노출할 연락처는 안심번호(vphone)뿐이다 — facts 와 같은 규칙이다(실번호는 아예 안 쓴다).
   push("전화", text(academy.vphone));
-  push("수강료", text(academy.price));
+  push("수강료", priceWithoutCommonNote(text(academy.price)));
   // 지역이 없는 셔틀 값("셔틀 운행" 같은 내부 신호)은 라벨과 어긋나므로 넣지 않는다.
-  if (hasShuttleDetail(academy.shuttle)) push("셔틀 운행 지역", text(academy.shuttle));
+  if (hasShuttleDetail(academy.shuttle)) push("셔틀 운행 지역", shuttleSummary(text(academy.shuttle)));
   push("운영 과정", text(courseFactText(academy)));
   if (includeOperationType) push("운영 형태", text(academyTypeLabel(academy.academy_type)));
 
