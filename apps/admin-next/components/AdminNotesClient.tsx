@@ -22,6 +22,7 @@ export default function AdminNotesClient() {
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [pinned, setPinned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState({ title: "", body: "" });
@@ -71,11 +72,19 @@ export default function AdminNotesClient() {
           <span className="label">내용 (선택)</span>
           <textarea className="textarea" rows={4} value={body} onChange={(e) => setBody(e.target.value)} placeholder="무엇을 확인해야 하는지, 왜 걱정되는지, 지금 어떤 상태인지" />
         </label>
+        {/* 적는 순간이 가장 판단이 선명하다 — 나중에 목록에서 다시 찾아 누르게 하지 않는다. */}
+        <label className="row" style={{ gap: 6, alignItems: "center", cursor: "pointer" }}>
+          <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} />
+          <span className="small">꼭 볼 것으로 표시 — 목록 맨 위에 둡니다</span>
+        </label>
         <div className="row">
           <button
             className="btn primary"
             disabled={!title.trim() || busy}
-            onClick={() => run(async () => { await createAdminNote(title.trim(), body.trim()); setTitle(""); setBody(""); })}
+            onClick={() => run(async () => {
+              await createAdminNote(title.trim(), body.trim(), pinned);
+              setTitle(""); setBody(""); setPinned(false);
+            })}
           >
             {busy ? "저장 중..." : "메모 추가"}
           </button>
@@ -167,10 +176,19 @@ function NoteRow({ note, busy, editing, draft, onDraft, onEdit, onCancel, onSave
             <b>{note.title}</b>
           </div>
           {note.body && <p className="muted small" style={{ whiteSpace: "pre-wrap", margin: 0 }}>{note.body}</p>}
+          {/* 값이 아니라 **렌더된 문자열**로 견준다. 표시가 분 단위라 같은 분에 고치면 값은 달라도
+              화면에는 같은 시각이 두 번 찍혀 노이즈만 된다. */}
           <p className="muted small" style={{ margin: 0 }}>
-            적은 날 {formatDate(note.created_at)}
-            {note.updated_at !== note.created_at && ` · 고친 날 ${formatDate(note.updated_at)}`}
-            {note.resolved_at && ` · 해결 ${formatDate(note.resolved_at)}`}
+            {(() => {
+              const createdAt = formatDate(note.created_at);
+              const updatedAt = formatDate(note.updated_at);
+              const resolvedAt = note.resolved_at ? formatDate(note.resolved_at) : "";
+              return [
+                `적은 날 ${createdAt}`,
+                updatedAt !== createdAt ? `고친 날 ${updatedAt}` : "",
+                resolvedAt && resolvedAt !== updatedAt ? `해결 ${resolvedAt}` : "",
+              ].filter(Boolean).join(" · ");
+            })()}
           </p>
           <div className="row">
             <button className="btn" disabled={busy} onClick={onPin} title="인수인계 때 먼저 봐야 할 메모를 맨 위로 올립니다.">

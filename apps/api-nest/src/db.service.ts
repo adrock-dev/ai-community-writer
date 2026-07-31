@@ -1111,9 +1111,9 @@ export class DbService implements OnModuleInit {
       "SELECT * FROM admin_notes ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, pinned DESC, created_at DESC",
     );
   }
-  createAdminNote(title: string, body: string): Row {
+  createAdminNote(title: string, body: string, pinned = false): Row {
     const id = randomUUID();
-    this.run("INSERT INTO admin_notes (id, title, body) VALUES (?, ?, ?)", [id, title, body]);
+    this.run("INSERT INTO admin_notes (id, title, body, pinned) VALUES (?, ?, ?, ?)", [id, title, body, pinned ? 1 : 0]);
     // 방금 넣은 행이라 반드시 있다.
     return this.get("SELECT * FROM admin_notes WHERE id=?", [id])!;
   }

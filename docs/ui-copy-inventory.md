@@ -181,13 +181,13 @@
 | `apps/admin-next/components/AcademyResearchClient.tsx:413` | jsx-text | 동기화된 학원이 없습니다. 원천에서 학원 목록과 후기를 먼저 받아야 합니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:485` | muted-p | 원천 동기화 목록에 없는 학원을 직접 넣습니다. 필수는 이름 하나이며, 나머지는 근거로 확인한 것만 채우세요. 여기 등록한 학원은 동기화를 다시 돌려도 사라지지 않고, AI 조사 대상에도 함께 들어갑니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:698` | confirm | ${label} ${selected.length}건을 「검증완료」로 올립니다.\n체크를 푼 ${unchecked.size}건은 그대로 둡니다. 진행할까요? | — |
-| `apps/admin-next/components/AdminNotesClient.tsx:58` | muted-p | 가이드 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적습니다. 가이드는 저장소 문서라 코드와 대조되지만 메모는 검증되지 않은 판단이라 작성 시점을 함께 봅니다. | — |
-| `apps/admin-next/components/AdminNotesClient.tsx:68` | placeholder | 예: 색인 제출이 아직 구현되지 않았음 | — |
-| `apps/admin-next/components/AdminNotesClient.tsx:72` | placeholder | 무엇을 확인해야 하는지, 왜 걱정되는지, 지금 어떤 상태인지 | — |
-| `apps/admin-next/components/AdminNotesClient.tsx:90` | muted-p | 「해결됨으로」를 누르면 아래 「해결됨」에 보관됩니다. 「삭제」는 복구할 수 없습니다. | — |
-| `apps/admin-next/components/AdminNotesClient.tsx:93` | muted-p | 확인이 필요한 메모가 없습니다. | — |
-| `apps/admin-next/components/AdminNotesClient.tsx:176` | tooltip | 인수인계 때 먼저 봐야 할 메모를 맨 위로 올립니다. | — |
-| `apps/admin-next/components/AdminNotesClient.tsx:181` | tooltip | 복구할 수 없습니다. 기록을 남기려면 「해결됨으로」를 쓰세요. | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:59` | muted-p | 가이드 문서에 없는 것 — 아직 확인하지 못한 우려, 다음 사람이 짚어야 할 것 — 을 적습니다. 가이드는 저장소 문서라 코드와 대조되지만 메모는 검증되지 않은 판단이라 작성 시점을 함께 봅니다. | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:69` | placeholder | 예: 색인 제출이 아직 구현되지 않았음 | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:73` | placeholder | 무엇을 확인해야 하는지, 왜 걱정되는지, 지금 어떤 상태인지 | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:99` | muted-p | 「해결됨으로」를 누르면 아래 「해결됨」에 보관됩니다. 「삭제」는 복구할 수 없습니다. | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:102` | muted-p | 확인이 필요한 메모가 없습니다. | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:194` | tooltip | 인수인계 때 먼저 봐야 할 메모를 맨 위로 올립니다. | — |
+| `apps/admin-next/components/AdminNotesClient.tsx:199` | tooltip | 복구할 수 없습니다. 기록을 남기려면 「해결됨으로」를 쓰세요. | — |
 | `apps/admin-next/components/DashboardClient.tsx:102` | muted-p | 운전면허·운전학원 도메인의 콘텐츠 생성·발행 작업을 운영하는 내부 관리자 화면입니다. | — |
 | `apps/admin-next/components/DashboardClient.tsx:108` | muted-p | ℹ️ 현재 범위 — 이 관리자는 운전면허·운전학원(driving) 글 생성에 특화되어 구현돼 있습니다. 프리셋·글유형·품질 규칙이 이 주제 기준이라, 다른 주제의 글은 생성되더라도 품질을 보장할 수 없습니다. (업종은 추가할 수 있으나 전용 프리셋·품질은 아직 운전면허·운전학원에만 적용) | — |
 | `apps/admin-next/components/DashboardClient.tsx:120` | muted-p | 생성 글 본문·CTA에 나가는 이름입니다. 비우면 표시 이름을 그대로 씁니다. 나중에 설정 탭에서 바꿀 수 있습니다. | — |

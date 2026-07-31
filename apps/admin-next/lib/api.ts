@@ -16,8 +16,8 @@ export type AdminNote = {
   resolved_at: string | null;
 };
 export const listAdminNotes = () => api<{ items: AdminNote[] }>("/settings/notes");
-export const createAdminNote = (title: string, body: string) =>
-  api<{ ok: true; note: AdminNote }>("/settings/notes", { method: "POST", body: JSON.stringify({ title, body }) });
+export const createAdminNote = (title: string, body: string, pinned = false) =>
+  api<{ ok: true; note: AdminNote }>("/settings/notes", { method: "POST", body: JSON.stringify({ title, body, pinned }) });
 export const updateAdminNote = (
   id: string,
   patch: Partial<Pick<AdminNote, "title" | "body" | "status">> & { pinned?: boolean },

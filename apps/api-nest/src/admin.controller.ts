@@ -1075,7 +1075,7 @@ export class AdminController {
     checkAuth(req, headers);
     const title = String(body.title || "").trim();
     if (!title) throw new HttpException("메모 제목을 입력하세요.", 400);
-    return { ok: true, note: this.db.createAdminNote(title, String(body.body || "").trim()) };
+    return { ok: true, note: this.db.createAdminNote(title, String(body.body || "").trim(), Boolean(body.pinned)) };
   }
   @Patch("settings/notes/:id")
   updateAdminNote(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string, @Body() body: Row) {
