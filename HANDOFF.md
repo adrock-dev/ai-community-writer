@@ -114,6 +114,8 @@ SEO_API_BASE_URL=http://127.0.0.1:8765 npm run dev
 | `/academies` | 「운전학원 자료」 — 원천 동기화·AI 심층조사·검토 승인. **업종 단위 전역 화면이라 도메인을 모른다** |
 | `/academies/[externalId]` | 학원 1곳의 조사값 상세 |
 | `/settings` | 작업환경(튜토리얼·생성 기본값·업종·블로그리뷰 수집) |
+| `/guides` | 관리자 가이드 목록 — 저장소 `docs/*.md`를 그대로 읽어 보여준다(사본 없음) |
+| `/guides/[slug]` | 가이드 문서 본문 |
 | `/integrations` | 연동 설정 |
 | `/need-domain` | 도메인이 없을 때의 안내 |
 | `/t/[domain]` | 도메인 상세 개요 |

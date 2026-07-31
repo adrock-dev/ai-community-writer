@@ -37,6 +37,7 @@
 | 콘텐츠 운영 | 작업 큐 | `/t/{domain}/jobs` | `DomainClient` (`view="jobs"`) |
 | 자료 관리 | 운전학원 자료 | `/academies` | `AcademyResearchClient` |
 | 설정 | 작업환경 | `/settings` | `SettingsClient` |
+| 설정 | 관리자 가이드 | `/guides` | `app/guides/page.tsx` (서버 컴포넌트) |
 
 사이드바에 없지만 링크로 들어가는 화면:
 
@@ -45,6 +46,7 @@
 | `/t/{domain}/drafts` | 격리 검수 | 검수·보내기, 작업 실패 안내 |
 | `/t/{domain}/post/{postId}` | 글 상세 | 글 목록에서 제목 클릭 |
 | `/academies/{externalId}` | 학원 1곳 상세 | 운전학원 자료 목록 |
+| `/guides/[slug]` | 가이드 문서 본문 | 관리자 가이드 목록에서 「열기」 |
 | `/integrations` | 연동 설정 | 직접 이동 |
 | `/need-domain` | 도메인 없음 안내 | 도메인이 없을 때 자동 |
 
@@ -324,7 +326,23 @@
 
 ---
 
-### 3.11 연동 설정 `/integrations` · 도메인 없음 `/need-domain`
+### 3.11 관리자 가이드 `/guides` · `/guides/[slug]`
+
+**무엇을 하는 곳인가** — 이 문서를 포함한 가이드를 관리자 화면에서 바로 읽는다.
+
+**중요한 성질 — 사본이 아니다.** 저장소의 `docs/*.md`를 서버에서 그대로 읽어 렌더한다.
+화면용으로 옮겨 적지 않으므로 **문서를 고치면 화면도 함께 바뀐다.** 목록에 무엇을 띄울지는
+`lib/guides.ts`가 정하고, 마크다운 렌더는 `lib/doc-markdown.tsx`가 맡는다.
+
+**주의** — 그 렌더러는 **가이드 전용이며 생성 글 본문 렌더러와 무관하다.** 글 렌더러는
+`post-rendering.ts`와 `scripts/qa-posts.mjs`에 미러로 있고 게이트가 둘을 대조하는데,
+이쪽은 그 계약 밖이다. 한쪽을 고칠 때 다른 쪽을 볼 필요가 없다.
+
+배포 이미지에 `docs/`가 빠지면 목록은 뜨되 본문 자리에 안내가 나온다(예외로 죽지 않는다).
+
+---
+
+### 3.12 연동 설정 `/integrations` · 도메인 없음 `/need-domain`
 
 연동 설정은 현재 비활성 안내 화면이다(색인 기능이 보류 상태라 별도 연동 설정이 없다).
 `/need-domain`은 도메인이 하나도 없을 때 무엇부터 하면 되는지 안내한다.

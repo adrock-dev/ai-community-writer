@@ -163,6 +163,8 @@ export default function AppShell({ children, apiBase }: { children: React.ReactN
           <SidebarLink href="/academies" active={pathname.startsWith("/academies")} tabIndex={sidebarOpen ? 0 : -1}>운전학원 자료</SidebarLink>
           <p style={{ marginTop: 12 }}>설정</p>
           <SidebarLink href="/settings" active={pathname === "/settings"} tabIndex={sidebarOpen ? 0 : -1}>작업환경</SidebarLink>
+          {/* 저장소 docs/*.md 를 그대로 읽어 보여준다(lib/guides). 화면용 사본을 만들지 않는다. */}
+          <SidebarLink href="/guides" active={pathname.startsWith("/guides")} tabIndex={sidebarOpen ? 0 : -1}>관리자 가이드</SidebarLink>
         </nav>
 
         <div className="side-note">

@@ -12,10 +12,10 @@
 | --- | --- | --- | --- |
 | **A** | 파생 가능 — 코드 상수/설정에서 계산할 수 있는데 손으로 적은 수치·목록 | 재서술을 없애고 값에서 렌더한다 | 11 |
 | **B** | 동작 계약 — 코드가 강제하는 규칙의 서술 | 원본을 고치면 반드시 같이 고친다 | 111 |
-| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 185 |
-| | | **합계** | **307** |
+| **C** | 순수 안내 — 흐름·톤·빈 상태 문구 | 기계 검증 대상 아님 | 190 |
+| | | **합계** | **312** |
 
-파일별: `apps/admin-next/components/DomainClient.tsx` 222 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 11 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/lib/domain-gate.ts` 8 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/JobCard.tsx` 4 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/admin-next/lib/copy-facts.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
+파일별: `apps/admin-next/components/DomainClient.tsx` 222 · `apps/admin-next/components/AcademyResearchClient.tsx` 16 · `apps/api-nest/src/admin.controller.ts` 12 · `apps/admin-next/components/DashboardClient.tsx` 11 · `apps/admin-next/components/SettingsClient.tsx` 10 · `apps/admin-next/lib/domain-gate.ts` 8 · `apps/admin-next/components/DraftsClient.tsx` 7 · `apps/admin-next/components/PostDetailClient.tsx` 6 · `apps/admin-next/components/AcademyDetailClient.tsx` 4 · `apps/admin-next/components/JobCard.tsx` 4 · `apps/admin-next/lib/guides.ts` 3 · `apps/admin-next/app/guides/page.tsx` 2 · `apps/admin-next/components/IntegrationSettingsClient.tsx` 2 · `apps/admin-next/components/AppShell.tsx` 1 · `apps/admin-next/components/NeedDomainClient.tsx` 1 · `apps/admin-next/lib/api.ts` 1 · `apps/admin-next/lib/copy-facts.ts` 1 · `apps/api-nest/src/academy-research.controller.ts` 1
 
 ## 지금 이미 어긋난 것 (0건)
 
@@ -55,7 +55,7 @@
 | `apps/admin-next/components/AcademyResearchClient.tsx:489` | muted-p | ⚠️ 수강료·셔틀·운영시간은 원천이 그 학원 값을 주지 않을 때만 쓰입니다. 원천에 구조화된 값이 있으면 그쪽이 이깁니다. | `apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies __manual 폴백` |
 | `apps/admin-next/components/AcademyResearchClient.tsx:733` | muted-p | 도메인의 「조사값 신뢰 기준」이 「검증완료만」일 때, 여기서 승인한 값만 글에 쓰입니다. 항목을 하나 골라 값을 나란히 훑고 이상한 것만 체크를 푼 뒤 일괄 승인하세요. 「검토 필요」는 기본 선택에서 빠집니다 — 근거 검사가 짚어 둔 값이라, 하나씩 확인하고 직접 체크해야 승인됩니다. 값을 고치거나 승인을 되돌리려면 학원… | `apps/api-nest/src/academy-research-usage.ts`<br>`apps/api-nest/src/academy-link.service.ts#researchValuesFor` |
 | `apps/admin-next/components/AcademyResearchClient.tsx:762` | tooltip | 원천 값을 교차검증하려고 모은 항목(학원명·주소·전화·구·동·지번 등)까지 봅니다. 승인해도 글에는 쓰이지 않습니다. | `apps/api-nest/src/academy-research-article-fields.ts`<br>`apps/api-nest/src/academy-research.controller.ts#reviewQueue` |
-| `apps/admin-next/components/AppShell.tsx:179` | jsx-text | 원천 자료가 아직 반영되지 않았습니다. 「학원자료 연결」을 눌러야 글에 쓰입니다. | `apps/api-nest/src/link-freshness.ts`<br>`apps/api-nest/src/admin.controller.ts#pendingLinkFor`<br>`apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies` |
+| `apps/admin-next/components/AppShell.tsx:181` | jsx-text | 원천 자료가 아직 반영되지 않았습니다. 「학원자료 연결」을 눌러야 글에 쓰입니다. | `apps/api-nest/src/link-freshness.ts`<br>`apps/api-nest/src/admin.controller.ts#pendingLinkFor`<br>`apps/api-nest/src/db.service.ts#upsertDrivingplusAcademies` |
 | `apps/admin-next/components/DashboardClient.tsx:149` | muted-p | 운전 도메인을 만들면 지역/키워드 프리셋이 자동으로 들어갑니다. 도메인이 있어야 도메인 관리, 글 생성, 검수·보내기 메뉴를 사용할 수 있습니다. | `apps/api-nest/src/constants.ts#PRESETS`<br>`apps/api-nest/src/admin.controller.ts 도메인 생성` |
 | `apps/admin-next/components/DashboardClient.tsx:200` | muted-p | 모든 도메인의 작업을 진행·대기 먼저, 그다음 최신순으로 최대 {DASHBOARD_JOB_ROWS}건 보여줍니다. 운영 대상 하나만 보려면 왼쪽 메뉴에서 엽니다.<br>_정렬 규칙(진행 → 대기 실행순 → 최신순)을 그대로 서술한다. listJobs 의 ORDER BY 를 바꾸면 이 문장이 거짓이 된다. 건수는 DASHBOARD_JOB_ROWS 에서 렌더하므로 손으로 맞출 필요가 없다._ | `apps/api-nest/src/db.service.ts#listJobs ORDER BY` |
 | `apps/admin-next/components/DomainClient.tsx:462` | field:body | 이 사이트만의 말투·태도, 절대 넣지 말 제외어, 키워드 마스터를 정합니다. 확인된 데이터만 사용·날조 금지 같은 안전·데이터 규칙은 이미 강제되니 여기 적지 않아도 됩니다. 지금 건너뛰고 나중에 정해도 됩니다.<br>_2026-07-28 수정. 투어가 「안전·데이터 원칙을 정하라」고 안내해 바로 아래 입력칸 안내(「이미 강제되니 적지 마라」)와 모순이었다. 입력칸과 같은 기준으로 맞췄다._ | `apps/api-nest/src/worker.service.ts#buildPrompt 공통원칙 주입` |
@@ -159,15 +159,17 @@
 | `apps/api-nest/src/admin.controller.ts:1088` | api-error | 이 업종을 쓰는 도메인이 ${inUse}개 있어 삭제할 수 없습니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 | `apps/api-nest/src/admin.controller.ts:1090` | api-error | 최소 1개 업종은 남겨야 합니다. | `apps/api-nest/src/admin.controller.ts 업종 삭제` |
 
-## C — 순수 안내 (185건)
+## C — 순수 안내 (190건)
 
 흐름 설명·투어 문구·빈 상태 문구. 사실을 주장하지 않으므로 코드 변경과 무관하다.
 새로 추가된 문장이 사실을 주장하는데 C 로 남아 있는지는 `node scripts/copy-inventory.mjs --untagged` 로 점검한다.
 
-<details><summary>전체 185건 펼치기</summary>
+<details><summary>전체 190건 펼치기</summary>
 
 | 위치 | 담체 | 안내멘트 | 종속 대상 |
 | --- | --- | --- | --- |
+| `apps/admin-next/app/guides/page.tsx:12` | muted-p | 저장소의 문서를 그대로 읽어 보여줍니다. 화면용으로 따로 옮겨 적지 않으므로 문서를 고치면 여기도 함께 바뀝니다. | — |
+| `apps/admin-next/app/guides/page.tsx:29` | muted-p | 문서 파일을 찾지 못했습니다. 배포에 docs/가 포함됐는지 확인하세요. | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:257` | muted-p | 조사된 셔틀 노선이 없습니다. | — |
 | `apps/admin-next/components/AcademyDetailClient.tsx:273` | jsx-text | 수집된 후기가 없습니다. 원천에서 이 학원만 다시 받아 볼 수 있습니다. | — |
 | `apps/admin-next/components/AcademyResearchClient.tsx:106` | confirm | DrivingPlus 전체 학원정보를 동기화합니다. 기존 원본 정보와 리뷰 원문이 갱신됩니다. 진행할까요? | — |
@@ -351,6 +353,9 @@
 | `apps/admin-next/lib/domain-gate.ts:17` | lib-string | 도메인을 만든 뒤 생성된 글을 미리보기, export, 색인 요청으로 마무리할 수 있습니다.<br>_빈 화면 안내._ | — |
 | `apps/admin-next/lib/domain-gate.ts:21` | lib-string | 작업 큐를 보려면 운영 도메인이 필요합니다 | — |
 | `apps/admin-next/lib/domain-gate.ts:22` | lib-string | 작업은 도메인에 등록됩니다. 도메인을 만들고 글 작성을 등록하면 이 화면에서 진행 상태를 확인할 수 있습니다. | — |
+| `apps/admin-next/lib/guides.ts:28` | lib-string | 메뉴·탭·영역이 각각 무엇을 하는 곳인지, 어떤 순서로 쓰는지. | — |
+| `apps/admin-next/lib/guides.ts:35` | lib-string | 프롬프트가 어떤 층으로 조립되는지와, 무엇을 고치면 글이 달라지는지.<br>_관리자 가이드 목록에 뜨는 문서 한 줄 소개다. 코드 동작이 아니라 그 문서가 무엇을 다루는지를 말하므로 종속이 없다. 문서 자체의 최신성은 npm run verify:doc-sync 가 본다._ | — |
+| `apps/admin-next/lib/guides.ts:44` | lib-string | 에서 도므로 두 단계 위가 저장소 루트다. 배포 이미지에 | — |
 | `apps/api-nest/src/academy-research.controller.ts:175` | api-error | 수동 등록한 학원만 삭제할 수 있습니다. | — |
 | `apps/api-nest/src/admin.controller.ts:754` | api-error | 실행 이력을 찾을 수 없습니다.<br>_단순 404 안내._ | — |
 
