@@ -49,13 +49,35 @@ function priceWithoutCommonNote(value: string): string {
 /**
  * 셔틀 운행 지역을 대표 몇 곳으로 줄인다 — 계약이 모델에게 요구하는 것과 같은 규칙이다.
  *
- * 독자에게 중요한 것은 자기 출발지가 경유지에 있는지이지 전체 목록이 아니다. 원본을 통째로 넣으면
- * 한 카드에서만 90자를 넘기도 한다(실측: 다섯 카드 448자).
+ * 원본(`formatShuttleFact`)은 ` · ` 로 이은 조각 묶음이다:
+ *   `운행 지역(자료 기준) 남구(대명동·봉덕동·이천동), 달서구(감삼동·두류동 등), 외 6곳 · 이용 조건 …`
+ * 카드 불릿에 필요한 것은 첫 조각뿐이다. 「이용 조건」은 지역이 아니고(라벨과 어긋난다) 길다.
+ *
+ * 쉼표로 그냥 자르면 **괄호 안에서 잘린다** — 실제로 발행 글에 `달서구(감삼동 등` 이 나갔다.
+ * 그래서 괄호 깊이 0인 쉼표에서만 나눈다. 원본이 이미 달고 있는 「외 N곳」은 우리가 다시 줄이면
+ * 개수가 맞지 않으므로 뗀다(대신 「등」으로 마무리한다).
  */
-function shuttleSummary(value: string, max = 4): string {
-  const parts = value.split(/[,·]/).map((v) => v.trim()).filter(Boolean);
-  if (parts.length <= max) return parts.join(", ");
-  return `${parts.slice(0, max).join(", ")} 등`;
+function shuttleSummary(value: string, max = 3): string {
+  const segments = value.split(/\s+·\s+/).map((v) => v.trim()).filter(Boolean);
+  const regionSegment = segments.find((v) => v.startsWith("운행 지역")) ?? segments[0] ?? "";
+  const body = regionSegment.replace(/^운행 지역\s*(\([^)]*\))?\s*/, "").trim();
+  if (!body) return "";
+
+  const parts: string[] = [];
+  let depth = 0;
+  let buf = "";
+  for (const ch of body) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === "," && depth === 0) { parts.push(buf.trim()); buf = ""; continue; }
+    buf += ch;
+  }
+  if (buf.trim()) parts.push(buf.trim());
+
+  const regions = parts.filter((v) => v && !/^외\s*\d+\s*곳$/.test(v));
+  if (!regions.length) return "";
+  const shown = regions.slice(0, max);
+  return regions.length > shown.length ? `${shown.join(", ")} 등` : shown.join(", ");
 }
 
 /**

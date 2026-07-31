@@ -83,6 +83,18 @@ describe("T16 카드 기본 정보 불릿", () => {
     expect(fee).not.toContain("기준");
   });
 
+  it("셔틀은 운행 지역 조각만 쓰고 괄호 안에서 자르지 않는다 — 실제 원본으로 검증", () => {
+    // 원본(formatShuttleFact)은 " · " 로 이은 묶음이고 지역 안은 "·" 로 연결된다.
+    const raw = "운행 지역(자료 기준) 남구(대명동·봉덕동·이천동), 달서구(감삼동·두류동·본리동·성당동 등), 달성군(다사읍), 외 6곳 · 이용 조건 - 방문 전 미리 연락주시면 통학버스를 보내드립니다.";
+    const shuttle = academyCardBulletLines({ ...학원A, shuttle: raw }, false, label).find((l) => l.includes("셔틀")) ?? "";
+    // 발행 글에 `달서구(감삼동 등` 이 나갔던 자리 — 괄호가 열린 채 끝나면 안 된다.
+    expect((shuttle.match(/\(/g) || []).length).toBe((shuttle.match(/\)/g) || []).length);
+    expect(shuttle).toContain("남구(대명동·봉덕동·이천동)");
+    expect(shuttle).not.toContain("이용 조건");
+    expect(shuttle).not.toContain("운행 지역(자료 기준)");
+    expect(shuttle).not.toContain("외 6곳");
+  });
+
   it("셔틀 운행 지역은 대표 몇 곳 + 등으로 줄인다 — 길이 게이트를 넘기던 자리", () => {
     const many = "북구 칠성동, 북구 산격동, 동구 신암동, 서구 내당동, 남구 대명동, 수성구 범어동";
     const lines = academyCardBulletLines({ ...학원A, shuttle: many }, false, label);
