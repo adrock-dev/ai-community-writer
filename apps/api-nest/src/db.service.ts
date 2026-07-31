@@ -157,11 +157,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
 --
 -- created_at 을 반드시 함께 보여준다 — 시점 없는 우려는 언제까지 유효한지 알 수 없어, 오래되면
 -- 사실처럼 굳거나 반대로 통째로 무시된다.
+-- pinned 는 「꼭 볼 것」 하나뿐이다. **높음/보통/낮음 척도를 두지 않는다** — 중요도는 적을 때의
+-- 의견이라 시간이 지나면 안 맞는데 화면에는 그대로 남고(상태와 달리 검증할 방법이 없다), 3단계를
+-- 두면 적는 사람이 대부분 '높음'을 고르거나 전부 '보통'에 몰려 변별력이 사라진다. 이진이면 척도가
+-- 무너지지 않고, 메모의 가치인 '떠올랐을 때 바로 적힘'을 칸 하나로 방해하지 않는다.
 CREATE TABLE IF NOT EXISTS admin_notes (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   body TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
+  pinned INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   resolved_at TEXT
@@ -449,6 +454,9 @@ export class DbService implements OnModuleInit {
     if (!jobCols.has("current_step")) this.db.exec("ALTER TABLE jobs ADD COLUMN current_step TEXT");
     if (!jobCols.has("processed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN processed_count INTEGER NOT NULL DEFAULT 0");
     if (!jobCols.has("failed_count")) this.db.exec("ALTER TABLE jobs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0");
+    // 「꼭 볼 것」 표시. 높음/보통/낮음 척도를 두지 않은 이유는 admin_notes 스키마 주석 참조.
+    const noteCols = new Set(this.all("PRAGMA table_info(admin_notes)").map((r) => r.name));
+    if (noteCols.size && !noteCols.has("pinned")) this.db.exec("ALTER TABLE admin_notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
     this.migrateSlotsSkippedStatus();
     // 슬롯 수동 제목 오버라이드(규칙보다 우선, 생성 시점 플레이스홀더 치환). skipped 재생성 이후에 추가한다.
     const slotCols = new Set(this.all("PRAGMA table_info(slots)").map((r) => r.name));
@@ -1096,10 +1104,11 @@ export class DbService implements OnModuleInit {
     return this.all(`SELECT p.id, p.slug, p.title, p.body_markdown, p.status, p.generated_at, s.priority_score AS priority_score FROM posts p LEFT JOIN slots s ON s.slot_id = p.slot_id WHERE p.domain=? AND p.status IN ${statuses} ORDER BY p.generated_at ASC`, [domain]);
   }
 
-  // 인수인계 메모 — 확인 필요한 것을 먼저, 그 안에서 최신순. 해결된 것은 아래로 내린다.
+  // 인수인계 메모 — 「꼭 볼 것」이 맨 위, 그다음 확인 필요, 그 안에서 최신순. 해결된 것은 아래로.
+  // pinned 를 status 보다 앞에 두는 이유: 인수인계 첫 화면에서 "무엇부터 보라"가 먼저 눈에 와야 한다.
   listAdminNotes(): Row[] {
     return this.all(
-      "SELECT * FROM admin_notes ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, created_at DESC",
+      "SELECT * FROM admin_notes ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, pinned DESC, created_at DESC",
     );
   }
   createAdminNote(title: string, body: string): Row {
@@ -1109,14 +1118,15 @@ export class DbService implements OnModuleInit {
     return this.get("SELECT * FROM admin_notes WHERE id=?", [id])!;
   }
   /** 제목·본문·상태를 부분 수정. status 가 바뀔 때만 resolved_at 을 손댄다(해결 시점이 편집 때마다 밀리면 안 된다). */
-  updateAdminNote(id: string, patch: { title?: string; body?: string; status?: "open" | "resolved" }): Row | null {
+  updateAdminNote(id: string, patch: { title?: string; body?: string; status?: "open" | "resolved"; pinned?: boolean }): Row | null {
     const current = this.get("SELECT * FROM admin_notes WHERE id=?", [id]);
     if (!current) return null;
     const title = patch.title ?? current.title;
     const body = patch.body ?? current.body;
     const status = patch.status ?? current.status;
+    const pinned = patch.pinned === undefined ? Number(current.pinned ?? 0) : patch.pinned ? 1 : 0;
     const resolvedAt = status === current.status ? current.resolved_at : status === "resolved" ? nowSql() : null;
-    this.run("UPDATE admin_notes SET title=?, body=?, status=?, resolved_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [title, body, status, resolvedAt, id]);
+    this.run("UPDATE admin_notes SET title=?, body=?, status=?, pinned=?, resolved_at=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", [title, body, status, pinned, resolvedAt, id]);
     return this.get("SELECT * FROM admin_notes WHERE id=?", [id]) ?? null;
   }
   deleteAdminNote(id: string): boolean {

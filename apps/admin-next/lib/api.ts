@@ -9,6 +9,8 @@ export type AdminNote = {
   title: string;
   body: string;
   status: "open" | "resolved";
+  /** 「꼭 볼 것」. 0/1 로 온다 — 높음/보통/낮음 척도를 두지 않은 이유는 admin_notes 스키마 주석 참조. */
+  pinned: number;
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
@@ -16,7 +18,10 @@ export type AdminNote = {
 export const listAdminNotes = () => api<{ items: AdminNote[] }>("/settings/notes");
 export const createAdminNote = (title: string, body: string) =>
   api<{ ok: true; note: AdminNote }>("/settings/notes", { method: "POST", body: JSON.stringify({ title, body }) });
-export const updateAdminNote = (id: string, patch: Partial<Pick<AdminNote, "title" | "body" | "status">>) =>
+export const updateAdminNote = (
+  id: string,
+  patch: Partial<Pick<AdminNote, "title" | "body" | "status">> & { pinned?: boolean },
+) =>
   api<{ ok: true; note: AdminNote }>(`/settings/notes/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(patch) });
 export const deleteAdminNote = (id: string) =>
   api<{ ok: true }>(`/settings/notes/${encodeURIComponent(id)}`, { method: "DELETE" });

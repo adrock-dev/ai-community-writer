@@ -11,6 +11,11 @@ import { listAdminNotes, createAdminNote, updateAdminNote, deleteAdminNote, type
  * 대조하는 '확정된 사실'이지만, 이건 검증할 수 없는 판단이다. 화면에서도 그 차이가 보이도록
  * 작성 시점을 항상 붙이고, 확인이 끝난 것은 「해결됨」으로 내려 남은 것만 눈에 띄게 한다.
  */
+// 삭제는 되돌릴 수 없다. 「해결됨」이 보관 자리이므로, 지우기 전에 그 차이를 알린다 —
+// 정리하려던 사람이 기록까지 없애는 일이 없도록.
+const DELETE_CONFIRM =
+  "이 메모를 삭제할까요?\n\n삭제하면 복구할 수 없고 어디에도 남지 않습니다.\n기록을 남기려면 「해결됨으로」를 쓰세요 — 아래 「해결됨」에 보관됩니다.";
+
 export default function AdminNotesClient() {
   const [notes, setNotes] = useState<AdminNote[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +87,9 @@ export default function AdminNotesClient() {
 
       <div className="card card-pad grid">
         <h2>확인 필요 {open.length > 0 && <span className="badge warn">{open.length}</span>}</h2>
+        <p className="muted small" style={{ margin: 0 }}>
+          「해결됨으로」를 누르면 아래 「해결됨」에 보관됩니다. 「삭제」는 복구할 수 없습니다.
+        </p>
         {!loading && !open.length && <p className="muted small">확인이 필요한 메모가 없습니다.</p>}
         {open.map((note) => (
           <NoteRow
@@ -95,7 +103,8 @@ export default function AdminNotesClient() {
             onCancel={() => setEditing(null)}
             onSave={() => run(async () => { await updateAdminNote(note.id, draft); setEditing(null); })}
             onResolve={() => run(() => updateAdminNote(note.id, { status: "resolved" }))}
-            onDelete={() => { if (confirm("이 메모를 삭제할까요?")) void run(() => deleteAdminNote(note.id)); }}
+            onDelete={() => { if (confirm(DELETE_CONFIRM)) void run(() => deleteAdminNote(note.id)); }}
+            onPin={() => run(() => updateAdminNote(note.id, { pinned: !note.pinned }))}
           />
         ))}
       </div>
@@ -115,7 +124,8 @@ export default function AdminNotesClient() {
               onCancel={() => setEditing(null)}
               onSave={() => run(async () => { await updateAdminNote(note.id, draft); setEditing(null); })}
               onResolve={() => run(() => updateAdminNote(note.id, { status: "open" }))}
-              onDelete={() => { if (confirm("이 메모를 삭제할까요?")) void run(() => deleteAdminNote(note.id)); }}
+              onDelete={() => { if (confirm(DELETE_CONFIRM)) void run(() => deleteAdminNote(note.id)); }}
+            onPin={() => run(() => updateAdminNote(note.id, { pinned: !note.pinned }))}
             />
           ))}
         </div>
@@ -124,7 +134,7 @@ export default function AdminNotesClient() {
   );
 }
 
-function NoteRow({ note, busy, editing, draft, onDraft, onEdit, onCancel, onSave, onResolve, onDelete }: {
+function NoteRow({ note, busy, editing, draft, onDraft, onEdit, onCancel, onSave, onResolve, onDelete, onPin }: {
   note: AdminNote;
   busy: boolean;
   editing: boolean;
@@ -135,8 +145,10 @@ function NoteRow({ note, busy, editing, draft, onDraft, onEdit, onCancel, onSave
   onSave: () => void;
   onResolve: () => void;
   onDelete: () => void;
+  onPin: () => void;
 }) {
   const isOpen = note.status === "open";
+  const pinned = Boolean(note.pinned);
   return (
     <div className="card card-pad grid" style={{ gap: 8 }}>
       {editing ? (
@@ -150,7 +162,10 @@ function NoteRow({ note, busy, editing, draft, onDraft, onEdit, onCancel, onSave
         </>
       ) : (
         <>
-          <b>{note.title}</b>
+          <div className="row" style={{ gap: 6, alignItems: "center" }}>
+            {pinned && <span className="badge warn">꼭 볼 것</span>}
+            <b>{note.title}</b>
+          </div>
           {note.body && <p className="muted small" style={{ whiteSpace: "pre-wrap", margin: 0 }}>{note.body}</p>}
           <p className="muted small" style={{ margin: 0 }}>
             적은 날 {formatDate(note.created_at)}
@@ -158,9 +173,12 @@ function NoteRow({ note, busy, editing, draft, onDraft, onEdit, onCancel, onSave
             {note.resolved_at && ` · 해결 ${formatDate(note.resolved_at)}`}
           </p>
           <div className="row">
+            <button className="btn" disabled={busy} onClick={onPin} title="인수인계 때 먼저 봐야 할 메모를 맨 위로 올립니다.">
+              {pinned ? "★ 꼭 볼 것 해제" : "☆ 꼭 볼 것"}
+            </button>
             <button className="btn" disabled={busy} onClick={onResolve}>{isOpen ? "해결됨으로" : "다시 확인 필요로"}</button>
             <button className="btn" disabled={busy} onClick={onEdit}>수정</button>
-            <button className="btn danger" disabled={busy} onClick={onDelete}>삭제</button>
+            <button className="btn danger" disabled={busy} onClick={onDelete} title="복구할 수 없습니다. 기록을 남기려면 「해결됨으로」를 쓰세요.">삭제</button>
           </div>
         </>
       )}

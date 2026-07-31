@@ -1080,7 +1080,8 @@ export class AdminController {
   @Patch("settings/notes/:id")
   updateAdminNote(@Req() req: Request, @Headers() headers: Record<string, string>, @Param("id") id: string, @Body() body: Row) {
     checkAuth(req, headers);
-    const patch: { title?: string; body?: string; status?: "open" | "resolved" } = {};
+    const patch: { title?: string; body?: string; status?: "open" | "resolved"; pinned?: boolean } = {};
+    if (body.pinned !== undefined) patch.pinned = Boolean(body.pinned);
     if (body.title !== undefined) {
       const title = String(body.title).trim();
       if (!title) throw new HttpException("메모 제목을 입력하세요.", 400);
