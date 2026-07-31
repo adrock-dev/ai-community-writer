@@ -155,16 +155,6 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "지역을 쓰는 글유형은 지역을 골고루 돌며 만듭니다",
-      "class": "B",
-      "depends": [
-        "apps/api-nest/src/slot.service.ts#groupTopicsByRegion 지역 인터리브",
-        "apps/api-nest/src/db.service.ts#countSlotsByRegion 커버리지 순서"
-      ],
-      "note": "2026-07-30 추가. 예전엔 인터리브 그룹이 지역×키워드 토픽이라 상한 40에 지역 14곳만 덮였고, 다시 눌러도 같은 지역만 재-upsert 돼 후보가 늘지 않았다. 그 동작을 되돌리면 이 문장이 거짓이 된다."
-    },
-    {
-      "file": "apps/admin-next/components/DomainClient.tsx",
       "match": "생성 품질 게이트가 이 문구를 감지해",
       "class": "B",
       "depends": [
@@ -455,7 +445,7 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "planned)를 만듭니다. LLM을 호출하지 않습니다",
+      "match": "planned)를 만듭니다. LLM은 호출하지 않습니다",
       "class": "B",
       "depends": [
         "apps/api-nest/src/slot.service.ts"
@@ -1174,13 +1164,15 @@
     },
     {
       "file": "apps/admin-next/components/DomainClient.tsx",
-      "match": "개수는 이번에 만들 후보 수이며",
+      "match": "개수는 이번에 만들 후보 수입니다",
       "class": "B",
       "depends": [
         "apps/api-nest/src/constants.ts#MAX_SLOTS_PER_TEMPLATE",
+        "apps/api-nest/src/slot.service.ts#groupTopicsByRegion 지역 인터리브",
+        "apps/api-nest/src/db.service.ts#countSlotsByRegion 커버리지 순서",
         "apps/api-nest/src/slot.service.ts#generateSlots 조합 소진 동작"
       ],
-      "note": "상한 숫자는 /options 의 slot_limits 를 렌더하므로 값이 바뀌어도 따라온다(A급 아님). 사람이 지켜야 할 부분은 「이번에 만들 개수」·「기존 후보는 남는다」·「조합이 적으면 중복으로 채우지 않는다」는 동작 서술이다."
+      "note": "1단계 동작 설명을 한 문단으로 합친 것(예전에는 조작 칸 위아래로 갈라져 「기존 후보는 그대로 남습니다」가 두 번 나왔다). 상한 숫자는 /options 의 slot_limits 를 렌더하므로 값이 바뀌면 따라온다. 사람이 지켜야 할 부분은 「이번에 만들 개수」·「지역 골고루 + 후보가 적은 지역부터 이어서」·「기존 후보는 남는다」·「조합이 적으면 중복으로 채우지 않는다」는 동작 서술이다. 예전엔 인터리브 그룹이 지역×키워드 토픽이라 상한 40에 지역 14곳만 덮였다 — 그 동작으로 되돌리면 이 문장이 거짓이 된다."
     }
   ]
 }

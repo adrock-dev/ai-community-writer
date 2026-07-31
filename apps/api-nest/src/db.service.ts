@@ -912,6 +912,22 @@ export class DbService implements OnModuleInit {
     return out;
   }
   /**
+   * 글유형별 슬롯 수(상태 무관, 도메인 전체).
+   *
+   * 후보 목록의 '유형' 필터가 이걸로 채워진다. 예전에는 필터가 coherence 의 **전 유형**(빌트인 15종 +
+   * 커스텀)을 나열해, 이 도메인에 슬롯이 하나도 없는 유형과 폐기된 T01 계열까지 보기로 떴다.
+   *
+   * **현재 필터로 걸러서는 안 된다** — 유형을 하나 고른 순간 나머지 유형이 목록에서 사라져 되돌아갈 수
+   * 없게 된다. 그래서 status/q/template 을 보지 않는다.
+   */
+  countSlotsByTemplate(domain: string): Record<string, number> {
+    const out: Record<string, number> = {};
+    for (const r of this.all("SELECT template_id, COUNT(*) AS n FROM slots WHERE domain=? GROUP BY template_id", [domain])) {
+      out[String(r.template_id)] = Number(r.n);
+    }
+    return out;
+  }
+  /**
    * 한 글유형의 지역별 기존 슬롯 수. 후보 생성이 "아직 덜 덮인 지역"부터 돌기 위한 입력이다
    * (slot.service.generateSlotsForDomain 참조). status 로 걸르지 않는다 — 발행이든 실패든 그
    * 지역에는 이미 후보가 있으므로 커버리지 관점에서는 같다.

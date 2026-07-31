@@ -1907,12 +1907,16 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   const slotMax = options.slot_limits?.max_per_template ?? 10000;
   const [remoteSlots, setRemoteSlots] = useState(slots);
   const [remoteTotal, setRemoteTotal] = useState(slots.length);
+  // 유형별 슬롯 수(도메인 전체·필터 무관). 목록 '유형' 필터를 데이터에서 채운다.
+  const [templateCounts, setTemplateCounts] = useState<Record<string, number>>({});
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [queueBusy, setQueueBusy] = useState(false);
   const [busy, setBusy] = useState(false); // 후보 생성/삭제 등 느린 작업 로딩
   const [slotError, setSlotError] = useState("");
   // P5b: 1단계 후보 만들기를 '글유형 + 개수'로. 유형 라벨/후보상한은 coherence(빌트인+커스텀 공통).
   const enabledTypeIds = domain.templates_enabled;
+  // 폐기 판정은 서버가 한다(options.deprecated_builtin_template_ids). 화면은 표시만.
+  const deprecatedTemplateIds = new Set(options.deprecated_builtin_template_ids ?? []);
   const [genType, setGenType] = useState(enabledTypeIds[0] ?? "");
   const [typeMeta, setTypeMeta] = useState<Record<string, CoherenceTemplate>>({});
   useEffect(() => {
@@ -1929,10 +1933,23 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
   });
   // 고른 글유형이 축 조합으로 만들 수 있는 추정 최대치(coherence). 상한과 뜻이 다르므로 함께 안내한다.
   const selectedTypeUpper = enabledTypes.find((t) => t.id === genType)?.upper;
-  // 후보 목록 '유형' 필터: 빌트인+커스텀 전 유형(getCoherence). 로드 전이면 빌트인 id 로 폴백.
-  const typeFilterOptions = Object.keys(typeMeta).length
-    ? Object.values(typeMeta).map((t) => ({ id: t.template_id, name: t.name }))
-    : options.templates.map((id) => ({ id, name: options.template_specs[id]?.name ?? "" }));
+  /**
+   * 후보 목록 '유형' 필터 — **실제 후보가 있는 유형 + 지금 켜 둔 유형**만 나열한다.
+   *
+   * 예전에는 coherence 의 전 유형(빌트인 15종 + 커스텀)을 그대로 나열해, 이 도메인에 후보가 하나도
+   * 없는 유형과 폐기된 T01 계열까지 보기로 떴다. 반대로 '켜진 유형만'으로 좁히면, 예전에 만들어 두고
+   * 나중에 끈 유형의 후보를 찾을 길이 없어진다 — 그래서 둘의 합집합이다.
+   * 후보가 많은 유형부터 보여 준다(같으면 id 순).
+   */
+  const typeFilterOptions = (() => {
+    const nameOf = (id: string) => typeMeta[id]?.name ?? options.template_specs[id]?.name ?? "";
+    const ids = new Set([...Object.keys(templateCounts), ...enabledTypeIds]);
+    // 지금 걸려 있는 필터는 후보가 0이어도 남긴다 — 안 그러면 고르는 순간 스스로 목록에서 사라진다.
+    if (template) ids.add(template);
+    return [...ids]
+      .map((id) => ({ id, name: nameOf(id), count: templateCounts[id] ?? 0 }))
+      .sort((a, b) => b.count - a.count || a.id.localeCompare(b.id));
+  })();
 
   useEffect(() => { setRemoteSlots(slots); setRemoteTotal(slots.length); }, [slots]);
 
@@ -1940,7 +1957,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
     setLoadingSlots(true); setSlotError("");
     try {
       const payload = await listSlots(domain.domain, { status, template, q, limit: SLOT_LIST_LIMIT });
-      setRemoteSlots(payload.items); setRemoteTotal(payload.total ?? payload.count);
+      setRemoteSlots(payload.items); setRemoteTotal(payload.total ?? payload.count); setTemplateCounts(payload.template_counts ?? {});
     } catch (err) { setSlotError(err instanceof Error ? err.message : String(err)); }
     finally { setLoadingSlots(false); }
   }
@@ -1950,7 +1967,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
       setLoadingSlots(true); setSlotError("");
       try {
         const payload = await listSlots(domain.domain, { status, template, q, limit: SLOT_LIST_LIMIT });
-        if (!cancelled) { setRemoteSlots(payload.items); setRemoteTotal(payload.total ?? payload.count); setSelected(new Set()); }
+        if (!cancelled) { setRemoteSlots(payload.items); setRemoteTotal(payload.total ?? payload.count); setTemplateCounts(payload.template_counts ?? {}); setSelected(new Set()); }
       } catch (err) { if (!cancelled) setSlotError(err instanceof Error ? err.message : String(err)); }
       finally { if (!cancelled) setLoadingSlots(false); }
     }, 250);
@@ -2044,14 +2061,18 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         <div>
           <p className="eyebrow">1단계</p>
           <h2>글 후보 만들기</h2>
-          <p className="muted small">글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM을 호출하지 않습니다.</p>
-          <p className="muted small">지역을 쓰는 글유형은 지역을 골고루 돌며 만듭니다. 개수가 지역 수보다 적으면 그만큼의 지역이 지역당 하나씩 덮이고, 다시 누르면 아직 후보가 없는 지역부터 이어서 채웁니다(기존 후보는 그대로 남습니다).</p>
+          {/* 위에는 이 단계가 무엇인지만 둔다. 동작 설명은 조작 칸 아래 한 문단으로 모았다 —
+              위아래로 나눠 놓았더니 「기존 후보는 그대로 남습니다」가 두 번 나오고, 같은 동작(지역
+              골고루·조합 소진)을 두 문단이 나눠 설명하고 있었다. */}
+          <p className="muted small">글유형을 고르고 개수를 정해 작성 대기 후보(planned)를 만듭니다. LLM은 호출하지 않습니다.</p>
         </div>
         <div className="row slot-panel-actions">
           <Field label="글유형">
             <select className="select" style={{ minWidth: 220 }} value={genType} onChange={(e) => setGenType(e.target.value)}>
               {enabledTypes.length === 0 && <option value="">활성 글유형 없음</option>}
-              {enabledTypes.map((t) => <option key={t.id} value={t.id}>{t.name}{typeof t.upper === "number" ? ` · 후보 상한 ~${t.upper.toLocaleString()}` : ""}</option>)}
+              {/* 아래 목록 필터와 같은 「T번호 이름」 형식으로 맞춘다. 조합 추정치는 선택한 유형에
+                  대해 이 카드 아래 안내가 적으므로 여기서는 뺀다 — 상한으로 오해되기도 했다. */}
+              {enabledTypes.map((t) => <option key={t.id} value={t.id}>{t.id} {t.name}</option>)}
             </select>
           </Field>
           {/* 개수 상한은 서버 상수(env 로 덮인다)라 화면이 적지 않고 /options 로 받아 쓴다.
@@ -2063,7 +2084,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
           <button className="btn" disabled={busy || queueBusy || max >= slotMax} title={`글유형당 한 번에 만들 수 있는 최대치(${slotMax.toLocaleString()}개)로 채웁니다.`} onClick={() => setMax(slotMax)}>최대 {slotMax.toLocaleString()}개</button>
           <button className="btn primary" data-tour="slots-create" disabled={busy || queueBusy || !genType} onClick={gen}>{busy ? "만드는 중..." : "글 후보 만들기"}</button>
         </div>
-        <p className="muted small">개수는 <b>이번에 만들 후보 수</b>이며 글유형당 한 번에 {slotMax.toLocaleString()}개까지입니다(기존 후보는 그대로 남습니다). 조합이 그보다 적으면 있는 만큼만 만들고 중복으로 채우지 않습니다.{selectedTypeUpper !== undefined && ` 지금 고른 글유형이 만들 수 있는 조합은 최대 약 ${selectedTypeUpper.toLocaleString()}개로 추정됩니다.`}</p>
+        <p className="muted small">개수는 이번에 만들 후보 수입니다(글유형당 한 번에 {slotMax.toLocaleString()}개까지). 지역을 쓰는 글유형은 지역을 골고루 돌며 만들고, 다시 누르면 아직 후보가 적은 지역부터 이어서 채웁니다 — 기존 후보는 그대로 남습니다. 조합이 개수보다 적으면 있는 만큼만 만들고 중복으로 채우지 않습니다.{selectedTypeUpper !== undefined && ` 지금 고른 글유형이 만들 수 있는 조합은 최대 약 ${selectedTypeUpper.toLocaleString()}개로 추정됩니다.`}</p>
         {enabledTypes.length === 0 && <p className="muted small">활성화된 글유형이 없습니다. <Link className="btn" href={`/t/${encodeURIComponent(domain.domain)}?tab=templates`}>글유형/디자인 탭</Link>에서 유형을 켜세요.</p>}
         <p className="muted small">조합 재료는 「원천 데이터」 탭 지역·「글 공통 설정」 키워드 마스터·「글유형/디자인」 설정을 따릅니다. 프리셋을 적용했다면 별도 동기화 없이도 후보를 만들 수 있습니다.</p>
         {exclusionLines.length > 0 && <p className="muted small">적용 중인 제외: {exclusionLines.slice(0, 5).join(", ")}{exclusionLines.length > 5 ? " ..." : ""}</p>}
@@ -2079,7 +2100,7 @@ function Slots({ domain, slots, options, onRefresh, onTab }: { domain: DomainCon
         </div>
         <div className="row" data-tour="slots-filter">
           <select className="select" style={{ width: 150 }} value={status} onChange={(e) => setStatus(e.target.value)}><option value="">전체 상태</option>{["planned","in_progress","published","failed","skipped"].map((s) => <option key={s}>{s}</option>)}</select>
-          <select className="select" style={{ width: 200 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{typeFilterOptions.map((o) => <option key={o.id} value={o.id}>{o.id} {o.name}</option>)}</select>
+          <select className="select" style={{ width: 200 }} value={template} onChange={(e) => setTemplate(e.target.value)}><option value="">전체 유형</option>{typeFilterOptions.map((o) => <option key={o.id} value={o.id}>{o.id} {o.name}{o.count ? ` (${o.count.toLocaleString()})` : ""}{deprecatedTemplateIds.has(o.id) ? " · 폐기" : ""}</option>)}</select>
           <input className="input" style={{ width: 320 }} placeholder="지역/키워드/후보 검색 예: 서울, 강남구" value={q} onChange={(e) => setQ(e.target.value)} />
           {["서울","강남구","송파구","경기","부산","대구","제주"].map((label) => <button className="btn" key={label} onClick={() => setQ(label)}>{label}</button>)}
           <span className="muted small">{selected.size}개 선택 / {remoteTotal.toLocaleString()}개{loadingSlots ? " 검색 중" : ""}</span>

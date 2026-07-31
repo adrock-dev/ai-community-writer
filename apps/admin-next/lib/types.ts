@@ -389,5 +389,7 @@ export interface SlotListPayload {
   count: number;
   total: number;
   slot_counts: SlotCounts;
+  // 글유형별 슬롯 수(도메인 전체·필터 무관). 후보 목록의 '유형' 필터를 데이터에서 채우는 데 쓴다.
+  template_counts?: Record<string, number>;
   items: Slot[];
 }
