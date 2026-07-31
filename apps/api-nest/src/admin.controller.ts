@@ -486,7 +486,7 @@ export class AdminController {
     checkAuth(req, headers); this.requireDomain(domain);
     const filters = { status: query.status || undefined, template: query.template || undefined, q: query.q || undefined };
     const items = this.db.listSlots(domain, { ...filters, limit: clampInt(query.limit, 300, 1, 2000), offset: clampInt(query.offset, 0, 0, 1000000) });
-    return { count: items.length, total: this.db.countSlotsFiltered(domain, filters), slot_counts: this.db.countSlots(domain), template_counts: this.db.countSlotsByTemplate(domain), items };
+    return { count: items.length, total: this.db.countSlotsFiltered(domain, filters), slot_counts: this.db.countSlots(domain), template_counts: this.db.countSlotsByTemplate(domain, { status: filters.status, q: filters.q }), items };
   }
 
   @Post("domains/:domain/slots/generate")

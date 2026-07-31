@@ -917,12 +917,16 @@ export class DbService implements OnModuleInit {
    * 후보 목록의 '유형' 필터가 이걸로 채워진다. 예전에는 필터가 coherence 의 **전 유형**(빌트인 15종 +
    * 커스텀)을 나열해, 이 도메인에 슬롯이 하나도 없는 유형과 폐기된 T01 계열까지 보기로 떴다.
    *
-   * **현재 필터로 걸러서는 안 된다** — 유형을 하나 고른 순간 나머지 유형이 목록에서 사라져 되돌아갈 수
-   * 없게 된다. 그래서 status/q/template 을 보지 않는다.
+   * **글유형 필터만은 반영하지 않는다** — 유형을 하나 고른 순간 나머지 유형이 목록에서 사라져
+   * 되돌아갈 수 없게 된다. 상태·검색어는 반영해야 유형별 합이 목록 총 개수와 맞는다.
    */
-  countSlotsByTemplate(domain: string): Record<string, number> {
+  countSlotsByTemplate(domain: string, opts: { status?: string; q?: string } = {}): Record<string, number> {
+    // 자기 차원(글유형)만 빼고 상태·검색어는 그대로 반영한다. 안 그러면 유형별 합이 목록 총 개수와
+    // 어긋난다 — 상태=planned 로 10,252개를 보고 있는데 유형 옆에는 발행·진행 중까지 더한 10,274개가
+    // 붙어 있었다(실측 2026-07-31). 필터 해석은 listSlots·countSlotsFiltered 와 같은 함수를 쓴다.
+    const { where, args } = this.slotFilterClause(domain, { status: opts.status, q: opts.q });
     const out: Record<string, number> = {};
-    for (const r of this.all("SELECT template_id, COUNT(*) AS n FROM slots WHERE domain=? GROUP BY template_id", [domain])) {
+    for (const r of this.all(`SELECT template_id, COUNT(*) AS n FROM slots ${where} GROUP BY template_id`, args)) {
       out[String(r.template_id)] = Number(r.n);
     }
     return out;
