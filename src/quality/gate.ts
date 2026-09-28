@@ -284,6 +284,25 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
   });
   if (adjacent) issues.push("이미지를 연달아 두지 말고 서로 다른 섹션에 나눠 넣으세요");
 
+  // 링크: 모델은 웹을 보지 않으므로 세부 주소는 지어낸 것일 수 있다 (이미지 주소는 제외)
+  const links = [
+    ...body.matchAll(/(?<!!)\[[^\]]*\]\(([^)\s]+)\)/g),
+    ...body
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+      .replace(/\]\([^)]*\)/g, "]")
+      .matchAll(/https?:\/\/[^\s)>\]"']+/g),
+  ].map((m) => m[1] ?? m[0]);
+  if (links.length) {
+    issues.push(
+      `본문의 링크 주소를 빼세요: ${[...new Set(links)].slice(0, 3).join(", ")}. 확인처는 "safedriving.or.kr"처럼 사이트 이름만 글자로 쓰세요`,
+    );
+  }
+  if (/(?:생성|AI)\s*(?:삽화|이미지)|삽화/.test(images.map((i) => i.alt).join(" "))) {
+    issues.push(
+      '이미지 대체 텍스트에 "생성·삽화·AI"를 쓰지 말고 "기능시험 코스 예시 이미지"처럼 장면을 쓰세요',
+    );
+  }
+
   // 후보 수 부풀리기
   if (ctx.candidates.length && (ctx.articleType === "recommend" || ctx.articleType === "academy")) {
     const claimed = [...all.matchAll(/(?:TOP|BEST|베스트)\s*(\d+)|(\d+)\s*곳/gi)]

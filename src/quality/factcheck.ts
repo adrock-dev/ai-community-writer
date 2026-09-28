@@ -4,7 +4,12 @@ import type { DraftArticle } from "../writer/output.ts";
 // 뒷받침되지 않는 구체적 서술을 찾는다. 특히 학원·실내운전연습장(지점)에 대한 서술.
 // 찾은 문장은 재작성 지시로 되돌린다.
 
-export function factCheckPrompt(facts: string, guides: string, draft: DraftArticle): string {
+export function factCheckPrompt(
+  facts: string,
+  guides: string,
+  draft: DraftArticle,
+  channelBrief = "",
+): string {
   return [
     "당신은 운전면허·운전학원 글의 사실 검증 담당자입니다. 아래 원고를 [근거 자료]와 [유의사항]에만 비추어 검사하세요. 당신이 알고 있는 일반 지식으로 사실을 보충하거나 인정하지 마세요.",
     "",
@@ -14,7 +19,10 @@ export function factCheckPrompt(facts: string, guides: string, draft: DraftArtic
     "3. 근거 없이 단정한 법령·시험 제도의 구체 수치(수수료, 문항 수, 합격 점수, 기한, 과태료)",
     "4. 후기를 지어내거나 글쓴이 본인의 경험처럼 쓴 문장",
     "",
-    "문제가 아닌 것: 일반적인 조언(확인하세요, 비교해 보세요), 근거 자료의 사실을 풀어 쓴 문장, 이미지 대체 텍스트, 확인처 안내.",
+    "문제가 아닌 것: 일반적인 조언(확인하세요, 비교해 보세요), 근거 자료의 사실을 풀어 쓴 문장, 이미지 대체 텍스트, 확인처 안내, [채널 소개]에 있는 자사 서비스 안내.",
+    "",
+    "## 채널 소개 (이 글을 올리는 곳에 대한 사실)",
+    channelBrief || "(없음)",
     "",
     "## 유의사항",
     guides || "(없음)",

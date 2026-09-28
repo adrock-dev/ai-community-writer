@@ -149,6 +149,24 @@ describe("qualityIssues", () => {
     expect(qualityIssues(draftOf(ok), gate())).toEqual([]);
   });
 
+  it("본문 링크 주소는 빼게 하고 사이트 이름만 허용한다 (이미지 주소는 제외)", () => {
+    const withLink = `${goodBody("운전학원")}\n\n자세한 내용은 [학과시험 안내](https://www.safedriving.or.kr/dtGuide/x.do)와 https://example.com/a 를 보세요.`;
+    const issues = qualityIssues(draftOf(withLink), gate()).join("\n");
+    expect(issues).toMatch(
+      /링크 주소를 빼세요: https:\/\/www\.safedriving\.or\.kr\/dtGuide\/x\.do, https:\/\/example\.com\/a/,
+    );
+    const plain = `${goodBody("운전학원")}\n\n안전운전 통합민원(safedriving.or.kr)에서 확인하세요.`;
+    expect(qualityIssues(draftOf(plain), gate())).toEqual([]);
+  });
+
+  it("생성 이미지 대체 텍스트에 '생성·삽화'를 쓰지 않는다", () => {
+    const body = goodBody("운전학원").replace(
+      "![운전학원 사진](img1)",
+      "![기능시험 코스 생성 삽화](img1)",
+    );
+    expect(qualityIssues(draftOf(body), gate()).join("\n")).toMatch(/대체 텍스트에 "생성·삽화·AI"/);
+  });
+
   it("이미지: 2장 이상, 제공된 번호만, 대체 텍스트, 연달아 두지 않기", () => {
     const none = qualityIssues(draftOf(goodBody("운전학원", { images: false })), gate()).join("\n");
     expect(none).toMatch(/이미지를 2장 이상/);
@@ -481,6 +499,8 @@ describe("generateArticle", () => {
     const result = await generateArticle({ db, config, llm, facts }, topicId);
     expect(result).toMatchObject({ status: "review", attempts: 2 });
     expect(prompts[1]).toMatch(/사실 검증 담당자[\s\S]*공시 수강료 71만 2천원/);
+    // 채널 소개(자사 서비스 안내의 근거)도 함께 넘긴다
+    expect(prompts[1]).toMatch(/채널 소개[\s\S]*운전면허PLUS는 지역별 운전학원/);
     expect(prompts[2]).toMatch(/근거 없는 서술: "최신 장비를 갖췄어요"/);
   });
 

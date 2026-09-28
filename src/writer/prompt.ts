@@ -83,6 +83,8 @@ export interface PromptInput {
 export interface ComposedPrompt {
   prompt: string;
   files: string[];
+  /** 채널 소개 (사실 검증에서 자사 서비스 안내의 근거로 쓴다) */
+  channelBrief: string;
 }
 
 function imagesText(images: ImageCandidate[], min: number): string {
@@ -131,7 +133,7 @@ export function composePrompt(input: PromptInput, dir = PROMPTS_DIR): ComposedPr
     `## 피해야 할 기존 글 (제목·소제목 구성·도입부가 겹치지 않게, 다른 각도로 쓰세요)\n\n${avoidText(input.avoid)}`,
     OUTPUT_FORMAT,
   ].join("\n\n");
-  return { prompt, files: files.map((f) => f.path) };
+  return { prompt, files: files.map((f) => f.path), channelBrief: files[1]?.content ?? "" };
 }
 
 /** 품질·유사도 문제를 알려 주고 전체를 다시 쓰게 한다. */

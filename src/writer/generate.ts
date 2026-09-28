@@ -180,7 +180,9 @@ export async function generateArticle(
         // 기계 검사를 통과한 원고만 사실 검증한다 (LLM 호출을 아끼기 위해)
         if (!issues.length && deps.factCheck !== false) {
           log("  사실 검증");
-          const check = await deps.llm.generate(factCheckPrompt(facts.text, guideText, draft));
+          const check = await deps.llm.generate(
+            factCheckPrompt(facts.text, guideText, draft, composed.channelBrief),
+          );
           const claims = parseFactCheck(check.text);
           factChecked = true;
           if (claims === undefined) warnings.push("사실 검증 결과를 읽지 못했습니다");
