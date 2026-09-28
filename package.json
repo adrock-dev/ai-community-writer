@@ -1,22 +1,31 @@
 {
-  "name": "adrock-content-ops",
-  "version": "0.1.0",
+  "name": "ai-community-writer",
+  "version": "0.2.0",
   "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "dev": "./dev.sh",
-    "typecheck": "npm --prefix apps/api-nest run typecheck && npm --prefix apps/admin-next run typecheck",
-    "build": "npm --prefix apps/api-nest run build && npm --prefix apps/admin-next run build",
-    "audit:all": "npm --prefix apps/api-nest audit --audit-level=high && npm --prefix apps/admin-next audit --audit-level=high",
-    "qa:posts": "node scripts/qa-posts.mjs",
-    "qa:posts:all": "node scripts/qa-posts.mjs --all",
-    "worker:once": "npm --prefix apps/api-nest run worker:once",
-    "verify:company-clean": "node scripts/verify-company-clean.mjs",
-    "test": "npm --prefix apps/api-nest run test",
+    "start": "node src/main.ts",
+    "dev": "node --watch src/main.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "biome lint",
     "format": "biome format --write",
-    "lint:fix": "biome check --write"
+    "lint:fix": "biome check --write",
+    "check": "npm run typecheck && npm run lint && npm run test"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.9",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.1"
+    "@biomejs/biome": "2.5.1",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "3.2.6"
   }
 }

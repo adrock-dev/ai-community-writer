@@ -30,6 +30,7 @@ output/
 
 # === 비밀/환경 ===
 .env
+config.json
 *.local
 
 # === OS / 에디터 ===

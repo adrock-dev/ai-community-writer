@@ -1,0 +1,24 @@
+{
+  "server": { "host": "127.0.0.1", "port": 8787 },
+  "dbPath": "data/writer.db",
+  "llm": {
+    "order": ["codex", "claude"],
+    "timeoutSec": 600,
+    "codex": { "command": "codex", "model": "" },
+    "claude": { "command": "claude", "model": "" }
+  },
+  "pacing": {
+    "minIntervalSec": 300,
+    "maxIntervalSec": 900,
+    "dailyLimit": 10
+  },
+  "naver": {
+    "searchadEnvFile": "~/.naver-searchad.env",
+    "datalabClientId": "",
+    "datalabClientSecret": ""
+  },
+  "sources": {
+    "drivingplusApi": "https://api-dev.drivingplus.me:18104",
+    "drivingzoneApi": ""
+  }
+}
