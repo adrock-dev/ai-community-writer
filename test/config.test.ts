@@ -41,3 +41,22 @@ describe("resolvePath", () => {
     );
   });
 });
+
+describe("sources", () => {
+  it("기본은 운영 주소, profile=dev면 개발 주소를 쓴다", () => {
+    expect(parseConfig({}).sources).toEqual({
+      profile: "prod",
+      drivingplusApi: "https://api.drivingplus.me",
+      drivingzoneApi: "https://api.drivingzone.co.kr",
+    });
+    expect(parseConfig({ sources: { profile: "dev" } }).sources.drivingzoneApi).toBe(
+      "https://adrock.duckdns.org:18099",
+    );
+  });
+
+  it("직접 지정한 주소가 profile보다 우선하고 끝 슬래시는 뗀다", () => {
+    const config = parseConfig({ sources: { drivingplusApi: "http://localhost:8000/" } });
+    expect(config.sources.drivingplusApi).toBe("http://localhost:8000");
+    expect(config.sources.drivingzoneApi).toBe("https://api.drivingzone.co.kr");
+  });
+});

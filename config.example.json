@@ -18,7 +18,8 @@
     "datalabClientSecret": ""
   },
   "sources": {
-    "drivingplusApi": "https://api-dev.drivingplus.me:18104",
+    "profile": "prod",
+    "drivingplusApi": "",
     "drivingzoneApi": ""
   }
 }

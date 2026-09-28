@@ -11,6 +11,19 @@ const providerSchema = z.object({
   model: z.string().default(""),
 });
 
+/** 원천 데이터 API 주소. 각 프로젝트(api.drive, api.drivingzone)의 배포 환경 기준. */
+export const SOURCE_PROFILES = {
+  prod: {
+    drivingplusApi: "https://api.drivingplus.me",
+    drivingzoneApi: "https://api.drivingzone.co.kr",
+  },
+  dev: {
+    drivingplusApi: "https://api-dev.drivingplus.me:18104",
+    drivingzoneApi: "https://adrock.duckdns.org:18099",
+  },
+} as const;
+export type SourceProfile = keyof typeof SOURCE_PROFILES;
+
 export const LLM_PROVIDERS = ["codex", "claude"] as const;
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
@@ -53,10 +66,21 @@ const configSchema = z.object({
     .prefault({}),
   sources: z
     .object({
-      drivingplusApi: z.string().default("https://api-dev.drivingplus.me:18104"),
+      /** 글 근거는 실제 공개 데이터여야 하므로 기본은 운영(prod). 테스트할 때만 dev. */
+      profile: z.enum(["prod", "dev"]).default("prod"),
+      /** 비우면 profile의 주소를 쓴다. 다른 서버를 가리킬 때만 적는다. */
+      drivingplusApi: z.string().default(""),
       drivingzoneApi: z.string().default(""),
     })
-    .prefault({}),
+    .prefault({})
+    .transform((s) => {
+      const preset = SOURCE_PROFILES[s.profile];
+      return {
+        profile: s.profile,
+        drivingplusApi: (s.drivingplusApi || preset.drivingplusApi).replace(/\/+$/, ""),
+        drivingzoneApi: (s.drivingzoneApi || preset.drivingzoneApi).replace(/\/+$/, ""),
+      };
+    }),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

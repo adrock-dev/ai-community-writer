@@ -42,7 +42,13 @@ copy config.example.json config.json
 | `pacing.minIntervalSec` / `maxIntervalSec` | `300` / `900` | 생성 사이 대기(무작위) |
 | `pacing.dailyLimit` | `10` | 하루 최대 생성 편수 |
 | `naver.searchadEnvFile` | `~/.naver-searchad.env` | 검색광고 API 인증 파일 |
-| `sources.drivingplusApi` / `drivingzoneApi` | dev 주소 / 빈 값 | 학원·연습장 데이터 API |
+| `sources.profile` | `prod` | 학원·연습장 데이터 API 환경 (`prod` / `dev`) |
+| `sources.drivingplusApi` / `drivingzoneApi` | 빈 값 | 비우면 profile 주소 사용. 다른 서버를 쓸 때만 지정 |
+
+| profile | api.drive | api.drivingzone |
+| --- | --- | --- |
+| `prod` | `https://api.drivingplus.me` | `https://api.drivingzone.co.kr` |
+| `dev` | `https://api-dev.drivingplus.me:18104` | `https://adrock.duckdns.org:18099` |
 
 `config.json`은 git에 올라가지 않습니다. 다른 위치의 설정을 쓰려면 환경 변수 `WRITER_CONFIG`에 경로를 지정합니다.
 
