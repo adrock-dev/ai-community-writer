@@ -14,8 +14,11 @@ export interface GateContext {
   corpus: string;
   /** 비교·추천 대상의 실제 후보 이름 */
   candidates: string[];
-  /** 본문에 쓸 수 있는 이미지 번호 (img1 …) */
-  imageIds: string[];
+  /**
+   * 본문에 쓸 수 있는 이미지 번호 (img1 …). 생성 직후에만 준다.
+   * 검수 중 수정한 글은 이미 실제 주소로 바뀌어 있으므로 비워 두면 번호 검사를 건너뛴다.
+   */
+  imageIds?: string[];
 }
 
 export interface Amount {
@@ -253,16 +256,19 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
 
   // 이미지
   const images = imageRefs(body);
-  const minImages = Math.min(quality.minImages, ctx.imageIds.length);
+  const minImages = ctx.imageIds
+    ? Math.min(quality.minImages, ctx.imageIds.length)
+    : quality.minImages;
   if (images.length < minImages) {
     issues.push(
       `이미지를 ${quality.minImages}장 이상 넣으세요 (지금 ${images.length}장). 서로 다른 섹션에 ![대체 텍스트](img1) 형식으로 넣으세요`,
     );
   }
-  const unknownImages = images.filter((i) => !ctx.imageIds.includes(i.src)).map((i) => i.src);
-  if (unknownImages.length) {
+  const ids = ctx.imageIds;
+  const unknownImages = ids ? images.filter((i) => !ids.includes(i.src)).map((i) => i.src) : [];
+  if (ids && unknownImages.length) {
     issues.push(
-      `없는 이미지 번호입니다: ${[...new Set(unknownImages)].join(", ")}. 제공된 번호(${ctx.imageIds.join(", ") || "없음"})만 쓰세요`,
+      `없는 이미지 번호입니다: ${[...new Set(unknownImages)].join(", ")}. 제공된 번호(${ids.join(", ") || "없음"})만 쓰세요`,
     );
   }
   if (images.some((i) => !i.alt))

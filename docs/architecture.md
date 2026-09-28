@@ -92,6 +92,19 @@ LLM(CLI) → 구분자 형식 해석 → 품질 게이트 + 유사도 검사 →
 - 생성 작업은 `generate` 작업 큐로 돌며 생성 간격·일일 한도·LLM 사용량 대기를 따른다. LLM 한도로 멈추면 주제는 `queued`로 남아 재개된다.
 - 근거 캐시는 정규화된 값을 저장하므로 정규화 규칙을 바꾸면 캐시 키 버전을 올린다.
 
+## 5-1. 검수·내보내기 (P4)
+
+```
+review / draft ──수정──▶ 기계 검사 다시(LLM 없음) → review / draft
+               ──승인──▶ approved ──내보내기──▶ exported ──게시 URL──▶ published
+  (발행 전 어느 단계든) ──반려──▶ rejected   (반려 후 다시 생성 → 같은 주제로 generate 작업)
+```
+
+- 초안(문제 남음)은 검수자가 "남은 문제를 확인했습니다"를 체크해야 승인된다. 승인한 글을 고치면 approved_at을 지우고 검수 대기로 돌린다.
+- 내보내기 형식(`src/export/`): 운전면허PLUS는 Markdown(content_format=md), 드라이빙존 블로그·연수 블로그는 에디터 HTML, 카페는 텍스트 + 서식 복사용 HTML. 대상 시스템의 제목 필드와 겹치지 않게 본문의 H1은 뺀다. 원고 속 원시 HTML은 글자로 바꾸고 스크립트 주소 링크는 막는다.
+- 내보내기 폴더에는 본문의 모든 이미지를 담는다. 실제 사진은 공개 주소 그대로 두고 사본만, 생성 삽화는 `images/파일`로 바꿔 운영자가 직접 올리게 한다(P6 자동 발행에서 업로드 API로 대체).
+- 관리 화면은 로그인이 없으므로 `127.0.0.1`에서만 연다.
+
 ## 6. 모듈 구성 (예정 포함)
 
 ```
@@ -101,7 +114,9 @@ src/
   paths.ts        경로 해석 (~, 상대 경로, Windows 구분자)
   channels.ts     브랜드·채널·섹션 정의
   guides.ts       작성 가이드(유의사항) 저장·조회·초기값 가져오기
-  web/            로컬 관리 화면 (layout, guides: 유의사항 설정)
+  web/            로컬 관리 화면 (dashboard · topics · articles(검수·내보내기) · jobs · guides)
+  export/         render(채널 형식 변환) · bundle(내보내기 폴더)
+  articles/       store(저장·조회) · review(검수 상태 전이·재검사)
   server.ts       로컬 HTTP 서버 (Hono)
   app.ts          DB·큐·LLM·작업 핸들러 조립
   doctor.ts       설치·설정 점검 (npm run doctor)
@@ -118,10 +133,7 @@ src/
   similarity/     fingerprint(MinHash·소제목·도입부, 피할 패턴, 유사 글 찾기)
   quality/        gate(품질 게이트) · factcheck(LLM 사실 검증)
   images/         generator(Codex CLI 삽화 생성) · scenes(글 유형별 장면)
-  articles/       store(글 저장·조회)
   cli/generate.ts npm run generate (--dry: 프롬프트만 출력)
-  export/         채널별 결과물                                            [P4]
-  web/            검수·승인·내보내기 UI                                    [P4]
 ```
 
 TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한다(`node src/main.ts`).
@@ -172,6 +184,6 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 | P1 | DB, Windows 대응 LLM 러너와 한도 대응, 작업 큐, 원천 데이터 조회, `npm run doctor` |
 | P2 | 키워드 수집·묶기, 주제 후보, `npm run collect`, `/api/topics` |
 | P3 | 채널 × 글 유형 프롬프트, 근거 자료, 유사도 검사, 품질 게이트, 생성 작업, `npm run generate` |
-| P4 | 검수·승인·내보내기 UI |
+| P4 | 대시보드·주제·글 검수·작업 화면, 수정·승인·반려·다시 생성, 채널별 내보내기(복사·폴더) |
 | P5 | web.drivingplus 커뮤니티 SEO(description, JSON-LD, 글이 생기면 sitemap 자동 포함), api.drive 노출 대상 필터 구현 |
 | P6 | api.drive / api.drivingzone 글 작성 API → 자동 발행 전환 |

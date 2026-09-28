@@ -138,6 +138,16 @@ export class JobQueue {
     ).changes;
   }
 
+  /** 최근 작업 (화면용). */
+  list(limit = 100): (Job & { createdAt: string; finishedAt: string | null })[] {
+    return this.db
+      .all<JobRow & { created_at: string; finished_at: string | null }>(
+        "SELECT * FROM jobs ORDER BY id DESC LIMIT ?",
+        [Math.min(Math.max(limit, 1), 1000)],
+      )
+      .map((r) => ({ ...toJob(r), createdAt: r.created_at, finishedAt: r.finished_at }));
+  }
+
   countDone(kind: string, since: Date): number {
     return (
       this.db.get<{ n: number }>(

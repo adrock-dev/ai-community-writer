@@ -26,7 +26,11 @@ import {
   TOPIC_STATUSES,
   type TopicStatus,
 } from "./topics/store.ts";
+import { mountArticles } from "./web/articles.ts";
+import { mountDashboard } from "./web/dashboard.ts";
 import { mountGuideSettings } from "./web/guides.ts";
+import { mountJobs } from "./web/jobs.ts";
+import { mountTopics } from "./web/topics.ts";
 
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
@@ -110,9 +114,12 @@ export function createApp(ctx: AppContext): Hono {
     });
   });
 
+  // 관리 화면
+  mountDashboard(app, ctx);
+  mountTopics(app, ctx);
+  mountArticles(app, ctx);
+  mountJobs(app, ctx);
   mountGuideSettings(app, ctx.db);
-  // 관리 화면은 P4에서 늘린다. 지금은 첫 화면이 유의사항 설정이다.
-  app.get("/", (c) => c.redirect("/settings/guides"));
 
   return app;
 }
