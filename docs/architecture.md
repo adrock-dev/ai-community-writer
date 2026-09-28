@@ -61,10 +61,13 @@ src/
   channels.ts     브랜드·채널·섹션 정의
   guides.ts       작성 가이드 로드 (guides/*.md)
   server.ts       로컬 HTTP 서버 (Hono)
-  db/             node:sqlite 스키마·마이그레이션                        [P1]
-  llm/            CLI 러너(Windows .cmd, 프로세스 트리 종료), 한도 감지, 프로바이더 전환 [P1]
-  queue/          작업 큐, 생성 간격, 일일 한도, 재개 시각                 [P1]
-  sources/        api.drive 학원·실내연습장, api.drivingzone 지점 조회      [P1]
+  app.ts          DB·큐·LLM·작업 핸들러 조립
+  doctor.ts       설치·설정 점검 (npm run doctor)
+  db/             node:sqlite 스키마·마이그레이션(user_version)
+  llm/            command(실행 파일 찾기) · process(실행·트리 종료) · providers(인자·출력 파싱·사용률)
+                  · limits(한도 판정) · client(순서·쉬기·기록)
+  queue/          queue(jobs 테이블) · pacer(생성 간격·일일 한도) · worker(폴링 루프)
+  sources/        drivingplus(학원·실내연습장) · drivingzone(지점) · http(응답 캐시)
   keywords/       검색광고 API, 데이터랩, 키워드 묶기                      [P2]
   topics/         주제 후보 점수화, 채널·섹션 배정                         [P2]
   writer/         채널별 프롬프트 (SEO/AEO/GEO 구조, 톤, 형식)             [P3]
@@ -91,10 +94,15 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 ## 6. LLM 호출과 사용량 한도
 
 - 기존 방식 유지: `codex exec` / `claude --print`를 서브프로세스로 실행하고 OAuth 로그인을 쓴다. Claude 경로는 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`을 제거해 구독 인증을 강제한다.
-- CLI는 남은 사용량을 미리 알려주지 않으므로 **걸리는 순간을 감지**한다.
-  - stderr·스트림에서 한도 문구(usage limit, rate limit, 429, reset 시각)를 찾으면 해당 프로바이더를 해제 시각까지 중지.
-  - `llm.order` 순서대로 다음 프로바이더로 전환, 모두 중지면 큐 대기.
-  - 평상시에도 `pacing` 간격(무작위)과 일일 한도를 지킨다.
+- **사용률을 미리 읽어 멈춘다.**
+  - Claude: `--output-format stream-json`의 `rate_limit_event`가 5시간·주간 창의 사용률과 리셋 시각을 준다.
+  - Codex: `exec --json`에는 없고, 세션 로그(`~/.codex/sessions/YYYY/MM/DD/rollout-*-<thread_id>.jsonl`)의 `rate_limits`에 있다. 그래서 `--ephemeral` 없이 실행해 스레드 id로 로그를 찾는다.
+  - 어느 창이든 `llm.pauseAtUsagePercent` 이상이면 그 창의 리셋 시각까지 해당 프로바이더를 쉰다(`provider_state`).
+- **그래도 한도에 걸리면** 거절 이벤트나 오류 문구(usage limit, 429, "try again in/at …", epoch)에서 해제 시각을 읽고, 없으면 `llm.limitCooldownMin`만큼 쉰다.
+- `llm.order` 순서로 다음 프로바이더로 넘어가고, 모두 쉬는 중이면 작업을 **실패가 아닌 보류**(`defer`, 시도 횟수 미차감)로 돌린다.
+- 평상시에도 `pacing` 간격(무작위)과 일일 한도를 지킨다(`Pacer`).
+- CLI는 저장소 밖 빈 폴더(OS 임시 폴더 `ai-community-writer-llm`)에서 실행한다. 저장소 안에서 실행하면 이 저장소의 CLAUDE.md/AGENTS.md가 글 작성에 섞인다. Claude는 도구·MCP·세션 저장을 끈다.
+- Windows: npm 전역 설치 `.cmd`는 내부 JS 진입점을 찾아 `node <js>`로 직접 실행하고(셸 인용 문제 회피), 타임아웃 시 `taskkill /T /F`로 트리째 종료한다.
 
 ## 7. 외부 시스템 현황 (2026-09-28 조사)
 
@@ -103,9 +111,10 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
   - 목록 조회가 `community_post_filter`를 INNER JOIN하므로 필터가 없는 글은 목록에 나오지 않는다. 내보낼 때 섹션·필터를 필수로 둔다.
   - 글 작성 API가 없다 (P6에서 추가).
 - **web.drivingplus 커뮤니티**: 글 상세 메타데이터에 description·JSON-LD가 없고, sitemap에서 제외돼 있다 (P5).
-- **학원·실내연습장 데이터**
-  - api.drive `GET /v1/academy/get-all-academy` — 인증 없음, `indoor_academy` 포함, 수강료·셔틀·운영시간·사진·리뷰.
-  - api.drivingzone `GET /v1/store`, `GET /v1/store/:id` — 인증 없음, 지점 합격률·평균 소요일·리뷰.
+- **학원·실내연습장 데이터** (`src/sources/`, 24시간 캐시, 갱신 실패 시 이전 캐시 사용)
+  - api.drive `GET /v1/academy/get-all-academy` — 인증 없음, 약 4MB, 384곳(실내연습장 17곳 포함). 가격 관측치·공시 수강료·셔틀·운영시간·사진·리뷰. 학원 SEO 문구(`seo*`)는 우리가 만든 홍보 문구라 근거에서 뺀다.
+  - api.drivingzone `GET /v1/store`(27곳) + `GET /v1/store/:id` — 인증 없음, 운영시간·지하철·강사·리뷰. 합격률·평균 소요일이 0이면 미집계로 본다.
+  - ⚠️ 지점 API가 대표자명·사업자번호·SMS 수신 번호를 공개 응답에 포함한다. 정규화는 화이트리스트로 해당 필드를 버리지만, api.drivingzone 쪽에서도 응답에서 빼야 한다.
 - **drivingzone / dztraining 블로그**: 같은 `article` 테이블(board type `blog` / `blog_training`), 글 작성은 PHP 관리자(세션 인증)만 가능.
 
 ## 8. 단계
@@ -113,7 +122,7 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 | 단계 | 내용 |
 | --- | --- |
 | P0 | 기존 구조 정리, 새 골격 (설정·채널 정의·작성 가이드·서버 진입점·테스트) |
-| P1 | DB, Windows 대응 LLM 러너와 한도 대응, 작업 큐, 원천 데이터 조회 |
+| P1 | DB, Windows 대응 LLM 러너와 한도 대응, 작업 큐, 원천 데이터 조회, `npm run doctor` |
 | P2 | 키워드 수집·묶기, 주제 후보 |
 | P3 | 채널별 프롬프트, 유사도 검사, 품질 게이트 |
 | P4 | 검수·승인·내보내기 UI |

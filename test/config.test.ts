@@ -44,7 +44,7 @@ describe("resolvePath", () => {
 
 describe("sources", () => {
   it("기본은 운영 주소, profile=dev면 개발 주소를 쓴다", () => {
-    expect(parseConfig({}).sources).toEqual({
+    expect(parseConfig({}).sources).toMatchObject({
       profile: "prod",
       drivingplusApi: "https://api.drivingplus.me",
       drivingzoneApi: "https://api.drivingzone.co.kr",

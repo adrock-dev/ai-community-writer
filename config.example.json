@@ -4,6 +4,8 @@
   "llm": {
     "order": ["codex", "claude"],
     "timeoutSec": 600,
+    "pauseAtUsagePercent": 80,
+    "limitCooldownMin": 60,
     "codex": { "command": "codex", "model": "" },
     "claude": { "command": "claude", "model": "" }
   },
@@ -12,6 +14,7 @@
     "maxIntervalSec": 900,
     "dailyLimit": 10
   },
+  "worker": { "pollSec": 5 },
   "naver": {
     "searchadEnvFile": "~/.naver-searchad.env",
     "datalabClientId": "",
@@ -20,6 +23,8 @@
   "sources": {
     "profile": "prod",
     "drivingplusApi": "",
-    "drivingzoneApi": ""
+    "drivingzoneApi": "",
+    "cacheTtlHours": 24,
+    "timeoutSec": 60
   }
 }

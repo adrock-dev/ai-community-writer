@@ -40,6 +40,11 @@ const configSchema = z.object({
       /** 앞에서부터 시도하고, 사용량 한도에 걸리면 다음 프로바이더로 넘어간다. */
       order: z.array(z.enum(LLM_PROVIDERS)).min(1).default(["codex", "claude"]),
       timeoutSec: z.number().int().positive().default(600),
+      /** 5시간·주간 사용률이 이 값(%) 이상이면 리셋 시각까지 해당 프로바이더를 쉰다.
+       *  같은 계정을 사람도 쓰므로 여유를 남긴다. */
+      pauseAtUsagePercent: z.number().min(1).max(100).default(80),
+      /** 한도에 걸렸는데 해제 시각을 알 수 없을 때 쉬는 시간(분). */
+      limitCooldownMin: z.number().int().positive().default(60),
       codex: providerSchema.prefault({ command: "codex" }),
       claude: providerSchema.prefault({ command: "claude" }),
     })
@@ -56,6 +61,12 @@ const configSchema = z.object({
     .refine((p) => p.maxIntervalSec >= p.minIntervalSec, {
       message: "pacing.maxIntervalSec는 minIntervalSec 이상이어야 합니다",
     }),
+  worker: z
+    .object({
+      /** 작업 큐 확인 주기(초). */
+      pollSec: z.number().int().positive().default(5),
+    })
+    .prefault({}),
   naver: z
     .object({
       /** 검색광고 API 인증 파일(KEY=VALUE 형식). 저장소 밖에 둔다. */
@@ -71,12 +82,17 @@ const configSchema = z.object({
       /** 비우면 profile의 주소를 쓴다. 다른 서버를 가리킬 때만 적는다. */
       drivingplusApi: z.string().default(""),
       drivingzoneApi: z.string().default(""),
+      /** 원천 응답 캐시 유지 시간. 학원 정보는 자주 바뀌지 않는다. */
+      cacheTtlHours: z.number().positive().default(24),
+      timeoutSec: z.number().int().positive().default(60),
     })
     .prefault({})
     .transform((s) => {
       const preset = SOURCE_PROFILES[s.profile];
       return {
         profile: s.profile,
+        cacheTtlHours: s.cacheTtlHours,
+        timeoutSec: s.timeoutSec,
         drivingplusApi: (s.drivingplusApi || preset.drivingplusApi).replace(/\/+$/, ""),
         drivingzoneApi: (s.drivingzoneApi || preset.drivingzoneApi).replace(/\/+$/, ""),
       };

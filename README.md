@@ -20,10 +20,22 @@ Codex 또는 Claude CLI로 채널별 원고를 쓰고, 사람이 검수·승인�
 
 ```powershell
 npm install
+npm run doctor          # 설치·로그인·API 연결 점검 (실제 LLM 호출까지: npm run doctor -- --llm)
 npm start
 ```
 
 `http://127.0.0.1:8787/health`가 응답하면 정상입니다. 종료는 `Ctrl+C`.
+
+## LLM 사용량과 대기
+
+Codex·Claude CLI는 구독 사용량(5시간 창, 주간 창) 안에서 동작합니다. 이 도구는 호출할 때마다 사용률을 읽어서
+
+- 사용률이 `llm.pauseAtUsagePercent`(기본 80%) 이상이면 그 창이 리셋될 때까지 해당 CLI를 쉬고
+- 한도에 걸리면 오류 문구의 해제 시각까지(모르면 `llm.limitCooldownMin`분) 쉬며
+- `llm.order`의 다음 CLI로 넘어갑니다. 모두 쉬는 중이면 작업은 실패가 아니라 **대기**로 남았다가 자동으로 재개됩니다.
+
+같은 계정을 사람도 쓰므로 기준을 100%보다 낮게 두는 것을 권장합니다. 현재 사용률은 `/health`의 `llm`에서 볼 수 있습니다.
+Codex 사용률은 `~/.codex/sessions`의 세션 기록에서 읽으므로, 생성할 때마다 세션 기록이 쌓입니다.
 
 ## 설정
 
@@ -39,11 +51,16 @@ copy config.example.json config.json
 | `dbPath` | `data/writer.db` | SQLite 파일 |
 | `llm.order` | `["codex", "claude"]` | 사용 순서. 한도에 걸리면 다음으로 넘어감 |
 | `llm.timeoutSec` | `600` | 글 1편 생성 제한 시간 |
+| `llm.pauseAtUsagePercent` | `80` | 사용률이 이 값 이상이면 리셋까지 쉼 |
+| `llm.limitCooldownMin` | `60` | 한도 해제 시각을 모를 때 쉬는 시간(분) |
 | `pacing.minIntervalSec` / `maxIntervalSec` | `300` / `900` | 생성 사이 대기(무작위) |
 | `pacing.dailyLimit` | `10` | 하루 최대 생성 편수 |
+| `worker.pollSec` | `5` | 작업 큐 확인 주기(초) |
 | `naver.searchadEnvFile` | `~/.naver-searchad.env` | 검색광고 API 인증 파일 |
 | `sources.profile` | `prod` | 학원·연습장 데이터 API 환경 (`prod` / `dev`) |
 | `sources.drivingplusApi` / `drivingzoneApi` | 빈 값 | 비우면 profile 주소 사용. 다른 서버를 쓸 때만 지정 |
+| `sources.cacheTtlHours` | `24` | 학원·지점 데이터 캐시 유지 시간 |
+| `sources.timeoutSec` | `60` | 원천 API 요청 제한 시간 |
 
 | profile | api.drive | api.drivingzone |
 | --- | --- | --- |
@@ -74,6 +91,7 @@ copy config.example.json config.json
 | 명령 | 설명 |
 | --- | --- |
 | `npm run dev` | 파일 변경 시 자동 재시작 |
+| `npm run doctor` | 설치·설정 점검 |
 | `npm run typecheck` | 타입 검사 |
 | `npm run lint` / `npm run format` | Biome 린트 / 포맷 |
 | `npm test` | 단위 테스트 (vitest) |
