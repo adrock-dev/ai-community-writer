@@ -201,7 +201,7 @@ export function readCodexUsage(threadId: string, now: Date = new Date()): UsageW
 
 // ── 실행 ────────────────────────────────────────────────────────────────
 
-function childEnv(provider: LlmProvider): NodeJS.ProcessEnv {
+export function childEnv(provider: LlmProvider): NodeJS.ProcessEnv {
   const env = { ...process.env };
   // 구독(OAuth) 인증을 강제한다. API 키가 있으면 CLI가 키 과금으로 넘어간다.
   if (provider === "claude") {

@@ -14,6 +14,8 @@ export interface GateContext {
   corpus: string;
   /** 비교·추천 대상의 실제 후보 이름 */
   candidates: string[];
+  /** 본문에 쓸 수 있는 이미지 번호 (img1 …) */
+  imageIds: string[];
 }
 
 export interface Amount {
@@ -22,23 +24,80 @@ export interface Amount {
   raw: string;
 }
 
-/** "627,000원", "62만 7천 원", "25만원", "약 30만 원대", "25만~45만 원" 같은 금액을 원 단위로 읽는다. */
+const APPROX_BEFORE = /(약|대략|최대|최소|평균|최저|최고|대체로)\s*$/;
+const APPROX_AFTER = /^\s*(대|선|정도|안팎|이상|이하|내외|부터|~|–)/;
+const num = (s: string | undefined) => Number((s ?? "").replace(/,/g, ""));
+
+/**
+ * 금액을 원 단위로 읽는다.
+ * "25만원", "62만 7천원", "62만 7,500원", "4만 4천원", "7,500원", "3천원", "250,000원",
+ * "약 30만원대", 범위 "25만~45만원"(앞쪽도 금액으로 읽고 어림으로 표시)
+ */
 export function extractAmounts(text: string): Amount[] {
   const out: Amount[] = [];
   const re =
-    /(약|대략|최대|최소|평균|최저|최고)?\s*((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(만\s*(?:(\d{1,4})\s*천)?|천)?\s*(원|~|–|-)(대|선|정도|안팎|이상|이하)?/g;
+    /(\d[\d,]*(?:\.\d+)?)\s*만(?:\s*(\d[\d,]*)\s*(천)?)?\s*원|(\d[\d,]*(?:\.\d+)?)\s*만\s*(?=[~–-])|(\d[\d,]*)\s*천\s*원|(\d[\d,]*)\s*원/g;
   for (const m of text.matchAll(re)) {
-    const [raw, prefix, numStr, unit, thousands, tail, suffix] = m;
-    // "25만~" 형태는 만 단위일 때만 금액 범위로 본다 (날짜·개수 범위와 구분)
-    if (tail !== "원" && !unit?.startsWith("만")) continue;
-    let value = Number((numStr ?? "").replace(/,/g, ""));
-    if (unit?.startsWith("만")) value = value * 10_000 + Number(thousands ?? 0) * 1000;
-    else if (unit === "천") value *= 1000;
+    const [raw, man, rest, restThousand, rangeMan, thousand, plain] = m;
+    let value: number;
+    let range = false;
+    if (man !== undefined)
+      value = num(man) * 10_000 + (rest ? num(rest) * (restThousand ? 1000 : 1) : 0);
+    else if (rangeMan !== undefined) {
+      value = num(rangeMan) * 10_000;
+      range = true;
+    } else if (thousand !== undefined) value = num(thousand) * 1000;
+    else value = num(plain);
     value = Math.round(value);
-    if (value < 1000) continue;
-    out.push({ value, approx: Boolean(prefix || suffix || tail !== "원"), raw: raw.trim() });
+    if (!Number.isFinite(value) || value < 1000) continue;
+    const at = m.index ?? 0;
+    const approx =
+      range ||
+      APPROX_BEFORE.test(text.slice(Math.max(0, at - 6), at)) ||
+      APPROX_AFTER.test(text.slice(at + raw.length, at + raw.length + 4));
+    out.push({ value, approx, raw: raw.trim() });
   }
   return out;
+}
+
+/** "250,000원"·"250000원"처럼 만 단위로 쓰지 않은 1만원 이상 금액 */
+export function unreadableAmounts(text: string): string[] {
+  return [...text.matchAll(/(?<![\d.만])(\d{1,3}(?:,\d{3})+|\d{5,})\s*원/g)]
+    .filter((m) => num(m[1]) >= 10_000)
+    .map((m) => m[0].trim());
+}
+
+/**
+ * 금액이 나온 문단·표에 부가세 포함 여부가 적혀 있는지. 표는 바로 앞뒤 문단(표 설명)까지 본다.
+ * 표시가 없는 블록의 앞부분을 돌려준다.
+ */
+export function amountsWithoutVat(markdown: string): string[] {
+  const blocks = markdown.split(/\n\s*\n/).map((b) => b.trim());
+  const hasVat = (s: string | undefined) => /부가세|VAT/i.test(s ?? "");
+  const missing: string[] = [];
+  blocks.forEach((block, i) => {
+    if (!extractAmounts(block).length || hasVat(block)) return;
+    const isTable = block.startsWith("|");
+    if (isTable && (hasVat(blocks[i - 1]) || hasVat(blocks[i + 1]))) return;
+    missing.push(block.replace(/\s+/g, " ").slice(0, 40));
+  });
+  return missing;
+}
+
+export interface ImageRef {
+  alt: string;
+  src: string;
+  line: number;
+}
+
+export function imageRefs(markdown: string): ImageRef[] {
+  const refs: ImageRef[] = [];
+  markdown.split(/\r?\n/).forEach((l, line) => {
+    for (const m of l.matchAll(/!\[([^\]]*)\]\(([^)\s]+)\)/g)) {
+      refs.push({ alt: (m[1] ?? "").trim(), src: m[2] ?? "", line });
+    }
+  });
+  return refs;
 }
 
 export function extractPercents(text: string): number[] {
@@ -119,7 +178,7 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
     0,
     ...body
       .split(/\n\s*\n/)
-      .filter((p) => !/^(#|\||[-*+]\s|\d+[.)]\s)/.test(p.trim()))
+      .filter((p) => !/^(#|\||[-*+]\s|\d+[.)]\s|!\[)/.test(p.trim()))
       .map((p) => p.trim().length),
   );
   if (longest > 450) issues.push(`한 문단이 ${longest}자입니다. 450자 이하로 나누세요`);
@@ -174,6 +233,50 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
       `근거 자료에 없는 비율이 있습니다: ${[...new Set(unknownPct)].map((p) => `${p}%`).join(", ")}. 빼세요`,
     );
   }
+
+  // 금액 표기: 25만원 형태 + 부가세 포함 여부
+  const unreadable = unreadableAmounts(all);
+  if (unreadable.length) {
+    issues.push(
+      `금액은 "25만원", "62만 7천원"처럼 만 단위로 쓰세요: ${[...new Set(unreadable)].slice(0, 5).join(", ")}`,
+    );
+  }
+  const noVat = amountsWithoutVat(body);
+  if (noVat.length) {
+    issues.push(
+      `금액이 나온 문장·표에 부가세 포함·별도를 함께 적으세요: "${noVat.slice(0, 3).join('", "')}"`,
+    );
+  }
+  if (extractAmounts(draft.summary).length && !/부가세|VAT/i.test(draft.summary)) {
+    issues.push("검색 결과 설명에 금액을 쓰려면 부가세 포함·별도도 함께 적거나 금액을 빼세요");
+  }
+
+  // 이미지
+  const images = imageRefs(body);
+  const minImages = Math.min(quality.minImages, ctx.imageIds.length);
+  if (images.length < minImages) {
+    issues.push(
+      `이미지를 ${quality.minImages}장 이상 넣으세요 (지금 ${images.length}장). 서로 다른 섹션에 ![대체 텍스트](img1) 형식으로 넣으세요`,
+    );
+  }
+  const unknownImages = images.filter((i) => !ctx.imageIds.includes(i.src)).map((i) => i.src);
+  if (unknownImages.length) {
+    issues.push(
+      `없는 이미지 번호입니다: ${[...new Set(unknownImages)].join(", ")}. 제공된 번호(${ctx.imageIds.join(", ") || "없음"})만 쓰세요`,
+    );
+  }
+  if (images.some((i) => !i.alt))
+    issues.push("모든 이미지에 대체 텍스트를 쓰세요 (![대체 텍스트](img1))");
+  const srcs = images.map((i) => i.src);
+  if (new Set(srcs).size < srcs.length) issues.push("같은 이미지를 두 번 쓰지 마세요");
+  const imageLines = new Set(images.map((i) => i.line));
+  const bodyLines = body.split(/\r?\n/);
+  const adjacent = images.some((i) => {
+    let next = i.line + 1;
+    while (next < bodyLines.length && !bodyLines[next]?.trim()) next++;
+    return imageLines.has(next);
+  });
+  if (adjacent) issues.push("이미지를 연달아 두지 말고 서로 다른 섹션에 나눠 넣으세요");
 
   // 후보 수 부풀리기
   if (ctx.candidates.length && (ctx.articleType === "recommend" || ctx.articleType === "academy")) {

@@ -9,6 +9,7 @@ import { getArticle } from "../articles/store.ts";
 import { findChannel, findSection } from "../channels.ts";
 import { loadConfig } from "../config.ts";
 import { loadGuideRules } from "../guides.ts";
+import { codexImageGenerator } from "../images/generator.ts";
 import { PROJECT_ROOT } from "../paths.ts";
 import { avoidList } from "../similarity/fingerprint.ts";
 import { getTopic, listTopics } from "../topics/store.ts";
@@ -53,6 +54,7 @@ try {
       guides: loadGuideRules(ctx.db, channel.id),
       facts,
       avoid: avoidList(ctx.db, channel.id, topic.articleType),
+      images: facts.images,
       today: new Date(),
     });
     console.log(
@@ -61,7 +63,13 @@ try {
     console.log(prompt);
   } else {
     const result = await generateArticle(
-      { db: ctx.db, config: ctx.config, llm: ctx.llm, log: (m) => console.log(`[generate] ${m}`) },
+      {
+        db: ctx.db,
+        config: ctx.config,
+        llm: ctx.llm,
+        images: codexImageGenerator(ctx.config.llm),
+        log: (m) => console.log(`[generate] ${m}`),
+      },
       topic.id,
     );
     const article = getArticle(ctx.db, result.articleId)!;

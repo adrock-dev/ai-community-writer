@@ -23,6 +23,8 @@ export interface ChannelQuality {
   minH2: number;
   requireFaq: boolean;
   requireTable: boolean;
+  /** 본문 이미지 최소 장수 */
+  minImages: number;
 }
 
 export interface ChannelDef {
@@ -49,7 +51,14 @@ export const CHANNELS = [
     format: "markdown",
     focus: ["운전학원 찾기·비교·추천", "학원 연수", "운전면허 시험 정보"],
     supportsAudience: true,
-    quality: { minChars: 1800, maxChars: 4200, minH2: 3, requireFaq: true, requireTable: true },
+    quality: {
+      minChars: 1800,
+      maxChars: 4200,
+      minH2: 3,
+      requireFaq: true,
+      requireTable: true,
+      minImages: 2,
+    },
     sections: [
       {
         code: "drive_story",
@@ -76,7 +85,14 @@ export const CHANNELS = [
     format: "html",
     focus: ["운전면허 취득"],
     supportsAudience: false,
-    quality: { minChars: 2200, maxChars: 5000, minH2: 4, requireFaq: true, requireTable: true },
+    quality: {
+      minChars: 2200,
+      maxChars: 5000,
+      minH2: 4,
+      requireFaq: true,
+      requireTable: true,
+      minImages: 2,
+    },
     sections: [{ code: "blog", label: "블로그", focus: ["운전면허 취득"] }],
   },
   {
@@ -87,7 +103,14 @@ export const CHANNELS = [
     format: "html",
     focus: ["장롱면허", "운전 연수"],
     supportsAudience: false,
-    quality: { minChars: 2200, maxChars: 5000, minH2: 4, requireFaq: true, requireTable: false },
+    quality: {
+      minChars: 2200,
+      maxChars: 5000,
+      minH2: 4,
+      requireFaq: true,
+      requireTable: false,
+      minImages: 2,
+    },
     sections: [{ code: "blog_training", label: "연수 블로그", focus: ["장롱면허", "운전 연수"] }],
   },
   {
@@ -98,7 +121,14 @@ export const CHANNELS = [
     format: "cafe-text",
     focus: ["운전면허 취득", "장롱면허", "운전 연수"],
     supportsAudience: false,
-    quality: { minChars: 800, maxChars: 2200, minH2: 0, requireFaq: false, requireTable: false },
+    quality: {
+      minChars: 800,
+      maxChars: 2200,
+      minH2: 0,
+      requireFaq: false,
+      requireTable: false,
+      minImages: 2,
+    },
     sections: [
       { code: "cafe", label: "카페 원고", focus: ["운전면허 취득", "장롱면허", "운전 연수"] },
     ],

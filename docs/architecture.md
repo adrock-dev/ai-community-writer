@@ -74,10 +74,16 @@ seeds/<채널>.md 시드 ──▶ 검색광고 API keywordstool (5개씩, 30일
         ▼
 프롬프트 = base.md + channels/<채널>.md + (channels/<채널>/<유형>.md | types/<유형>.md) + 주제 + 위 3가지 + 출력 형식
         ▼
-LLM(CLI) → 구분자 형식 해석 → 품질 게이트 + 유사도 검사
+이미지: 실제 사진(학원·지점) → 2장보다 적으면 Codex CLI 이미지 생성으로 삽화 보충
+        ▼
+LLM(CLI) → 구분자 형식 해석 → 품질 게이트 + 유사도 검사 → (통과 시) LLM 사실 검증
         ├─ 문제 있음 → 문제 목록을 붙여 전체 재작성 (최대 3회)
-        └─ 저장: 문제 없으면 status=review(검수 대기), 끝까지 남으면 status=draft + quality_issues
+        └─ 저장: 이미지 번호(img1)를 실제 주소로 바꾸고, 문제 없으면 status=review, 남으면 status=draft + quality_issues
 ```
+
+- **사실 검증**(`src/quality/factcheck.ts`): 학원·실내운전연습장에 대한 구체 서술(요금·시설·장비·강사·셔틀·합격률·후기·평가), 근거와 다른 숫자·조건, 근거 없는 법령 수치, 지어낸 후기를 JSON으로 받아 재작성 지시로 되돌린다. 기계 검사를 통과한 원고에만 돌려 LLM 호출을 아낀다.
+- **금액**: 근거 자료부터 "25만원" 표기(`src/writer/money.ts`)와 부가세 포함 여부를 붙인다. 게이트는 만 단위 미사용 금액, 부가세 표기가 없는 문단·표(표는 바로 앞뒤 설명까지)를 잡는다. 드라이빙존 요금은 부가세 별도(운영 확인 2026-09-28).
+- **이미지**: 실제 사진은 원천 공개 URL을 그대로 쓰고, 삽화는 `data/images/`에 저장해 `/images/<파일>`로 제공한다. Codex CLI 내장 `image_generation`을 저장소 밖 빈 폴더에서 `workspace-write`로 실행한다. 게이트: 2장 이상, 제공된 번호만, 대체 텍스트 필수, 중복·연속 배치 금지.
 
 - **프롬프트는 채널 × 글 유형 단위.** 같은 주제라도 운전면허PLUS(중립 비교 플랫폼)와 드라이빙존(브랜드 블로그)은 목소리·구성이 다르고, 같은 채널 안에서도 글 유형(비용·추천·시험·연수 …)마다 구성이 다르다. 채널 전용 유형 파일(`channels/<채널>/<유형>.md`)이 있으면 공통 유형 파일 대신 쓴다.
 - **근거 자료**에는 원천 시스템 이름·URL을 넣지 않는다. 드라이빙존 공지 API의 비공개 필드는 정규화 단계에서 이미 버린다.
@@ -110,7 +116,8 @@ src/
   cli/collect.ts  npm run collect
   writer/         facts(근거 자료) · prompt(조립·재작성) · output(출력 해석) · generate(1편 생성)
   similarity/     fingerprint(MinHash·소제목·도입부, 피할 패턴, 유사 글 찾기)
-  quality/        gate(품질 게이트)
+  quality/        gate(품질 게이트) · factcheck(LLM 사실 검증)
+  images/         generator(Codex CLI 삽화 생성) · scenes(글 유형별 장면)
   articles/       store(글 저장·조회)
   cli/generate.ts npm run generate (--dry: 프롬프트만 출력)
   export/         채널별 결과물                                            [P4]

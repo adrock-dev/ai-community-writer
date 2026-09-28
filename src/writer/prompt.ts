@@ -7,7 +7,7 @@ import { PROJECT_ROOT } from "../paths.ts";
 import type { AvoidItem } from "../similarity/fingerprint.ts";
 import { articleTypeLabel } from "../topics/intent.ts";
 import type { Topic } from "../topics/store.ts";
-import type { Facts } from "./facts.ts";
+import type { Facts, ImageCandidate } from "./facts.ts";
 
 // 생성 프롬프트 조립. 같은 주제라도 채널 × 글 유형마다 다른 프롬프트가 되도록 파일을 겹친다.
 //   prompts/base.md                               공통 원칙 (SEO·AEO·GEO·사실 원칙)
@@ -75,12 +75,26 @@ export interface PromptInput {
   guides: Pick<GuideRule, "group" | "text">[];
   facts: Facts;
   avoid: AvoidItem[];
+  /** 본문에 넣을 수 있는 이미지 (실제 사진 + 생성 삽화) */
+  images: ImageCandidate[];
   today: Date;
 }
 
 export interface ComposedPrompt {
   prompt: string;
   files: string[];
+}
+
+function imagesText(images: ImageCandidate[], min: number): string {
+  if (!images.length) return "(사용할 수 있는 이미지 없음 — 이미지를 넣지 마세요)";
+  return [
+    `아래 번호의 이미지만 서로 다른 섹션에 ${Math.min(min, images.length)}장 이상 넣으세요. 형식: ![대체 텍스트](번호)`,
+    ...images.map((i) =>
+      i.kind === "photo"
+        ? `- ${i.id}: ${i.subject} (실제 사진, 무엇이 찍혔는지는 확인되지 않음 — 대체 텍스트에 장면을 지어내지 말고 "OO 사진"처럼 대상만 쓰세요)`
+        : `- ${i.id}: 삽화 — ${i.subject} (생성 이미지, 실제 장소·업체가 아님 — 특정 학원·지점 사진처럼 쓰지 마세요)`,
+    ),
+  ].join("\n");
 }
 
 function avoidText(items: AvoidItem[]): string {
@@ -113,6 +127,7 @@ export function composePrompt(input: PromptInput, dir = PROMPTS_DIR): ComposedPr
     topicBlock,
     `## 유의사항 (반드시 지킬 운영 규칙과 사실)\n\n${guides || "(없음)"}`,
     `## 근거 자료\n\n${facts.text || "이 주제에 대해 제공되는 구체적 자료가 없습니다. 가격·합격률·기간 같은 수치와 특정 업체 이름은 쓰지 마세요."}`,
+    `## 본문에 넣을 이미지\n\n${imagesText(input.images, channel.quality.minImages)}`,
     `## 피해야 할 기존 글 (제목·소제목 구성·도입부가 겹치지 않게, 다른 각도로 쓰세요)\n\n${avoidText(input.avoid)}`,
     OUTPUT_FORMAT,
   ].join("\n\n");

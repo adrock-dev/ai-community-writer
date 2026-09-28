@@ -3,6 +3,7 @@ import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
 import { type Academy, fetchAcademies } from "../sources/drivingplus.ts";
 import {
+  DRIVINGZONE_PRICE_VAT_INCLUDED,
   fetchPricing,
   fetchStores,
   type PricingCategory,
@@ -10,21 +11,33 @@ import {
   type Store,
 } from "../sources/drivingzone.ts";
 import type { Topic } from "../topics/store.ts";
+import { vatLabel, formatWon as won } from "./money.ts";
 
 // 근거 자료: 글에 구체적으로 쓸 수 있는 사실만 모은 텍스트.
 // 프롬프트에는 text가, 품질 게이트의 숫자 검증에는 text + 유의사항이 들어간다.
 // 원천 시스템 이름·URL은 넣지 않는다(본문에 새어 나가지 않게).
+// 금액은 "25만원" 표기와 부가세 포함 여부를 항상 함께 적는다.
+
+export interface ImageCandidate {
+  /** 프롬프트·본문에서 쓰는 번호 (img1, img2 …) */
+  id: string;
+  url: string;
+  /** photo: 원천 데이터의 실제 사진 / generated: 생성한 삽화 */
+  kind: "photo" | "generated";
+  /** 무엇의 사진인지 (내용은 모름). 대체 텍스트의 근거 */
+  subject: string;
+}
 
 export interface Facts {
   text: string;
   /** 비교·추천 글의 실제 후보 이름. 부풀린 개수 검사에 쓴다. */
   candidates: string[];
+  /** 본문에 넣을 수 있는 실제 사진 */
+  images: ImageCandidate[];
   /** 자료 기준 시각 (원천 캐시 시각 중 가장 오래된 것). */
   asOf: string;
   warnings: string[];
 }
-
-const won = (n: number) => `${n.toLocaleString("ko-KR")}원`;
 
 /** 근거로 쓸 만한 후기인가: 완성형 한글 15자 이상, 자음·모음만 쓴 글자가 많지 않을 것. */
 export function isMeaningfulReview(text: string): boolean {
@@ -32,8 +45,10 @@ export function isMeaningfulReview(text: string): boolean {
   const jamo = (text.match(/[ㄱ-ㅎㅏ-ㅣ]/g) ?? []).length;
   return syllables >= 15 && jamo <= syllables * 0.3;
 }
+
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 const day = (iso: string) => iso.slice(0, 10);
+const isUrl = (u: string) => /^https?:\/\//.test(u);
 
 function median(xs: number[]): number | undefined {
   if (!xs.length) return undefined;
@@ -58,6 +73,22 @@ export function inRegion(address: string, regionKey: string): boolean {
   if (!regionKey) return true;
   const a = normalizeAddress(address);
   return regionKey.split("|").some((r) => a.startsWith(r));
+}
+
+/** 사진 후보를 모은다. 대상마다 perSubject장, 전체 max장까지. */
+function collectPhotos(
+  subjects: { subject: string; photos: string[] }[],
+  perSubject: number,
+  max: number,
+): ImageCandidate[] {
+  const out: ImageCandidate[] = [];
+  for (const s of subjects) {
+    for (const url of s.photos.filter(isUrl).slice(0, perSubject)) {
+      if (out.length >= max) return out;
+      out.push({ id: `img${out.length + 1}`, url, kind: "photo", subject: s.subject });
+    }
+  }
+  return out;
 }
 
 // ── 운전면허PLUS: 학원 ────────────────────────────────────────────────────
@@ -86,7 +117,7 @@ function academyLine(a: Academy, training: boolean): string {
       f.type2Auto && `2종 보통(자동) ${won(f.type2Auto)}`,
     ].filter(Boolean);
     lines.push(
-      `  공시 수강료(${f.period}, ${f.examFeeIncluded ? "검정료 포함" : "검정료 별도"}, ${f.vatIncluded ? "부가세 포함" : "부가세 별도"}): ${parts.join(" / ")}`,
+      `  공시 수강료(${f.period}, ${f.examFeeIncluded ? "검정료 포함" : "검정료 별도"}, ${vatLabel(f.vatIncluded)}): ${parts.join(" / ")}`,
     );
   }
   const prices = a.prices
@@ -96,6 +127,7 @@ function academyLine(a: Academy, training: boolean): string {
     .slice(0, 4);
   for (const p of prices) {
     const extra = [
+      vatLabel(p.vatIncluded),
       p.examFeeIncluded === false ? "검정료 별도" : p.examFeeIncluded ? "검정료 포함" : "",
       `${day(p.collectedAt)} 확인`,
     ]
@@ -121,9 +153,9 @@ function academyLine(a: Academy, training: boolean): string {
 export function academyFacts(
   academies: Academy[],
   topic: Topic,
-): { text: string; candidates: string[] } {
+): Pick<Facts, "text" | "candidates" | "images"> {
   if (!ACADEMY_TYPES.has(topic.articleType)) {
-    return { text: "", candidates: [] };
+    return { text: "", candidates: [], images: [] };
   }
   const training = topic.articleType === "training";
   const schools = academies.filter((a) => a.type in ACADEMY_KIND);
@@ -137,8 +169,9 @@ export function academyFacts(
       .slice(0, 6);
     if (!local.length) {
       return {
-        text: `이 지역에서 확인된 학원 자료가 없습니다. 특정 학원 이름·가격을 쓰지 말고 학원을 고르는 기준 중심으로 쓰세요.`,
+        text: "이 지역에서 확인된 학원 자료가 없습니다. 특정 학원 이름·가격을 쓰지 말고 학원을 고르는 기준 중심으로 쓰세요.",
         candidates: [],
+        images: [],
       };
     }
     return {
@@ -147,10 +180,15 @@ export function academyFacts(
         ...local.map((a) => academyLine(a, training)),
       ].join("\n\n"),
       candidates: local.map((a) => a.name),
+      images: collectPhotos(
+        local.map((a) => ({ subject: `${a.name} 사진`, photos: a.photos })),
+        1,
+        4,
+      ),
     };
   }
 
-  // 지역이 없는 주제: 개별 학원 대신 전국 집계
+  // 지역이 없는 주제: 개별 학원 대신 전국 집계 (특정 학원 사진은 쓰지 않는다)
   const lines = [
     `전국 등록 학원: 전문학원 ${schools.filter((a) => a.type === "exam_academy").length}곳, 일반학원 ${schools.filter((a) => a.type === "academy").length}곳`,
   ];
@@ -158,6 +196,9 @@ export function academyFacts(
   const periodCount = new Map<string, number>();
   for (const f of fees) periodCount.set(f.period, (periodCount.get(f.period) ?? 0) + 1);
   const period = [...periodCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
+  // 공시 수강료의 부가세 표기가 학원마다 다를 수 있어 가장 많은 쪽을 적고 섞여 있으면 알린다
+  const vatValues = new Set(fees.map((f) => f.vatIncluded));
+  const vat = vatValues.size === 1 ? vatLabel([...vatValues][0]) : "부가세 포함 여부 학원마다 다름";
   for (const [key, label] of [
     ["type2Auto", "2종 보통(자동)"],
     ["type1Auto", "1종 보통(자동)"],
@@ -167,19 +208,20 @@ export function academyFacts(
     const m = median(xs);
     if (m && xs.length >= 5) {
       lines.push(
-        `공시 수강료 ${label} (${period}, ${xs.length}곳): 최저 ${won(Math.min(...xs))}, 중간값 ${won(m)}, 최고 ${won(Math.max(...xs))}`,
+        `공시 수강료 ${label} (${period}, ${xs.length}곳, ${vat}): 최저 ${won(Math.min(...xs))}, 중간값 ${won(m)}, 최고 ${won(Math.max(...xs))}`,
       );
     }
   }
   const trainingPrices = schools.flatMap((a) =>
-    a.prices.filter((p) => p.courseType === "driving_training").map((p) => p.amount),
+    a.prices.filter((p) => p.courseType === "driving_training"),
   );
   if (trainingPrices.length >= 5) {
+    const tVat = new Set(trainingPrices.map((p) => p.vatIncluded));
     lines.push(
-      `학원 연수 안내 가격 (${schools.filter(withTraining).length}곳): 중간값 ${won(median(trainingPrices)!)} (과정·시간이 학원마다 다름)`,
+      `학원 연수 안내 가격 (${schools.filter(withTraining).length}곳, ${tVat.size === 1 ? vatLabel([...tVat][0]) : "부가세 포함 여부 학원마다 다름"}): 중간값 ${won(median(trainingPrices.map((p) => p.amount))!)} (과정·시간이 학원마다 다름)`,
     );
   }
-  return { text: lines.join("\n"), candidates: [] };
+  return { text: lines.join("\n"), candidates: [], images: [] };
 }
 
 // ── 드라이빙존: 지점·요금제 ───────────────────────────────────────────────
@@ -213,7 +255,7 @@ function storeLine(s: Store, detail: boolean, reviewFor: "license" | "training")
 function pricingLines(title: string, plans: PricingPlan[]): string[] {
   if (!plans.length) return [];
   return [
-    title,
+    `${title} (모든 금액 ${vatLabel(DRIVINGZONE_PRICE_VAT_INCLUDED)}, 괄호는 할인 전 정가)`,
     ...plans.map(
       (p) =>
         `- ${p.group} · ${p.name}: ${p.options
@@ -231,7 +273,7 @@ export function drivingzoneFacts(
   pricing: Partial<Record<PricingCategory, PricingPlan[]>>,
   topic: Topic,
   channel: ChannelDef,
-): { text: string; candidates: string[] } {
+): Pick<Facts, "text" | "candidates" | "images"> {
   const reviewFor =
     channel.id === "dztraining-blog" || topic.articleType === "training" ? "training" : "license";
   const direct = stores.filter((s) => s.type === "direct").length;
@@ -256,10 +298,18 @@ export function drivingzoneFacts(
     parts.push("전체 지점 목록:", ...stores.map((s) => storeLine(s, false, reviewFor)));
   }
   parts.push(
-    ...pricingLines("면허 취득 요금제:", pricing.license ?? []),
-    ...pricingLines("운전연수 요금제:", pricing.training ?? []),
+    ...pricingLines("면허 취득 요금제", pricing.license ?? []),
+    ...pricingLines("운전연수 요금제", pricing.training ?? []),
   );
-  return { text: parts.join("\n"), candidates: (local.length ? local : stores).map((s) => s.name) };
+  return {
+    text: parts.join("\n"),
+    candidates: (local.length ? local : stores).map((s) => s.name),
+    images: collectPhotos(
+      detailed.map((s) => ({ subject: `드라이빙존 ${s.name} 매장 사진`, photos: s.photos })),
+      2,
+      4,
+    ),
+  };
 }
 
 // ── 조립 ─────────────────────────────────────────────────────────────────
@@ -272,7 +322,7 @@ export async function buildFacts(
 ): Promise<Facts> {
   const warnings: string[] = [];
   const times: string[] = [];
-  let body: { text: string; candidates: string[] };
+  let body: Pick<Facts, "text" | "candidates" | "images">;
 
   if (channel.brand === "drivingplus") {
     const academies = await fetchAcademies(db, sources);
@@ -304,6 +354,7 @@ export async function buildFacts(
   return {
     text: body.text ? `자료 기준일: ${day(asOf)}\n${body.text}` : "",
     candidates: body.candidates,
+    images: body.images,
     asOf,
     warnings,
   };

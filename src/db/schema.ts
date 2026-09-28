@@ -159,4 +159,8 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE articles ADD COLUMN facts TEXT NOT NULL DEFAULT '';
   ALTER TABLE articles ADD COLUMN generation TEXT NOT NULL DEFAULT '{}';
   `,
+  // v4: 본문 이미지 (실제 사진 / 생성 이미지)
+  `
+  ALTER TABLE articles ADD COLUMN images TEXT NOT NULL DEFAULT '[]';
+  `,
 ];

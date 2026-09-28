@@ -1,4 +1,15 @@
+import { existsSync, readFileSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import { Hono } from "hono";
+import { IMAGES_DIR } from "./images/generator.ts";
+
+const IMAGE_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
+
 import { type AppContext, COLLECT_KIND, GENERATE_KIND } from "./app.ts";
 import {
   ARTICLE_STATUSES,
@@ -85,6 +96,18 @@ export function createApp(ctx: AppContext): Hono {
   app.get("/api/articles/:id", (c) => {
     const article = getArticle(ctx.db, Number(c.req.param("id")));
     return article ? c.json(article) : c.json({ error: "글이 없습니다" }, 404);
+  });
+
+  // 생성 삽화 제공. 파일 이름만 받아 경로 이동(../)을 막는다.
+  app.get("/images/:file", (c) => {
+    const file = basename(c.req.param("file"));
+    const path = join(IMAGES_DIR, file);
+    const type = IMAGE_TYPES[extname(file).toLowerCase()];
+    if (!type || !existsSync(path)) return c.notFound();
+    return c.body(readFileSync(path), 200, {
+      "content-type": type,
+      "cache-control": "public, max-age=86400",
+    });
   });
 
   mountGuideSettings(app, ctx.db);

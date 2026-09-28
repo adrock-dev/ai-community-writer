@@ -1,6 +1,7 @@
 import type { AppConfig } from "./config.ts";
 import { Database } from "./db/database.ts";
 import { importGuideFilesIfEmpty } from "./guides.ts";
+import { codexImageGenerator } from "./images/generator.ts";
 import { fetchTrends, loadDatalabCredentials } from "./keywords/datalab.ts";
 import { loadRegionIndex } from "./keywords/regions.ts";
 import { loadSearchadCredentials, readEnvFile, SearchadClient } from "./keywords/searchad.ts";
@@ -41,7 +42,13 @@ export function createContext(config: AppConfig): AppContext {
       usesLlm: true,
       run: (job) =>
         generateArticle(
-          { db, config, llm, log: (m) => console.log(`[generate] ${m}`) },
+          {
+            db,
+            config,
+            llm,
+            images: codexImageGenerator(config.llm),
+            log: (m) => console.log(`[generate] ${m}`),
+          },
           Number((job.payload as { topicId?: number }).topicId),
         ),
     },

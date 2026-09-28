@@ -26,6 +26,7 @@ export interface Fingerprint {
 /** Markdown 기호를 걷어낸 본문 글자. */
 export function plainText(markdown: string): string {
   return markdown
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^\s*[-*+]\s+/gm, "")
     .replace(/^\s*\d+[.)]\s+/gm, "")
@@ -42,7 +43,7 @@ export function outlineOf(markdown: string): string[] {
 export function introOf(markdown: string): string {
   const blocks = markdown.split(/\n\s*\n/).map((b) => b.trim());
   return (
-    blocks.find((b) => b && !/^(#|\||[-*+]\s|\d+[.)]\s|>)/.test(b))?.replace(/\s+/g, " ") ?? ""
+    blocks.find((b) => b && !/^(#|\||[-*+]\s|\d+[.)]\s|>|!\[)/.test(b))?.replace(/\s+/g, " ") ?? ""
   );
 }
 

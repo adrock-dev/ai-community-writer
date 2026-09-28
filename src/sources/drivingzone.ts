@@ -161,6 +161,12 @@ export async function fetchStores(
 /** license: 면허 취득(drivingzone), training: 운전연수(dztraining) */
 export type PricingCategory = "license" | "training";
 
+/**
+ * 드라이빙존 요금은 부가세 미포함(별도) 가격이다. 요금 API에 이 정보가 없어
+ * 운영 측 확인(2026-09-28)으로 고정한다. 바뀌면 여기만 고친다.
+ */
+export const DRIVINGZONE_PRICE_VAT_INCLUDED = false;
+
 export interface PricingPlan {
   /** 예: 무제한반 */
   group: string;

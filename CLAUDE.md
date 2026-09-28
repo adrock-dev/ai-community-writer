@@ -46,7 +46,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 반드시 지킬 원칙
 
 - **LLM은 API 키가 아니라 CLI 서브프로세스 + OAuth 로그인**으로 호출한다. Claude 경로는 자식 env에서 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`을 제거한다.
-- 생성 글은 **확인된 데이터만** 쓴다. 가격·합격률·셔틀·후기를 지어내지 않는다. 내부 API 주소·원천 시스템명을 본문에 노출하지 않는다.
+- 금액은 "25만원" 표기(`formatWon`)와 부가세 포함 여부를 항상 함께 둔다. 근거 자료에 금액을 넣을 때도 마찬가지다.
+- 생성 글은 **확인된 데이터만** 쓴다. 특히 학원·실내운전연습장 서술은 근거 자료에 있는 것만 쓰며, 사실 검증 단계를 끄지 않는다. 가격·합격률·셔틀·후기를 지어내지 않는다. 내부 API 주소·원천 시스템명을 본문에 노출하지 않는다.
 - 사람이 승인하지 않은 글은 내보내지 않는다.
 - LLM 한도로 못 돈 작업은 실패가 아니라 보류(`LlmUnavailableError` → `queue.defer`)로 처리한다. 사용률 기준(`pauseAtUsagePercent`)을 우회하지 않는다.
 - 원천 API 응답은 화이트리스트 정규화(`src/sources/`)를 거친 값만 프롬프트에 넣는다. 원본 응답에는 비공개 정보가 섞여 있다.

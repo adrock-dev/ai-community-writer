@@ -39,15 +39,21 @@ const cafe = findChannel("drivingzone-cafe")!;
 /** 채널 품질 기준을 통과하는 본문을 만든다. */
 function goodBody(
   keyword: string,
-  opts: { h2?: number; faq?: boolean; table?: boolean; paras?: number } = {},
+  opts: { h2?: number; faq?: boolean; table?: boolean; paras?: number; images?: boolean } = {},
 ) {
-  const { h2 = 4, faq = true, table = true, paras = 4 } = opts;
+  const { h2 = 4, faq = true, table = true, paras = 4, images = true } = opts;
   const para = (i: number, j: number) =>
     `상담을 받기 전에 일정과 비용 조건을 먼저 정리해 두면 비교가 쉬워요. 곳마다 교육 시간과 포함 항목이 달라서 등록 전에 꼭 물어보세요. 처음이라면 집이나 직장에서 가까운 곳부터 차례로 알아보는 편이 부담이 적어요. (${i}-${j})`;
+  // 이미지는 서로 다른 섹션(1번째, 3번째)에 한 장씩
+  const imageFor = (i: number) =>
+    images && (i === 0 || i === 2) ? [`![${keyword} 사진](img${i === 0 ? 1 : 2})`] : [];
   const sections = Array.from({ length: h2 }, (_, i) =>
-    [`## ${keyword} 궁금증 ${i + 1}`, ...Array.from({ length: paras }, (_, j) => para(i, j))].join(
-      "\n\n",
-    ),
+    [
+      `## ${keyword} 궁금증 ${i + 1}`,
+      para(i, 0),
+      ...imageFor(i),
+      ...Array.from({ length: paras - 1 }, (_, j) => para(i, j + 1)),
+    ].join("\n\n"),
   );
   return [
     `# ${keyword} 고르는 법과 확인할 점 총정리`,
@@ -74,8 +80,9 @@ const gate = (overrides: object = {}) => ({
   channel: plus,
   primaryKeyword: "운전학원",
   articleType: "academy",
-  corpus: "공시 수강료 2종 보통(자동) 712,000원",
+  corpus: "공시 수강료 2종 보통(자동) 71만 2천원 (부가세 별도)",
   candidates: [],
+  imageIds: ["img1", "img2"],
   ...overrides,
 });
 
@@ -96,16 +103,18 @@ describe("parseDraft", () => {
 describe("extractAmounts", () => {
   it("여러 한국어 금액 표기를 원 단위로 읽는다", () => {
     const got = extractAmounts(
-      "627,000원, 62만 7천 원, 25만원, 약 30만 원대, 25만~45만 원, 3천원, 2026년",
+      "627,000원, 62만 7천 원, 62만 7,500원, 25만원, 약 30만 원대, 25만~45만 원, 3천원, 7,500원, 2026년",
     ).map((a) => [a.value, a.approx]);
     expect(got).toEqual([
       [627000, false],
       [627000, false],
+      [627500, false],
       [250000, false],
       [300000, true],
       [250000, true],
       [450000, false],
       [3000, false],
+      [7500, false],
     ]);
   });
 });
@@ -116,9 +125,9 @@ describe("qualityIssues", () => {
   });
 
   it("근거 없는 금액·비율, 합격 보장, 내부 용어, 자리표시를 잡는다", () => {
-    const body = `${goodBody("운전학원")}\n\n수강료는 650,000원이고 합격률 95%로 무조건 합격합니다. 제공된 자료 기준입니다. [이미지]`;
+    const body = `${goodBody("운전학원")}\n\n수강료는 65만원(부가세 별도)이고 합격률 95%로 무조건 합격합니다. 제공된 자료 기준입니다. [이미지]`;
     const issues = qualityIssues(draftOf(body), gate()).join("\n");
-    expect(issues).toMatch(/근거 자료에 없는 금액.*650,000원/);
+    expect(issues).toMatch(/근거 자료에 없는 금액.*65만원/);
     expect(issues).toMatch(/근거 자료에 없는 비율.*95%/);
     expect(issues).toMatch(/무조건 합격/);
     expect(issues).toMatch(/내부 용어 "제공된 자료"/);
@@ -126,8 +135,28 @@ describe("qualityIssues", () => {
   });
 
   it("근거 금액은 그대로 또는 '약'을 붙인 10% 이내 어림은 허용한다", () => {
-    const body = `${goodBody("운전학원")}\n\n2종 보통은 712,000원, 약 70만 원대입니다.`;
+    const body = `${goodBody("운전학원")}\n\n2종 보통은 71만 2천원, 약 70만원대입니다(부가세 별도).`;
     expect(qualityIssues(draftOf(body), gate())).toEqual([]);
+  });
+
+  it("금액은 만 단위로 쓰고, 금액이 나온 문단·표에 부가세 표기가 있어야 한다", () => {
+    const body = `${goodBody("운전학원")}\n\n2종 보통은 712,000원입니다.\n\n| 과정 | 금액 |\n| --- | --- |\n| 2종 | 71만 2천원 |`;
+    const issues = qualityIssues(draftOf(body), gate()).join("\n");
+    expect(issues).toMatch(/만 단위로 쓰세요: 712,000원/);
+    expect(issues).toMatch(/부가세 포함·별도를 함께 적으세요/);
+    // 표 바로 아래 설명에 부가세가 있으면 통과
+    const ok = `${goodBody("운전학원")}\n\n| 과정 | 금액 |\n| --- | --- |\n| 2종 | 71만 2천원 |\n\n위 금액은 부가세 별도입니다.`;
+    expect(qualityIssues(draftOf(ok), gate())).toEqual([]);
+  });
+
+  it("이미지: 2장 이상, 제공된 번호만, 대체 텍스트, 연달아 두지 않기", () => {
+    const none = qualityIssues(draftOf(goodBody("운전학원", { images: false })), gate()).join("\n");
+    expect(none).toMatch(/이미지를 2장 이상/);
+    const bad = `${goodBody("운전학원", { images: false })}\n\n![](img1)\n\n![사진](img9)`;
+    const issues = qualityIssues(draftOf(bad), gate()).join("\n");
+    expect(issues).toMatch(/없는 이미지 번호입니다: img9/);
+    expect(issues).toMatch(/대체 텍스트/);
+    expect(issues).toMatch(/연달아/);
   });
 
   it("구조 문제: 짧음·FAQ·표·첫 문단 키워드·제목 키워드", () => {
@@ -249,7 +278,11 @@ describe("프롬프트", () => {
         channel: findChannel("dztraining-blog")!,
         section: findSection("dztraining-blog", "blog_training")!,
         guides: [{ group: "교육 운영", text: "1일 1회 최대 1시간 30분" }],
-        facts: { text: "요금 250,000원", candidates: [], asOf: "", warnings: [] },
+        facts: { text: "요금 25만원", candidates: [], images: [], asOf: "", warnings: [] },
+        images: [
+          { id: "img1", url: "https://x/1.jpg", kind: "photo", subject: "가 학원 사진" },
+          { id: "img2", url: "/images/a.png", kind: "generated", subject: "주차 연습 장면" },
+        ],
         avoid: [{ title: "예전 글", outline: ["A"], intro: "도입" }],
         today: new Date("2026-09-28T00:00:00Z"),
       },
@@ -262,8 +295,10 @@ describe("프롬프트", () => {
       "장롱면허 (최근 30일 네이버 검색 약 1,234회)",
       "[교육 운영]",
       "1시간 30분",
-      "요금 250,000원",
+      "요금 25만원",
       "예전 글",
+      "img1: 가 학원 사진 (실제 사진",
+      "img2: 삽화 — 주차 연습 장면 (생성 이미지",
       "<<<BODY>>>",
     ]) {
       expect(prompt).toContain(part);
@@ -313,7 +348,7 @@ describe("근거 자료", () => {
     const local = academyFacts(list, topic({ region: "서울특별시 강남구" }));
     expect(local.candidates).toEqual(["가나운전학원"]);
     expect(local.text).toContain(
-      "공시 수강료(2026년 2분기, 검정료 포함, 부가세 별도): 2종 보통(자동) 700,000원",
+      "공시 수강료(2026년 2분기, 검정료 포함, 부가세 별도): 2종 보통(자동) 70만원",
     );
     expect(academyFacts(list, topic({ region: "대구광역시" })).text).toMatch(
       /확인된 학원 자료가 없습니다/,
@@ -348,6 +383,7 @@ describe("근거 자료", () => {
       machines: {},
       instructors: [],
       locationHint: "",
+      photos: ["https://file.example/store.jpg"],
     } as unknown as Store;
     const facts = drivingzoneFacts(
       [store],
@@ -372,7 +408,19 @@ describe("generateArticle", () => {
   }
   const output = (body: string) =>
     `<<<TITLE>>>\n운전학원 고르는 법과 확인할 점 총정리 가이드\n<<<SUMMARY>>>\n${draftOf(body).summary}\n<<<KEYWORDS>>>\n운전학원\n<<<BODY>>>\n${body}\n<<<END>>>`;
-  const facts = { text: "공시 수강료 712,000원", candidates: [], asOf: "2026-09-28", warnings: [] };
+  const photo = (n: number) => ({
+    id: `img${n}`,
+    url: `https://file.example/${n}.jpg`,
+    kind: "photo" as const,
+    subject: `학원 ${n} 사진`,
+  });
+  const facts = {
+    text: "공시 수강료 71만 2천원 (부가세 별도)",
+    candidates: [],
+    images: [photo(1), photo(2)],
+    asOf: "2026-09-28",
+    warnings: [],
+  };
 
   it("문제가 있으면 고칠 점을 알려 다시 쓰게 하고, 통과하면 검수 대기로 저장한다", async () => {
     const { db, topicId, config } = setup();
@@ -384,14 +432,17 @@ describe("generateArticle", () => {
         return { text: replies.shift()!, provider: "codex" as const, model: "m", durationMs: 1 };
       },
     };
-    const result = await generateArticle({ db, config, llm, facts }, topicId);
+    const result = await generateArticle({ db, config, llm, facts, factCheck: false }, topicId);
     expect(result).toMatchObject({ status: "review", attempts: 2, issues: [] });
     expect(prompts[1]).toMatch(/고쳐야 할 점[\s\S]*자주 묻는 질문/);
-    expect(getArticle(db, result.articleId)).toMatchObject({
-      status: "review",
-      format: "markdown",
-      facts: facts.text,
-    });
+    const article = getArticle(db, result.articleId)!;
+    expect(article).toMatchObject({ status: "review", format: "markdown", facts: facts.text });
+    // 이미지 번호는 실제 주소로 바뀌고 쓰인 이미지가 기록된다
+    expect(article.body).toContain("![운전학원 사진](https://file.example/1.jpg)");
+    expect(article.images.map((i) => [i.id, i.alt])).toEqual([
+      ["img1", "운전학원 사진"],
+      ["img2", "운전학원 사진"],
+    ]);
     expect(getTopic(db, topicId)?.status).toBe("written");
     expect(db.get("SELECT COUNT(*) AS n FROM article_fingerprints")).toEqual({ n: 1 });
   });
@@ -406,10 +457,71 @@ describe("generateArticle", () => {
         durationMs: 1,
       }),
     };
-    const result = await generateArticle({ db, config, llm, facts }, topicId);
+    const result = await generateArticle({ db, config, llm, facts, factCheck: false }, topicId);
     expect(result.status).toBe("draft");
     expect(result.attempts).toBe(3);
     expect(getArticle(db, result.articleId)?.qualityIssues.length).toBeGreaterThan(0);
+  });
+
+  it("사실 검증에서 근거 없는 서술이 나오면 고쳐 쓰게 한다", async () => {
+    const { db, topicId, config } = setup();
+    const prompts: string[] = [];
+    const replies = [
+      output(goodBody("운전학원")),
+      '{"unsupported":[{"sentence":"최신 장비를 갖췄어요","reason":"근거 자료에 장비 정보 없음"}]}',
+      output(goodBody("운전학원")),
+      '{"unsupported":[]}',
+    ];
+    const llm = {
+      generate: async (prompt: string) => {
+        prompts.push(prompt);
+        return { text: replies.shift()!, provider: "codex" as const, model: "m", durationMs: 1 };
+      },
+    };
+    const result = await generateArticle({ db, config, llm, facts }, topicId);
+    expect(result).toMatchObject({ status: "review", attempts: 2 });
+    expect(prompts[1]).toMatch(/사실 검증 담당자[\s\S]*공시 수강료 71만 2천원/);
+    expect(prompts[2]).toMatch(/근거 없는 서술: "최신 장비를 갖췄어요"/);
+  });
+
+  it("실제 사진이 모자라면 삽화를 만들고, 만들지 못하면 draft로 남긴다", async () => {
+    const { db, topicId, config } = setup();
+    const scenes: string[] = [];
+    const images = {
+      generate: async (scene: string, base: string) => {
+        scenes.push(scene);
+        return `${base}.png`;
+      },
+    };
+    const llm = {
+      generate: async () => ({
+        text: output(goodBody("운전학원")),
+        provider: "codex" as const,
+        model: "m",
+        durationMs: 1,
+      }),
+    };
+    const one = { ...facts, images: [photo(1)] };
+    const ok = await generateArticle(
+      { db, config, llm, facts: one, images, factCheck: false },
+      topicId,
+    );
+    expect(scenes).toHaveLength(1);
+    expect(ok.status).toBe("review");
+    expect(getArticle(db, ok.articleId)?.images[1]).toMatchObject({ kind: "generated" });
+    expect(getArticle(db, ok.articleId)?.images[1]?.url).toMatch(/^\/images\/t\d+-.+-1\.png$/);
+
+    const failing = {
+      generate: async () => {
+        throw new Error("이미지 생성 실패");
+      },
+    };
+    const bad = await generateArticle(
+      { db, config, llm, facts: one, images: failing, factCheck: false },
+      topicId,
+    );
+    expect(bad.status).toBe("draft");
+    expect(bad.issues.join("\n")).toMatch(/이미지가 1장뿐/);
   });
 
   it("LLM 한도 대기는 주제를 대기 상태로 두고, 다른 오류는 후보로 되돌린다", async () => {

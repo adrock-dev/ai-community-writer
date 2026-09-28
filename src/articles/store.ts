@@ -11,6 +11,14 @@ export const ARTICLE_STATUSES = [
 ] as const;
 export type ArticleStatus = (typeof ARTICLE_STATUSES)[number];
 
+export interface ArticleImage {
+  id: string;
+  url: string;
+  kind: "photo" | "generated";
+  subject: string;
+  alt: string;
+}
+
 export interface Article {
   id: number;
   topicId: number | null;
@@ -29,6 +37,8 @@ export interface Article {
   qualityIssues: string[];
   similarArticles: SimilarHit[];
   facts: string;
+  /** 본문에 쓴 이미지 (실제 사진 / 생성 삽화) */
+  images: ArticleImage[];
   generation: Record<string, unknown>;
   provider: string;
   model: string;
@@ -55,6 +65,7 @@ const toArticle = (r: any): Article => ({
   qualityIssues: JSON.parse(r.quality_issues),
   similarArticles: JSON.parse(r.similar_articles),
   facts: r.facts,
+  images: JSON.parse(r.images),
   generation: JSON.parse(r.generation),
   provider: r.provider,
   model: r.model,
@@ -80,6 +91,7 @@ export type NewArticle = Pick<
   | "qualityIssues"
   | "similarArticles"
   | "facts"
+  | "images"
   | "generation"
   | "provider"
   | "model"
@@ -89,8 +101,8 @@ export function createArticle(db: Database, a: NewArticle): number {
   const now = new Date().toISOString();
   return db.run(
     `INSERT INTO articles (topic_id, channel_id, section_code, article_type, region, title, summary, body, format,
-       keywords, status, quality_issues, similar_articles, facts, generation, provider, model, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       keywords, status, quality_issues, similar_articles, facts, images, generation, provider, model, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       a.topicId,
       a.channelId,
@@ -106,6 +118,7 @@ export function createArticle(db: Database, a: NewArticle): number {
       JSON.stringify(a.qualityIssues),
       JSON.stringify(a.similarArticles),
       a.facts,
+      JSON.stringify(a.images),
       JSON.stringify(a.generation),
       a.provider,
       a.model,
