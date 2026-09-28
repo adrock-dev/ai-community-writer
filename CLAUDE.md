@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - `npm start` — `node src/main.ts`. 빌드 단계 없음. API 서버와 작업 워커가 한 프로세스에서 돈다.
 - `npm run collect` — 네이버 30일 검색량 수집 → 주제 후보 갱신 (실제 검색광고 API 호출).
+- `npm run generate -- --channel=<채널> [--type=<유형>] [--topic=<id>] [--dry]` — 글 1편 생성. `--dry`는 LLM 없이 프롬프트만 출력한다.
 - `npm run doctor` — 설치·로그인·API 연결 점검. `-- --llm`을 붙이면 실제 CLI를 한 번 호출한다(사용량 소모).
 - `npm run check` — typecheck + Biome lint + vitest. **커밋 전 반드시 통과시킨다.**
 - `npm test` / `npm run typecheck` / `npm run lint`
@@ -32,6 +33,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 채널·섹션은 `src/channels.ts`에 데이터로 정의한다. 채널별 분기는 이 정의를 읽어서 처리하고 하드코딩을 늘리지 않는다.
 - 브랜드·채널별 운영 규칙(예: 드라이빙존 교육시간)은 코드나 프롬프트에 박지 말고 유의사항 설정(DB `guide_rules`, 화면 `/settings/guides`)에 둔다. `guides/*.md`는 첫 실행 초기값일 뿐이다.
 - 관리 화면은 빌드 없이 `hono/html`로 서버에서 만든다(값 자동 이스케이프). `.tsx`는 Node 타입 스트리핑이 지원하지 않는다.
+- 글 양식은 `prompts/`(base → 채널 → 채널 전용 유형 | 공통 유형)에 둔다. 양식을 코드에 박지 않는다.
+- 품질 규칙을 바꾸면 `src/quality/gate.ts`와 `test/writer.test.ts`를 함께 고친다. 게이트 문구는 운영자에게 보이고 재작성 프롬프트에도 들어가므로 "무엇을 어떻게 고칠지"까지 쓴다.
 - 시드 키워드와 섹션별 포함어·제외어는 `seeds/*.md`에 둔다. 주제 품질 조정은 먼저 시드 파일로 하고, 코드(묶기·점수)는 그다음이다.
 
 ## Windows 주의

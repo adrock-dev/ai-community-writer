@@ -1,7 +1,20 @@
 import { Hono } from "hono";
-import { type AppContext, COLLECT_KIND } from "./app.ts";
+import { type AppContext, COLLECT_KIND, GENERATE_KIND } from "./app.ts";
+import {
+  ARTICLE_STATUSES,
+  type ArticleStatus,
+  getArticle,
+  listArticles,
+} from "./articles/store.ts";
 import { CHANNELS } from "./channels.ts";
-import { listTopics, setTopicStatus, TOPIC_STATUSES, type TopicStatus } from "./topics/store.ts";
+import {
+  getTopic,
+  listTopics,
+  setTopicProgress,
+  setTopicStatus,
+  TOPIC_STATUSES,
+  type TopicStatus,
+} from "./topics/store.ts";
 import { mountGuideSettings } from "./web/guides.ts";
 
 export function createApp(ctx: AppContext): Hono {
@@ -44,6 +57,34 @@ export function createApp(ctx: AppContext): Hono {
     }
     const ok = setTopicStatus(ctx.db, Number(c.req.param("id")), body.status, body.note);
     return ok ? c.json({ ok }) : c.json({ error: "바꿀 수 없는 주제입니다" }, 409);
+  });
+
+  // 주제 1개로 글 생성을 예약한다. 실제 생성은 워커가 생성 간격·사용량 한도에 맞춰 진행한다.
+  app.post("/api/topics/:id/generate", (c) => {
+    const topic = getTopic(ctx.db, Number(c.req.param("id")));
+    if (!topic) return c.json({ error: "주제가 없습니다" }, 404);
+    if (topic.status === "queued") return c.json({ error: "이미 생성 대기 중입니다" }, 409);
+    setTopicProgress(ctx.db, topic.id, "queued");
+    return c.json({ jobId: ctx.queue.enqueue(GENERATE_KIND, { topicId: topic.id }) }, 202);
+  });
+
+  app.get("/api/articles", (c) => {
+    const status = c.req.query("status");
+    if (status && !ARTICLE_STATUSES.includes(status as ArticleStatus)) {
+      return c.json({ error: `status는 ${ARTICLE_STATUSES.join(", ")} 중 하나` }, 400);
+    }
+    return c.json(
+      listArticles(ctx.db, {
+        channelId: c.req.query("channel"),
+        status: status as ArticleStatus | undefined,
+        limit: Number(c.req.query("limit")) || undefined,
+      }),
+    );
+  });
+
+  app.get("/api/articles/:id", (c) => {
+    const article = getArticle(ctx.db, Number(c.req.param("id")));
+    return article ? c.json(article) : c.json({ error: "글이 없습니다" }, 404);
   });
 
   mountGuideSettings(app, ctx.db);

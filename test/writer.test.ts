@@ -1,0 +1,448 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import type { AppContext } from "../src/app.ts";
+import { getArticle } from "../src/articles/store.ts";
+import { findChannel, findSection } from "../src/channels.ts";
+import { parseConfig } from "../src/config.ts";
+import { Database } from "../src/db/database.ts";
+import { LlmUnavailableError } from "../src/llm/client.ts";
+import { extractAmounts, qualityIssues } from "../src/quality/gate.ts";
+import { JobQueue } from "../src/queue/queue.ts";
+import { createApp } from "../src/server.ts";
+import {
+  avoidList,
+  findSimilar,
+  fingerprint,
+  introOf,
+  minhash,
+  saveFingerprint,
+  signatureSimilarity,
+} from "../src/similarity/fingerprint.ts";
+import type { Academy } from "../src/sources/drivingplus.ts";
+import type { Store } from "../src/sources/drivingzone.ts";
+import { getTopic, type Topic } from "../src/topics/store.ts";
+import {
+  academyFacts,
+  drivingzoneFacts,
+  inRegion,
+  isMeaningfulReview,
+} from "../src/writer/facts.ts";
+import { generateArticle } from "../src/writer/generate.ts";
+import { parseDraft } from "../src/writer/output.ts";
+import { composePrompt, promptFiles } from "../src/writer/prompt.ts";
+
+const plus = findChannel("drivingplus-community")!;
+const cafe = findChannel("drivingzone-cafe")!;
+
+/** 채널 품질 기준을 통과하는 본문을 만든다. */
+function goodBody(
+  keyword: string,
+  opts: { h2?: number; faq?: boolean; table?: boolean; paras?: number } = {},
+) {
+  const { h2 = 4, faq = true, table = true, paras = 4 } = opts;
+  const para = (i: number, j: number) =>
+    `상담을 받기 전에 일정과 비용 조건을 먼저 정리해 두면 비교가 쉬워요. 곳마다 교육 시간과 포함 항목이 달라서 등록 전에 꼭 물어보세요. 처음이라면 집이나 직장에서 가까운 곳부터 차례로 알아보는 편이 부담이 적어요. (${i}-${j})`;
+  const sections = Array.from({ length: h2 }, (_, i) =>
+    [`## ${keyword} 궁금증 ${i + 1}`, ...Array.from({ length: paras }, (_, j) => para(i, j))].join(
+      "\n\n",
+    ),
+  );
+  return [
+    `# ${keyword} 고르는 법과 확인할 점 총정리`,
+    `${keyword}은 거리·비용·교육 시간을 함께 비교해 고르는 것이 가장 확실해요. 이 글에서 기준을 정리했어요.`,
+    ...sections,
+    table ? "| 기준 | 확인할 점 |\n| --- | --- |\n| 거리 | 셔틀 여부 |" : "",
+    faq
+      ? "## 자주 묻는 질문\n\n### Q. 언제 시작하나요?\n답변입니다.\n\n### Q. 얼마나 걸리나요?\n답변입니다.\n\n### Q. 무엇을 챙기나요?\n답변입니다."
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+const draftOf = (body: string, title = "운전학원 고르는 법과 확인할 점 총정리 가이드") => ({
+  title,
+  summary:
+    "운전학원을 고를 때 거리, 비용, 교육 시간, 셔틀까지 한 번에 비교하는 기준과 등록 전에 꼭 확인할 점을 정리했어요. 처음 알아보는 분께 추천해요.",
+  keywords: ["운전학원"],
+  body,
+});
+
+const gate = (overrides: object = {}) => ({
+  channel: plus,
+  primaryKeyword: "운전학원",
+  articleType: "academy",
+  corpus: "공시 수강료 2종 보통(자동) 712,000원",
+  candidates: [],
+  ...overrides,
+});
+
+describe("parseDraft", () => {
+  it("구분자 형식을 읽고, 코드 블록 감싸기와 H1 누락을 보정한다", () => {
+    const out =
+      "```\n<<<TITLE>>>\n제목입니다\n<<<SUMMARY>>>\n설명\n<<<KEYWORDS>>>\n가, 나\n<<<BODY>>>\n본문 첫 줄\n<<<END>>>\n```";
+    expect(parseDraft(out)).toEqual({
+      title: "제목입니다",
+      summary: "설명",
+      keywords: ["가", "나"],
+      body: "# 제목입니다\n\n본문 첫 줄",
+    });
+    expect(parseDraft("구분자 없는 출력")).toBeUndefined();
+  });
+});
+
+describe("extractAmounts", () => {
+  it("여러 한국어 금액 표기를 원 단위로 읽는다", () => {
+    const got = extractAmounts(
+      "627,000원, 62만 7천 원, 25만원, 약 30만 원대, 25만~45만 원, 3천원, 2026년",
+    ).map((a) => [a.value, a.approx]);
+    expect(got).toEqual([
+      [627000, false],
+      [627000, false],
+      [250000, false],
+      [300000, true],
+      [250000, true],
+      [450000, false],
+      [3000, false],
+    ]);
+  });
+});
+
+describe("qualityIssues", () => {
+  it("기준을 채운 글은 통과한다", () => {
+    expect(qualityIssues(draftOf(goodBody("운전학원")), gate())).toEqual([]);
+  });
+
+  it("근거 없는 금액·비율, 합격 보장, 내부 용어, 자리표시를 잡는다", () => {
+    const body = `${goodBody("운전학원")}\n\n수강료는 650,000원이고 합격률 95%로 무조건 합격합니다. 제공된 자료 기준입니다. [이미지]`;
+    const issues = qualityIssues(draftOf(body), gate()).join("\n");
+    expect(issues).toMatch(/근거 자료에 없는 금액.*650,000원/);
+    expect(issues).toMatch(/근거 자료에 없는 비율.*95%/);
+    expect(issues).toMatch(/무조건 합격/);
+    expect(issues).toMatch(/내부 용어 "제공된 자료"/);
+    expect(issues).toMatch(/자리표시/);
+  });
+
+  it("근거 금액은 그대로 또는 '약'을 붙인 10% 이내 어림은 허용한다", () => {
+    const body = `${goodBody("운전학원")}\n\n2종 보통은 712,000원, 약 70만 원대입니다.`;
+    expect(qualityIssues(draftOf(body), gate())).toEqual([]);
+  });
+
+  it("구조 문제: 짧음·FAQ·표·첫 문단 키워드·제목 키워드", () => {
+    const issues = qualityIssues(
+      draftOf("# 제목\n\n짧은 글입니다.", "완전히 다른 제목입니다 여러분"),
+      gate(),
+    );
+    expect(issues.join("\n")).toMatch(/짧습니다/);
+    expect(issues.join("\n")).toMatch(/자주 묻는 질문/);
+    expect(issues.join("\n")).toMatch(/표를/);
+    expect(issues.join("\n")).toMatch(/첫 문단에 대표 키워드/);
+    expect(issues.join("\n")).toMatch(/제목에 대표 키워드/);
+  });
+
+  it("카페 원고에는 ## 소제목·표를 쓰지 않는다", () => {
+    const issues = qualityIssues(
+      draftOf(goodBody("운전학원", { h2: 2, paras: 2 })),
+      gate({ channel: cafe }),
+    );
+    expect(issues.join("\n")).toMatch(/카페 원고에는 ## 소제목과 표/);
+  });
+
+  it("추천 글에서 실제 후보보다 많은 곳을 주장하면 잡는다", () => {
+    const body = `${goodBody("운전학원")}\n\n지역 운전학원 TOP 10을 소개합니다.`;
+    const issues = qualityIssues(
+      draftOf(body),
+      gate({ articleType: "recommend", candidates: ["가", "나", "다"] }),
+    );
+    expect(issues.join("\n")).toMatch(/실제 후보는 3곳/);
+  });
+});
+
+describe("유사도", () => {
+  it("MinHash: 같은 글은 1, 다른 글은 낮다", () => {
+    const a = minhash(
+      "운전연수는 장롱면허 운전자가 도로 감각을 되찾는 가장 확실한 방법입니다".repeat(5),
+    );
+    const b = minhash(
+      "필기시험은 문제은행에서 출제되며 학과 교육을 먼저 이수해야 응시할 수 있습니다".repeat(5),
+    );
+    expect(signatureSimilarity(a, a)).toBe(1);
+    expect(signatureSimilarity(a, b)).toBeLessThan(0.2);
+  });
+
+  function seed(db: Database, channelId: string, title: string, body: string, type = "academy") {
+    const now = new Date().toISOString();
+    const id = db.run(
+      `INSERT INTO articles (channel_id, section_code, article_type, title, body, format, created_at, updated_at)
+       VALUES (?, 's', ?, ?, ?, 'markdown', ?, ?)`,
+      [channelId, type, title, body, now, now],
+    ).lastInsertRowid;
+    saveFingerprint(db, id, fingerprint(body));
+    return id;
+  }
+
+  it("같은 브랜드는 엄격하게, 다른 브랜드는 거의 같은 글만 막는다", () => {
+    const db = new Database(":memory:");
+    const body = goodBody("운전학원");
+    seed(db, "drivingzone-blog", "운전학원 고르는 법", body);
+    const draft = {
+      title: "운전학원 고르는 법",
+      channelId: "drivingzone-cafe",
+      articleType: "academy",
+      fp: fingerprint(body),
+    };
+    expect(findSimilar(db, draft)[0]).toMatchObject({
+      sameBrand: true,
+      exceeded: ["본문", "제목", "소제목 구성"],
+    });
+
+    const other = findSimilar(db, { ...draft, channelId: "drivingplus-community" })[0]!;
+    expect(other.sameBrand).toBe(false);
+    expect(other.exceeded).toEqual(["본문", "제목"]); // 다른 브랜드는 소제목 구성은 보지 않는다
+  });
+
+  it("피할 패턴: 같은 유형의 같은 브랜드 글을 먼저, 다른 브랜드 글도 일부", () => {
+    const db = new Database(":memory:");
+    seed(db, "drivingzone-blog", "존 글", "# 존 글\n\n도입부 문장\n\n## 소제목 A");
+    seed(db, "drivingplus-community", "플러스 글", "# 플러스 글\n\n도입\n\n## B");
+    seed(db, "drivingzone-blog", "다른 유형", "# 다른 유형", "cost");
+    const avoid = avoidList(db, "dztraining-blog", "academy");
+    expect(avoid.map((a) => a.title)).toEqual(["존 글", "플러스 글"]);
+    expect(avoid[0]).toMatchObject({ outline: ["소제목 A"], intro: "도입부 문장" });
+    expect(introOf("# 제목\n\n## 소제목\n\n- 목록\n\n첫 문단")).toBe("첫 문단");
+  });
+});
+
+describe("프롬프트", () => {
+  it("채널 전용 글 유형 파일이 있으면 그것을, 없으면 공통 유형을 쓴다", () => {
+    expect(promptFiles("dztraining-blog", "training").map((f) => f.path)).toEqual([
+      "base.md",
+      "channels/dztraining-blog.md",
+      "channels/dztraining-blog/training.md",
+    ]);
+    expect(promptFiles("drivingplus-community", "training")[2]?.path).toBe(
+      "channels/drivingplus-community/training.md",
+    );
+    expect(promptFiles("drivingzone-blog", "cost")[2]?.path).toBe("types/cost.md");
+    expect(promptFiles("drivingzone-blog", "unknown_type")[2]?.path).toBe("types/guide.md");
+  });
+
+  it("주제·유의사항·근거 자료·피할 글·출력 형식을 모두 넣는다", () => {
+    const dir = mkdtempSync(join(tmpdir(), "prompts-"));
+    mkdirSync(join(dir, "channels"));
+    mkdirSync(join(dir, "types"));
+    writeFileSync(join(dir, "base.md"), "공통");
+    writeFileSync(join(dir, "channels", "dztraining-blog.md"), "채널");
+    writeFileSync(join(dir, "types", "guide.md"), "유형");
+    const topic = {
+      primaryKeyword: "장롱면허",
+      secondaryKeywords: ["장롱면허연수"],
+      region: "",
+      volume: 1234,
+      articleType: "training",
+    } as Topic;
+    const { prompt } = composePrompt(
+      {
+        topic,
+        channel: findChannel("dztraining-blog")!,
+        section: findSection("dztraining-blog", "blog_training")!,
+        guides: [{ group: "교육 운영", text: "1일 1회 최대 1시간 30분" }],
+        facts: { text: "요금 250,000원", candidates: [], asOf: "", warnings: [] },
+        avoid: [{ title: "예전 글", outline: ["A"], intro: "도입" }],
+        today: new Date("2026-09-28T00:00:00Z"),
+      },
+      dir,
+    );
+    for (const part of [
+      "공통",
+      "채널",
+      "유형",
+      "장롱면허 (최근 30일 네이버 검색 약 1,234회)",
+      "[교육 운영]",
+      "1시간 30분",
+      "요금 250,000원",
+      "예전 글",
+      "<<<BODY>>>",
+    ]) {
+      expect(prompt).toContain(part);
+    }
+  });
+});
+
+describe("근거 자료", () => {
+  const academy = (over: Partial<Academy>): Academy => ({
+    id: 1,
+    name: "가나운전학원",
+    type: "exam_academy",
+    address: "서울특별시 강남구 테헤란로 1",
+    lat: null,
+    lng: null,
+    phone: "",
+    naverPlaceUrl: "",
+    licenseTypes: ["2종 보통 자동"],
+    prices: [],
+    officialFees: {
+      period: "2026년 2분기",
+      type1Manual: null,
+      type1Auto: null,
+      type2Auto: 700000,
+      vatIncluded: false,
+      examFeeIncluded: true,
+    },
+    capacity: null,
+    graduates: null,
+    hours: [],
+    hoursNotice: "",
+    shuttles: [],
+    shuttleSummary: "",
+    roadCourses: [],
+    reviews: [{ point: 5, content: "친절해요", date: "2026-01-01" }],
+    photos: [],
+    ...over,
+  });
+  const topic = (over: Partial<Topic>) =>
+    ({ region: "", articleType: "academy", ...over }) as Topic;
+
+  it("지역 학원만 후보로 넣고, 없으면 쓰지 말라고 알린다", () => {
+    const list = [
+      academy({}),
+      academy({ id: 2, name: "다라운전학원", address: "부산광역시 사상구 1" }),
+    ];
+    const local = academyFacts(list, topic({ region: "서울특별시 강남구" }));
+    expect(local.candidates).toEqual(["가나운전학원"]);
+    expect(local.text).toContain(
+      "공시 수강료(2026년 2분기, 검정료 포함, 부가세 별도): 2종 보통(자동) 700,000원",
+    );
+    expect(academyFacts(list, topic({ region: "대구광역시" })).text).toMatch(
+      /확인된 학원 자료가 없습니다/,
+    );
+  });
+
+  it("시험·시험장 글에는 학원 자료를 넣지 않는다", () => {
+    expect(academyFacts([academy({})], topic({ articleType: "exam" })).text).toBe("");
+  });
+
+  it("의미 없는 후기(짧거나 자음·모음 나열)는 근거에서 뺀다", () => {
+    expect(isMeaningfulReview("ㅈㅂㅈㅂㅈㅂㅈㄴㅈㄴ")).toBe(false);
+    expect(isMeaningfulReview("좋아요")).toBe(false);
+    expect(isMeaningfulReview("강사님이 친절하게 알려주셔서 한 번에 합격했어요 ㅎㅎ")).toBe(true);
+  });
+
+  it("옛 시도명 주소도 현재 지역으로 맞춘다", () => {
+    expect(inRegion("전라북도 전주시 덕진구 백제대로 563", "전북특별자치도 전주시 덕진구")).toBe(
+      true,
+    );
+  });
+
+  it("드라이빙존: 지역에 지점이 없으면 없다고 알린다", () => {
+    const store = {
+      name: "강남역점",
+      type: "direct",
+      address: "서울특별시 강남구 1",
+      reviews: [],
+      hours: [],
+      subways: [],
+      keywordTags: [],
+      machines: {},
+      instructors: [],
+      locationHint: "",
+    } as unknown as Store;
+    const facts = drivingzoneFacts(
+      [store],
+      {},
+      topic({ region: "대구광역시", articleType: "training" }),
+      cafe,
+    );
+    expect(facts.text).toMatch(/이 지역에는 드라이빙존 지점이 없습니다/);
+  });
+});
+
+describe("generateArticle", () => {
+  function setup() {
+    const db = new Database(":memory:");
+    const now = new Date().toISOString();
+    const topicId = db.run(
+      `INSERT INTO topics (primary_keyword, secondary_keywords, channel_id, section_code, article_type, created_at, updated_at, topic_key)
+       VALUES ('운전학원', '[]', 'drivingplus-community', 'drive_story', 'academy', ?, ?, '운전학원')`,
+      [now, now],
+    ).lastInsertRowid;
+    return { db, topicId, config: parseConfig({}) };
+  }
+  const output = (body: string) =>
+    `<<<TITLE>>>\n운전학원 고르는 법과 확인할 점 총정리 가이드\n<<<SUMMARY>>>\n${draftOf(body).summary}\n<<<KEYWORDS>>>\n운전학원\n<<<BODY>>>\n${body}\n<<<END>>>`;
+  const facts = { text: "공시 수강료 712,000원", candidates: [], asOf: "2026-09-28", warnings: [] };
+
+  it("문제가 있으면 고칠 점을 알려 다시 쓰게 하고, 통과하면 검수 대기로 저장한다", async () => {
+    const { db, topicId, config } = setup();
+    const prompts: string[] = [];
+    const replies = [output(goodBody("운전학원", { faq: false })), output(goodBody("운전학원"))];
+    const llm = {
+      generate: async (prompt: string) => {
+        prompts.push(prompt);
+        return { text: replies.shift()!, provider: "codex" as const, model: "m", durationMs: 1 };
+      },
+    };
+    const result = await generateArticle({ db, config, llm, facts }, topicId);
+    expect(result).toMatchObject({ status: "review", attempts: 2, issues: [] });
+    expect(prompts[1]).toMatch(/고쳐야 할 점[\s\S]*자주 묻는 질문/);
+    expect(getArticle(db, result.articleId)).toMatchObject({
+      status: "review",
+      format: "markdown",
+      facts: facts.text,
+    });
+    expect(getTopic(db, topicId)?.status).toBe("written");
+    expect(db.get("SELECT COUNT(*) AS n FROM article_fingerprints")).toEqual({ n: 1 });
+  });
+
+  it("끝까지 문제가 남으면 draft로 저장하고 문제 목록을 남긴다", async () => {
+    const { db, topicId, config } = setup();
+    const llm = {
+      generate: async () => ({
+        text: output("# 운전학원\n\n짧아요"),
+        provider: "claude" as const,
+        model: "m",
+        durationMs: 1,
+      }),
+    };
+    const result = await generateArticle({ db, config, llm, facts }, topicId);
+    expect(result.status).toBe("draft");
+    expect(result.attempts).toBe(3);
+    expect(getArticle(db, result.articleId)?.qualityIssues.length).toBeGreaterThan(0);
+  });
+
+  it("LLM 한도 대기는 주제를 대기 상태로 두고, 다른 오류는 후보로 되돌린다", async () => {
+    const { db, topicId, config } = setup();
+    const limited = {
+      generate: async () => {
+        throw new LlmUnavailableError(new Date(), "한도");
+      },
+    };
+    await expect(generateArticle({ db, config, llm: limited, facts }, topicId)).rejects.toThrow();
+    expect(getTopic(db, topicId)?.status).toBe("queued");
+    const broken = {
+      generate: async () => {
+        throw new Error("boom");
+      },
+    };
+    await expect(generateArticle({ db, config, llm: broken, facts }, topicId)).rejects.toThrow(
+      "boom",
+    );
+    expect(getTopic(db, topicId)?.status).toBe("candidate");
+  });
+
+  it("생성 예약 API는 작업을 넣고, 이미 대기 중이면 거절한다", async () => {
+    const { db, topicId } = setup();
+    const ctx = { db, queue: new JobQueue(db), config: parseConfig({}) } as unknown as AppContext;
+    const app = createApp(ctx);
+    const res = await app.request(`/api/topics/${topicId}/generate`, { method: "POST" });
+    expect(res.status).toBe(202);
+    expect(ctx.queue.get(((await res.json()) as { jobId: number }).jobId)?.payload).toEqual({
+      topicId,
+    });
+    expect((await app.request(`/api/topics/${topicId}/generate`, { method: "POST" })).status).toBe(
+      409,
+    );
+  });
+});

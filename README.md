@@ -119,6 +119,31 @@ NAVER_DATALAB_CLIENT_SECRET=발급받은Secret
 - 연수
 ```
 
+## 글 생성
+
+```powershell
+npm run generate -- --channel=dztraining-blog              # 그 채널 점수 1위 주제로 1편 생성
+npm run generate -- --channel=drivingplus-community --type=cost   # 글 유형 지정
+npm run generate -- --topic=161                            # 주제 번호 지정
+npm run generate -- --topic=161 --dry                      # LLM 호출 없이 프롬프트만 보기
+```
+
+생성된 글은 DB에 저장되고 `output/articles/<글 번호>-<채널>.md`로도 떨어집니다.
+실행 중인 서버에서는 `POST /api/topics/<주제 번호>/generate`로 예약하면 워커가 생성 간격·사용량 한도에 맞춰 씁니다.
+
+- **검수 대기(review)**: 품질·유사도 검사를 통과한 글
+- **초안(draft)**: 3번 고쳐 써도 문제가 남은 글. 남은 문제는 글에 함께 저장됩니다(`/api/articles/<번호>`의 `qualityIssues`)
+- 어느 쪽이든 사람이 검수·승인하기 전에는 내보내지 않습니다(P4).
+
+**글 양식 바꾸기**: `prompts/` 폴더의 Markdown을 고칩니다.
+
+| 파일 | 역할 |
+| --- | --- |
+| `prompts/base.md` | 모든 글 공통 원칙 (SEO·AEO·GEO, 사실 원칙, 금지 표현) |
+| `prompts/channels/<채널>.md` | 채널 목소리·분량·마무리 방식 |
+| `prompts/types/<글 유형>.md` | 글 유형별 구성 (비용·추천·시험·연수 등 12종) |
+| `prompts/channels/<채널>/<글 유형>.md` | 특정 채널에서 그 유형만 다르게 쓸 때 (있으면 위 파일 대신 사용) |
+
 ## 유의사항 설정 (작성 가이드)
 
 글을 쓸 때 반드시 지켜야 하는 운영 규칙과 사실은 **`http://127.0.0.1:8787/settings/guides`** 화면에서 관리합니다.
@@ -140,6 +165,7 @@ NAVER_DATALAB_CLIENT_SECRET=발급받은Secret
 | `npm run dev` | 파일 변경 시 자동 재시작 |
 | `npm run doctor` | 설치·설정 점검 |
 | `npm run collect` | 키워드 수집·주제 후보 갱신 |
+| `npm run generate` | 글 1편 생성 (`--dry`: 프롬프트만) |
 | `npm run typecheck` | 타입 검사 |
 | `npm run lint` / `npm run format` | Biome 린트 / 포맷 |
 | `npm test` | 단위 테스트 (vitest) |

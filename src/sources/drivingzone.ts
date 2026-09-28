@@ -45,6 +45,7 @@ const DAY_LABEL: Record<string, string> = {
   FRI: "금",
   SAT: "토",
   SUN: "일",
+  HOLIDAY: "공휴일",
 };
 
 const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
@@ -92,10 +93,13 @@ export function normalizeStore(raw: any): Store | undefined {
     cumulativeSignups: positive(raw.cumulativeSignups),
     maxCapacity: positive(raw.maxCapacity),
     machines: { class1: num(raw.machineCountClass1), class2: num(raw.machineCountClass2) },
-    hours: (raw.weeklyHours ?? []).map(
-      (h: any) =>
-        `${DAY_LABEL[str(h?.dayOfWeek)] ?? str(h?.dayOfWeek)} ${hhmm(h?.openTime)}~${hhmm(h?.closeTime)}`,
-    ),
+    hours: (raw.weeklyHours ?? []).map((h: any) => {
+      const day = DAY_LABEL[str(h?.dayOfWeek)] ?? str(h?.dayOfWeek);
+      const open = hhmm(h?.openTime);
+      const close = hhmm(h?.closeTime);
+      // 시간이 비어 있으면 그날은 운영하지 않는다
+      return open && close ? `${day} ${open}~${close}` : `${day} 휴무`;
+    }),
     hoursNote: str(raw.operatingHoursNote),
     subways: (raw.subways ?? []).map((s: any) => str(s?.detail)).filter(Boolean),
     instructors: (raw.instructors ?? []).map((i: any) => ({
@@ -125,6 +129,7 @@ export function normalizeStore(raw: any): Store | undefined {
   };
 }
 
+/** 정규화 규칙을 바꾸면 캐시 키의 버전(v2 …)을 올려 옛 캐시를 쓰지 않게 한다. */
 export async function fetchStores(
   db: Database,
   sources: AppConfig["sources"],
@@ -132,7 +137,7 @@ export async function fetchStores(
   const base = `${sources.drivingzoneApi}/v1/store`;
   return cached(
     db,
-    `drivingzone:stores:${sources.drivingzoneApi}`,
+    `drivingzone:stores:v2:${sources.drivingzoneApi}`,
     sources.cacheTtlHours * 3_600_000,
     async () => {
       const list = await getData<{ stores?: { id: number }[] }>(
@@ -148,5 +153,62 @@ export async function fetchStores(
       }
       return stores;
     },
+  );
+}
+
+// ── 요금제 (GET /v1/pricing?category=license|training) ──────────────────
+
+/** license: 면허 취득(drivingzone), training: 운전연수(dztraining) */
+export type PricingCategory = "license" | "training";
+
+export interface PricingPlan {
+  /** 예: 무제한반 */
+  group: string;
+  /** 예: 2종 보통 (자동), 10일완성 장롱탈출 */
+  name: string;
+  options: { label: string; price: number; originPrice: number | null }[];
+}
+
+const clean = (s: unknown) => str(s).replace(/\s+/g, " ");
+
+export function normalizePricing(raw: unknown): PricingPlan[] {
+  if (!Array.isArray(raw)) return [];
+  const plans: PricingPlan[] = [];
+  for (const category of raw as any[]) {
+    for (const plan of category?.plans ?? []) {
+      const options = (plan?.prices ?? [])
+        .map((p: any) => ({
+          label: clean(p?.label),
+          price: num(p?.price),
+          originPrice: positive(p?.originPrice),
+        }))
+        .filter((o: { price: number | null }) => o.price !== null && o.price > 0);
+      if (!options.length) continue;
+      plans.push({
+        group: clean(category.label),
+        name: [clean(plan.label), clean(plan.subLabel)].filter(Boolean).join(" "),
+        options,
+      });
+    }
+  }
+  return plans;
+}
+
+export async function fetchPricing(
+  db: Database,
+  sources: AppConfig["sources"],
+  category: PricingCategory,
+): Promise<Cached<PricingPlan[]>> {
+  return cached(
+    db,
+    `drivingzone:pricing:${category}:${sources.drivingzoneApi}`,
+    sources.cacheTtlHours * 3_600_000,
+    async () =>
+      normalizePricing(
+        await getData<unknown>(
+          `${sources.drivingzoneApi}/v1/pricing?category=${category}`,
+          sources.timeoutSec,
+        ),
+      ),
   );
 }

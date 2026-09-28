@@ -64,7 +64,29 @@ seeds/<채널>.md 시드 ──▶ 검색광고 API keywordstool (5개씩, 30일
 - 겹치는 주제는 **글 양식으로 구분**한다. 프롬프트를 채널 × 글 유형 단위로 따로 둔다(P3, `prompts/<채널>/<글 유형>.md`). 같은 섹션 안에서도 글 유형이 다르면 프롬프트가 다르다.
 - 운전면허PLUS 섹션 배치: 학원 전반·학원 연수 → `drive_story`, 시험 절차·면허 종류 → `exam_procedure_guide`, 시험장과 시험장 업무(적성검사·갱신·재발급) → `test_center_guide`. 면허 관리 주제(적성검사만 월 약 3.3만 회)가 커지면 api.drive에 이미 있는 `license_tips` 섹션으로 분리한다.
 
-## 5. 모듈 구성 (예정 포함)
+## 5. 글 생성 (P3)
+
+```
+주제(topic) ─┬─ 유의사항: 공통 → 브랜드 → 채널 (guide_rules)
+             ├─ 근거 자료: 운전면허PLUS → api.drive 학원(지역이면 해당 지역 학원, 아니면 전국 집계)
+             │            드라이빙존   → api.drivingzone 지점·요금제(license / training)
+             └─ 피할 패턴: 같은 글 유형 기존 글의 제목·소제목·도입부 (같은 브랜드 6 + 다른 브랜드 3)
+        ▼
+프롬프트 = base.md + channels/<채널>.md + (channels/<채널>/<유형>.md | types/<유형>.md) + 주제 + 위 3가지 + 출력 형식
+        ▼
+LLM(CLI) → 구분자 형식 해석 → 품질 게이트 + 유사도 검사
+        ├─ 문제 있음 → 문제 목록을 붙여 전체 재작성 (최대 3회)
+        └─ 저장: 문제 없으면 status=review(검수 대기), 끝까지 남으면 status=draft + quality_issues
+```
+
+- **프롬프트는 채널 × 글 유형 단위.** 같은 주제라도 운전면허PLUS(중립 비교 플랫폼)와 드라이빙존(브랜드 블로그)은 목소리·구성이 다르고, 같은 채널 안에서도 글 유형(비용·추천·시험·연수 …)마다 구성이 다르다. 채널 전용 유형 파일(`channels/<채널>/<유형>.md`)이 있으면 공통 유형 파일 대신 쓴다.
+- **근거 자료**에는 원천 시스템 이름·URL을 넣지 않는다. 드라이빙존 공지 API의 비공개 필드는 정규화 단계에서 이미 버린다.
+- **품질 게이트**(`src/quality/gate.ts`): 제목·설명 길이와 대표 키워드, 채널별 분량·H2 수·표·FAQ, 첫 문단 결론(AEO), 긴 문단·빈 소제목·키워드 반복, 내부 용어·AI 자기 언급·자리표시·각주·합격 보장 표현, **본문의 금액·비율이 근거 자료+유의사항에 있는지**(어림은 "약" 등을 붙인 10% 이내만), 추천 글의 후보 수 부풀리기.
+- **유사도**(`src/similarity/fingerprint.ts`): 본문 글자 5-gram MinHash(64), 제목·소제목 2-gram 유사도. 같은 브랜드는 본문 0.3·제목 0.75·소제목 0.6, 다른 브랜드는 본문 0.45·제목 0.9 이상이면 재작성.
+- 생성 작업은 `generate` 작업 큐로 돌며 생성 간격·일일 한도·LLM 사용량 대기를 따른다. LLM 한도로 멈추면 주제는 `queued`로 남아 재개된다.
+- 근거 캐시는 정규화된 값을 저장하므로 정규화 규칙을 바꾸면 캐시 키 버전을 올린다.
+
+## 6. 모듈 구성 (예정 포함)
 
 ```
 src/
@@ -86,9 +108,11 @@ src/
                   · regions(지역 별칭) · cluster(키워드 묶기)
   topics/         intent(글 유형 규칙) · planner(수집→묶기→점수→저장) · store(조회·상태)
   cli/collect.ts  npm run collect
-  writer/         채널별 프롬프트 (SEO/AEO/GEO 구조, 톤, 형식)             [P3]
-  similarity/     shingle 유사도, 목차 구조 비교, 같은 유형 "피할 패턴"     [P3]
-  quality/        품질 게이트 (기존 규칙 중 유효한 것 이식)                 [P3]
+  writer/         facts(근거 자료) · prompt(조립·재작성) · output(출력 해석) · generate(1편 생성)
+  similarity/     fingerprint(MinHash·소제목·도입부, 피할 패턴, 유사 글 찾기)
+  quality/        gate(품질 게이트)
+  articles/       store(글 저장·조회)
+  cli/generate.ts npm run generate (--dry: 프롬프트만 출력)
   export/         채널별 결과물                                            [P4]
   web/            검수·승인·내보내기 UI                                    [P4]
 ```
@@ -96,7 +120,7 @@ src/
 TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한다(`node src/main.ts`).
 그래서 import는 `.ts` 확장자를 쓰고, enum·namespace 같은 비소거 문법은 쓰지 않는다(`erasableSyntaxOnly`).
 
-## 6. DB 테이블 (P1에서 확정)
+## 7. DB 테이블 (P1에서 확정)
 
 | 테이블 | 내용 |
 | --- | --- |
@@ -107,7 +131,7 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 | `jobs` | 종류, 상태, 다음 실행 시각, 시도 횟수, 오류 |
 | `llm_usage` | 프로바이더별 호출 결과, 한도 해제 시각 |
 
-## 7. LLM 호출과 사용량 한도
+## 8. LLM 호출과 사용량 한도
 
 - 기존 방식 유지: `codex exec` / `claude --print`를 서브프로세스로 실행하고 OAuth 로그인을 쓴다. Claude 경로는 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`을 제거해 구독 인증을 강제한다.
 - **사용률을 미리 읽어 멈춘다.**
@@ -120,7 +144,7 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 - CLI는 저장소 밖 빈 폴더(OS 임시 폴더 `ai-community-writer-llm`)에서 실행한다. 저장소 안에서 실행하면 이 저장소의 CLAUDE.md/AGENTS.md가 글 작성에 섞인다. Claude는 도구·MCP·세션 저장을 끈다.
 - Windows: npm 전역 설치 `.cmd`는 내부 JS 진입점을 찾아 `node <js>`로 직접 실행하고(셸 인용 문제 회피), 타임아웃 시 `taskkill /T /F`로 트리째 종료한다.
 
-## 8. 외부 시스템 현황 (2026-09-28 조사)
+## 9. 외부 시스템 현황 (2026-09-28 조사)
 
 - **api.drive 커뮤니티**
   - `community_post` + `community_post_audience`(scope: EVERYWHERE/RADIUS/ACADEMIES/SERVICE_REGIONS/MIXED) 구조는 있으나, 목록 API의 노출 대상 필터(`applyAudienceFilter`)는 미구현이다. 웹이 항상 위치를 보내므로 현재는 모든 글이 전국에 노출된다.
@@ -133,14 +157,14 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
   - ⚠️ 지점 API가 대표자명·사업자번호·SMS 수신 번호를 공개 응답에 포함한다. 정규화는 화이트리스트로 해당 필드를 버리지만, api.drivingzone 쪽에서도 응답에서 빼야 한다.
 - **drivingzone / dztraining 블로그**: 같은 `article` 테이블(board type `blog` / `blog_training`), 글 작성은 PHP 관리자(세션 인증)만 가능.
 
-## 9. 단계
+## 10. 단계
 
 | 단계 | 내용 |
 | --- | --- |
 | P0 | 기존 구조 정리, 새 골격 (설정·채널 정의·작성 가이드·서버 진입점·테스트) |
 | P1 | DB, Windows 대응 LLM 러너와 한도 대응, 작업 큐, 원천 데이터 조회, `npm run doctor` |
 | P2 | 키워드 수집·묶기, 주제 후보, `npm run collect`, `/api/topics` |
-| P3 | 채널별 프롬프트, 유사도 검사, 품질 게이트 |
+| P3 | 채널 × 글 유형 프롬프트, 근거 자료, 유사도 검사, 품질 게이트, 생성 작업, `npm run generate` |
 | P4 | 검수·승인·내보내기 UI |
 | P5 | web.drivingplus 커뮤니티 SEO(description, JSON-LD, 글이 생기면 sitemap 자동 포함), api.drive 노출 대상 필터 구현 |
 | P6 | api.drive / api.drivingzone 글 작성 API → 자동 발행 전환 |

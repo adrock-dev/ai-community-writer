@@ -82,3 +82,21 @@ export function setTopicStatus(
     ).changes > 0
   );
 }
+
+export function getTopic(db: Database, id: number): Topic | undefined {
+  const row = db.get("SELECT * FROM topics WHERE id = ?", [id]);
+  return row ? toTopic(row) : undefined;
+}
+
+/** 생성 과정에서의 상태 변경 (queued → written, 실패 시 candidate로 되돌림). */
+export function setTopicProgress(
+  db: Database,
+  id: number,
+  status: "candidate" | "queued" | "written",
+): void {
+  db.run("UPDATE topics SET status = ?, updated_at = ? WHERE id = ?", [
+    status,
+    new Date().toISOString(),
+    id,
+  ]);
+}

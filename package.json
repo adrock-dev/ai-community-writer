@@ -11,6 +11,7 @@
     "dev": "node --watch src/main.ts",
     "doctor": "node src/doctor.ts",
     "collect": "node src/cli/collect.ts",
+    "generate": "node src/cli/generate.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",

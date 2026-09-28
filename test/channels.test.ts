@@ -14,7 +14,7 @@ describe("CHANNELS", () => {
 
   it("drivingplus 커뮤니티 섹션을 찾는다", () => {
     expect(findSection("drivingplus-community", "drive_story")?.focus).toContain(
-      "운전학원 찾기·비교·추천",
+      "운전학원 찾기·비교·추천·비용",
     );
     expect(findSection("drivingplus-community", "unknown")).toBeUndefined();
   });

@@ -13,6 +13,7 @@ import type { HandlerDef } from "./queue/worker.ts";
 import { fetchAcademies } from "./sources/drivingplus.ts";
 import { fetchStores } from "./sources/drivingzone.ts";
 import { type CollectSummary, collectKeywords } from "./topics/planner.ts";
+import { generateArticle } from "./writer/generate.ts";
 
 /** 글 생성 작업 종류. 생성 간격·일일 한도의 기준이다. */
 export const GENERATE_KIND = "generate";
@@ -35,6 +36,15 @@ export function createContext(config: AppConfig): AppContext {
   const pacer = new Pacer(db, queue, config.pacing, GENERATE_KIND);
   const llm = new LlmClient(db, config.llm);
   const handlers: Record<string, HandlerDef> = {
+    // 주제 1개로 글 1편 생성 → 검수 대기. LLM을 쓰므로 생성 간격·일일 한도·사용량 대기를 따른다.
+    [GENERATE_KIND]: {
+      usesLlm: true,
+      run: (job) =>
+        generateArticle(
+          { db, config, llm, log: (m) => console.log(`[generate] ${m}`) },
+          Number((job.payload as { topicId?: number }).topicId),
+        ),
+    },
     // 네이버 30일 검색 수 수집 → 주제 후보 갱신
     [COLLECT_KIND]: { usesLlm: false, run: () => runCollect(config, db) },
     // 원천 데이터 캐시 갱신. 생성 작업이 오래된 자료를 쓰지 않도록 주기적으로 넣는다.
