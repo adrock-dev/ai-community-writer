@@ -51,7 +51,25 @@ guides/channels/<channelId>.md    특정 채널 전용 (선택)
 - 검수 화면에서 해당 글에 적용된 규칙 목록을 함께 보여 준다 [P4].
 - 숫자·시간처럼 기계적으로 확인할 수 있는 규칙은 품질 게이트 검사로도 연결할 수 있다 [P3 이후 검토].
 
-## 4. 모듈 구성 (예정 포함)
+## 4. 키워드 수집·주제 후보 (P2)
+
+```
+seeds/<채널>.md 시드 ──▶ 검색광고 API keywordstool (5개씩, 30일 PC+모바일 검색 수)
+   ──▶ 공통 필터(seeds/common.md) + 섹션 필터(포함어·제외어) + 최소 검색 수
+   ──▶ keyword_stats(수집일 스냅샷) · keyword_sources 저장
+   ──▶ 지역 판정(시군구 252곳 별칭 사전) · 글 유형 판정(규칙)
+   ──▶ 묶기: 같은 지역 + 같은 글 유형 + 지역명 뺀 글자 2-gram Jaccard ≥ 0.5
+   ──▶ 점수 = log10(검색 수) × 경쟁도 × 추세(선택) ÷ (1 + 0.5×같은 채널 유사 글 + 다른 채널 같은 주제 글)
+   ──▶ topics (channel, section, topic_key) 기준 갱신. 운영자 상태(건너뜀 등)는 유지
+```
+
+- 연관 키워드는 범위가 매우 넓다(시드 하나에 수백 개). 섹션별 포함어·제외어로 섹션·채널 간 주제를 가른다.
+- 네이버는 띄어쓰기 변형("운전 연수" / "운전연수")을 따로 집계하므로 버리지 않고 합산한다.
+- 글 유형이 다르면 글자가 비슷해도 묶지 않는다("운전연수"가 "운전연수비용"을 흡수하지 않게).
+- "연수"(인천 연수구)처럼 운전 용어와 겹치는 지역 별칭은 지역으로 보지 않는다.
+- 시험 정보(운전면허PLUS)와 면허 취득(드라이빙존)은 역할상 주제가 일부 겹친다. 한 채널에서 쓴 주제는 다른 채널 점수를 낮추고, 본문 유사도는 P3에서 막는다.
+
+## 5. 모듈 구성 (예정 포함)
 
 ```
 src/
@@ -68,8 +86,10 @@ src/
                   · limits(한도 판정) · client(순서·쉬기·기록)
   queue/          queue(jobs 테이블) · pacer(생성 간격·일일 한도) · worker(폴링 루프)
   sources/        drivingplus(학원·실내연습장) · drivingzone(지점) · http(응답 캐시)
-  keywords/       검색광고 API, 데이터랩, 키워드 묶기                      [P2]
-  topics/         주제 후보 점수화, 채널·섹션 배정                         [P2]
+  keywords/       searchad(검색광고 API) · datalab(추세, 선택) · seeds(시드·필터 파일)
+                  · regions(지역 별칭) · cluster(키워드 묶기)
+  topics/         intent(글 유형 규칙) · planner(수집→묶기→점수→저장) · store(조회·상태)
+  cli/collect.ts  npm run collect
   writer/         채널별 프롬프트 (SEO/AEO/GEO 구조, 톤, 형식)             [P3]
   similarity/     shingle 유사도, 목차 구조 비교, 같은 유형 "피할 패턴"     [P3]
   quality/        품질 게이트 (기존 규칙 중 유효한 것 이식)                 [P3]
@@ -80,7 +100,7 @@ src/
 TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한다(`node src/main.ts`).
 그래서 import는 `.ts` 확장자를 쓰고, enum·namespace 같은 비소거 문법은 쓰지 않는다(`erasableSyntaxOnly`).
 
-## 5. DB 테이블 (P1에서 확정)
+## 6. DB 테이블 (P1에서 확정)
 
 | 테이블 | 내용 |
 | --- | --- |
@@ -91,7 +111,7 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 | `jobs` | 종류, 상태, 다음 실행 시각, 시도 횟수, 오류 |
 | `llm_usage` | 프로바이더별 호출 결과, 한도 해제 시각 |
 
-## 6. LLM 호출과 사용량 한도
+## 7. LLM 호출과 사용량 한도
 
 - 기존 방식 유지: `codex exec` / `claude --print`를 서브프로세스로 실행하고 OAuth 로그인을 쓴다. Claude 경로는 `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN`을 제거해 구독 인증을 강제한다.
 - **사용률을 미리 읽어 멈춘다.**
@@ -104,7 +124,7 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 - CLI는 저장소 밖 빈 폴더(OS 임시 폴더 `ai-community-writer-llm`)에서 실행한다. 저장소 안에서 실행하면 이 저장소의 CLAUDE.md/AGENTS.md가 글 작성에 섞인다. Claude는 도구·MCP·세션 저장을 끈다.
 - Windows: npm 전역 설치 `.cmd`는 내부 JS 진입점을 찾아 `node <js>`로 직접 실행하고(셸 인용 문제 회피), 타임아웃 시 `taskkill /T /F`로 트리째 종료한다.
 
-## 7. 외부 시스템 현황 (2026-09-28 조사)
+## 8. 외부 시스템 현황 (2026-09-28 조사)
 
 - **api.drive 커뮤니티**
   - `community_post` + `community_post_audience`(scope: EVERYWHERE/RADIUS/ACADEMIES/SERVICE_REGIONS/MIXED) 구조는 있으나, 목록 API의 노출 대상 필터(`applyAudienceFilter`)는 미구현이다. 웹이 항상 위치를 보내므로 현재는 모든 글이 전국에 노출된다.
@@ -117,13 +137,13 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
   - ⚠️ 지점 API가 대표자명·사업자번호·SMS 수신 번호를 공개 응답에 포함한다. 정규화는 화이트리스트로 해당 필드를 버리지만, api.drivingzone 쪽에서도 응답에서 빼야 한다.
 - **drivingzone / dztraining 블로그**: 같은 `article` 테이블(board type `blog` / `blog_training`), 글 작성은 PHP 관리자(세션 인증)만 가능.
 
-## 8. 단계
+## 9. 단계
 
 | 단계 | 내용 |
 | --- | --- |
 | P0 | 기존 구조 정리, 새 골격 (설정·채널 정의·작성 가이드·서버 진입점·테스트) |
 | P1 | DB, Windows 대응 LLM 러너와 한도 대응, 작업 큐, 원천 데이터 조회, `npm run doctor` |
-| P2 | 키워드 수집·묶기, 주제 후보 |
+| P2 | 키워드 수집·묶기, 주제 후보, `npm run collect`, `/api/topics` |
 | P3 | 채널별 프롬프트, 유사도 검사, 품질 게이트 |
 | P4 | 검수·승인·내보내기 UI |
 | P5 | web.drivingplus 커뮤니티 SEO(description, JSON-LD, 글이 생기면 sitemap 자동 포함), api.drive 노출 대상 필터 구현 |

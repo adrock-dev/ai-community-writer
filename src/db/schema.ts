@@ -117,4 +117,25 @@ export const MIGRATIONS: readonly string[] = [
     payload TEXT NOT NULL
   );
   `,
+  // v2: 키워드 수집·주제 후보
+  `
+  ALTER TABLE topics ADD COLUMN topic_key TEXT NOT NULL DEFAULT '';
+  ALTER TABLE topics ADD COLUMN region TEXT NOT NULL DEFAULT '';
+  ALTER TABLE topics ADD COLUMN volume INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE topics ADD COLUMN trend REAL;
+  ALTER TABLE topics ADD COLUMN competition TEXT NOT NULL DEFAULT '';
+  CREATE UNIQUE INDEX topics_key ON topics (channel_id, section_code, topic_key);
+
+  ALTER TABLE articles ADD COLUMN region TEXT NOT NULL DEFAULT '';
+
+  -- 어떤 시드에서 어떤 채널·섹션 키워드로 수집됐는지.
+  CREATE TABLE keyword_sources (
+    keyword TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    section_code TEXT NOT NULL,
+    seed TEXT NOT NULL,
+    collected_on TEXT NOT NULL,
+    PRIMARY KEY (keyword, channel_id, section_code, collected_on)
+  );
+  `,
 ];

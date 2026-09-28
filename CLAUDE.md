@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 명령어
 
 - `npm start` — `node src/main.ts`. 빌드 단계 없음. API 서버와 작업 워커가 한 프로세스에서 돈다.
+- `npm run collect` — 네이버 30일 검색량 수집 → 주제 후보 갱신 (실제 검색광고 API 호출).
 - `npm run doctor` — 설치·로그인·API 연결 점검. `-- --llm`을 붙이면 실제 CLI를 한 번 호출한다(사용량 소모).
 - `npm run check` — typecheck + Biome lint + vitest. **커밋 전 반드시 통과시킨다.**
 - `npm test` / `npm run typecheck` / `npm run lint`
@@ -30,6 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 설정은 `config.json` 하나(선택). 새 설정 항목은 `src/config.ts` 스키마에 **기본값과 함께** 추가하고 `config.example.json`, README 표를 같이 갱신한다.
 - 채널·섹션은 `src/channels.ts`에 데이터로 정의한다. 채널별 분기는 이 정의를 읽어서 처리하고 하드코딩을 늘리지 않는다.
 - 브랜드·채널별 운영 규칙(예: 드라이빙존 교육시간)은 코드나 프롬프트에 박지 말고 `guides/*.md` 작성 가이드에 둔다.
+- 시드 키워드와 섹션별 포함어·제외어는 `seeds/*.md`에 둔다. 주제 품질 조정은 먼저 시드 파일로 하고, 코드(묶기·점수)는 그다음이다.
 
 ## Windows 주의
 

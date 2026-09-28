@@ -15,6 +15,12 @@
     "dailyLimit": 10
   },
   "worker": { "pollSec": 5 },
+  "keywords": {
+    "minMonthlyVolume": 30,
+    "maxTopicsPerSection": 50,
+    "clusterThreshold": 0.5,
+    "trendTopN": 30
+  },
   "naver": {
     "searchadEnvFile": "~/.naver-searchad.env",
     "datalabClientId": "",

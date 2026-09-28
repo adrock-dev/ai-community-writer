@@ -67,6 +67,18 @@ const configSchema = z.object({
       pollSec: z.number().int().positive().default(5),
     })
     .prefault({}),
+  keywords: z
+    .object({
+      /** 30일 검색 수(PC+모바일)가 이보다 적은 키워드는 버린다. */
+      minMonthlyVolume: z.number().int().nonnegative().default(30),
+      /** 섹션마다 저장할 주제 후보 최대 수 (검색 수 순). */
+      maxTopicsPerSection: z.number().int().positive().default(50),
+      /** 키워드 묶기 기준 (글자 2-gram 유사도, 0~1). 낮출수록 크게 묶인다. */
+      clusterThreshold: z.number().min(0).max(1).default(0.5),
+      /** 데이터랩 추세를 조회할 상위 묶음 수. */
+      trendTopN: z.number().int().nonnegative().default(30),
+    })
+    .prefault({}),
   naver: z
     .object({
       /** 검색광고 API 인증 파일(KEY=VALUE 형식). 저장소 밖에 둔다. */

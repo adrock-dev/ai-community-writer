@@ -56,7 +56,12 @@ copy config.example.json config.json
 | `pacing.minIntervalSec` / `maxIntervalSec` | `300` / `900` | 생성 사이 대기(무작위) |
 | `pacing.dailyLimit` | `10` | 하루 최대 생성 편수 |
 | `worker.pollSec` | `5` | 작업 큐 확인 주기(초) |
-| `naver.searchadEnvFile` | `~/.naver-searchad.env` | 검색광고 API 인증 파일 |
+| `keywords.minMonthlyVolume` | `30` | 30일 검색 수가 이보다 적은 키워드는 버림 |
+| `keywords.maxTopicsPerSection` | `50` | 섹션별 저장할 주제 후보 수 |
+| `keywords.clusterThreshold` | `0.5` | 키워드 묶기 기준 (낮출수록 크게 묶임) |
+| `keywords.trendTopN` | `30` | 추세를 조회할 상위 주제 수 |
+| `naver.searchadEnvFile` | `~/.naver-searchad.env` | 검색광고 API 인증 파일 (`NAVER_AD_API_KEY`, `NAVER_AD_SECRET_KEY`, `NAVER_AD_CUSTOMER_ID`). 같은 이름의 환경 변수가 있으면 그것을 우선 |
+| `naver.datalabClientId` / `datalabClientSecret` | 빈 값 | 데이터랩 API (선택, 추세 반영용) |
 | `sources.profile` | `prod` | 학원·연습장 데이터 API 환경 (`prod` / `dev`) |
 | `sources.drivingplusApi` / `drivingzoneApi` | 빈 값 | 비우면 profile 주소 사용. 다른 서버를 쓸 때만 지정 |
 | `sources.cacheTtlHours` | `24` | 학원·지점 데이터 캐시 유지 시간 |
@@ -68,6 +73,36 @@ copy config.example.json config.json
 | `dev` | `https://api-dev.drivingplus.me:18104` | `https://adrock.duckdns.org:18099` |
 
 `config.json`은 git에 올라가지 않습니다. 다른 위치의 설정을 쓰려면 환경 변수 `WRITER_CONFIG`에 경로를 지정합니다.
+
+## 키워드 수집과 주제 후보
+
+```powershell
+npm run collect            # 수집 후 섹션별 상위 주제 10개 출력 (--top=20 으로 개수 변경)
+```
+
+실행 중인 서버에서는 `POST /api/keywords/collect`로 작업 큐에 넣고, 결과는 `GET /api/topics?channel=<채널 id>`로 봅니다.
+
+1. `seeds/<채널 id>.md`의 **시드 키워드**로 네이버 검색광고 API 연관 키워드와 **최근 30일 PC·모바일 검색 수**를 받습니다.
+2. `seeds/common.md`의 공통 포함어·제외어와 섹션별 **포함어·제외어**로 거릅니다. 섹션 필터가 없으면 연관 키워드 범위가 넓어 모든 섹션에 같은 주제가 쌓입니다.
+3. 같은 지역·같은 글 유형이면서 글자가 비슷한 키워드를 한 주제로 묶습니다. 검색 수가 가장 큰 키워드가 대표 키워드가 됩니다.
+4. 검색 수(로그), 광고 경쟁도, 추세(선택), 이미 쓴 글 수로 점수를 매겨 저장합니다. 운영자가 건너뛴 주제는 다시 수집해도 건너뛴 상태로 남습니다.
+
+추세는 네이버 데이터랩 검색어 트렌드 API 키(`naver.datalabClientId` / `datalabClientSecret`)가 있을 때만 반영합니다.
+[developers.naver.com](https://developers.naver.com)에서 애플리케이션을 등록하고 "데이터랩(검색어트렌드)"를 추가하면 받을 수 있습니다.
+
+```markdown
+## drive_story
+
+### 시드
+- 운전학원추천
+
+### 포함어
+- 학원
+- 추천
+
+### 제외어
+- 연수
+```
 
 ## 작성 가이드 (운영 규칙)
 
@@ -92,6 +127,7 @@ copy config.example.json config.json
 | --- | --- |
 | `npm run dev` | 파일 변경 시 자동 재시작 |
 | `npm run doctor` | 설치·설정 점검 |
+| `npm run collect` | 키워드 수집·주제 후보 갱신 |
 | `npm run typecheck` | 타입 검사 |
 | `npm run lint` / `npm run format` | Biome 린트 / 포맷 |
 | `npm test` | 단위 테스트 (vitest) |
