@@ -57,6 +57,11 @@ export interface ChannelDef {
    * 끄면 지역 키워드는 주제 후보에서 뺀다. 운전면허PLUS 커뮤니티만 켠다(2026-09-28 결정).
    */
   regional: boolean;
+  /**
+   * 자동 발행 대상. community = api.drive 커뮤니티(섹션·칸), blog = api.drivingzone 게시판
+   * (섹션 코드 = board type), none = 원고만(카페).
+   */
+  autoPublish: "community" | "blog" | "none";
   quality: ChannelQuality;
   sections: SectionDef[];
 }
@@ -70,6 +75,7 @@ export const CHANNELS = [
     format: "markdown",
     focus: ["운전학원 찾기·비교·추천", "학원 연수", "운전면허 시험 정보"],
     regional: true,
+    autoPublish: "community",
     quality: {
       minChars: 1800,
       maxChars: 4200,
@@ -122,6 +128,7 @@ export const CHANNELS = [
     format: "html",
     focus: ["운전면허 취득"],
     regional: false,
+    autoPublish: "blog",
     quality: {
       minChars: 2200,
       maxChars: 5000,
@@ -140,6 +147,7 @@ export const CHANNELS = [
     format: "html",
     focus: ["장롱면허", "운전 연수"],
     regional: false,
+    autoPublish: "blog",
     quality: {
       minChars: 2200,
       maxChars: 5000,
@@ -158,6 +166,7 @@ export const CHANNELS = [
     format: "cafe-text",
     focus: ["운전면허 취득", "장롱면허", "운전 연수"],
     regional: false,
+    autoPublish: "none",
     quality: {
       minChars: 800,
       maxChars: 2200,

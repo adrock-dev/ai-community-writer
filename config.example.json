@@ -1,20 +1,34 @@
 {
-  "server": { "host": "127.0.0.1", "port": 8787 },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8787
+  },
   "dbPath": "data/writer.db",
   "llm": {
-    "order": ["codex", "claude"],
+    "order": [
+      "codex",
+      "claude"
+    ],
     "timeoutSec": 600,
     "pauseAtUsagePercent": 80,
     "limitCooldownMin": 60,
-    "codex": { "command": "codex", "model": "" },
-    "claude": { "command": "claude", "model": "" }
+    "codex": {
+      "command": "codex",
+      "model": ""
+    },
+    "claude": {
+      "command": "claude",
+      "model": ""
+    }
   },
   "pacing": {
     "minIntervalSec": 300,
     "maxIntervalSec": 900,
     "dailyLimit": 10
   },
-  "worker": { "pollSec": 5 },
+  "worker": {
+    "pollSec": 5
+  },
   "keywords": {
     "minMonthlyVolume": 30,
     "maxTopicsPerSection": 50,
@@ -31,6 +45,20 @@
     "drivingplusApi": "",
     "drivingzoneApi": "",
     "cacheTtlHours": 24,
+    "timeoutSec": 60
+  },
+  "publish": {
+    "credentialsFile": "~/.ai-community-writer.env",
+    "drivingplusApi": "",
+    "drivingzoneApi": "",
+    "drivingplusSiteUrl": "https://app.drivingplus.me",
+    "drivingzoneSiteUrl": "https://www.drivingzone.co.kr",
+    "dztrainingSiteUrl": "https://www.dztraining.co.kr",
+    "indexNowKeys": {
+      "drivingplus": "b3174e2477a5465399e5c71adf308a6f",
+      "drivingzone": "",
+      "dztraining": ""
+    },
     "timeoutSec": 60
   }
 }

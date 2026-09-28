@@ -10,6 +10,8 @@ import { readEnvFile } from "./keywords/searchad.ts";
 import { resolveCommand } from "./llm/command.ts";
 import { runProcess } from "./llm/process.ts";
 import { resolvePath } from "./paths.ts";
+import { WriterApi } from "./publish/client.ts";
+import { loadWriterKey, publishApiBase } from "./publish/publisher.ts";
 
 let failed = 0;
 const ok = (msg: string) => console.log(`  ✓ ${msg}`);
@@ -77,6 +79,31 @@ async function main() {
   console.log("\n[원천 데이터 API]");
   await checkSource("api.drive", `${config.sources.drivingplusApi}/v1/zipcode/si-do-list`, 15);
   await checkSource("api.drivingzone", `${config.sources.drivingzoneApi}/v1/region`, 15);
+
+  console.log("\n[자동 발행 API]");
+  // 없는 식별자를 조회해 404가 오면 키·서버 설정이 맞다(글은 만들지 않는다).
+  const targets = [
+    {
+      brand: "drivingplus" as const,
+      name: "운전면허PLUS",
+      path: "/v1/writer/community/posts/aiw-doctor:0",
+    },
+    { brand: "drivingzone" as const, name: "드라이빙존", path: "/v1/writer/articles/aiw-doctor:0" },
+  ];
+  for (const t of targets) {
+    const key = loadWriterKey(config, t.brand);
+    if (!key) {
+      warn(`${t.name}: 발행 키 없음 — 내보내기(복사)만 가능 (${config.publish.credentialsFile})`);
+      continue;
+    }
+    const base = publishApiBase(config, t.brand);
+    try {
+      await new WriterApi(base, key, 15).get(t.path);
+      ok(`${t.name}: ${base} 발행 API 인증 확인`);
+    } catch (error) {
+      bad(`${t.name}: ${(error as Error).message}`);
+    }
+  }
 
   console.log("\n[작성 가이드]");
   const guideCtx = createContext(config);

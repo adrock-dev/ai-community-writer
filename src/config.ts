@@ -109,6 +109,31 @@ const configSchema = z.object({
         drivingzoneApi: (s.drivingzoneApi || preset.drivingzoneApi).replace(/\/+$/, ""),
       };
     }),
+  publish: z
+    .object({
+      /** 발행 API 키 파일(KEY=VALUE). DRIVINGPLUS_WRITER_API_KEY / DRIVINGZONE_WRITER_API_KEY. 저장소 밖에 둔다. */
+      credentialsFile: z.string().default("~/.ai-community-writer.env"),
+      /** 발행할 API 서버. 비우면 sources 의 주소(profile)를 쓴다. */
+      drivingplusApi: z.string().default(""),
+      drivingzoneApi: z.string().default(""),
+      /** 게시 주소를 만들 공개 사이트. */
+      drivingplusSiteUrl: z.string().default("https://app.drivingplus.me"),
+      drivingzoneSiteUrl: z.string().default("https://www.drivingzone.co.kr"),
+      dztrainingSiteUrl: z.string().default("https://www.dztraining.co.kr"),
+      /**
+       * 발행 뒤 IndexNow(공용 + 네이버)로 글 주소를 알린다. 키는 사이트 루트의 `{key}.txt` 와 같아야 한다.
+       * 운전면허PLUS 키는 web.drivingplus `public/` 에 이미 공개돼 있다. 드라이빙존 사이트는 키 파일이 없어 비워 둔다.
+       */
+      indexNowKeys: z
+        .object({
+          drivingplus: z.string().default("b3174e2477a5465399e5c71adf308a6f"),
+          drivingzone: z.string().default(""),
+          dztraining: z.string().default(""),
+        })
+        .prefault({}),
+      timeoutSec: z.number().int().positive().default(60),
+    })
+    .prefault({}),
 });
 
 export type AppConfig = z.infer<typeof configSchema>;

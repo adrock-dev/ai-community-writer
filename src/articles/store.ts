@@ -44,6 +44,10 @@ export interface Article {
   model: string;
   reviewNote: string;
   publishedUrl: string;
+  /** 자동 발행한 대상 시스템의 글 id. 비었으면 자동 발행 전 */
+  externalId: string;
+  /** 마지막 자동 발행 실패 사유 */
+  publishError: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -71,6 +75,8 @@ const toArticle = (r: any): Article => ({
   model: r.model,
   reviewNote: r.review_note,
   publishedUrl: r.published_url,
+  externalId: r.external_id ?? "",
+  publishError: r.publish_error ?? "",
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });

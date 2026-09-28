@@ -35,6 +35,7 @@ npm start
 | 대시보드 `/` | 검수 대기·초안·승인·내보냄 수, LLM 사용률, 다음 생성 가능 시각 |
 | 주제 `/topics` | 채널·섹션별 주제 후보(30일 검색 수·점수), **생성 예약**, 건너뛰기, 키워드 수집 실행 |
 | 글 검수 `/articles` | 상태별 목록 → 글 상세에서 미리보기·남은 문제·근거 자료·이미지·생성 기록 확인, **수정·승인·반려·다시 생성** |
+| 자동 발행 (글 상세) | 승인한 글을 **지금 게시** — 운전면허PLUS 커뮤니티·드라이빙존 블로그·연수 블로그. 카페는 원고만 |
 | 내보내기 (글 상세) | 승인한 글을 채널 형식으로 복사(필드별 복사, 본문 복사, 서식 포함 복사), **내보내기 폴더 만들기**(이미지 포함), 게시 URL 입력 → 발행 완료 |
 | 작업 `/jobs` | 작업 큐 상태, 대기 사유(생성 간격·사용량 한도), 오류, 취소 |
 | 유의사항 설정 `/settings/guides` | 작성 가이드 관리 |
@@ -84,6 +85,11 @@ copy config.example.json config.json
 | `sources.drivingplusApi` / `drivingzoneApi` | 빈 값 | 비우면 profile 주소 사용. 다른 서버를 쓸 때만 지정 |
 | `sources.cacheTtlHours` | `24` | 학원·지점 데이터 캐시 유지 시간 |
 | `sources.timeoutSec` | `60` | 원천 API 요청 제한 시간 |
+| `publish.credentialsFile` | `~/.ai-community-writer.env` | 발행 API 키 파일 (`DRIVINGPLUS_WRITER_API_KEY`, `DRIVINGZONE_WRITER_API_KEY`) |
+| `publish.drivingplusApi` / `drivingzoneApi` | 빈 값 | 발행할 API 서버. 비우면 `sources` 주소 |
+| `publish.drivingplusSiteUrl` / `drivingzoneSiteUrl` / `dztrainingSiteUrl` | 운영 사이트 | 게시 주소(published URL)를 만들 사이트 |
+| `publish.indexNowKeys.drivingplus` / `drivingzone` / `dztraining` | 운전면허PLUS 공개 키 / 빈 값 | 발행 뒤 IndexNow 통보 키(사이트 루트 `{key}.txt`와 같아야 함). 비우면 통보 안 함 |
+| `publish.timeoutSec` | `60` | 발행 요청 제한 시간 |
 
 | profile | api.drive | api.drivingzone |
 | --- | --- | --- |
@@ -167,6 +173,28 @@ npm run generate -- --topic=161 --dry                      # LLM 호출 없이 �
 | `prompts/channels/<채널>.md` | 채널 목소리·분량·마무리 방식 |
 | `prompts/types/<글 유형>.md` | 글 유형별 구성 (비용·추천·시험·연수 등 12종) |
 | `prompts/channels/<채널>/<글 유형>.md` | 특정 채널에서 그 유형만 다르게 쓸 때 (있으면 위 파일 대신 사용) |
+
+## 자동 발행
+
+승인한 글은 글 상세의 **지금 게시**로 대상 사이트에 바로 올립니다(작업 화면에서 진행 확인). 사람이 승인하지 않은 글은 올리지 않습니다.
+
+| 채널 | 대상 | 비고 |
+| --- | --- | --- |
+| 운전면허PLUS 커뮤니티 | api.drive `PUT /v1/writer/community/posts/:sourceKey` | 섹션·칸(필터)은 채널 정의 규칙으로, **지역 글은 노출 대상 지역**까지 지정. 발행 뒤 IndexNow 통보 |
+| 드라이빙존 블로그 / 연수 블로그 | api.drivingzone `PUT /v1/writer/articles/:sourceKey` | 본문은 에디터 HTML, 첫 이미지를 목록 썸네일로 올림. 지역 지정 없음 |
+| 드라이빙존 카페 | — | 원고만 (내보내기에서 복사) |
+
+- 생성 삽화는 이 PC에만 있으므로 대상 서버에 먼저 올리고 본문 주소를 바꿉니다. 올린 이미지는 기억해 두어 다시 보내도 또 올리지 않습니다.
+- 같은 글을 다시 보내면 대상 사이트에서는 **수정**이 됩니다(글마다 고유 식별자 `aiw-<설치 id>:<글 번호>`).
+- 발행 API 키는 저장소 밖 파일(`publish.credentialsFile`, 기본 `~/.ai-community-writer.env`)에 둡니다. 키 값은 각 서버의 `WRITER_API_KEY` 와 같아야 합니다.
+
+  ```
+  DRIVINGPLUS_WRITER_API_KEY=...
+  DRIVINGZONE_WRITER_API_KEY=...
+  ```
+
+  같은 이름의 환경 변수가 있으면 그것을 우선합니다. 키가 없으면 그 브랜드는 내보내기(복사)만 됩니다. `npm run doctor` 가 키·서버 설정을 확인합니다(글은 만들지 않음).
+- 대상 서버 준비(한 번): api.drive `WRITER_API_KEY`·`WRITER_ADMIN_ID` + DDL(`2026092803`·`2026092804`), api.drivingzone `WRITER_API_KEY`·`WRITER_USER_ID`·`WEB_REVALIDATION_SECRET` + DDL(`2026092801`).
 
 ## 유의사항 설정 (작성 가이드)
 

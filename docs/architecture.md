@@ -106,6 +106,23 @@ review / draft ──수정──▶ 기계 검사 다시(LLM 없음) → review
 - 내보내기 폴더에는 본문의 모든 이미지를 담는다. 실제 사진은 공개 주소 그대로 두고 사본만, 생성 삽화는 `images/파일`로 바꿔 운영자가 직접 올리게 한다(P6 자동 발행에서 업로드 API로 대체).
 - 관리 화면은 로그인이 없으므로 `127.0.0.1`에서만 연다.
 
+## 5-2. 자동 발행 (P6)
+
+```
+approved / exported ──지금 게시──▶ publish 작업(LLM 없음, 재시도 3회)
+   ① 생성 삽화 업로드(블로그는 첫 이미지를 썸네일로) — 올린 결과는 app_state 에 기억
+   ② 본문 주소 교체, 제목 줄 제거 → 커뮤니티: Markdown / 블로그: 에디터 HTML
+   ③ PUT <대상>/v1/writer/…/:sourceKey  (X-Writer-Key)   sourceKey = aiw-<설치 id>:<글 번호> → 다시 보내면 수정
+   ④ published + published_url + external_id 기록, 실패하면 publish_error
+   ⑤ IndexNow(키가 있는 사이트만 — 현재 운전면허PLUS)
+```
+
+- 대상: 채널 정의 `autoPublish`(`community` / `blog` / `none`). 카페는 원고만.
+- 커뮤니티: 섹션 = `section.code`, 칸 = `resolveFilterCodes`, 지역 글(`regional` 채널만)은 `audienceAreas`(시도·시군구) → api.drive 가 광고 지구로 바꿔 `SERVICE_REGIONS` 저장.
+- 블로그: 섹션 코드 = board type(`blog` / `blog_training`), 게시 주소는 사이트 `slugify(제목, id)` 규칙.
+- 서버 계약: api.drive `docs/domains/community/api.md` §6.4, api.drivingzone `docs/writer-api.md`. 캐시 무효화는 서버가 저장 뒤 한다.
+- 키는 저장소 밖 파일(`publish.credentialsFile`). 값은 화면·로그·doctor 에 출력하지 않는다.
+
 ## 6. 모듈 구성 (예정 포함)
 
 ```
@@ -117,6 +134,7 @@ src/
   guides.ts       작성 가이드(유의사항) 저장·조회·초기값 가져오기
   web/            로컬 관리 화면 (dashboard · topics · articles(검수·내보내기) · jobs · guides)
   export/         render(채널 형식 변환) · bundle(내보내기 폴더)
+  publish/        payload(요청 본문) · client(발행 API) · publisher(업로드→게시→기록→IndexNow)
   articles/       store(저장·조회) · review(검수 상태 전이·재검사)
   server.ts       로컬 HTTP 서버 (Hono)
   app.ts          DB·큐·LLM·작업 핸들러 조립
@@ -171,7 +189,8 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
   - 지역 글은 `SERVICE_REGIONS` + 대상 시군구를 덮는 **광고 지구 id 전부**(`region_admin_area`)로 넣는다. 우리 주제의 지역(시도·시군구 이름)을 지구 id로 바꾸는 일은 P6 글 작성 API가 맡는다.
   - 목록 조회가 `community_post_filter`를 INNER JOIN하므로 필터가 없는 글은 목록에 나오지 않는다. 내보낼 때 섹션·필터를 필수로 둔다.
   - `GET /v1/community/sitemap-posts`(사이트맵용), 상세 응답 `updatedAt`·`seoKeywords`. 조회수 증가가 `updated_at`을 바꾸지 않는다.
-  - 글 작성 API가 없다 (P6에서 추가. 저장 후 웹 캐시 태그 `community-posts`·`community-post-{id}` 무효화, IndexNow).
+  - 작성 도구 발행 API `/v1/writer/community`(P6, api.drive `160fe27`). 저장 후 웹 캐시 태그 `community-posts`·`community-post-{id}` 무효화. 시험장 안내 탭(`test_center_guide`)은 글 목록이 아니므로 시험장·면허 업무 글은 `license_tips`(칸 `test_center`·`license_care`).
+- **api.drivingzone 블로그**: 작성 도구 발행 API `/v1/writer/articles`(P6, `74a00a1`). 저장 후 두 사이트 캐시(글 태그 + 목록 경로) 무효화. 블로그 사이트맵은 빌드 때만 갱신된다.
 - **web.drivingplus 커뮤니티** (P5 반영, `ae9a0ad`, 문서 `docs/community/seo.md`)
   - 상세: 본문 sr-only SSR, description(`summary` → 본문 첫 문장), `Article`·`BreadcrumbList`·(FAQ 절이 있으면) `FAQPage` JSON-LD, ISR 1시간.
   - `/sitemap-community.xml`(ISR): 글이 생기면 자동으로 실리고, 0건이면 빈 urlset. robots.txt에 등록.
@@ -180,7 +199,7 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
   - api.drive `GET /v1/academy/get-all-academy` — 인증 없음, 약 4MB, 384곳(실내연습장 17곳 포함). 가격 관측치·공시 수강료·셔틀·운영시간·사진·리뷰. 학원 SEO 문구(`seo*`)는 우리가 만든 홍보 문구라 근거에서 뺀다.
   - api.drivingzone `GET /v1/store`(27곳) + `GET /v1/store/:id` — 인증 없음, 운영시간·지하철·강사·리뷰. 합격률·평균 소요일이 0이면 미집계로 본다.
   - ⚠️ 지점 API가 대표자명·사업자번호·SMS 수신 번호를 공개 응답에 포함한다. 정규화는 화이트리스트로 해당 필드를 버리지만, api.drivingzone 쪽에서도 응답에서 빼야 한다.
-- **drivingzone / dztraining 블로그**: 같은 `article` 테이블(board type `blog` / `blog_training`), 글 작성은 PHP 관리자(세션 인증)만 가능.
+- **drivingzone / dztraining 블로그**: 같은 `article` 테이블(board type `blog` / `blog_training`). 사람은 PHP 관리자로, 작성 도구는 위 발행 API로 쓴다.
 
 ## 10. 단계
 
@@ -192,4 +211,4 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 | P3 | 채널 × 글 유형 프롬프트, 근거 자료, 유사도 검사, 품질 게이트, 생성 작업, `npm run generate` |
 | P4 | 대시보드·주제·글 검수·작업 화면, 수정·승인·반려·다시 생성, 채널별 내보내기(복사·폴더) |
 | P5 | web.drivingplus 커뮤니티 SEO(description, JSON-LD, 글이 생기면 sitemap 자동 포함), api.drive 노출 대상 필터 구현 — **완료(2026-09-28)** |
-| P6 | api.drive / api.drivingzone 글 작성 API → 자동 발행 전환 |
+| P6 | api.drive / api.drivingzone 글 작성 API → 자동 발행 전환 — **완료(2026-09-28)**, 서버 DDL·키 적용 대기 |

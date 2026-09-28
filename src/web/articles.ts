@@ -22,6 +22,7 @@ import { renderExport, writeExportBundle } from "../export/bundle.ts";
 import { markdownToHtml, stripTitle } from "../export/render.ts";
 import { regionLabel } from "../keywords/regions.ts";
 import { articleTypeLabel } from "../topics/intent.ts";
+import { PUBLISH_KIND, publishKeyStatus } from "../publish/publisher.ts";
 import { getTopic, setTopicProgress } from "../topics/store.ts";
 import { ARTICLE_STATUS_LABEL, badge, type Html, page, shortTime, statusTone } from "./layout.ts";
 
@@ -31,7 +32,47 @@ const NOTICES: Record<string, string> = {
   rejected: "반려했습니다.",
   regenerate: "이 글을 반려하고 같은 주제로 다시 생성을 예약했습니다.",
   published: "발행 완료로 기록했습니다.",
+  queued_publish: "자동 발행을 예약했습니다. 작업 화면에서 진행을 볼 수 있습니다.",
 };
+
+/** 이 글의 자동 발행 작업이 대기·진행 중인가 */
+function pendingPublish(ctx: AppContext, articleId: number): boolean {
+  return Boolean(
+    ctx.db.get(
+      `SELECT 1 FROM jobs WHERE kind = ? AND status IN ('queued', 'running')
+         AND json_extract(payload, '$.articleId') = ? LIMIT 1`,
+      [PUBLISH_KIND, articleId],
+    ),
+  );
+}
+
+/** 자동 발행(대상 API). 카페처럼 원고만 쓰는 채널은 없음. */
+function autoPublishCard(a: Article, ctx: AppContext): Html {
+  const channel = findChannel(a.channelId);
+  if (!channel || channel.autoPublish === "none") return html``;
+  const target =
+    channel.autoPublish === "community"
+      ? "운전면허PLUS 커뮤니티"
+      : `${channel.label} 게시판(${a.sectionCode})`;
+  const hasKey = publishKeyStatus(ctx.config)[channel.brand];
+  const pending = pendingPublish(ctx, a.id);
+  const ready = ["approved", "exported"].includes(a.status);
+  return html`<section class="card"><header><h2>자동 발행</h2><span class="muted">${target}</span></header>
+  ${a.externalId ? html`<p>${badge("자동 발행됨", "ok")} 대상 글 #${a.externalId}</p>` : ""}
+  ${a.publishError ? html`<ul class="issues"><li>마지막 발행 실패: ${a.publishError}</li></ul>` : ""}
+  ${
+    !hasKey
+      ? html`<p class="muted">발행 API 키가 없습니다. ${ctx.config.publish.credentialsFile} 에 ${channel.brand === "drivingplus" ? "DRIVINGPLUS" : "DRIVINGZONE"}_WRITER_API_KEY 를 적으면 켜집니다.</p>`
+      : pending
+        ? html`<p>${badge("발행 대기 중", "warn")}</p>`
+        : ready
+          ? html`<form method="post" action="/articles/${a.id}/auto-publish">
+      <p class="muted">생성 삽화를 올리고 본문 주소를 바꾼 뒤 게시합니다. 같은 글을 다시 보내면 대상에서 수정됩니다.${channel.regional && a.region ? ` 노출 대상: ${regionLabel(a.region)}` : ""}</p>
+      <button class="primary" onclick="return confirm('이 글을 실제 사이트에 게시할까요?')">지금 게시</button></form>`
+          : html`<p class="muted">${a.status === "published" ? "발행을 마쳤습니다." : "승인한 뒤 게시할 수 있습니다."}</p>`
+  }
+</section>`;
+}
 
 const channelLabel = (id: string) => findChannel(id)?.label ?? id;
 
@@ -147,7 +188,7 @@ function exportCard(a: Article, origin: string): Html {
 </section>`;
 }
 
-function detailPage(a: Article, origin: string): Html {
+function detailPage(a: Article, origin: string, ctx: AppContext): Html {
   const channel = findChannel(a.channelId);
   const section = findSection(a.channelId, a.sectionCode);
   const attempts =
@@ -186,6 +227,7 @@ ${
   </div>
   <div>
     ${reviewCard(a)}
+    ${autoPublishCard(a, ctx)}
     ${exportCard(a, origin)}
     <section class="card"><header><h2>이미지</h2><span class="muted">${a.images.length}장</span></header>
       <div class="thumbs">${a.images.map((i) => html`<a href="${i.url}" target="_blank" rel="noopener" title="${i.alt}"><img src="${i.url}" alt="${i.alt}"></a>`)}</div>
@@ -223,7 +265,7 @@ export function mountArticles(app: Hono, ctx: AppContext): void {
     if (!article) return c.notFound();
     const origin = new URL(c.req.url).origin;
     return c.html(
-      page(article.title, detailPage(article, origin), {
+      page(article.title, detailPage(article, origin, ctx), {
         current: "/articles",
         notice:
           NOTICES[c.req.query("done") ?? ""] ??
@@ -305,6 +347,22 @@ export function mountArticles(app: Hono, ctx: AppContext): void {
       markExported(ctx.db, id);
       const dir = await writeExportBundle(article);
       return `/articles/${id}?exported=${encodeURIComponent(dir)}`;
+    }),
+  );
+
+  app.post(
+    "/articles/:id/auto-publish",
+    act((id) => {
+      const article = getArticle(ctx.db, id);
+      if (!article) throw new ReviewError("글이 없습니다");
+      if (!["approved", "exported"].includes(article.status)) {
+        throw new ReviewError("승인한 글만 게시할 수 있습니다");
+      }
+      if (findChannel(article.channelId)?.autoPublish === "none") {
+        throw new ReviewError("이 채널은 자동 발행 대상이 아닙니다(원고만)");
+      }
+      if (!pendingPublish(ctx, id)) ctx.queue.enqueue(PUBLISH_KIND, { articleId: id });
+      return "queued_publish";
     }),
   );
 

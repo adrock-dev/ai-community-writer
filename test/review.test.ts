@@ -208,6 +208,25 @@ describe("관리 화면", () => {
     expect(decodeURIComponent(res.headers.get("location") ?? "")).toMatch(/error=게시 URL/);
   });
 
+  it("승인한 글은 자동 발행 작업을 한 번만 예약하고, 카페 원고는 자동 발행하지 않는다", async () => {
+    const { db, app, queue } = setup();
+    const id = createArticle(db, article({ status: "approved" }));
+    expect(await (await app.request(`/articles/${id}`)).text()).toContain("자동 발행");
+    await app.request(`/articles/${id}/auto-publish`, form({}));
+    await app.request(`/articles/${id}/auto-publish`, form({}));
+    expect(queue.list(10).filter((j) => j.kind === "publish")).toHaveLength(1);
+    expect(queue.list(1)[0]).toMatchObject({ kind: "publish", payload: { articleId: id } });
+
+    const cafe = createArticle(
+      db,
+      article({ status: "approved", channelId: "drivingzone-cafe", sectionCode: "cafe" }),
+    );
+    const res = await app.request(`/articles/${cafe}/auto-publish`, form({}));
+    expect(decodeURIComponent(res.headers.get("location") ?? "")).toMatch(
+      /자동 발행 대상이 아닙니다/,
+    );
+  });
+
   it("반려 후 다시 생성하면 주제로 생성 작업을 넣는다", async () => {
     const { db, app, queue } = setup();
     const now = new Date().toISOString();

@@ -12,6 +12,7 @@ import { Pacer } from "./queue/pacer.ts";
 import { JobQueue } from "./queue/queue.ts";
 import type { HandlerDef } from "./queue/worker.ts";
 import { fetchAcademies } from "./sources/drivingplus.ts";
+import { PUBLISH_KIND, publishArticle, recordPublishError } from "./publish/publisher.ts";
 import { fetchStores } from "./sources/drivingzone.ts";
 import { type CollectSummary, collectKeywords } from "./topics/planner.ts";
 import { generateArticle } from "./writer/generate.ts";
@@ -51,6 +52,22 @@ export function createContext(config: AppConfig): AppContext {
           },
           Number((job.payload as { topicId?: number }).topicId),
         ),
+    },
+    // 승인한 글 자동 발행(대상 API). LLM을 쓰지 않는다. 같은 글을 다시 보내도 대상에서는 수정이 된다.
+    [PUBLISH_KIND]: {
+      usesLlm: false,
+      run: async (job) => {
+        const articleId = Number((job.payload as { articleId?: number }).articleId);
+        try {
+          return await publishArticle(
+            { db, config, log: (m) => console.log(`[publish] ${m}`) },
+            articleId,
+          );
+        } catch (error) {
+          recordPublishError(db, articleId, (error as Error).message);
+          throw error;
+        }
+      },
     },
     // 네이버 30일 검색 수 수집 → 주제 후보 갱신
     [COLLECT_KIND]: { usesLlm: false, run: () => runCollect(config, db) },
