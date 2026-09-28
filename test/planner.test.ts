@@ -110,6 +110,35 @@ describe("collectKeywords", () => {
     });
   });
 
+  it("같은 주제를 쓴 글은 같은 브랜드 채널만 감점한다 (운전면허PLUS와 드라이빙존은 별개)", async () => {
+    const db = new Database(":memory:");
+    const score = async () => {
+      await collectKeywords(deps(db).deps);
+      return listTopics(db, { channelId: "dztraining-blog" }).find(
+        (t) => t.primaryKeyword === "운전연수",
+      )!.score;
+    };
+    const writeArticle = (channelId: string, sectionCode: string) => {
+      const now = new Date().toISOString();
+      const topicId = db.run(
+        `INSERT INTO topics (primary_keyword, channel_id, section_code, created_at, updated_at, topic_key)
+         VALUES ('운전연수', ?, ?, ?, ?, '운전연수')`,
+        [channelId, sectionCode, now, now],
+      ).lastInsertRowid;
+      db.run(
+        `INSERT INTO articles (topic_id, channel_id, section_code, title, body, format, created_at, updated_at)
+         VALUES (?, ?, ?, 't', 'b', 'markdown', ?, ?)`,
+        [topicId, channelId, sectionCode, now, now],
+      );
+    };
+
+    const base = await score();
+    writeArticle("drivingplus-community", "drive_story");
+    expect(await score()).toBe(base);
+    writeArticle("drivingzone-cafe", "cafe");
+    expect(await score()).toBeLessThan(base);
+  });
+
   it("한 섹션이 실패해도 나머지는 진행한다", async () => {
     const db = new Database(":memory:");
     const { deps: d } = deps(db);

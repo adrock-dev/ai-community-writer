@@ -7,6 +7,23 @@ export interface DatalabCredentials {
   clientSecret: string;
 }
 
+/**
+ * config.naver.datalabClientId/Secret → 환경 변수 → 검색광고 인증 파일 순으로 찾는다.
+ * 인증 파일에는 NAVER_DATALAB_CLIENT_ID / NAVER_DATALAB_CLIENT_SECRET 이름으로 둔다.
+ * 없으면 undefined (추세 없이 진행).
+ */
+export function loadDatalabCredentials(
+  naver: { datalabClientId: string; datalabClientSecret: string; searchadEnvFile: string },
+  readEnvFile: (path: string) => Record<string, string>,
+): DatalabCredentials | undefined {
+  const file = readEnvFile(naver.searchadEnvFile);
+  const pick = (configValue: string, name: string) =>
+    configValue || process.env[name] || file[name] || "";
+  const clientId = pick(naver.datalabClientId, "NAVER_DATALAB_CLIENT_ID");
+  const clientSecret = pick(naver.datalabClientSecret, "NAVER_DATALAB_CLIENT_SECRET");
+  return clientId && clientSecret ? { clientId, clientSecret } : undefined;
+}
+
 function ymd(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;

@@ -33,7 +33,7 @@ export function parseSeedFile(markdown: string): Map<string, Record<Kind, string
   const sections = new Map<string, Record<Kind, string[]>>();
   let current: Record<Kind, string[]> | undefined;
   let kind: Kind = "seeds";
-  for (const line of markdown.replace(/^﻿/, "").split(/\r?\n/)) {
+  for (const line of markdown.replace(/^\uFEFF/, "").split(/\r?\n/)) {
     const h2 = /^##\s+(\S+)\s*$/.exec(line);
     if (h2?.[1]) {
       current = { seeds: [], include: [], exclude: [] };

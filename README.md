@@ -61,7 +61,7 @@ copy config.example.json config.json
 | `keywords.clusterThreshold` | `0.5` | 키워드 묶기 기준 (낮출수록 크게 묶임) |
 | `keywords.trendTopN` | `30` | 추세를 조회할 상위 주제 수 |
 | `naver.searchadEnvFile` | `~/.naver-searchad.env` | 검색광고 API 인증 파일 (`NAVER_AD_API_KEY`, `NAVER_AD_SECRET_KEY`, `NAVER_AD_CUSTOMER_ID`). 같은 이름의 환경 변수가 있으면 그것을 우선 |
-| `naver.datalabClientId` / `datalabClientSecret` | 빈 값 | 데이터랩 API (선택, 추세 반영용) |
+| `naver.datalabClientId` / `datalabClientSecret` | 빈 값 | 데이터랩 API (선택, 추세 반영용). 비우면 인증 파일의 `NAVER_DATALAB_CLIENT_ID` / `NAVER_DATALAB_CLIENT_SECRET` 사용 |
 | `sources.profile` | `prod` | 학원·연습장 데이터 API 환경 (`prod` / `dev`) |
 | `sources.drivingplusApi` / `drivingzoneApi` | 빈 값 | 비우면 profile 주소 사용. 다른 서버를 쓸 때만 지정 |
 | `sources.cacheTtlHours` | `24` | 학원·지점 데이터 캐시 유지 시간 |
@@ -87,8 +87,23 @@ npm run collect            # 수집 후 섹션별 상위 주제 10개 출력 (--
 3. 같은 지역·같은 글 유형이면서 글자가 비슷한 키워드를 한 주제로 묶습니다. 검색 수가 가장 큰 키워드가 대표 키워드가 됩니다.
 4. 검색 수(로그), 광고 경쟁도, 추세(선택), 이미 쓴 글 수로 점수를 매겨 저장합니다. 운영자가 건너뛴 주제는 다시 수집해도 건너뛴 상태로 남습니다.
 
-추세는 네이버 데이터랩 검색어 트렌드 API 키(`naver.datalabClientId` / `datalabClientSecret`)가 있을 때만 반영합니다.
-[developers.naver.com](https://developers.naver.com)에서 애플리케이션을 등록하고 "데이터랩(검색어트렌드)"를 추가하면 받을 수 있습니다.
+추세는 네이버 데이터랩 검색어 트렌드 API 키가 있을 때만 반영합니다. 없으면 30일 검색 수만으로 점수를 매깁니다.
+
+**데이터랩 키 발급** (현재 회사 프로젝트에는 발급된 키가 없음)
+
+1. [developers.naver.com](https://developers.naver.com)에 회사 계정으로 로그인
+2. Application → 애플리케이션 등록
+   - 사용 API: **데이터랩 (검색어트렌드)**
+   - 비로그인 오픈 API 서비스 환경: WEB, URL `http://localhost` (서버 호출이라 형식만 맞으면 됨)
+3. 발급된 Client ID / Client Secret을 **검색광고 인증 파일(`~/.naver-searchad.env`)에 추가** (권장 — 비밀값을 저장소 밖 한곳에 둠)
+
+```
+NAVER_DATALAB_CLIENT_ID=발급받은ID
+NAVER_DATALAB_CLIENT_SECRET=발급받은Secret
+```
+
+`config.json`의 `naver.datalabClientId` / `datalabClientSecret`에 직접 넣어도 되며, 설정값이 우선합니다.
+하루 1,000회까지 호출할 수 있고, 수집 1회에 상위 30개 주제 기준 6회 정도 씁니다. `npm run doctor`로 키 인식 여부를 볼 수 있습니다.
 
 ```markdown
 ## drive_story

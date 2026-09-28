@@ -20,7 +20,7 @@ const KEYS = {
 /** KEY=VALUE 형식 파일을 읽는다 (`export `, 따옴표, 주석, CRLF, BOM 허용). */
 export function parseEnvFile(content: string): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const raw of content.replace(/^﻿/, "").split(/\r?\n/)) {
+  for (const raw of content.replace(/^\uFEFF/, "").split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith("#")) continue;
     const eq = line.indexOf("=");
@@ -37,10 +37,16 @@ export function parseEnvFile(content: string): Record<string, string> {
   return out;
 }
 
+/** 인증 파일(KEY=VALUE)을 읽는다. 없으면 빈 객체. */
+export function readEnvFile(envFile: string): Record<string, string> {
+  const path = resolvePath(envFile);
+  return existsSync(path) ? parseEnvFile(readFileSync(path, "utf8")) : {};
+}
+
 /** 인증 정보는 환경 변수가 우선이고, 없으면 설정의 인증 파일에서 읽는다. */
 export function loadSearchadCredentials(envFile: string): SearchadCredentials {
   const path = resolvePath(envFile);
-  const file = existsSync(path) ? parseEnvFile(readFileSync(path, "utf8")) : {};
+  const file = readEnvFile(envFile);
   const pick = (name: string) => process.env[name] || file[name] || "";
   const creds = {
     apiKey: pick(KEYS.apiKey),

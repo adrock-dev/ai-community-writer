@@ -5,6 +5,8 @@ import { createContext } from "./app.ts";
 import { CHANNELS } from "./channels.ts";
 import { type AppConfig, loadConfig } from "./config.ts";
 import { loadGuideRules } from "./guides.ts";
+import { loadDatalabCredentials } from "./keywords/datalab.ts";
+import { readEnvFile } from "./keywords/searchad.ts";
 import { resolveCommand } from "./llm/command.ts";
 import { runProcess } from "./llm/process.ts";
 import { resolvePath } from "./paths.ts";
@@ -68,6 +70,9 @@ async function main() {
   const searchad = resolvePath(config.naver.searchadEnvFile);
   if (existsSync(searchad)) ok(`검색광고 API 인증 파일: ${searchad}`);
   else warn(`검색광고 API 인증 파일 없음: ${searchad} (키워드 수집 단계에서 필요)`);
+  // 값은 출력하지 않고 있는지만 알린다.
+  if (loadDatalabCredentials(config.naver, readEnvFile)) ok("데이터랩 API 키: 있음 (추세 반영)");
+  else warn("데이터랩 API 키 없음 — 추세 없이 30일 검색 수로만 점수 계산 (README 참고)");
 
   console.log("\n[원천 데이터 API]");
   await checkSource("api.drive", `${config.sources.drivingplusApi}/v1/zipcode/si-do-list`, 15);

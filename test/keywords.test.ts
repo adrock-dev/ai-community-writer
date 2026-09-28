@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { bigrams, clusterKeywords, jaccard, secondaryKeywords } from "../src/keywords/cluster.ts";
-import { fetchTrends, trendRatio } from "../src/keywords/datalab.ts";
+import { fetchTrends, loadDatalabCredentials, trendRatio } from "../src/keywords/datalab.ts";
 import { buildRegionIndex, detectRegion, regionKey, regionLabel } from "../src/keywords/regions.ts";
 import {
   parseEnvFile,
@@ -23,7 +23,7 @@ import { inferArticleType } from "../src/topics/intent.ts";
 describe("searchad", () => {
   it("인증 파일을 읽는다 (export·따옴표·주석·CRLF·BOM)", () => {
     expect(
-      parseEnvFile('﻿# 주석\r\nexport NAVER_AD_API_KEY="k1"\r\nNAVER_AD_CUSTOMER_ID=123\r\n'),
+      parseEnvFile('\uFEFF# 주석\r\nexport NAVER_AD_API_KEY="k1"\r\nNAVER_AD_CUSTOMER_ID=123\r\n'),
     ).toEqual({ NAVER_AD_API_KEY: "k1", NAVER_AD_CUSTOMER_ID: "123" });
   });
 
@@ -208,6 +208,8 @@ describe("inferArticleType", () => {
     ["운전면허학원비용", "cost"],
     ["운전학원추천", "recommend"],
     ["부산남부면허시험장", "test_center"],
+    ["운전면허적성검사", "license_admin"],
+    ["면허취소재취득", "license_admin"],
     ["강남운전면허학원", "academy"],
     ["운전면허따는법", "howto"],
     ["기능시험코스", "tips"],
@@ -221,6 +223,21 @@ describe("inferArticleType", () => {
 });
 
 describe("datalab", () => {
+  it("키는 설정값 → 인증 파일 순으로 찾고, 둘 중 하나라도 없으면 쓰지 않는다", () => {
+    const naver = { datalabClientId: "", datalabClientSecret: "", searchadEnvFile: "x" };
+    const file = { NAVER_DATALAB_CLIENT_ID: "fid", NAVER_DATALAB_CLIENT_SECRET: "fsecret" };
+    expect(loadDatalabCredentials(naver, () => file)).toEqual({
+      clientId: "fid",
+      clientSecret: "fsecret",
+    });
+    expect(loadDatalabCredentials({ ...naver, datalabClientId: "cid" }, () => file)?.clientId).toBe(
+      "cid",
+    );
+    expect(
+      loadDatalabCredentials(naver, () => ({ NAVER_DATALAB_CLIENT_ID: "only-id" })),
+    ).toBeUndefined();
+  });
+
   it("최근 4주 평균 / 이전 8주 평균", () => {
     expect(trendRatio([...Array(8).fill(50), ...Array(4).fill(75)])).toBe(1.5);
     expect(trendRatio([1, 2, 3])).toBeUndefined();

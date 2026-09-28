@@ -1,3 +1,4 @@
+import { CHANNELS, findChannel } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
 import {
@@ -55,7 +56,7 @@ const COMPETITION_FACTOR: Record<string, number> = { 낮음: 1.15, 중간: 1, �
  * 주제 점수. 검색 수는 로그로 눌러 큰 키워드 하나가 독식하지 않게 하고,
  * 광고 경쟁도·추세로 보정한다. 이미 쓴 글이 있으면 낮춘다:
  *   similarArticles   같은 채널의 같은 유형·같은 지역 글 수
- *   writtenElsewhere  같은 대표 키워드로 다른 채널에 쓴 글 수 (채널 간 유사문서 방지)
+ *   writtenElsewhere  같은 대표 키워드로 같은 브랜드의 다른 채널에 쓴 글 수 (브랜드 안 유사문서 방지)
  */
 export function scoreTopic(input: {
   volume: number;
@@ -69,6 +70,12 @@ export function scoreTopic(input: {
   const trend = input.trend === undefined ? 1 : Math.min(1.5, Math.max(0.7, input.trend));
   const coverage = 1 / (1 + 0.5 * input.similarArticles + (input.writtenElsewhere ?? 0));
   return Math.round(volume * competition * trend * coverage * 100) / 100;
+}
+
+/** 같은 브랜드의 다른 채널 id. */
+export function sameBrandChannels(channelId: string): string[] {
+  const brand = findChannel(channelId)?.brand;
+  return CHANNELS.filter((c) => c.brand === brand && c.id !== channelId).map((c) => c.id);
 }
 
 export function localDate(d: Date): string {
@@ -182,12 +189,16 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
             [section.channelId, articleType, c.region],
           )?.n ?? 0;
         const topicKey = compactKeyword(c.head.keyword);
-        const writtenElsewhere =
-          db.get<{ n: number }>(
-            `SELECT COUNT(*) AS n FROM articles a JOIN topics t ON t.id = a.topic_id
-             WHERE t.topic_key = ? AND a.channel_id != ? AND a.status != 'rejected'`,
-            [topicKey, section.channelId],
-          )?.n ?? 0;
+        // 같은 브랜드의 다른 채널만 본다. 운전면허PLUS와 드라이빙존은 주제가 겹쳐도 따로 판단한다.
+        const siblings = sameBrandChannels(section.channelId);
+        const writtenElsewhere = siblings.length
+          ? (db.get<{ n: number }>(
+              `SELECT COUNT(*) AS n FROM articles a JOIN topics t ON t.id = a.topic_id
+               WHERE t.topic_key = ? AND a.channel_id IN (${siblings.map(() => "?").join(", ")})
+                 AND a.status != 'rejected'`,
+              [topicKey, ...siblings],
+            )?.n ?? 0)
+          : 0;
         const trend = trends[c.head.keyword];
         const score = scoreTopic({
           volume: c.volume,

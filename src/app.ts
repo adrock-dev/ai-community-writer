@@ -1,8 +1,8 @@
 import type { AppConfig } from "./config.ts";
 import { Database } from "./db/database.ts";
-import { fetchTrends } from "./keywords/datalab.ts";
+import { fetchTrends, loadDatalabCredentials } from "./keywords/datalab.ts";
 import { loadRegionIndex } from "./keywords/regions.ts";
-import { loadSearchadCredentials, SearchadClient } from "./keywords/searchad.ts";
+import { loadSearchadCredentials, readEnvFile, SearchadClient } from "./keywords/searchad.ts";
 import { loadKeywordFilter, loadSeeds } from "./keywords/seeds.ts";
 import { LlmClient } from "./llm/client.ts";
 import { resolvePath } from "./paths.ts";
@@ -60,7 +60,7 @@ export async function runCollect(
   db: Database,
   log?: (message: string) => void,
 ): Promise<CollectSummary> {
-  const { datalabClientId: clientId, datalabClientSecret: clientSecret } = config.naver;
+  const datalab = loadDatalabCredentials(config.naver, readEnvFile);
   return collectKeywords({
     db,
     keywords: config.keywords,
@@ -68,10 +68,7 @@ export async function runCollect(
     regions: await loadRegionIndex(db, config.sources),
     seeds: loadSeeds(),
     filter: loadKeywordFilter(),
-    trends:
-      clientId && clientSecret
-        ? (groups) => fetchTrends({ clientId, clientSecret }, groups)
-        : undefined,
+    trends: datalab ? (groups) => fetchTrends(datalab, groups) : undefined,
     log,
   });
 }
