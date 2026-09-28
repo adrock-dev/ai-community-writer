@@ -163,4 +163,15 @@ export const MIGRATIONS: readonly string[] = [
   `
   ALTER TABLE articles ADD COLUMN images TEXT NOT NULL DEFAULT '[]';
   `,
+  // v5: 시험장·면허 업무 글을 취득꿀팁(license_tips)으로 옮기고, 자동 발행 기록을 둔다
+  `
+  UPDATE topics SET section_code = 'license_tips'
+   WHERE channel_id = 'drivingplus-community' AND section_code = 'test_center_guide';
+  UPDATE articles SET section_code = 'license_tips'
+   WHERE channel_id = 'drivingplus-community' AND section_code = 'test_center_guide';
+
+  -- 대상 시스템의 글 id (자동 발행). 비어 있으면 아직 자동 발행하지 않았다.
+  ALTER TABLE articles ADD COLUMN external_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE articles ADD COLUMN publish_error TEXT NOT NULL DEFAULT '';
+  `,
 ];

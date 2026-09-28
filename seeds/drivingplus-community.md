@@ -87,10 +87,10 @@
 - 갱신
 - 재발급
 
-## test_center_guide
+## license_tips
 
-시험장 안내와 시험장에서 처리하는 면허 업무(적성검사·갱신·재발급).
-면허 관리 주제가 커지면 api.drive의 기존 `license_tips` 섹션으로 분리한다.
+취득꿀팁 섹션의 시험장·면허 업무 글(적성검사·갱신·재발급). 칸은 `시험장`(test_center)·`면허관리`(license_care).
+시험장 안내 탭(`test_center_guide`)은 글이 아니라 시험장 목록이라 글을 이 섹션에 올린다.
 
 ### 시드
 

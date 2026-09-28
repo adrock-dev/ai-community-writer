@@ -8,12 +8,27 @@ export type OutputFormat = "markdown" | "html" | "cafe-text";
 export const BRANDS = ["drivingplus", "drivingzone"] as const;
 export type BrandId = (typeof BRANDS)[number];
 
+/**
+ * 섹션 안의 칸(필터) 배정 규칙. 운전면허PLUS `community_filter.code` 에 대응한다.
+ * 위에서부터 보고 처음 맞는 규칙을 쓴다. `types`·`keywords` 가 모두 없으면 기본 칸이다.
+ */
+export interface SectionFilterRule {
+  code: string;
+  label: string;
+  /** 이 글 유형이면 이 칸 */
+  types?: readonly string[];
+  /** 대표 키워드에 이 단어가 있으면 이 칸 */
+  keywords?: readonly string[];
+}
+
 export interface SectionDef {
   /** 대상 시스템의 섹션/게시판 코드 (community_section.code, article board type 등). */
   code: string;
   label: string;
   /** 이 섹션에 배정할 주제 영역. 주제 배정과 프롬프트에 쓴다. */
   focus: string[];
+  /** 칸(필터) 배정 규칙. 대상 시스템에 칸이 없으면 생략. */
+  filters?: readonly SectionFilterRule[];
 }
 
 /** 품질 게이트 기준. 본문 글자 수는 Markdown 기호를 뺀 글자 기준. */
@@ -66,18 +81,36 @@ export const CHANNELS = [
     sections: [
       {
         code: "drive_story",
-        label: "드라이브 스토리",
+        label: "운전이야기",
         focus: ["운전학원 찾기·비교·추천·비용", "학원 연수(장롱면허·초보운전)"],
+        filters: [{ code: "driving_info", label: "운전정보" }],
       },
       {
         code: "exam_procedure_guide",
-        label: "시험 절차 안내",
+        label: "시험절차&안내",
         focus: ["운전면허 시험 절차", "면허 종류"],
+        filters: [
+          { code: "theory_exam", label: "학과시험", keywords: ["필기", "학과"] },
+          { code: "skill_test", label: "기능시험", keywords: ["기능", "장내"] },
+          { code: "road_test", label: "도로주행", keywords: ["도로주행"] },
+          { code: "examinee_guide", label: "응시안내" },
+        ],
       },
       {
-        code: "test_center_guide",
-        label: "시험장 안내",
-        focus: ["운전면허 시험장 정보", "시험장 업무(적성검사·갱신·재발급)"],
+        // 시험장·면허 업무 글. 시험장 안내 탭(test_center_guide)은 글이 아니라 시험장 목록이라
+        // 글을 올려도 보이지 않는다 — 취득꿀팁에 칸 두 개를 더해 올린다(2026-09-28 결정).
+        code: "license_tips",
+        label: "취득꿀팁",
+        focus: ["운전면허 시험장 정보", "면허 업무(적성검사·갱신·재발급)"],
+        filters: [
+          {
+            code: "test_center",
+            label: "시험장",
+            types: ["test_center"],
+            keywords: ["시험장"],
+          },
+          { code: "license_care", label: "면허관리" },
+        ],
       },
     ],
   },
@@ -147,4 +180,21 @@ export function findChannel(id: string): ChannelDef | undefined {
 
 export function findSection(channelId: string, sectionCode: string): SectionDef | undefined {
   return findChannel(channelId)?.sections.find((s) => s.code === sectionCode);
+}
+
+/** 글의 칸(필터) 코드. 규칙이 없는 섹션이면 빈 배열. */
+export function resolveFilterCodes(
+  section: SectionDef,
+  articleType: string,
+  primaryKeyword: string,
+): string[] {
+  const keyword = primaryKeyword.replace(/\s+/g, "");
+  const rule = section.filters?.find((r) => {
+    if (!r.types && !r.keywords) return true;
+    return (
+      (r.types?.includes(articleType) ?? false) ||
+      (r.keywords?.some((k) => keyword.includes(k)) ?? false)
+    );
+  });
+  return rule ? [rule.code] : [];
 }

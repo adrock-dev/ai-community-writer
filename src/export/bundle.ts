@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type { Article } from "../articles/store.ts";
-import { findChannel, findSection } from "../channels.ts";
+import { findChannel, findSection, resolveFilterCodes } from "../channels.ts";
 import { IMAGES_DIR } from "../images/generator.ts";
 import { regionLabel } from "../keywords/regions.ts";
 import { PROJECT_ROOT } from "../paths.ts";
@@ -41,6 +41,16 @@ export function renderExport(article: Article): ChannelExport {
       richHtml: html,
       fields: [
         { label: "섹션", value: `${section?.label ?? ""} (${article.sectionCode})` },
+        {
+          label: "칸 (community_post_filter)",
+          value: section
+            ? resolveFilterCodes(
+                section,
+                article.articleType,
+                article.keywords[0] ?? article.title,
+              ).join(", ")
+            : "",
+        },
         { label: "제목 (title)", value: article.title },
         { label: "요약 (summary)", value: article.summary },
         { label: "SEO 키워드 (seo_keywords)", value: keywords },

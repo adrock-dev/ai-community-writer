@@ -26,7 +26,7 @@
 
 | 채널 | 주제 영역 | 섹션 | 형식 |
 | --- | --- | --- | --- |
-| `drivingplus-community` | 학원 찾기·비교·추천, 시험 정보 | `drive_story`, `exam_procedure_guide`, `test_center_guide` | Markdown |
+| `drivingplus-community` | 학원 찾기·비교·추천, 시험 정보 | `drive_story`, `exam_procedure_guide`, `license_tips` | Markdown |
 | `drivingzone-blog` | 면허 취득 | `blog` | HTML |
 | `dztraining-blog` | 장롱면허·연수 | `blog_training` | HTML |
 | `drivingzone-cafe` | 면허 취득 + 장롱면허·연수 (원고만) | `cafe` | 카페 원고 |
@@ -63,7 +63,7 @@ seeds/<채널>.md 시드 ──▶ 검색광고 API keywordstool (5개씩, 30일
 - **지역 글은 운전면허PLUS 커뮤니티만 쓴다**(채널 정의 `regional`, 2026-09-28 결정). 드라이빙존 블로그·연수 블로그·카페에서는 지역 키워드("강남운전연수")를 주제 후보에서 빼고, 예전에 만들어진 지역 후보는 다음 수집 때 지운다. 근거 자료도 지역으로 좁히지 않고, 노출 대상(audience)도 운전면허PLUS만 지정한다.
 - **브랜드 단위 판단**: 운전면허PLUS와 드라이빙존(블로그·연수 블로그·카페)은 주제가 겹쳐도 서로 감점하지 않는다(2026-09-28 결정). 운전면허PLUS도 연수·장롱면허를 운전학원 관점으로 다룬다. 같은 브랜드 안에서는 한 채널에 쓴 주제의 다른 채널 점수를 낮춘다.
 - 겹치는 주제는 **글 양식으로 구분**한다. 프롬프트를 채널 × 글 유형 단위로 따로 둔다(P3, `prompts/<채널>/<글 유형>.md`). 같은 섹션 안에서도 글 유형이 다르면 프롬프트가 다르다.
-- 운전면허PLUS 섹션 배치: 학원 전반·학원 연수 → `drive_story`, 시험 절차·면허 종류 → `exam_procedure_guide`, 시험장과 시험장 업무(적성검사·갱신·재발급) → `test_center_guide`. 면허 관리 주제(적성검사만 월 약 3.3만 회)가 커지면 api.drive에 이미 있는 `license_tips` 섹션으로 분리한다.
+- 운전면허PLUS 섹션 배치: 학원 전반·학원 연수 → `drive_story`(칸 `driving_info`), 시험 절차·면허 종류 → `exam_procedure_guide`(칸 `theory_exam`·`skill_test`·`road_test`·`examinee_guide`), 시험장과 면허 업무(적성검사·갱신·재발급) → `license_tips`(칸 `test_center`·`license_care`, 2026-09-28 신설). 시험장 안내 탭(`test_center_guide`)은 글이 아니라 시험장 목록이라 글을 올려도 보이지 않는다. 칸 배정 규칙은 `channels.ts` 섹션의 `filters`(`resolveFilterCodes`).
 
 ## 5. 글 생성 (P3)
 
