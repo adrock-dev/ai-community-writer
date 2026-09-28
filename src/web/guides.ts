@@ -5,8 +5,12 @@ import type { Database } from "../db/database.ts";
 import {
   addGuideRule,
   deleteGuideRule,
+  exportGuideFiles,
+  GUIDES_DIR,
   type GuideRule,
+  guideFilesInSync,
   guideScopes,
+  importGuideFiles,
   listGuideRules,
   loadGuideRules,
   renderGuideRules,
@@ -21,6 +25,9 @@ const NOTICES: Record<string, string> = {
   added: "규칙을 추가했습니다.",
   saved: "저장했습니다.",
   deleted: "삭제했습니다.",
+  exported: "guides 폴더에 저장했습니다. git 에 커밋·push 하면 다른 PC 에서 받을 수 있습니다.",
+  unchanged: "파일과 이미 같아 바꾼 파일이 없습니다.",
+  imported: "guides 폴더의 파일로 규칙을 모두 바꿨습니다.",
 };
 
 function ruleRow(rule: GuideRule) {
@@ -42,7 +49,22 @@ function ruleRow(rule: GuideRule) {
 </form>`;
 }
 
-export function mountGuideSettings(app: Hono, db: Database): void {
+/** 파일 동기화 카드. 규칙은 DB 에 있고, guides/*.md 를 거쳐 git 으로 다른 PC 와 주고받는다. */
+function syncCard(inSync: boolean) {
+  return html`<section class="card" id="sync">
+  <header><h2>파일 동기화 (git)</h2>
+    <span class="badge ${inSync ? "" : "danger"}">${inSync ? "guides 폴더와 같음" : "guides 폴더와 다름"}</span></header>
+  <p class="muted">규칙은 이 PC 의 DB 에 저장됩니다. 다른 PC 와 맞추려면 <b>파일에 저장</b> → <code>guides/</code> 를 git 에 커밋·push →
+  다른 PC 에서 <code>git pull</code> → <b>파일에서 불러오기</b> 순서로 합니다.</p>
+  <form method="post" action="/settings/guides/export" style="display:inline">
+    <button type="submit" class="primary">파일에 저장 (DB → guides/)</button></form>
+  <form method="post" action="/settings/guides/import" style="display:inline">
+    <button type="submit" class="danger"
+      onclick="return confirm('guides 폴더의 파일로 이 PC 의 규칙을 모두 바꿉니다. 이 PC 에서만 고친 규칙은 사라집니다. 계속할까요?')">파일에서 불러오기 (guides/ → DB, 전부 교체)</button></form>
+</section>`;
+}
+
+export function mountGuideSettings(app: Hono, db: Database, guidesDir: string = GUIDES_DIR): void {
   app.get("/settings/guides", (c) => {
     const all = listGuideRules(db);
     const groups = [...new Set(all.map((r) => r.group).filter(Boolean))];
@@ -50,6 +72,7 @@ export function mountGuideSettings(app: Hono, db: Database): void {
 <h1>유의사항 설정</h1>
 <p class="lead">글을 생성할 때 반드시 지켜야 하는 운영 규칙과 사실입니다. 생성 프롬프트에 그대로 들어가고, 품질 검사에서 숫자 근거로도 씁니다.
 넓은 범위부터 겹쳐 적용됩니다: 공통 → 브랜드 전체 → 채널.</p>
+${syncCard(guideFilesInSync(db, guidesDir))}
 <datalist id="groups">${groups.map((g) => html`<option value="${g}">`)}</datalist>
 ${guideScopes().map((s) => {
   const rules = all.filter((r) => r.scope === s.scope);
@@ -92,6 +115,24 @@ ${guideScopes().map((s) => {
       return c.text((error as Error).message, 400);
     }
     return c.redirect(back(scope, "added"), 303);
+  });
+
+  // /settings/guides/:id 보다 먼저 등록해야 export·import 가 규칙 번호로 잡히지 않는다.
+  app.post("/settings/guides/export", (c) => {
+    const changed = exportGuideFiles(db, guidesDir);
+    return c.redirect(
+      `/settings/guides?done=${changed.length ? "exported" : "unchanged"}#sync`,
+      303,
+    );
+  });
+
+  app.post("/settings/guides/import", (c) => {
+    try {
+      importGuideFiles(db, guidesDir);
+    } catch (error) {
+      return c.text((error as Error).message, 400);
+    }
+    return c.redirect("/settings/guides?done=imported#sync", 303);
   });
 
   app.post("/settings/guides/:id", async (c) => {

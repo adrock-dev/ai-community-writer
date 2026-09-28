@@ -39,7 +39,7 @@
 
 글 생성 시 반드시 지켜야 하는 운영 규칙과 사실. 운영자가 **설정 화면(`/settings/guides`)**에서 관리한다.
 
-- 저장: DB `guide_rules` (scope, group_name, text, enabled, sort_order). `guides/*.md`는 DB가 비었을 때 한 번 가져오는 초기값.
+- 저장: DB `guide_rules` (scope, group_name, text, enabled, sort_order). `guides/*.md`는 DB가 비었을 때 가져오는 초기값이자 PC 간 동기화 파일: 설정 화면 "파일에 저장"(DB → 파일, 범위마다 파일 하나 `common.md`·`<브랜드>.md`·`channels/<채널>.md`)과 "파일에서 불러오기"(파일 → DB 전부 교체)로 git 을 거쳐 주고받는다. 자동 덮어쓰기는 하지 않는다.
 - 적용 범위(scope): `common` → `brand:<drivingplus|drivingzone>` → `channel:<채널 id>` 순으로 겹쳐 적용(`loadGuideRules`).
 - 생성 프롬프트에 필수 규칙으로 들어가고(P3), 품질 게이트에서 본문 숫자(시간·금액·비율)의 근거 자료로도 쓴다.
 - 서버에 로그인이 없으므로 `127.0.0.1`에만 연다.

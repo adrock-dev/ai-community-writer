@@ -31,7 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 코드 주석·문서·UI 문구는 한국어.
 - 설정은 `config.json` 하나(선택). 새 설정 항목은 `src/config.ts` 스키마에 **기본값과 함께** 추가하고 `config.example.json`, README 표를 같이 갱신한다.
 - 채널·섹션은 `src/channels.ts`에 데이터로 정의한다. 채널별 분기는 이 정의를 읽어서 처리하고 하드코딩을 늘리지 않는다.
-- 브랜드·채널별 운영 규칙(예: 드라이빙존 교육시간)은 코드나 프롬프트에 박지 말고 유의사항 설정(DB `guide_rules`, 화면 `/settings/guides`)에 둔다. `guides/*.md`는 첫 실행 초기값일 뿐이다.
+- 브랜드·채널별 운영 규칙(예: 드라이빙존 교육시간)은 코드나 프롬프트에 박지 말고 유의사항 설정(DB `guide_rules`, 화면 `/settings/guides`)에 둔다. `guides/*.md`는 첫 실행 초기값이자 설정 화면의 "파일에 저장/불러오기"로 PC 간 동기화하는 파일이다(형식은 `renderGuideFile`↔`parseGuide`).
 - 관리 화면은 빌드 없이 `hono/html`로 서버에서 만든다(값 자동 이스케이프). `.tsx`는 Node 타입 스트리핑이 지원하지 않는다.
 - 글 양식은 `prompts/`(base → 채널 → 채널 전용 유형 | 공통 유형)에 둔다. 양식을 코드에 박지 않는다.
 - 품질 규칙을 바꾸면 `src/quality/gate.ts`와 `test/writer.test.ts`를 함께 고친다. 게이트 문구는 운영자에게 보이고 재작성 프롬프트에도 들어가므로 "무엇을 어떻게 고칠지"까지 쓴다.
