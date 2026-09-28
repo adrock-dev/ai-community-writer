@@ -132,7 +132,9 @@ async function main() {
   }
 
   console.log(failed ? `\n문제 ${failed}건` : "\n모든 점검 통과");
-  process.exit(failed ? 1 : 0);
+  // process.exit() 는 Windows 에서 닫히는 중인 핸들(fetch 소켓·자식 프로세스)과 부딪혀
+  // `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` 로 죽는다. 종료 코드만 두고 자연 종료한다.
+  process.exitCode = failed ? 1 : 0;
 }
 
 void main();

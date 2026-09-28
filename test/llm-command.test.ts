@@ -76,6 +76,17 @@ describe("resolveCommand", () => {
     });
   });
 
+  it("npm shim 이 네이티브 .exe를 가리키면 cmd.exe 없이 그 .exe를 실행한다", () => {
+    const npm = "C:\\Users\\me\\AppData\\Roaming\\npm";
+    const exe = `${npm}\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe`;
+    const shim = NPM_SHIM.replace(
+      "node_modules\\@openai\\codex\\bin\\codex.js",
+      "node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe",
+    );
+    const env = winEnv({ [`${npm}\\claude.cmd`]: shim, [exe]: "" });
+    expect(resolveCommand("claude", ["--print"], env)).toEqual({ file: exe, args: ["--print"] });
+  });
+
   it("해석할 수 없는 .cmd는 cmd.exe로 인용해 실행한다", () => {
     const env = winEnv({ "C:\\tools\\codex.cmd": "@echo off\r\nC:\\bin\\codex.exe %*" });
     const spec = resolveCommand("C:\\tools\\codex.cmd", ["--tools", "", "a b"], env);

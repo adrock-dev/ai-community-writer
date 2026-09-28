@@ -5,6 +5,7 @@ import path from "node:path";
 // Node의 spawn으로 직접 실행할 수 없다(shell 없이 .cmd 실행 금지). 그래서
 //   1) .exe/.com이면 그대로 실행
 //   2) npm이 만든 .cmd면 안에 적힌 JS 진입점을 찾아 `node <js>`로 실행 (셸·인용 문제 없음)
+//      진입점이 네이티브 .exe면(Claude Code 2.x npm 설치) 그 .exe를 바로 실행
 //   3) 그 밖의 .cmd/.bat는 cmd.exe로 실행 (인자는 직접 인용)
 // 순서로 처리한다.
 
@@ -42,6 +43,15 @@ export function parseNpmCmdShim(content: string): string | undefined {
   return /"%~?dp0%?\\([^"]+?\.(?:js|cjs|mjs))"/i.exec(content)?.[1];
 }
 
+/** npm cmd-shim 이 네이티브 실행 파일을 가리키면 그 상대 경로. shim 이 확인하는 node.exe 는 뺀다. */
+export function parseNpmCmdShimExe(content: string): string | undefined {
+  for (const m of content.matchAll(/"%~?dp0%?\\([^"]+?\.exe)"/gi)) {
+    const target = m[1];
+    if (target && target.toLowerCase() !== "node.exe") return target;
+  }
+  return undefined;
+}
+
 /** cmd.exe 명령줄용 인자 인용. */
 export function quoteCmdArg(arg: string): string {
   if (/^[\w\-.:=/\\@]+$/.test(arg)) return arg;
@@ -76,6 +86,11 @@ export function resolveCommand(
         if (js) {
           const script = p.join(p.dirname(full), js);
           if (env.exists(script)) return { file: env.nodePath, args: [script, ...args] };
+        }
+        const exe = parseNpmCmdShimExe(env.read(full));
+        if (exe) {
+          const target = p.join(p.dirname(full), exe);
+          if (env.exists(target)) return { file: target, args };
         }
         const line = [full, ...args].map(quoteCmdArg).join(" ");
         return {
