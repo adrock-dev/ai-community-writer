@@ -138,4 +138,25 @@ export const MIGRATIONS: readonly string[] = [
     PRIMARY KEY (keyword, channel_id, section_code, collected_on)
   );
   `,
+  // v3: 작성 가이드(유의사항)를 설정 화면에서 관리, 생성 결과 검수 정보
+  `
+  -- scope: common | brand:<브랜드 id> | channel:<채널 id>
+  CREATE TABLE guide_rules (
+    id INTEGER PRIMARY KEY,
+    scope TEXT NOT NULL,
+    group_name TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX guide_rules_scope ON guide_rules (scope, sort_order, id);
+
+  -- 품질 게이트·유사도에서 남은 문제, 근거로 넘긴 자료, 생성 과정 기록
+  ALTER TABLE articles ADD COLUMN quality_issues TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE articles ADD COLUMN similar_articles TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE articles ADD COLUMN facts TEXT NOT NULL DEFAULT '';
+  ALTER TABLE articles ADD COLUMN generation TEXT NOT NULL DEFAULT '{}';
+  `,
 ];

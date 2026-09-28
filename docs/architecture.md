@@ -35,21 +35,14 @@
 
 유사도 비교는 **채널 전체**를 대상으로 한다. 같은 주제를 여러 채널에 쓰면 채널끼리가 가장 큰 유사문서 위험이다.
 
-## 3. 작성 가이드 (브랜드별 기본 룰)
+## 3. 작성 가이드 (유의사항)
 
-글 생성 시 반드시 지켜야 하는 운영 규칙을 Markdown 파일로 관리한다. 운영자가 메모장으로 고칠 수 있고 git으로 이력이 남는다.
+글 생성 시 반드시 지켜야 하는 운영 규칙과 사실. 운영자가 **설정 화면(`/settings/guides`)**에서 관리한다.
 
-```
-guides/common.md                  모든 채널 공통 (사실 확인, 노출 금지 등)
-guides/drivingplus.md             운전면허PLUS 커뮤니티
-guides/drivingzone.md             드라이빙존 블로그·연수 블로그·카페
-guides/channels/<channelId>.md    특정 채널 전용 (선택)
-```
-
-- `- `로 시작하는 목록 한 줄이 규칙 하나, `## 제목`은 규칙 묶음 이름이다.
-- 공통 → 브랜드 → 채널 순으로 모아(`src/guides.ts`) 생성 프롬프트의 필수 규칙으로 넣는다 [P3].
-- 검수 화면에서 해당 글에 적용된 규칙 목록을 함께 보여 준다 [P4].
-- 숫자·시간처럼 기계적으로 확인할 수 있는 규칙은 품질 게이트 검사로도 연결할 수 있다 [P3 이후 검토].
+- 저장: DB `guide_rules` (scope, group_name, text, enabled, sort_order). `guides/*.md`는 DB가 비었을 때 한 번 가져오는 초기값.
+- 적용 범위(scope): `common` → `brand:<drivingplus|drivingzone>` → `channel:<채널 id>` 순으로 겹쳐 적용(`loadGuideRules`).
+- 생성 프롬프트에 필수 규칙으로 들어가고(P3), 품질 게이트에서 본문 숫자(시간·금액·비율)의 근거 자료로도 쓴다.
+- 서버에 로그인이 없으므로 `127.0.0.1`에만 연다.
 
 ## 4. 키워드 수집·주제 후보 (P2)
 
@@ -79,7 +72,8 @@ src/
   config.ts       config.json 로드·검증. 모든 값에 기본값
   paths.ts        경로 해석 (~, 상대 경로, Windows 구분자)
   channels.ts     브랜드·채널·섹션 정의
-  guides.ts       작성 가이드 로드 (guides/*.md)
+  guides.ts       작성 가이드(유의사항) 저장·조회·초기값 가져오기
+  web/            로컬 관리 화면 (layout, guides: 유의사항 설정)
   server.ts       로컬 HTTP 서버 (Hono)
   app.ts          DB·큐·LLM·작업 핸들러 조립
   doctor.ts       설치·설정 점검 (npm run doctor)

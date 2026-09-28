@@ -79,7 +79,9 @@ async function main() {
   await checkSource("api.drivingzone", `${config.sources.drivingzoneApi}/v1/region`, 15);
 
   console.log("\n[작성 가이드]");
-  for (const ch of CHANNELS) ok(`${ch.id}: 규칙 ${loadGuideRules(ch.id).length}개`);
+  const guideCtx = createContext(config);
+  for (const ch of CHANNELS) ok(`${ch.id}: 규칙 ${loadGuideRules(guideCtx.db, ch.id).length}개`);
+  guideCtx.db.close();
 
   if (process.argv.includes("--llm")) {
     console.log("\n[LLM 호출 시험]");

@@ -56,7 +56,7 @@ export function parseSeedFile(markdown: string): Map<string, Record<Kind, string
 
 export function loadKeywordFilter(dir: string = SEEDS_DIR): KeywordFilter {
   const path = join(dir, "common.md");
-  const rules = existsSync(path) ? parseGuide(readFileSync(path, "utf8"), "common.md") : [];
+  const rules = existsSync(path) ? parseGuide(readFileSync(path, "utf8")) : [];
   const of = (group: string) => rules.filter((r) => r.group === group).map((r) => r.text);
   return { include: of("포함어"), exclude: of("제외어") };
 }

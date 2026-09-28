@@ -1,5 +1,6 @@
 import type { AppConfig } from "./config.ts";
 import { Database } from "./db/database.ts";
+import { importGuideFilesIfEmpty } from "./guides.ts";
 import { fetchTrends, loadDatalabCredentials } from "./keywords/datalab.ts";
 import { loadRegionIndex } from "./keywords/regions.ts";
 import { loadSearchadCredentials, readEnvFile, SearchadClient } from "./keywords/searchad.ts";
@@ -28,6 +29,8 @@ export interface AppContext {
 
 export function createContext(config: AppConfig): AppContext {
   const db = new Database(resolvePath(config.dbPath));
+  // 설정 화면이 생기기 전 guides/*.md에 적어 둔 유의사항을 처음 한 번만 가져온다.
+  importGuideFilesIfEmpty(db);
   const queue = new JobQueue(db);
   const pacer = new Pacer(db, queue, config.pacing, GENERATE_KIND);
   const llm = new LlmClient(db, config.llm);

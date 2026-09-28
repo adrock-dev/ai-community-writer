@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { type AppContext, COLLECT_KIND } from "./app.ts";
 import { CHANNELS } from "./channels.ts";
 import { listTopics, setTopicStatus, TOPIC_STATUSES, type TopicStatus } from "./topics/store.ts";
+import { mountGuideSettings } from "./web/guides.ts";
 
 export function createApp(ctx: AppContext): Hono {
   const app = new Hono();
@@ -44,6 +45,10 @@ export function createApp(ctx: AppContext): Hono {
     const ok = setTopicStatus(ctx.db, Number(c.req.param("id")), body.status, body.note);
     return ok ? c.json({ ok }) : c.json({ error: "바꿀 수 없는 주제입니다" }, 409);
   });
+
+  mountGuideSettings(app, ctx.db);
+  // 관리 화면은 P4에서 늘린다. 지금은 첫 화면이 유의사항 설정이다.
+  app.get("/", (c) => c.redirect("/settings/guides"));
 
   return app;
 }
