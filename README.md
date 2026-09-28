@@ -68,6 +68,15 @@ npm install
 | `.naver-searchad.env` | 네이버 검색광고 API 키(키워드 수집) — [설정](#설정)의 `naver.searchadEnvFile` |
 | `.ai-community-writer.env` | 발행 API 키 — [자동 발행](#자동-발행). **운영 서버의 `WRITER_API_KEY`와 같은 값**이어야 합니다 |
 
+프로젝트 폴더에 두려면 `secrets\` 폴더(git 제외)에 넣고 `config.json`에 경로를 적습니다. 상대 경로는 프로젝트 폴더 기준입니다.
+
+```json
+{
+  "naver": { "searchadEnvFile": "secrets/naver-searchad.env" },
+  "publish": { "credentialsFile": "secrets/ai-community-writer.env" }
+}
+```
+
 ### 5. 설정
 
 기본값이 운영 서버(`sources.profile=prod`, 운영 사이트 주소)라 **`config.json`은 만들지 않아도 됩니다.**

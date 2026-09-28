@@ -30,6 +30,9 @@ output/
 
 # === 비밀/환경 ===
 .env
+*.env
+# 키 파일을 프로젝트 폴더에 둘 때 쓰는 곳(config.json 에서 secrets/… 로 지정)
+secrets/
 config.json
 *.local
 
