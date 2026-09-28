@@ -165,11 +165,16 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 
 ## 9. 외부 시스템 현황 (2026-09-28 조사)
 
-- **api.drive 커뮤니티**
-  - `community_post` + `community_post_audience`(scope: EVERYWHERE/RADIUS/ACADEMIES/SERVICE_REGIONS/MIXED) 구조는 있으나, 목록 API의 노출 대상 필터(`applyAudienceFilter`)는 미구현이다. 웹이 항상 위치를 보내므로 현재는 모든 글이 전국에 노출된다.
+- **api.drive 커뮤니티** (P5 반영, api.drive `60ff406`)
+  - 노출 대상(audience)은 **목록·피처드만** 제한한다. 위치가 있으면 EVERYWHERE·audience 없음 + 반경 · 광고 지구(`SERVICE_REGIONS`, 역지오코딩 → `findIdsCoveringLocation`) · 그 지구의 광고 학원(`ACADEMIES`) · `MIXED`(OR). 위치가 없으면 전국 글만. 상세·사이트맵은 위치와 무관.
+  - 지역 글은 `SERVICE_REGIONS` + 대상 시군구를 덮는 **광고 지구 id 전부**(`region_admin_area`)로 넣는다. 우리 주제의 지역(시도·시군구 이름)을 지구 id로 바꾸는 일은 P6 글 작성 API가 맡는다.
   - 목록 조회가 `community_post_filter`를 INNER JOIN하므로 필터가 없는 글은 목록에 나오지 않는다. 내보낼 때 섹션·필터를 필수로 둔다.
-  - 글 작성 API가 없다 (P6에서 추가).
-- **web.drivingplus 커뮤니티**: 글 상세 메타데이터에 description·JSON-LD가 없고, sitemap에서 제외돼 있다 (P5).
+  - `GET /v1/community/sitemap-posts`(사이트맵용), 상세 응답 `updatedAt`·`seoKeywords`. 조회수 증가가 `updated_at`을 바꾸지 않는다.
+  - 글 작성 API가 없다 (P6에서 추가. 저장 후 웹 캐시 태그 `community-posts`·`community-post-{id}` 무효화, IndexNow).
+- **web.drivingplus 커뮤니티** (P5 반영, `ae9a0ad`, 문서 `docs/community/seo.md`)
+  - 상세: 본문 sr-only SSR, description(`summary` → 본문 첫 문장), `Article`·`BreadcrumbList`·(FAQ 절이 있으면) `FAQPage` JSON-LD, ISR 1시간.
+  - `/sitemap-community.xml`(ISR): 글이 생기면 자동으로 실리고, 0건이면 빈 urlset. robots.txt에 등록.
+  - 그래서 원고 규칙이 곧 SEO 규칙이다: 본문에 H1 없음(내보내기에서 이미 뺌), `summary`가 description, `## 자주 묻는 질문` + `### 질문`이 FAQPage, 이미지는 https 절대 URL이어야 `og:image`가 된다(생성 삽화는 업로드 후 주소로 바꿔야 함).
 - **학원·실내연습장 데이터** (`src/sources/`, 24시간 캐시, 갱신 실패 시 이전 캐시 사용)
   - api.drive `GET /v1/academy/get-all-academy` — 인증 없음, 약 4MB, 384곳(실내연습장 17곳 포함). 가격 관측치·공시 수강료·셔틀·운영시간·사진·리뷰. 학원 SEO 문구(`seo*`)는 우리가 만든 홍보 문구라 근거에서 뺀다.
   - api.drivingzone `GET /v1/store`(27곳) + `GET /v1/store/:id` — 인증 없음, 운영시간·지하철·강사·리뷰. 합격률·평균 소요일이 0이면 미집계로 본다.
@@ -185,5 +190,5 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
 | P2 | 키워드 수집·묶기, 주제 후보, `npm run collect`, `/api/topics` |
 | P3 | 채널 × 글 유형 프롬프트, 근거 자료, 유사도 검사, 품질 게이트, 생성 작업, `npm run generate` |
 | P4 | 대시보드·주제·글 검수·작업 화면, 수정·승인·반려·다시 생성, 채널별 내보내기(복사·폴더) |
-| P5 | web.drivingplus 커뮤니티 SEO(description, JSON-LD, 글이 생기면 sitemap 자동 포함), api.drive 노출 대상 필터 구현 |
+| P5 | web.drivingplus 커뮤니티 SEO(description, JSON-LD, 글이 생기면 sitemap 자동 포함), api.drive 노출 대상 필터 구현 — **완료(2026-09-28)** |
 | P6 | api.drive / api.drivingzone 글 작성 API → 자동 발행 전환 |
