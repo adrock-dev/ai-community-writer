@@ -26,6 +26,105 @@ npm start
 
 `http://127.0.0.1:8787/health`가 응답하면 정상입니다. 종료는 `Ctrl+C`.
 
+## Windows PC 설치 (상시 실행 PC)
+
+### 1. 프로그램 설치 (PowerShell)
+
+```powershell
+winget install OpenJS.NodeJS      # Node.js 24 이상 (node -v 로 확인)
+winget install Git.Git
+```
+
+설치 후 PowerShell을 새로 엽니다(PATH 반영).
+
+### 2. 글 생성 CLI 설치·로그인
+
+```powershell
+npm i -g @openai/codex
+codex login                        # 브라우저에서 ChatGPT 계정 로그인
+npm i -g @anthropic-ai/claude-code
+claude                             # 처음 실행 때 로그인 후 /exit
+```
+
+하나만 있어도 되지만 둘 다 두면 한도에 걸렸을 때 다른 쪽으로 넘어갑니다. **삽화 생성은 Codex로만** 하므로 Codex는 필수입니다.
+
+### 3. 코드 받기
+
+```powershell
+cd $HOME
+git clone -b develop git@github.com:adrock-dev/ai-community-writer.git
+cd ai-community-writer
+npm install
+```
+
+비공개 저장소라 이 PC의 GitHub SSH 키가 등록돼 있어야 합니다(`https://github.com/...` 주소로 받으면 로그인 창이 뜹니다).
+
+### 4. 비밀값 파일 두기
+
+사용자 폴더(`C:\Users\<사용자>\`)에 두 파일을 둡니다. 메신저·메일 말고 USB 등으로 직접 옮깁니다.
+
+| 파일 | 내용 |
+| --- | --- |
+| `.naver-searchad.env` | 네이버 검색광고 API 키(키워드 수집) — [설정](#설정)의 `naver.searchadEnvFile` |
+| `.ai-community-writer.env` | 발행 API 키 — [자동 발행](#자동-발행). **운영 서버의 `WRITER_API_KEY`와 같은 값**이어야 합니다 |
+
+### 5. 설정
+
+기본값이 운영 서버(`sources.profile=prod`, 운영 사이트 주소)라 **`config.json`은 만들지 않아도 됩니다.**
+개발 PC의 `config.json`(dev 서버 주소)은 복사하지 않습니다. 하루 생성 편수·생성 간격 등을 바꿀 때만
+`copy config.example.json config.json` 후 필요한 항목만 남깁니다.
+
+### 6. 점검
+
+```powershell
+npm run doctor           # 설치·로그인·API 연결·발행 키 확인
+npm run doctor -- --llm  # CLI를 실제로 한 번 호출 (사용량 조금 소모)
+```
+
+### 7. 실행
+
+```powershell
+npm start
+```
+
+브라우저에서 **http://127.0.0.1:8787** → 주제 화면 **키워드 수집** → 주제 **생성 예약** → 글 검수에서 수정·**승인** → **지금 게시**(또는 내보내기).
+
+- PowerShell 창을 닫으면 멈춥니다. 켜 둔 채로 둡니다.
+- 절전 모드에 들어가면 작업이 멈추므로 전원 설정에서 절전을 끕니다.
+
+### 8. (선택) 로그온 시 자동 실행
+
+작업 스케줄러 → 작업 만들기 → 트리거 "로그온할 때", 동작 "프로그램 시작":
+
+- 프로그램: `npm.cmd`
+- 인수: `start`
+- 시작 위치: `C:\Users\<사용자>\ai-community-writer`
+
+### 알아 둘 점
+
+- 유의사항·주제·글은 그 PC의 `data/writer.db`에만 저장됩니다. 새 PC는 `guides/*.md` 초기값으로 시작하므로,
+  다른 PC에서 고친 유의사항을 가져오려면 `data/writer.db`를 같은 위치로 복사하거나(글·주제도 함께 옮겨짐) 설정 화면에서 다시 입력합니다.
+- 업데이트: `git pull` → `npm install` → `npm start` 다시 실행.
+
+## CLI 업데이트 (Codex / Claude)
+
+Codex·Claude CLI는 자주 갱신되고, 오래된 버전은 로그인·모델·사용률 기록 형식이 달라 생성이 실패할 수 있습니다.
+**도구 서버(`npm start`)를 멈춘 뒤** 업데이트합니다(실행 중인 CLI 파일은 Windows에서 덮어쓰지 못합니다).
+
+```powershell
+codex --version                      # 현재 버전
+npm i -g @openai/codex@latest        # 최신으로 업데이트
+codex --version                      # 바뀐 버전 확인
+
+claude --version
+claude update                        # Claude 는 자체 업데이트 명령이 있다 (또는 npm i -g @anthropic-ai/claude-code@latest)
+```
+
+- 로그인은 유지됩니다. "로그인 필요" 오류가 나면 `codex login` / `claude`로 다시 로그인합니다.
+- 업데이트 후 `npm run doctor -- --llm`으로 실제 호출이 되는지 확인하고 `npm start`로 다시 켭니다.
+- 문제가 생기면 이전 버전으로 되돌립니다: `npm i -g @openai/codex@<버전>` (버전 목록: `npm view @openai/codex versions`).
+- `EBUSY`·`EPERM` 오류가 나면 Codex·Claude를 쓰는 창(이 도구, 터미널, VS Code 확장)을 모두 닫고 다시 실행합니다.
+
 ## 관리 화면
 
 `npm start` 후 브라우저에서 **http://127.0.0.1:8787** 을 엽니다.
