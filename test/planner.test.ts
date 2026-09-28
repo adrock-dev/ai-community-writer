@@ -75,9 +75,31 @@ describe("collectKeywords", () => {
     const db = new Database(":memory:");
     const { deps: d } = deps(db);
     const summary = await collectKeywords(d);
-    expect(summary.sections[0]).toMatchObject({ fetched: 7, kept: 4, topics: 3 });
+    // 드라이빙존 연수 블로그는 지역 글을 쓰지 않으므로 "강남운전연수"는 뺀다
+    expect(summary.sections[0]).toMatchObject({
+      fetched: 7,
+      kept: 4,
+      regionalDropped: 1,
+      topics: 2,
+    });
 
     const topics = listTopics(db, { channelId: "dztraining-blog" });
+    expect(topics.map((t) => t.primaryKeyword)).toEqual(["운전연수", "운전연수비용"]);
+    expect(topics.every((t) => t.region === "")).toBe(true);
+    expect(topics[1]?.articleType).toBe("cost");
+    expect(db.get("SELECT COUNT(*) AS n FROM keyword_stats")).toEqual({ n: 4 });
+    // "운전 연수"(100)는 "운전연수"(30000)에 합쳐진다
+    expect(topics[0]?.volume).toBe(30100);
+    expect(summary.warnings[0]).toMatch(/데이터랩/);
+  });
+
+  it("지역 주제는 운전면허PLUS(regional 채널)에만 만든다", async () => {
+    const db = new Database(":memory:");
+    const { deps: d } = deps(db);
+    d.seeds = [{ ...d.seeds[0]!, channelId: "drivingplus-community", sectionCode: "drive_story" }];
+    const summary = await collectKeywords(d);
+    expect(summary.sections[0]).toMatchObject({ regionalDropped: 0, topics: 3 });
+    const topics = listTopics(db, { channelId: "drivingplus-community" });
     // 점수순: 검색 수는 적어도 광고 경쟁이 낮은 지역 주제가 비용 주제보다 앞선다
     expect(topics.map((t) => t.primaryKeyword)).toEqual([
       "운전연수",
@@ -90,11 +112,18 @@ describe("collectKeywords", () => {
       volume: 2000,
       competition: "낮음",
     });
-    expect(topics[2]?.articleType).toBe("cost");
-    expect(db.get("SELECT COUNT(*) AS n FROM keyword_stats")).toEqual({ n: 4 });
-    // "운전 연수"(100)는 "운전연수"(30000)에 합쳐진다
-    expect(topics[0]?.volume).toBe(30100);
-    expect(summary.warnings[0]).toMatch(/데이터랩/);
+  });
+
+  it("예전 수집이 드라이빙존 채널에 만든 지역 후보는 다음 수집 때 지운다", async () => {
+    const db = new Database(":memory:");
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT INTO topics (primary_keyword, channel_id, section_code, created_at, updated_at, topic_key, region)
+       VALUES ('강남운전연수', 'dztraining-blog', 'blog_training', ?, ?, '강남운전연수', '서울특별시 강남구')`,
+      [now, now],
+    );
+    await collectKeywords(deps(db).deps);
+    expect(listTopics(db).map((t) => t.primaryKeyword)).not.toContain("강남운전연수");
   });
 
   it("다시 수집해도 주제가 중복되지 않고, 운영자가 건너뛴 상태는 유지한다", async () => {
@@ -103,7 +132,7 @@ describe("collectKeywords", () => {
     const first = listTopics(db)[0]!;
     setTopicStatus(db, first.id, "skipped", "이미 다룸");
     await collectKeywords(deps(db).deps);
-    expect(listTopics(db)).toHaveLength(3);
+    expect(listTopics(db)).toHaveLength(2);
     expect(listTopics(db, { status: "skipped" })[0]).toMatchObject({
       id: first.id,
       note: "이미 다룸",
@@ -159,7 +188,7 @@ describe("collectKeywords", () => {
     };
     const summary = await collectKeywords(d);
     expect(summary.sections.map((s) => s.error ?? "ok")).toEqual(["API 오류", "ok"]);
-    expect(listTopics(db)).toHaveLength(3);
+    expect(listTopics(db)).toHaveLength(2);
   });
 
   it("추세는 상위 묶음만 조회해 점수에 반영하고, 실패하면 경고만 남긴다", async () => {

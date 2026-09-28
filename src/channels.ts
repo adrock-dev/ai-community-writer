@@ -36,8 +36,12 @@ export interface ChannelDef {
   format: OutputFormat;
   /** 채널 전체 주제 영역. */
   focus: string[];
-  /** 지역·학원 단위 노출 대상(audience)을 지정할 수 있는 채널인가. */
-  supportsAudience: boolean;
+  /**
+   * 지역 기반 글을 쓰는 채널인가. 켜면 지역 키워드("강남운전연수")를 지역 주제로 만들고,
+   * 근거 자료를 그 지역으로 좁히고, 발행 때 노출 대상(audience)을 지역으로 지정한다.
+   * 끄면 지역 키워드는 주제 후보에서 뺀다. 운전면허PLUS 커뮤니티만 켠다(2026-09-28 결정).
+   */
+  regional: boolean;
   quality: ChannelQuality;
   sections: SectionDef[];
 }
@@ -50,7 +54,7 @@ export const CHANNELS = [
     siteUrl: "https://app.drivingplus.me/community",
     format: "markdown",
     focus: ["운전학원 찾기·비교·추천", "학원 연수", "운전면허 시험 정보"],
-    supportsAudience: true,
+    regional: true,
     quality: {
       minChars: 1800,
       maxChars: 4200,
@@ -84,7 +88,7 @@ export const CHANNELS = [
     siteUrl: "https://drivingzone.co.kr/story/blog",
     format: "html",
     focus: ["운전면허 취득"],
-    supportsAudience: false,
+    regional: false,
     quality: {
       minChars: 2200,
       maxChars: 5000,
@@ -102,7 +106,7 @@ export const CHANNELS = [
     siteUrl: "https://www.dztraining.co.kr/blog",
     format: "html",
     focus: ["장롱면허", "운전 연수"],
-    supportsAudience: false,
+    regional: false,
     quality: {
       minChars: 2200,
       maxChars: 5000,
@@ -120,7 +124,7 @@ export const CHANNELS = [
     siteUrl: "",
     format: "cafe-text",
     focus: ["운전면허 취득", "장롱면허", "운전 연수"],
-    supportsAudience: false,
+    regional: false,
     quality: {
       minChars: 800,
       maxChars: 2200,

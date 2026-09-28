@@ -280,30 +280,24 @@ export function drivingzoneFacts(
   const parts: string[] = [
     `드라이빙존 실내운전연습장 지점 ${stores.length}곳 (직영 ${direct}곳, 가맹 ${stores.length - direct}곳)`,
   ];
-  const local = topic.region ? stores.filter((s) => inRegion(s.address, topic.region)) : [];
-  if (topic.region && !local.length) {
-    parts.push("이 지역에는 드라이빙존 지점이 없습니다. 지점이 있다고 쓰지 마세요.");
-  }
-  // 지역이 없으면 이 채널에 맞는 후기가 있는 지점을 먼저 보여 준다.
+  // 드라이빙존 채널은 지역 글을 쓰지 않는다(channels.ts regional=false). 이 채널에 맞는 후기가
+  // 많은 지점을 대표로 보여 주고, 전체 지점 목록을 함께 준다.
   const relevant = (s: Store) =>
     s.reviews.filter((r) => (reviewFor === "training" ? r.forTraining : r.forLicense)).length;
-  const detailed = (
-    local.length ? local : [...stores].sort((a, b) => relevant(b) - relevant(a))
-  ).slice(0, 3);
+  const detailed = [...stores].sort((a, b) => relevant(b) - relevant(a)).slice(0, 3);
   parts.push(
-    local.length ? "이 지역 지점:" : "대표 지점 상세:",
+    "대표 지점 상세:",
     ...detailed.map((s) => storeLine(s, true, reviewFor)),
+    "전체 지점 목록:",
+    ...stores.map((s) => storeLine(s, false, reviewFor)),
   );
-  if (!local.length) {
-    parts.push("전체 지점 목록:", ...stores.map((s) => storeLine(s, false, reviewFor)));
-  }
   parts.push(
     ...pricingLines("면허 취득 요금제", pricing.license ?? []),
     ...pricingLines("운전연수 요금제", pricing.training ?? []),
   );
   return {
     text: parts.join("\n"),
-    candidates: (local.length ? local : stores).map((s) => s.name),
+    candidates: stores.map((s) => s.name),
     images: collectPhotos(
       detailed.map((s) => ({ subject: `드라이빙존 ${s.name} 매장 사진`, photos: s.photos })),
       2,

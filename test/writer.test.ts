@@ -389,7 +389,7 @@ describe("근거 자료", () => {
     );
   });
 
-  it("드라이빙존: 지역에 지점이 없으면 없다고 알린다", () => {
+  it("드라이빙존: 지역 주제가 와도 지역으로 좁히지 않고 전체 지점을 준다", () => {
     const store = {
       name: "강남역점",
       type: "direct",
@@ -409,7 +409,9 @@ describe("근거 자료", () => {
       topic({ region: "대구광역시", articleType: "training" }),
       cafe,
     );
-    expect(facts.text).toMatch(/이 지역에는 드라이빙존 지점이 없습니다/);
+    expect(facts.text).not.toMatch(/이 지역/);
+    expect(facts.text).toMatch(/전체 지점 목록:/);
+    expect(facts.candidates).toEqual(["강남역점"]);
   });
 });
 

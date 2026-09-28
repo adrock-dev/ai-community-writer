@@ -33,7 +33,7 @@ export function renderExport(article: Article): ChannelExport {
   const html = markdownToHtml(body);
   const uploads = article.images.filter((i) => i.kind === "generated").map((i) => basename(i.url));
   const keywords = article.keywords.join(", ");
-  const region = article.region ? regionLabel(article.region) : "";
+  const region = channel?.regional && article.region ? regionLabel(article.region) : "";
 
   if (channel?.brand === "drivingplus") {
     return {

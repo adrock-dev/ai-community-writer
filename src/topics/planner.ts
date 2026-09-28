@@ -40,6 +40,8 @@ export interface SectionSummary {
   sectionCode: string;
   fetched: number;
   kept: number;
+  /** 지역 글을 쓰지 않는 채널에서 뺀 지역 키워드 수 */
+  regionalDropped: number;
   topics: number;
   error?: string;
 }
@@ -102,6 +104,7 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
       sectionCode: section.sectionCode,
       fetched: 0,
       kept: 0,
+      regionalDropped: 0,
       topics: 0,
     };
     summary.sections.push(item);
@@ -135,21 +138,28 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
         }
       });
 
-      const inputs: ClusterInput[] = kept.map(({ stat }) => {
+      // 지역 글은 regional 채널(운전면허PLUS)만 쓴다. 다른 채널에서는 지역 키워드를 주제로 만들지 않는다.
+      const regional = findChannel(section.channelId)?.regional ?? false;
+      const inputs: ClusterInput[] = [];
+      for (const { stat } of kept) {
         const match = detectRegion(stat.keyword, deps.regions);
-        return {
+        if (match && !regional) {
+          item.regionalDropped++;
+          continue;
+        }
+        inputs.push({
           ...stat,
           region: regionKey(match),
           regionAlias: match?.alias ?? "",
           intent: inferArticleType(stat.keyword),
-        };
-      });
+        });
+      }
       const clusters = clusterKeywords(inputs, opts.clusterThreshold)
         .sort((a, b) => b.volume - a.volume)
         .slice(0, opts.maxTopicsPerSection);
       results.push({ section, clusters });
       log(
-        `${section.channelId}/${section.sectionCode}: 연관 ${item.fetched} → 유효 ${item.kept} → 묶음 ${clusters.length}`,
+        `${section.channelId}/${section.sectionCode}: 연관 ${item.fetched} → 유효 ${item.kept}${item.regionalDropped ? ` (지역 ${item.regionalDropped} 제외)` : ""} → 묶음 ${clusters.length}`,
       );
     } catch (error) {
       item.error = error instanceof Error ? error.message : String(error);
@@ -177,6 +187,16 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
 
   const stamp = now.toISOString();
   db.transaction(() => {
+    // 예전 수집이 지역 글을 쓰지 않는 채널에 만든 지역 후보를 지운다(생성 예약·작성된 주제는 둔다).
+    const nonRegional = CHANNELS.filter((c) => !c.regional).map((c) => c.id);
+    if (nonRegional.length) {
+      db.run(
+        `DELETE FROM topics WHERE region != '' AND status IN ('candidate', 'skipped')
+           AND channel_id IN (${nonRegional.map(() => "?").join(", ")})
+           AND NOT EXISTS (SELECT 1 FROM articles a WHERE a.topic_id = topics.id)`,
+        nonRegional,
+      );
+    }
     for (const { section, clusters } of results) {
       const item = summary.sections.find(
         (s) => s.channelId === section.channelId && s.sectionCode === section.sectionCode,
