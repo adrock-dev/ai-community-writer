@@ -89,13 +89,22 @@ export interface ComposedPrompt {
 
 function imagesText(images: ImageCandidate[], min: number): string {
   if (!images.length) return "(사용할 수 있는 이미지 없음 — 이미지를 넣지 마세요)";
+  const free = images.filter((i) => !i.sectionMustMention).length;
+  const restricted = images.length - free;
+  const available = free + Math.min(1, restricted);
+  const photoNote =
+    '실제 사진, 무엇이 찍혔는지는 확인되지 않음 — 대체 텍스트에 장면을 지어내지 말고 "OO 사진"처럼 대상만 쓰세요';
   return [
-    `아래 번호의 이미지만 서로 다른 섹션에 ${Math.min(min, images.length)}장 이상 넣으세요. 형식: ![대체 텍스트](번호)`,
-    ...images.map((i) =>
-      i.kind === "photo"
-        ? `- ${i.id}: ${i.subject} (실제 사진, 무엇이 찍혔는지는 확인되지 않음 — 대체 텍스트에 장면을 지어내지 말고 "OO 사진"처럼 대상만 쓰세요)`
-        : `- ${i.id}: 삽화 — ${i.subject} (생성 이미지, 실제 장소·업체가 아님 — 특정 학원·지점 사진처럼 쓰지 마세요)`,
-    ),
+    `아래 번호의 이미지만 서로 다른 섹션에 ${Math.min(min, available)}장 이상 넣으세요. 형식: ![대체 텍스트](번호)`,
+    ...images.map((i) => {
+      if (i.kind !== "photo") {
+        return `- ${i.id}: 삽화 — ${i.subject} (생성 이미지, 실제 장소·업체가 아님 — 특정 학원·지점 사진처럼 쓰지 마세요)`;
+      }
+      if (i.sectionMustMention) {
+        return `- ${i.id}: ${i.subject} (${photoNote}. **드라이빙존을 소개·안내하는 섹션에만** 넣고, 이런 매장 사진은 글 전체에서 1장까지입니다. 시험 절차·준비 방법을 설명하는 섹션에는 넣지 마세요)`;
+      }
+      return `- ${i.id}: ${i.subject} (${photoNote})`;
+    }),
   ].join("\n");
 }
 

@@ -124,6 +124,33 @@ describe("qualityIssues", () => {
     expect(qualityIssues(draftOf(goodBody("운전학원")), gate())).toEqual([]);
   });
 
+  it("매장 사진은 드라이빙존을 다루는 섹션에 1장까지만 둔다", () => {
+    const restricted = {
+      imageIds: ["img1", "img2", "img3"],
+      restrictedImages: [
+        { id: "img2", mustMention: ["드라이빙존", "강남역점"] },
+        { id: "img3", mustMention: ["드라이빙존", "강남역점"] },
+      ],
+    };
+    // img2 가 들어간 3번째 섹션은 드라이빙존 이야기가 없다
+    const misplaced = qualityIssues(draftOf(goodBody("운전학원")), gate(restricted)).join("\n");
+    expect(misplaced).toMatch(/매장 사진\(img2\)이 드라이빙존을 다루지 않는 섹션/);
+
+    const placed = goodBody("운전학원").replace(
+      "## 운전학원 궁금증 3",
+      "## 학원 가기 전, 드라이빙존에서 미리 연습하기",
+    );
+    expect(qualityIssues(draftOf(placed), gate(restricted))).toEqual([]);
+
+    const twice = placed.replace(
+      "![운전학원 사진](img1)",
+      "![드라이빙존 강남역점 매장 사진](img3)",
+    );
+    expect(qualityIssues(draftOf(twice), gate(restricted)).join("\n")).toMatch(
+      /매장 사진\(img3, img2\)은 1장만/,
+    );
+  });
+
   it("근거 없는 금액·비율, 합격 보장, 내부 용어, 자리표시를 잡는다", () => {
     const body = `${goodBody("운전학원")}\n\n수강료는 65만원(부가세 별도)이고 합격률 95%로 무조건 합격합니다. 제공된 자료 기준입니다. [이미지]`;
     const issues = qualityIssues(draftOf(body), gate()).join("\n");
@@ -413,6 +440,29 @@ describe("근거 자료", () => {
     expect(facts.text).toMatch(/전체 지점 목록:/);
     expect(facts.candidates).toEqual(["강남역점"]);
   });
+
+  it("드라이빙존 매장 사진은 비용·추천 글이 아니면 안내 섹션 전용으로 표시한다", () => {
+    const store = {
+      id: 1,
+      name: "강남역점",
+      type: "direct",
+      address: "서울특별시 강남구 1",
+      reviews: [],
+      hours: [],
+      subways: [],
+      keywordTags: [],
+      machines: {},
+      instructors: [],
+      locationHint: "",
+      photos: ["https://file.example/a.jpg", "https://file.example/b.jpg"],
+    } as unknown as Store;
+    const exam = drivingzoneFacts([store], {}, topic({ articleType: "exam" }), cafe).images;
+    expect(exam).toHaveLength(1);
+    expect(exam[0]?.sectionMustMention).toEqual(["드라이빙존", "강남역점"]);
+    const cost = drivingzoneFacts([store], {}, topic({ articleType: "cost" }), cafe).images;
+    expect(cost).toHaveLength(2);
+    expect(cost.every((i) => !i.sectionMustMention)).toBe(true);
+  });
 });
 
 describe("generateArticle", () => {
@@ -532,6 +582,15 @@ describe("generateArticle", () => {
     expect(ok.status).toBe("review");
     expect(getArticle(db, ok.articleId)?.images[1]).toMatchObject({ kind: "generated" });
     expect(getArticle(db, ok.articleId)?.images[1]?.url).toMatch(/^\/images\/t\d+-.+-1\.png$/);
+
+    // 안내 섹션 전용 사진은 최소 장수에 세지 않으므로 삽화를 2장 만든다
+    scenes.length = 0;
+    const storeOnly = {
+      ...facts,
+      images: [{ ...photo(1), sectionMustMention: ["드라이빙존"] }],
+    };
+    await generateArticle({ db, config, llm, facts: storeOnly, images, factCheck: false }, topicId);
+    expect(scenes).toHaveLength(2);
 
     const failing = {
       generate: async () => {

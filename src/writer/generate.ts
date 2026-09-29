@@ -64,7 +64,8 @@ async function prepareImages(
   warnings: string[],
 ): Promise<ImageCandidate[]> {
   const images = [...photos];
-  const need = min - images.length;
+  // 섹션이 제한된 사진(드라이빙존 매장 사진 등)은 안내 섹션에만 들어가므로 최소 장수에 세지 않는다.
+  const need = min - images.filter((i) => !i.sectionMustMention).length;
   if (need <= 0 || !deps.images) return images;
   const stamp = (deps.now ?? new Date()).toISOString().replace(/\D/g, "").slice(0, 14);
   for (const [i, scene] of scenesFor(topic.articleType, need).entries()) {
@@ -176,6 +177,9 @@ export async function generateArticle(
             corpus,
             candidates: facts.candidates,
             imageIds: images.map((i) => i.id),
+            restrictedImages: images.flatMap((i) =>
+              i.sectionMustMention ? [{ id: i.id, mustMention: i.sectionMustMention }] : [],
+            ),
           }),
           ...similarityIssues(similar),
         ];

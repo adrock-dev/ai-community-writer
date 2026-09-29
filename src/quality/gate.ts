@@ -19,6 +19,8 @@ export interface GateContext {
    * 검수 중 수정한 글은 이미 실제 주소로 바뀌어 있으므로 비워 두면 번호 검사를 건너뛴다.
    */
   imageIds?: string[];
+  /** 넣을 섹션이 제한된 이미지(글 전체 1장까지, 그 섹션에 mustMention 중 하나가 있어야 함). */
+  restrictedImages?: { id: string; mustMention: string[] }[];
 }
 
 export interface Amount {
@@ -101,6 +103,47 @@ export function imageRefs(markdown: string): ImageRef[] {
     }
   });
   return refs;
+}
+
+/** 이미지가 들어간 H2 섹션(소제목부터 다음 H2 전까지)의 글. */
+function sectionTextAt(lines: string[], line: number): string {
+  let start = line;
+  while (start > 0 && !/^##\s/.test(lines[start] ?? "")) start--;
+  let end = line + 1;
+  while (end < lines.length && !/^##\s/.test(lines[end] ?? "")) end++;
+  return lines
+    .slice(start, end)
+    .join("\n")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "");
+}
+
+/** 섹션이 제한된 사진(드라이빙존 매장 사진 등): 1장까지, 그 섹션이 해당 대상을 다뤄야 한다. */
+function restrictedImageIssues(
+  body: string,
+  images: ImageRef[],
+  restricted: { id: string; mustMention: string[] }[],
+): string[] {
+  if (!restricted.length) return [];
+  const byId = new Map(restricted.map((r) => [r.id, r.mustMention]));
+  const used = images.filter((i) => byId.has(i.src));
+  const issues: string[] = [];
+  if (used.length > 1) {
+    issues.push(
+      `매장 사진(${used.map((i) => i.src).join(", ")})은 1장만 쓰세요. 나머지 자리는 삽화 번호로 바꾸세요`,
+    );
+  }
+  const lines = body.split(/\r?\n/);
+  const misplaced = used.filter((i) => {
+    const words = byId.get(i.src) ?? [];
+    const section = sectionTextAt(lines, i.line);
+    return !words.some((w) => section.includes(w));
+  });
+  if (misplaced.length) {
+    issues.push(
+      `매장 사진(${misplaced.map((i) => i.src).join(", ")})이 드라이빙존을 다루지 않는 섹션에 있습니다. 드라이빙존 안내 섹션으로 옮기거나 그 자리는 삽화로 바꾸세요`,
+    );
+  }
+  return issues;
 }
 
 export function extractPercents(text: string): number[] {
@@ -256,8 +299,12 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
 
   // 이미지
   const images = imageRefs(body);
+  const restricted = ctx.restrictedImages ?? [];
   const minImages = ctx.imageIds
-    ? Math.min(quality.minImages, ctx.imageIds.length)
+    ? Math.min(
+        quality.minImages,
+        ctx.imageIds.length - restricted.length + Math.min(1, restricted.length),
+      )
     : quality.minImages;
   if (images.length < minImages) {
     issues.push(
@@ -283,6 +330,7 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
     return imageLines.has(next);
   });
   if (adjacent) issues.push("이미지를 연달아 두지 말고 서로 다른 섹션에 나눠 넣으세요");
+  issues.push(...restrictedImageIssues(body, images, restricted));
 
   // 링크: 모델은 웹을 보지 않으므로 세부 주소는 지어낸 것일 수 있다 (이미지 주소는 제외)
   const links = [

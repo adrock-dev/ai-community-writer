@@ -26,6 +26,12 @@ export interface ImageCandidate {
   kind: "photo" | "generated";
   /** 무엇의 사진인지 (내용은 모름). 대체 텍스트의 근거 */
   subject: string;
+  /**
+   * 이 사진을 넣을 섹션(H2)에 있어야 하는 낱말. 하나라도 있어야 하고, 이런 사진은 글 전체에서 1장까지다.
+   * 드라이빙존 매장 사진이 시험 절차 같은 섹션에 뜬금없이 들어가지 않게, 드라이빙존 안내 섹션에만 둔다.
+   * 없으면 어느 섹션에나 넣을 수 있다. 제한 사진은 최소 장수(minImages)를 채우는 데 세지 않는다.
+   */
+  sectionMustMention?: string[];
 }
 
 export interface Facts {
@@ -268,6 +274,12 @@ function pricingLines(title: string, plans: PricingPlan[]): string[] {
   ];
 }
 
+/**
+ * 매장 사진을 본문 어디에나 써도 자연스러운 글 유형(요금제·매장을 직접 소개하는 글).
+ * 그 밖의 유형에서는 매장 사진을 드라이빙존 안내 섹션에만 쓰고, 본문 이미지는 주제 삽화로 채운다.
+ */
+const DRIVINGZONE_PHOTO_ANYWHERE_TYPES = new Set(["cost", "recommend"]);
+
 export function drivingzoneFacts(
   stores: Store[],
   pricing: Partial<Record<PricingCategory, PricingPlan[]>>,
@@ -298,12 +310,18 @@ export function drivingzoneFacts(
   return {
     text: parts.join("\n"),
     candidates: stores.map((s) => s.name),
-    images: collectPhotos(
-      detailed.map((s) => ({ subject: `드라이빙존 ${s.name} 매장 사진`, photos: s.photos })),
-      2,
-      4,
-    ),
+    images: drivingzonePhotos(detailed, topic.articleType),
   };
+}
+
+function drivingzonePhotos(stores: Store[], articleType: string): ImageCandidate[] {
+  const subjects = stores.map((s) => ({
+    subject: `드라이빙존 ${s.name} 매장 사진`,
+    photos: s.photos,
+  }));
+  if (DRIVINGZONE_PHOTO_ANYWHERE_TYPES.has(articleType)) return collectPhotos(subjects, 2, 4);
+  const mention = ["드라이빙존", ...stores.map((s) => s.name)];
+  return collectPhotos(subjects, 1, 2).map((i) => ({ ...i, sectionMustMention: mention }));
 }
 
 // ── 조립 ─────────────────────────────────────────────────────────────────
