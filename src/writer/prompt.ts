@@ -77,6 +77,8 @@ export interface PromptInput {
   avoid: AvoidItem[];
   /** 본문에 넣을 수 있는 이미지 (실제 사진 + 생성 삽화) */
   images: ImageCandidate[];
+  /** 이번 글에 넣을 수 있는 자사 사이트 링크. 비어 있으면 링크를 쓰지 않는다. */
+  links?: readonly { label: string; url: string }[];
   today: Date;
 }
 
@@ -105,6 +107,13 @@ function imagesText(images: ImageCandidate[], min: number): string {
       }
       return `- ${i.id}: ${i.subject} (${photoNote})`;
     }),
+  ].join("\n");
+}
+
+function linksText(links: readonly { label: string; url: string }[]): string {
+  return [
+    "이 글에는 아래 주소만 링크로 넣을 수 있습니다. 드라이빙존을 안내하는 섹션(보통 글 끝쪽)에서 내용과 맞는 것 1~2개를 `[링크 글자](주소)` 형식으로 넣고, 링크 글자는 무엇을 볼 수 있는지 알 수 있게 씁니다(예: 요금제 자세히 보기). 주소를 바꾸거나 다른 주소를 만들지 마세요.",
+    ...links.map((l) => `- ${l.label}: ${l.url}`),
   ].join("\n");
 }
 
@@ -139,6 +148,7 @@ export function composePrompt(input: PromptInput, dir = PROMPTS_DIR): ComposedPr
     `## 유의사항 (반드시 지킬 운영 규칙과 사실)\n\n${guides || "(없음)"}`,
     `## 근거 자료\n\n${facts.text || "이 주제에 대해 제공되는 구체적 자료가 없습니다. 가격·합격률·기간 같은 수치와 특정 업체 이름은 쓰지 마세요."}`,
     `## 본문에 넣을 이미지\n\n${imagesText(input.images, channel.quality.minImages)}`,
+    ...(input.links?.length ? [`## 본문에 넣을 수 있는 링크\n\n${linksText(input.links)}`] : []),
     `## 피해야 할 기존 글 (제목·소제목 구성·도입부가 겹치지 않게, 다른 각도로 쓰세요)\n\n${avoidText(input.avoid)}`,
     OUTPUT_FORMAT,
   ].join("\n\n");

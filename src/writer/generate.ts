@@ -40,6 +40,8 @@ export interface GenerateDeps {
   /** 테스트용: 근거 자료를 직접 준다 */
   facts?: Facts;
   now?: Date;
+  /** 링크를 넣을 글인지 정하는 난수(0~1). 테스트에서 고정한다. */
+  random?: () => number;
   log?: (message: string) => void;
 }
 
@@ -127,6 +129,11 @@ export async function generateArticle(
       warnings,
     );
     const avoid = avoidList(db, channel.id, topic.articleType);
+    // 모든 글에 같은 링크가 들어가지 않게 글마다 무작위로 링크 허용 여부를 정한다(재작성 중에는 유지).
+    const links =
+      channel.linkTargets?.length && (deps.random ?? Math.random)() < config.writer.linkChance
+        ? channel.linkTargets
+        : [];
     const composed = composePrompt({
       topic,
       channel,
@@ -135,6 +142,7 @@ export async function generateArticle(
       facts,
       avoid,
       images,
+      links,
       today: deps.now ?? new Date(),
     });
     const guideText = renderGuideRules(guides);
@@ -177,6 +185,7 @@ export async function generateArticle(
             corpus,
             candidates: facts.candidates,
             imageIds: images.map((i) => i.id),
+            allowedLinks: links.map((l) => l.url),
             restrictedImages: images.flatMap((i) =>
               i.sectionMustMention ? [{ id: i.id, mustMention: i.sectionMustMention }] : [],
             ),
@@ -242,6 +251,7 @@ export async function generateArticle(
         warnings,
         guideRuleIds: guides.map((g) => g.id),
         imageCandidates: images,
+        links: links.map((l) => l.url),
       },
       provider: last.result.provider,
       model: last.result.model,

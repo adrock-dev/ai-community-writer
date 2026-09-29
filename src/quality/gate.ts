@@ -19,6 +19,8 @@ export interface GateContext {
    * 검수 중 수정한 글은 이미 실제 주소로 바뀌어 있으므로 비워 두면 번호 검사를 건너뛴다.
    */
   imageIds?: string[];
+  /** 본문에 넣어도 되는 자사 사이트 링크 주소. 없으면 링크를 모두 뺀다. */
+  allowedLinks?: string[];
   /** 넣을 섹션이 제한된 이미지(글 전체 1장까지, 그 섹션에 mustMention 중 하나가 있어야 함). */
   restrictedImages?: { id: string; mustMention: string[] }[];
 }
@@ -350,11 +352,15 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
       .replace(/\]\([^)]*\)/g, "]")
       .matchAll(/https?:\/\/[^\s)>\]"']+/g),
   ].map((m) => m[1] ?? m[0]);
-  if (links.length) {
+  const allowed = new Set(ctx.allowedLinks ?? []);
+  const foreign = links.filter((l) => !allowed.has(l));
+  if (foreign.length) {
     issues.push(
-      `본문의 링크 주소를 빼세요: ${[...new Set(links)].slice(0, 3).join(", ")}. 확인처는 "safedriving.or.kr"처럼 사이트 이름만 글자로 쓰세요`,
+      `본문의 링크 주소를 빼세요: ${[...new Set(foreign)].slice(0, 3).join(", ")}. 확인처는 "safedriving.or.kr"처럼 사이트 이름만 글자로 쓰세요${allowed.size ? " (링크는 [본문에 넣을 수 있는 링크]의 주소만 됩니다)" : ""}`,
     );
   }
+  const own = links.filter((l) => allowed.has(l));
+  if (own.length > 2) issues.push(`자사 링크는 2개까지만 넣으세요 (지금 ${own.length}개)`);
   if (/(?:생성|AI)\s*(?:삽화|이미지)|삽화/.test(images.map((i) => i.alt).join(" "))) {
     issues.push(
       '이미지 대체 텍스트에 "생성·삽화·AI"를 쓰지 말고 "기능시험 코스 예시 이미지"처럼 장면을 쓰세요',

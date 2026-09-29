@@ -182,6 +182,7 @@ copy config.example.json config.json
 | `llm.limitCooldownMin` | `60` | 한도 해제 시각을 모를 때 쉬는 시간(분) |
 | `pacing.minIntervalSec` / `maxIntervalSec` | `300` / `900` | 생성 사이 대기(무작위) |
 | `pacing.dailyLimit` | `10` | 하루 최대 생성 편수 |
+| `writer.linkChance` | `0.3` | 자사 사이트 링크(요금·지점 안내 등, 채널 `linkTargets`)를 넣을 수 있는 글의 비율. 글마다 무작위로 정하며 0이면 넣지 않음 |
 | `worker.pollSec` | `5` | 작업 큐 확인 주기(초) |
 | `keywords.minMonthlyVolume` | `30` | 30일 검색 수가 이보다 적은 키워드는 버림 |
 | `keywords.maxTopicsPerSection` | `50` | 섹션별 저장할 주제 후보 수 |

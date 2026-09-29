@@ -61,6 +61,15 @@ const configSchema = z.object({
     .refine((p) => p.maxIntervalSec >= p.minIntervalSec, {
       message: "pacing.maxIntervalSec는 minIntervalSec 이상이어야 합니다",
     }),
+  writer: z
+    .object({
+      /**
+       * 자사 사이트 링크(채널 linkTargets)를 넣을 수 있는 글의 비율(0~1). 모든 글에 같은 링크가
+       * 들어가지 않게 글마다 무작위로 정한다. 0이면 넣지 않는다.
+       */
+      linkChance: z.number().min(0).max(1).default(0.3),
+    })
+    .prefault({}),
   worker: z
     .object({
       /** 작업 큐 확인 주기(초). */

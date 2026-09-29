@@ -135,6 +135,29 @@ describe("qualityIssues", () => {
     expect(qualityIssues(draftOf(marked), gate())).toEqual([]);
   });
 
+  it("링크는 허용된 자사 주소만, 2개까지 통과한다", () => {
+    const pricing = "https://www.drivingzone.co.kr/pricing";
+    const branch = "https://www.drivingzone.co.kr/branch";
+    const faq = "https://www.drivingzone.co.kr/support/faq";
+    const withLink = (...urls: string[]) =>
+      `${goodBody("운전학원")}\n\n${urls.map((u, i) => `[자세히 보기 ${i}](${u})`).join(" ")}`;
+    // 허용 목록이 없으면(링크를 주지 않은 글) 자사 주소도 뺀다
+    expect(qualityIssues(draftOf(withLink(pricing)), gate()).join("\n")).toMatch(
+      /링크 주소를 빼세요/,
+    );
+    const allowed = gate({ allowedLinks: [pricing, branch, faq] });
+    expect(qualityIssues(draftOf(withLink(pricing, branch)), allowed)).toEqual([]);
+    expect(
+      qualityIssues(
+        draftOf(withLink(pricing, "https://www.drivingzone.co.kr/event")),
+        allowed,
+      ).join("\n"),
+    ).toMatch(/링크 주소를 빼세요: https:\/\/www\.drivingzone\.co\.kr\/event/);
+    expect(qualityIssues(draftOf(withLink(pricing, branch, faq)), allowed).join("\n")).toMatch(
+      /2개까지만/,
+    );
+  });
+
   it("매장 사진은 드라이빙존을 다루는 섹션에 1장까지만 둔다", () => {
     const restricted = {
       imageIds: ["img1", "img2", "img3"],
@@ -340,10 +363,13 @@ describe("프롬프트", () => {
           { id: "img2", url: "/images/a.png", kind: "generated", subject: "주차 연습 장면" },
         ],
         avoid: [{ title: "예전 글", outline: ["A"], intro: "도입" }],
+        links: [{ label: "요금 안내", url: "https://www.dztraining.co.kr/pricing" }],
         today: new Date("2026-09-28T00:00:00Z"),
       },
       dir,
     );
+    expect(prompt).toContain("## 본문에 넣을 수 있는 링크");
+    expect(prompt).toContain("- 요금 안내: https://www.dztraining.co.kr/pricing");
     for (const part of [
       "공통",
       "채널",

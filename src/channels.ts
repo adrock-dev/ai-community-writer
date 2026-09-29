@@ -67,6 +67,11 @@ export interface ChannelDef {
    * 빈 문자열이면 굵게로 바꾼다(운전면허PLUS는 Markdown 이라 색을 표현하지 않는다).
    */
   highlightColor: string;
+  /**
+   * 본문에 넣을 수 있는 자사 사이트 링크. 글마다 `writer.linkChance` 확률로 이 목록을 프롬프트에
+   * 주고, 품질 검사는 이 주소만 허용한다. 없으면 링크를 쓰지 않는다. 주소는 실제로 열리는지 확인해 둔다.
+   */
+  linkTargets?: readonly { label: string; url: string }[];
   quality: ChannelQuality;
   sections: SectionDef[];
 }
@@ -137,6 +142,18 @@ export const CHANNELS = [
     autoPublish: "blog",
     // web.drivingzone --color-main-orange
     highlightColor: "#ff5500",
+    // 2026-09-29 확인(200)
+    linkTargets: [
+      {
+        label: "드라이빙존 운전면허 요금 안내(시간제·무제한)",
+        url: "https://www.drivingzone.co.kr/pricing",
+      },
+      { label: "드라이빙존 운전면허 지점 안내", url: "https://www.drivingzone.co.kr/branch" },
+      {
+        label: "드라이빙존 운전면허 자주 묻는 질문",
+        url: "https://www.drivingzone.co.kr/support/faq",
+      },
+    ],
     quality: {
       minChars: 2200,
       maxChars: 5000,
@@ -158,6 +175,15 @@ export const CHANNELS = [
     autoPublish: "blog",
     // web.dztraining --color-main-blue
     highlightColor: "#1474fa",
+    // 2026-09-29 확인(200)
+    linkTargets: [
+      {
+        label: "드라이빙존 운전연수 요금 안내(시간제·무제한)",
+        url: "https://www.dztraining.co.kr/pricing",
+      },
+      { label: "드라이빙존 운전연수 지점 안내", url: "https://www.dztraining.co.kr/branch" },
+      { label: "드라이빙존 운전연수 커리큘럼", url: "https://www.dztraining.co.kr/curriculum" },
+    ],
     quality: {
       minChars: 2200,
       maxChars: 5000,

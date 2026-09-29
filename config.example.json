@@ -26,6 +26,9 @@
     "maxIntervalSec": 900,
     "dailyLimit": 10
   },
+  "writer": {
+    "linkChance": 0.3
+  },
   "worker": {
     "pollSec": 5
   },
