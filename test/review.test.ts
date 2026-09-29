@@ -192,6 +192,18 @@ describe("관리 화면", () => {
     expect(detail).not.toContain("<script>alert(1)</script>");
   });
 
+  it("작업 목록에 채널·유형이 보인다 (발행 작업은 글에서 읽는다)", async () => {
+    const { db, app, queue } = setup();
+    const id = createArticle(db, article({ channelId: "dztraining-blog", articleType: "cost" }));
+    queue.enqueue("publish", { articleId: id });
+    const jobs = await (await app.request("/jobs")).text();
+    expect(jobs).toContain("<th>채널</th><th>유형</th>");
+    expect(jobs).toContain("자동 발행");
+    expect(jobs).toContain("드라이빙존 연수 블로그");
+    expect(jobs).toContain("비용·가격");
+    expect(jobs).toContain(`글 #${id}`);
+  });
+
   it("승인 후 내보내기 영역이 열리고, 반려는 사유가 필요하다", async () => {
     const { db, app } = setup();
     const id = createArticle(db, article());
