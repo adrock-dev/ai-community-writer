@@ -186,6 +186,8 @@ describe("관리 화면", () => {
       const res = await app.request(path);
       expect(res.status, path).toBe(200);
     }
+    // 목록에 품질 게이트와 같은 기준의 글자 수를 보인다
+    expect(await (await app.request("/articles")).text()).toContain("<th>글자</th>");
     const detail = await (await app.request(`/articles/${id}`)).text();
     expect(detail).toContain("인천운전연수 학원 비교");
     expect(detail).toContain("&lt;script&gt;"); // 원고 속 스크립트는 글자로

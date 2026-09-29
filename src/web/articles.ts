@@ -19,6 +19,7 @@ import {
 } from "../articles/store.ts";
 import { CHANNELS, findChannel, findSection } from "../channels.ts";
 import { renderExport, writeExportBundle } from "../export/bundle.ts";
+import { bodyChars } from "../quality/gate.ts";
 import { markdownToHtml, stripTitle } from "../export/render.ts";
 import { regionLabel } from "../keywords/regions.ts";
 import { articleTypeLabel } from "../topics/intent.ts";
@@ -111,7 +112,7 @@ function listPage(
     </select>
   </form>
   <div class="table-wrap"><table>
-    <tr><th>#</th><th>제목</th><th>채널</th><th>유형</th><th>상태</th><th>문제</th><th>생성</th></tr>
+    <tr><th>#</th><th>제목</th><th>채널</th><th>유형</th><th>상태</th><th>글자</th><th>문제</th><th>생성</th></tr>
     ${articles.map(
       (a) => html`<tr>
         <td>${a.id}</td>
@@ -119,6 +120,7 @@ function listPage(
         <td>${channelLabel(a.channelId)}</td>
         <td>${articleTypeLabel(a.articleType)}</td>
         <td>${badge(ARTICLE_STATUS_LABEL[a.status] ?? a.status, statusTone(a.status))}</td>
+        <td class="num">${bodyChars(a.body).toLocaleString("ko-KR")}</td>
         <td class="num">${a.qualityIssues.length || ""}</td>
         <td class="muted">${shortTime(a.createdAt)}</td>
       </tr>`,

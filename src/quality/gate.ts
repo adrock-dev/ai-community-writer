@@ -89,6 +89,11 @@ export function amountsWithoutVat(markdown: string): string[] {
   return missing;
 }
 
+/** 분량 기준 글자 수: Markdown 기호를 뺀 본문, 연속 공백은 한 칸으로 센다(공백 포함). */
+export function bodyChars(markdown: string): number {
+  return plainText(markdown).replace(/\s+/g, " ").trim().length;
+}
+
 export interface ImageRef {
   alt: string;
   src: string;
@@ -175,7 +180,7 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
   const { quality } = ctx.channel;
   const body = draft.body;
   const plain = plainText(body).replace(/\s+/g, " ").trim();
-  const chars = plain.length;
+  const chars = bodyChars(body);
   const key = compactKeyword(ctx.primaryKeyword);
   const isCafe = ctx.channel.format === "cafe-text";
 
