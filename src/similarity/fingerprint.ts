@@ -31,6 +31,7 @@ export function plainText(markdown: string): string {
     .replace(/^\s*[-*+]\s+/gm, "")
     .replace(/^\s*\d+[.)]\s+/gm, "")
     .replace(/^\|?\s*:?-{3,}.*$/gm, "")
+    .replace(/==(?=\S)([^=\n]+?)(?<=\S)==/g, "$1")
     .replace(/[|*_`>]/g, "")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 }

@@ -212,7 +212,7 @@ ${
 <div class="split">
   <div>
     <section class="card"><header><h2>미리보기</h2><span class="muted">${a.summary}</span></header>
-      <div class="article">${raw(markdownToHtml(stripTitle(a.body)))}</div>
+      <div class="article">${raw(markdownToHtml(stripTitle(a.body), findChannel(a.channelId)?.highlightColor))}</div>
     </section>
     ${
       editable

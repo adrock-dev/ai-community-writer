@@ -5,7 +5,13 @@ import { findChannel, findSection, resolveFilterCodes } from "../channels.ts";
 import { IMAGES_DIR } from "../images/generator.ts";
 import { regionLabel } from "../keywords/regions.ts";
 import { PROJECT_ROOT } from "../paths.ts";
-import { markdownToHtml, replaceImageUrls, stripTitle, toCafeText } from "./render.ts";
+import {
+  highlightToBold,
+  markdownToHtml,
+  replaceImageUrls,
+  stripTitle,
+  toCafeText,
+} from "./render.ts";
 
 // 승인한 글을 채널별 형식으로 내보낸다. 자동 발행(P6) 전까지는 운영자가 이 결과를 복사해 올린다.
 //   output/exports/<글 번호>-<채널>/
@@ -30,14 +36,18 @@ export function renderExport(article: Article): ChannelExport {
   const channel = findChannel(article.channelId);
   const section = findSection(article.channelId, article.sectionCode);
   const body = stripTitle(article.body);
-  const html = markdownToHtml(body);
+  const html = markdownToHtml(body, channel?.highlightColor);
   const uploads = article.images.filter((i) => i.kind === "generated").map((i) => basename(i.url));
   const keywords = article.keywords.join(", ");
   const region = channel?.regional && article.region ? regionLabel(article.region) : "";
 
   if (channel?.brand === "drivingplus") {
     return {
-      primary: { label: "본문 (Markdown, content_format=md)", content: body, kind: "markdown" },
+      primary: {
+        label: "본문 (Markdown, content_format=md)",
+        content: highlightToBold(body),
+        kind: "markdown",
+      },
       richHtml: html,
       fields: [
         { label: "섹션", value: `${section?.label ?? ""} (${article.sectionCode})` },

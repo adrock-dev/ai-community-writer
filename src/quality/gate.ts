@@ -262,6 +262,11 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
   const placeholder = PLACEHOLDER.exec(all)?.[0];
   if (placeholder) issues.push(`자리표시 "${placeholder}"를 빼세요`);
   if (/\[\d+\]/.test(body)) issues.push("각주 번호([1] 등)를 빼세요");
+  // 원고의 원시 HTML은 내보낼 때 글자로 바뀐다. 서식은 **굵게**·==색 강조==로만 넣는다.
+  const tag = /<\/?(?:span|b|strong|em|i|u|mark|font|br|p|div)\b[^>]*>/i.exec(body)?.[0];
+  if (tag) {
+    issues.push(`HTML 태그(${tag})를 빼세요. 굵게는 **문구**, 색 강조는 ==문구== 로 쓰세요`);
+  }
   const guarantee = GUARANTEE.exec(all)?.[0];
   if (guarantee) issues.push(`"${guarantee}" 같은 합격 보장·단정 표현을 빼세요`);
 

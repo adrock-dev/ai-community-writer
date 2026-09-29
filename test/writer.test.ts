@@ -8,7 +8,7 @@ import { findChannel, findSection } from "../src/channels.ts";
 import { parseConfig } from "../src/config.ts";
 import { Database } from "../src/db/database.ts";
 import { LlmUnavailableError } from "../src/llm/client.ts";
-import { extractAmounts, qualityIssues } from "../src/quality/gate.ts";
+import { bodyChars, extractAmounts, qualityIssues } from "../src/quality/gate.ts";
 import { JobQueue } from "../src/queue/queue.ts";
 import { createApp } from "../src/server.ts";
 import {
@@ -122,6 +122,17 @@ describe("extractAmounts", () => {
 describe("qualityIssues", () => {
   it("기준을 채운 글은 통과한다", () => {
     expect(qualityIssues(draftOf(goodBody("운전학원")), gate())).toEqual([]);
+  });
+
+  it("원시 HTML 서식 태그를 잡고, 색 강조 표시는 글자 수에 세지 않는다", () => {
+    const withTag = `${goodBody("운전학원")}\n\n<span style="color:red">중요</span>`;
+    expect(qualityIssues(draftOf(withTag), gate()).join("\n")).toMatch(
+      /HTML 태그\(<span style="color:red">\)를 빼세요/,
+    );
+    const body = goodBody("운전학원");
+    const marked = body.replace("가장 확실해요", "==가장 확실해요==");
+    expect(bodyChars(marked)).toBe(bodyChars(body));
+    expect(qualityIssues(draftOf(marked), gate())).toEqual([]);
   });
 
   it("매장 사진은 드라이빙존을 다루는 섹션에 1장까지만 둔다", () => {

@@ -15,7 +15,7 @@ import { createArticle, getArticle, type NewArticle } from "../src/articles/stor
 import { parseConfig } from "../src/config.ts";
 import { Database } from "../src/db/database.ts";
 import { renderExport, writeExportBundle } from "../src/export/bundle.ts";
-import { markdownToHtml, stripTitle, toCafeText } from "../src/export/render.ts";
+import { highlightToBold, markdownToHtml, stripTitle, toCafeText } from "../src/export/render.ts";
 import { LlmClient } from "../src/llm/client.ts";
 import { Pacer } from "../src/queue/pacer.ts";
 import { JobQueue } from "../src/queue/queue.ts";
@@ -110,6 +110,32 @@ describe("내보내기 형식", () => {
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toMatch(/href="javascript/);
+  });
+
+  it("색 강조(==문구==)는 채널 색 글씨로, 색이 없거나 잘못되면 굵게로 바꾼다", () => {
+    expect(markdownToHtml("시험 전 ==신분증== 확인", "#ff5500")).toContain(
+      '<span style="color:#ff5500;font-weight:700">신분증</span>',
+    );
+    expect(markdownToHtml("==**굵게** 안==", "#1474fa")).toContain(
+      '<span style="color:#1474fa;font-weight:700"><strong>굵게</strong> 안</span>',
+    );
+    expect(markdownToHtml("==신분증==")).toContain("<strong>신분증</strong>");
+    expect(markdownToHtml("==신분증==", 'red" onclick="x')).toContain("<strong>신분증</strong>");
+    // 짝이 없거나 공백으로 시작하면 강조가 아니다
+    expect(markdownToHtml("a == b")).not.toContain("<strong>");
+    expect(highlightToBold("꼭 ==신분증==을 챙기세요")).toBe("꼭 **신분증**을 챙기세요");
+    expect(toCafeText("꼭 ==신분증==을 챙기세요")).toBe("꼭 신분증을 챙기세요");
+  });
+
+  it("운전면허PLUS 내보내기는 색 강조를 굵게로, 블로그는 채널 색으로 바꾼다", () => {
+    const body = "# 제목\n\n꼭 ==신분증==을 챙기세요.";
+    const plus = renderExport({ ...article({ body }), id: 1 } as never);
+    expect(plus.primary.content).toBe("꼭 **신분증**을 챙기세요.");
+    const zone = renderExport({
+      ...article({ channelId: "dztraining-blog", sectionCode: "blog_training", body }),
+      id: 2,
+    } as never);
+    expect(zone.primary.content).toContain("color:#1474fa");
   });
 
   it("카페 원고는 Markdown 기호를 걷고 사진 위치를 표시한다", () => {

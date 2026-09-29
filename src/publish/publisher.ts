@@ -5,7 +5,7 @@ import { getArticle } from "../articles/store.ts";
 import { type BrandId, findChannel, findSection } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
-import { markdownToHtml, stripTitle } from "../export/render.ts";
+import { highlightToBold, markdownToHtml, stripTitle } from "../export/render.ts";
 import { IMAGES_DIR } from "../images/generator.ts";
 import { readEnvFile } from "../keywords/searchad.ts";
 import { getTopic } from "../topics/store.ts";
@@ -178,7 +178,7 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
       article,
       section,
       primaryKeyword: topic?.primaryKeyword ?? article.keywords[0] ?? article.title,
-      content: body,
+      content: highlightToBold(body),
       regional: channel.regional,
       thumbUpfileId,
     });
@@ -194,7 +194,11 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
   } else {
     const res = await api.put<{ id: number; created: boolean }>(
       `/v1/writer/articles/${encodeURIComponent(sourceKey)}`,
-      blogPayload({ article, contentHtml: markdownToHtml(body), thumbUpfileId }),
+      blogPayload({
+        article,
+        contentHtml: markdownToHtml(body, channel.highlightColor),
+        thumbUpfileId,
+      }),
     );
     externalId = String(res.id);
     const training = article.sectionCode === "blog_training";

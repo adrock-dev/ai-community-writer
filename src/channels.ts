@@ -62,6 +62,11 @@ export interface ChannelDef {
    * (섹션 코드 = board type), none = 원고만(카페).
    */
   autoPublish: "community" | "blog" | "none";
+  /**
+   * 색 강조(`==문구==`)의 글자색. 사이트 브랜드 색(web.* globals.css)을 쓴다.
+   * 빈 문자열이면 굵게로 바꾼다(운전면허PLUS는 Markdown 이라 색을 표현하지 않는다).
+   */
+  highlightColor: string;
   quality: ChannelQuality;
   sections: SectionDef[];
 }
@@ -76,6 +81,7 @@ export const CHANNELS = [
     focus: ["운전학원 찾기·비교·추천", "학원 연수", "운전면허 시험 정보"],
     regional: true,
     autoPublish: "community",
+    highlightColor: "",
     quality: {
       minChars: 1800,
       maxChars: 4200,
@@ -129,6 +135,8 @@ export const CHANNELS = [
     focus: ["운전면허 취득"],
     regional: false,
     autoPublish: "blog",
+    // web.drivingzone --color-main-orange
+    highlightColor: "#ff5500",
     quality: {
       minChars: 2200,
       maxChars: 5000,
@@ -148,6 +156,8 @@ export const CHANNELS = [
     focus: ["장롱면허", "운전 연수"],
     regional: false,
     autoPublish: "blog",
+    // web.dztraining --color-main-blue
+    highlightColor: "#1474fa",
     quality: {
       minChars: 2200,
       maxChars: 5000,
@@ -167,6 +177,8 @@ export const CHANNELS = [
     focus: ["운전면허 취득", "장롱면허", "운전 연수"],
     regional: false,
     autoPublish: "none",
+    // 서식 복사(HTML)용. 카페 텍스트 원고에서는 표시만 걷는다.
+    highlightColor: "#ff5500",
     quality: {
       minChars: 800,
       maxChars: 2200,
