@@ -5,7 +5,7 @@ import type { Database } from "./db/database.ts";
 import { PROJECT_ROOT } from "./paths.ts";
 
 // 작성 가이드(유의사항): 글 생성 시 반드시 지켜야 하는 운영 규칙과 사실.
-// 예) 드라이빙존 교육시간은 1일 1회 최대 1시간 30분 교육 가능
+// 예) 드라이빙존 요금은 부가세 미포함(별도) 가격이다
 //
 // 저장은 DB(guide_rules)이고 설정 화면(/settings/guides)에서 관리한다.
 // 적용 범위(scope)는 넓은 것부터 겹쳐 적용한다.

@@ -82,7 +82,7 @@ ${guideScopes().map((s) => {
   <form class="rule" method="post" action="/settings/guides">
     <input type="hidden" name="scope" value="${s.scope}">
     <input type="text" name="group" placeholder="묶음 (선택)" list="groups">
-    <textarea name="text" rows="2" required placeholder="예) 드라이빙존 교육시간은 1일 1회 최대 1시간 30분 교육 가능"></textarea>
+    <textarea name="text" rows="2" required placeholder="예) 드라이빙존 요금은 부가세 미포함(별도) 가격이다"></textarea>
     <span></span>
     <div class="actions"><button type="submit" class="primary">추가</button></div>
   </form>

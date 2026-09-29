@@ -80,13 +80,13 @@ describe("guide_rules", () => {
     ]);
   });
 
-  it("저장소 초기값: 드라이빙존 교육시간 규칙은 드라이빙존 채널에만 적용된다", () => {
+  it("저장소 초기값: 드라이빙존 요금 규칙은 드라이빙존 채널에만 적용된다", () => {
     const db = new Database(":memory:");
     importGuideFilesIfEmpty(db);
     const zone = loadGuideRules(db, "drivingzone-cafe").map((r) => r.text);
     const plus = loadGuideRules(db, "drivingplus-community").map((r) => r.text);
-    expect(zone.some((t) => t.includes("1시간 30분"))).toBe(true);
-    expect(plus.some((t) => t.includes("1시간 30분"))).toBe(false);
+    expect(zone.some((t) => t.includes("부가세 미포함"))).toBe(true);
+    expect(plus.some((t) => t.includes("부가세 미포함"))).toBe(false);
   });
 });
 
