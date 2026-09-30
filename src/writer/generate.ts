@@ -12,6 +12,7 @@ import {
   avoidList,
   findSimilar,
   fingerprint,
+  sameTopicArticles,
   saveFingerprint,
   similarityIssues,
 } from "../similarity/fingerprint.ts";
@@ -128,7 +129,11 @@ export async function generateArticle(
       channel.quality.minImages,
       warnings,
     );
-    const avoid = avoidList(db, channel.id, topic.articleType);
+    // 같은 주제로 다른 채널에 쓴 글을 먼저, 그다음 같은 유형의 최근 글을 피한다.
+    const avoid = [
+      ...sameTopicArticles(db, topic.topicKey, channel.id),
+      ...avoidList(db, channel.id, topic.articleType),
+    ].filter((a, i, all) => all.findIndex((b) => b.title === a.title) === i);
     // 모든 글에 같은 링크가 들어가지 않게 글마다 무작위로 링크 허용 여부를 정한다(재작성 중에는 유지).
     const links =
       channel.linkTargets?.length && (deps.random ?? Math.random)() < config.writer.linkChance

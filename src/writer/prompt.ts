@@ -138,6 +138,12 @@ export function composePrompt(input: PromptInput, dir = PROMPTS_DIR): ComposedPr
     `- 보조 키워드: ${topic.secondaryKeywords.join(", ") || "(없음)"}`,
     `- 지역: ${topic.region ? regionLabel(topic.region) : "지역 무관(전국)"}`,
     `- 글 유형: ${articleTypeLabel(topic.articleType)}`,
+    ...(topic.brief
+      ? [
+          `- 글 방향(운영자 지정): ${topic.brief.replace(/\s*\n\s*/g, " ")}`,
+          "  이 방향으로 쓰되, 숫자·조건은 유의사항과 근거 자료에 있는 것만 씁니다.",
+        ]
+      : []),
     `- 작성일: ${today}`,
   ].join("\n");
 

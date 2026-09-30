@@ -3,6 +3,10 @@ import type { Database, Params } from "../db/database.ts";
 export const TOPIC_STATUSES = ["candidate", "queued", "written", "skipped"] as const;
 export type TopicStatus = (typeof TOPIC_STATUSES)[number];
 
+/** collected: 키워드 수집 / copied: 다른 채널 주제에서 복사 / manual: 운영자 직접 추가 */
+export const TOPIC_ORIGINS = ["collected", "copied", "manual"] as const;
+export type TopicOrigin = (typeof TOPIC_ORIGINS)[number];
+
 export interface Topic {
   id: number;
   primaryKeyword: string;
@@ -17,6 +21,10 @@ export interface Topic {
   score: number;
   status: TopicStatus;
   note: string;
+  origin: TopicOrigin;
+  /** 운영자가 정한 글 방향. 비어 있으면 키워드와 글 유형만으로 쓴다. */
+  brief: string;
+  topicKey: string;
   updatedAt: string;
 }
 
@@ -34,6 +42,9 @@ const toTopic = (r: any): Topic => ({
   score: r.score,
   status: r.status,
   note: r.note,
+  origin: r.origin,
+  brief: r.brief,
+  topicKey: r.topic_key,
   updatedAt: r.updated_at,
 });
 

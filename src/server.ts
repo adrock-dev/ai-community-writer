@@ -18,6 +18,7 @@ import {
   listArticles,
 } from "./articles/store.ts";
 import { CHANNELS } from "./channels.ts";
+import { copyTopic } from "./topics/reuse.ts";
 import {
   getTopic,
   listTopics,
@@ -81,6 +82,23 @@ export function createApp(ctx: AppContext): Hono {
     if (topic.status === "queued") return c.json({ error: "이미 생성 대기 중입니다" }, 409);
     setTopicProgress(ctx.db, topic.id, "queued");
     return c.json({ jobId: ctx.queue.enqueue(GENERATE_KIND, { topicId: topic.id }) }, 202);
+  });
+
+  // 주제를 다른 채널·섹션에서 쓰도록 복사한다(이미 있으면 그 주제). 생성 예약은 따로 한다.
+  app.post("/api/topics/:id/copy", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as {
+      channelId?: string;
+      sectionCode?: string;
+    };
+    try {
+      const result = copyTopic(ctx.db, Number(c.req.param("id")), {
+        channelId: String(body.channelId ?? ""),
+        sectionCode: String(body.sectionCode ?? ""),
+      });
+      return c.json(result, result.created ? 201 : 200);
+    } catch (error) {
+      return c.json({ error: (error as Error).message }, 400);
+    }
   });
 
   app.get("/api/articles", (c) => {

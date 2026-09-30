@@ -74,6 +74,33 @@ export function scoreTopic(input: {
   return Math.round(volume * competition * trend * coverage * 100) / 100;
 }
 
+/**
+ * 점수 감점에 쓰는 기존 글 수(반려 제외).
+ *   similarArticles   같은 채널의 같은 유형·같은 지역 글
+ *   writtenElsewhere  같은 대표 키워드로 같은 브랜드의 다른 채널에 쓴 글.
+ *                     운전면허PLUS와 드라이빙존은 주제가 겹쳐도 따로 판단한다.
+ */
+export function writtenCounts(
+  db: Database,
+  t: { channelId: string; articleType: string; region: string; topicKey: string },
+): { similarArticles: number; writtenElsewhere: number } {
+  const similarArticles =
+    db.get<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM articles WHERE channel_id = ? AND article_type = ? AND region = ? AND status != 'rejected'",
+      [t.channelId, t.articleType, t.region],
+    )?.n ?? 0;
+  const siblings = sameBrandChannels(t.channelId);
+  const writtenElsewhere = siblings.length
+    ? (db.get<{ n: number }>(
+        `SELECT COUNT(*) AS n FROM articles a JOIN topics t ON t.id = a.topic_id
+         WHERE t.topic_key = ? AND a.channel_id IN (${siblings.map(() => "?").join(", ")})
+           AND a.status != 'rejected'`,
+        [t.topicKey, ...siblings],
+      )?.n ?? 0)
+    : 0;
+  return { similarArticles, writtenElsewhere };
+}
+
 /** 같은 브랜드의 다른 채널 id. */
 export function sameBrandChannels(channelId: string): string[] {
   const brand = findChannel(channelId)?.brand;
@@ -203,29 +230,19 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
       )!;
       for (const c of clusters) {
         const articleType = c.head.intent;
-        const similarArticles =
-          db.get<{ n: number }>(
-            "SELECT COUNT(*) AS n FROM articles WHERE channel_id = ? AND article_type = ? AND region = ? AND status != 'rejected'",
-            [section.channelId, articleType, c.region],
-          )?.n ?? 0;
         const topicKey = compactKeyword(c.head.keyword);
-        // 같은 브랜드의 다른 채널만 본다. 운전면허PLUS와 드라이빙존은 주제가 겹쳐도 따로 판단한다.
-        const siblings = sameBrandChannels(section.channelId);
-        const writtenElsewhere = siblings.length
-          ? (db.get<{ n: number }>(
-              `SELECT COUNT(*) AS n FROM articles a JOIN topics t ON t.id = a.topic_id
-               WHERE t.topic_key = ? AND a.channel_id IN (${siblings.map(() => "?").join(", ")})
-                 AND a.status != 'rejected'`,
-              [topicKey, ...siblings],
-            )?.n ?? 0)
-          : 0;
+        const counts = writtenCounts(db, {
+          channelId: section.channelId,
+          articleType,
+          region: c.region,
+          topicKey,
+        });
         const trend = trends[c.head.keyword];
         const score = scoreTopic({
           volume: c.volume,
           competition: c.head.competition,
           trend,
-          similarArticles,
-          writtenElsewhere,
+          ...counts,
         });
         const secondary = secondaryKeywords(c);
         db.run(
@@ -234,7 +251,8 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
            VALUES (?, ?, ?, ?, ?, ?, 'candidate', ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(channel_id, section_code, topic_key) DO UPDATE SET
              primary_keyword = excluded.primary_keyword, secondary_keywords = excluded.secondary_keywords,
-             article_type = excluded.article_type, score = excluded.score, updated_at = excluded.updated_at,
+             article_type = CASE WHEN topics.origin = 'manual' THEN topics.article_type ELSE excluded.article_type END,
+             score = excluded.score, updated_at = excluded.updated_at,
              region = excluded.region, volume = excluded.volume, trend = excluded.trend, competition = excluded.competition`,
           [
             c.head.keyword,

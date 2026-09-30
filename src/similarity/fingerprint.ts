@@ -148,6 +148,32 @@ export function avoidList(db: Database, channelId: string, articleType: string):
   }));
 }
 
+/**
+ * 같은 주제(대표 키워드)로 다른 채널에 쓴 글. 한 주제를 여러 채널에서 다시 쓸 때
+ * 유형이 달라도 겹치지 않게 피할 패턴 맨 앞에 둔다.
+ */
+export function sameTopicArticles(
+  db: Database,
+  topicKey: string,
+  channelId: string,
+  limit = 4,
+): AvoidItem[] {
+  if (!topicKey) return [];
+  const ids = new Set(
+    db
+      .all<{ id: number }>(
+        `SELECT a.id FROM articles a JOIN topics t ON t.id = a.topic_id
+         WHERE t.topic_key = ? AND a.channel_id != ? AND a.status != 'rejected'`,
+        [topicKey, channelId],
+      )
+      .map((r) => r.id),
+  );
+  return storedArticles(db)
+    .filter((a) => ids.has(a.id))
+    .slice(0, limit)
+    .map((a) => ({ title: a.title, outline: a.fp.outline, intro: a.fp.intro }));
+}
+
 export interface SimilarHit {
   articleId: number;
   channelId: string;

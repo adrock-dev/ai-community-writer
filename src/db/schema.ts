@@ -174,4 +174,11 @@ export const MIGRATIONS: readonly string[] = [
   ALTER TABLE articles ADD COLUMN external_id TEXT NOT NULL DEFAULT '';
   ALTER TABLE articles ADD COLUMN publish_error TEXT NOT NULL DEFAULT '';
   `,
+  // v6: 주제를 다른 채널로 옮겨 쓰거나 운영자가 직접 추가한다
+  `
+  -- collected(키워드 수집) | copied(다른 채널 주제에서 복사) | manual(운영자 직접 추가)
+  ALTER TABLE topics ADD COLUMN origin TEXT NOT NULL DEFAULT 'collected';
+  -- 운영자가 정한 글 방향. 프롬프트의 "이번 글"에 들어간다.
+  ALTER TABLE topics ADD COLUMN brief TEXT NOT NULL DEFAULT '';
+  `,
 ];

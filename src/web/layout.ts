@@ -161,6 +161,8 @@ label.check { display: inline-flex; gap: 6px; align-items: center; white-space: 
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .field { margin-bottom: 10px; }
 .field > label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 2px; }
+.copyto select { width: auto; max-width: 180px; padding: 2px 4px; font-size: 13px; }
+.targets { display: flex; gap: 4px 16px; flex-wrap: wrap; }
 .copyrow { display: flex; gap: 6px; align-items: center; }
 .copyrow input { flex: 1; }
 pre.preview { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
