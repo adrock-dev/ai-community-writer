@@ -89,7 +89,9 @@ export function mountTopics(app: Hono, ctx: AppContext): void {
   app.get("/topics", (c) => {
     const channelId = c.req.query("channel") || CHANNELS[0].id;
     const channel = findChannel(channelId) ?? CHANNELS[0];
-    const sectionCode = c.req.query("section") || "";
+    // 채널을 바꾸면 이전 채널의 섹션 값이 같이 올 수 있다. 이 채널에 없는 섹션이면 모든 섹션으로 본다.
+    const sectionQ = c.req.query("section") || "";
+    const sectionCode = channel.sections.some((s) => s.code === sectionQ) ? sectionQ : "";
     const statusQ = c.req.query("status") ?? "candidate";
     const status = TOPIC_STATUSES.includes(statusQ as TopicStatus)
       ? (statusQ as TopicStatus)
@@ -113,7 +115,7 @@ ${manualForm()}
 <section class="card">
   <header>
     <form class="filters" method="get" action="/topics">
-      <select name="channel" onchange="this.form.submit()">
+      <select name="channel" onchange="this.form.section.value = ''; this.form.submit()">
         ${CHANNELS.map((ch) => html`<option value="${ch.id}" ${ch.id === channel.id ? "selected" : ""}>${ch.label}</option>`)}
       </select>
       <select name="section" onchange="this.form.submit()">

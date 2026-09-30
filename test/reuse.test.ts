@@ -319,6 +319,20 @@ describe("주제 화면", () => {
     expect(page).toContain('action="/topics/1/copy"');
   });
 
+  it("채널을 바꿀 때 이전 채널의 섹션 값이 와도 새 채널의 주제를 보여 준다", async () => {
+    const c = ctx();
+    const app = createApp(c);
+    insertTopic(c.db, {
+      keyword: "운전면허학원비용",
+      channel: "drivingplus-community",
+      section: "drive_story",
+    });
+    const page = await (
+      await app.request("/topics?channel=drivingplus-community&section=blog&status=")
+    ).text();
+    expect(page).toContain("운전면허학원비용");
+  });
+
   it("다른 채널로 예약하면 대상 채널에 주제를 만들고, 막힌 복사는 오류로 돌려보낸다", async () => {
     const c = ctx();
     const app = createApp(c);
