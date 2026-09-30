@@ -18,6 +18,17 @@ import { PROJECT_ROOT } from "./paths.ts";
 
 export const GUIDES_DIR = join(PROJECT_ROOT, "guides");
 
+/** 도로교통공단 안내에서 옮긴 유의사항 묶음의 이름 앞부분 (예: "공단 안내 · 학과시험"). */
+export const PUBLIC_GUIDE_PREFIX = "공단 안내";
+
+/** 공단 안내 묶음의 규칙 글. 품질 게이트가 공공 요금(수수료·과태료) 근거로 쓴다. */
+export function publicGuideText(rules: readonly { group: string; text: string }[]): string {
+  return rules
+    .filter((r) => r.group.startsWith(PUBLIC_GUIDE_PREFIX))
+    .map((r) => r.text)
+    .join("\n");
+}
+
 export interface GuideRule {
   id: number;
   scope: string;

@@ -12,6 +12,11 @@ export interface GateContext {
   articleType: string;
   /** 근거 자료 + 유의사항. 본문 숫자(금액·비율)는 여기에 있어야 한다. */
   corpus: string;
+  /**
+   * 공공 요금 근거: 유의사항의 "공단 안내" 묶음(공단 수수료·과태료 등). 여기 있는 금액만 쓴
+   * 수수료·과태료 문단은 부가세 표기를 요구하지 않는다(부가세 여부가 안내되지 않은 공공 요금).
+   */
+  publicFees?: string;
   /** 비교·추천 대상의 실제 후보 이름 */
   candidates: string[];
   /**
@@ -74,11 +79,31 @@ export function unreadableAmounts(text: string): string[] {
     .map((m) => m[0].trim());
 }
 
+const PUBLIC_FEE_WORDS = /수수료|과태료|신체검사/;
+
+/**
+ * 공단 수수료·과태료만 쓴 글인지: 금액이 모두 공공 요금 근거에 있고, 수수료·과태료·신체검사라는
+ * 말이 함께 있다(표는 바로 앞뒤 문단까지 본다). 업체 요금이 섞이면 부가세 표기를 그대로 요구한다.
+ */
+export function isPublicFeeText(
+  text: string,
+  publicFees: string,
+  context: (string | undefined)[] = [],
+): boolean {
+  const amounts = extractAmounts(text);
+  if (!amounts.length || !publicFees) return false;
+  const known = new Set(extractAmounts(publicFees).map((a) => a.value));
+  return (
+    amounts.every((a) => known.has(a.value)) &&
+    [text, ...context].some((t) => PUBLIC_FEE_WORDS.test(t ?? ""))
+  );
+}
+
 /**
  * 금액이 나온 문단·표에 부가세 포함 여부가 적혀 있는지. 표는 바로 앞뒤 문단(표 설명)까지 본다.
- * 표시가 없는 블록의 앞부분을 돌려준다.
+ * 공단 수수료·과태료만 쓴 블록(`publicFees`)은 제외한다. 표시가 없는 블록의 앞부분을 돌려준다.
  */
-export function amountsWithoutVat(markdown: string): string[] {
+export function amountsWithoutVat(markdown: string, publicFees = ""): string[] {
   const blocks = markdown.split(/\n\s*\n/).map((b) => b.trim());
   const hasVat = (s: string | undefined) => /부가세|VAT/i.test(s ?? "");
   const missing: string[] = [];
@@ -86,6 +111,8 @@ export function amountsWithoutVat(markdown: string): string[] {
     if (!extractAmounts(block).length || hasVat(block)) return;
     const isTable = block.startsWith("|");
     if (isTable && (hasVat(blocks[i - 1]) || hasVat(blocks[i + 1]))) return;
+    const around = isTable ? [blocks[i - 1], blocks[i + 1]] : [];
+    if (isPublicFeeText(block, publicFees, around)) return;
     missing.push(block.replace(/\s+/g, " ").slice(0, 40));
   });
   return missing;
@@ -299,13 +326,17 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
       `금액은 "25만원", "62만 7천원"처럼 만 단위로 쓰세요: ${[...new Set(unreadable)].slice(0, 5).join(", ")}`,
     );
   }
-  const noVat = amountsWithoutVat(body);
+  const noVat = amountsWithoutVat(body, ctx.publicFees);
   if (noVat.length) {
     issues.push(
-      `금액이 나온 문장·표에 부가세 포함·별도를 함께 적으세요: "${noVat.slice(0, 3).join('", "')}"`,
+      `금액이 나온 문장·표에 부가세 포함·별도를 함께 적으세요(도로교통공단 수수료·과태료는 제외): "${noVat.slice(0, 3).join('", "')}"`,
     );
   }
-  if (extractAmounts(draft.summary).length && !/부가세|VAT/i.test(draft.summary)) {
+  if (
+    extractAmounts(draft.summary).length &&
+    !/부가세|VAT/i.test(draft.summary) &&
+    !isPublicFeeText(draft.summary, ctx.publicFees ?? "")
+  ) {
     issues.push("검색 결과 설명에 금액을 쓰려면 부가세 포함·별도도 함께 적거나 금액을 빼세요");
   }
 

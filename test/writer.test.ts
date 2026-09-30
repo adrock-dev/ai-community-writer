@@ -210,6 +210,23 @@ describe("qualityIssues", () => {
     expect(qualityIssues(draftOf(ok), gate())).toEqual([]);
   });
 
+  it("도로교통공단 수수료·과태료만 쓴 문단·표는 부가세 표기를 요구하지 않는다", () => {
+    const publicFees =
+      "학과시험 수수료는 1만원이다. 도로주행시험 수수료는 3만원이다. 제1종 적성검사 과태료 3만원";
+    const ctx = gate({ corpus: `공시 수강료 71만 2천원 (부가세 별도)\n${publicFees}`, publicFees });
+    const fees = `${goodBody("운전학원")}\n\n학과시험 수수료는 1만원입니다.\n\n| 시험 | 수수료 |\n| --- | --- |\n| 도로주행 | 3만원 |`;
+    expect(qualityIssues(draftOf(fees), ctx)).toEqual([]);
+    // 업체 요금이 섞이거나, 공공 요금과 같은 금액이라도 수수료·과태료 문맥이 아니면 그대로 잡는다
+    const mixed = `${goodBody("운전학원")}\n\n학원 수강료 71만 2천원에 학과시험 수수료 1만원이 더 듭니다.`;
+    expect(qualityIssues(draftOf(mixed), ctx).join("\n")).toMatch(/부가세 포함·별도/);
+    const price = `${goodBody("운전학원")}\n\n체험권은 3만원입니다.`;
+    expect(qualityIssues(draftOf(price), ctx).join("\n")).toMatch(/부가세 포함·별도/);
+    // 공단 안내가 없으면 예외도 없다
+    expect(qualityIssues(draftOf(fees), gate({ corpus: ctx.corpus })).join("\n")).toMatch(
+      /부가세 포함·별도/,
+    );
+  });
+
   it("본문 링크 주소는 빼게 하고 사이트 이름만 허용한다 (이미지 주소는 제외)", () => {
     const withLink = `${goodBody("운전학원")}\n\n자세한 내용은 [학과시험 안내](https://www.safedriving.or.kr/dtGuide/x.do)와 https://example.com/a 를 보세요.`;
     const issues = qualityIssues(draftOf(withLink), gate()).join("\n");

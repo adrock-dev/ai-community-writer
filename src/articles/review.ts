@@ -1,6 +1,6 @@
 import { findChannel } from "../channels.ts";
 import type { Database } from "../db/database.ts";
-import { loadGuideRules } from "../guides.ts";
+import { loadGuideRules, publicGuideText } from "../guides.ts";
 import { qualityIssues } from "../quality/gate.ts";
 import {
   findSimilar,
@@ -60,6 +60,7 @@ export function recheckArticle(db: Database, article: Article): string[] {
       primaryKeyword: topic?.primaryKeyword ?? article.keywords[0] ?? "",
       articleType: article.articleType,
       corpus: `${article.facts}\n${guides.map((g) => g.text).join("\n")}`,
+      publicFees: publicGuideText(guides),
       candidates: [],
       // 검수 중 고친 글도 채널의 자사 링크는 허용한다(생성 때 넣었거나 검수자가 넣은 것).
       allowedLinks: channel.linkTargets?.map((l) => l.url) ?? [],

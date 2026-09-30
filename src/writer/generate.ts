@@ -2,7 +2,7 @@ import { createArticle } from "../articles/store.ts";
 import { findChannel, findSection } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
-import { loadGuideRules, renderGuideRules } from "../guides.ts";
+import { loadGuideRules, publicGuideText, renderGuideRules } from "../guides.ts";
 import type { ImageGenerator } from "../images/generator.ts";
 import { scenesFor } from "../images/scenes.ts";
 import type { LlmResult } from "../llm/client.ts";
@@ -188,6 +188,7 @@ export async function generateArticle(
             primaryKeyword: topic.primaryKeyword,
             articleType: topic.articleType,
             corpus,
+            publicFees: publicGuideText(guides),
             candidates: facts.candidates,
             imageIds: images.map((i) => i.id),
             allowedLinks: links.map((l) => l.url),

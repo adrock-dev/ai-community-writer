@@ -10,12 +10,14 @@ import {
   addGuideRule,
   deleteGuideRule,
   exportGuideFiles,
+  GUIDES_DIR,
   guideFilesInSync,
   importGuideFiles,
   importGuideFilesIfEmpty,
   listGuideRules,
   loadGuideRules,
   parseGuide,
+  publicGuideText,
   renderGuideRules,
   updateGuideRule,
 } from "../src/guides.ts";
@@ -194,5 +196,24 @@ describe("가이드 파일 동기화", () => {
     res = await app.request("/settings/guides/import", { method: "POST" });
     expect(res.headers.get("location")).toContain("done=imported");
     expect(listGuideRules(db)).toHaveLength(5);
+  });
+});
+
+describe("공단 안내 묶음", () => {
+  it("공단 안내 묶음의 규칙만 공공 요금 근거로 모은다", () => {
+    const text = publicGuideText([
+      { group: "공단 안내 · 학과시험", text: "학과시험 수수료는 1만원이다" },
+      { group: "요금", text: "드라이빙존 요금은 부가세 별도다" },
+    ]);
+    expect(text).toBe("학과시험 수수료는 1만원이다");
+  });
+
+  it("guides/common.md 의 공단 안내 수수료가 만 단위로 적혀 있다", () => {
+    const rules = parseGuide(readFileSync(join(GUIDES_DIR, "common.md"), "utf8"));
+    const text = publicGuideText(rules);
+    for (const fee of ["1만원", "2만 5천원", "3만원", "4천원", "1만 6천원", "7천원"]) {
+      expect(text).toContain(fee);
+    }
+    expect(text).not.toMatch(/\d{1,3},\d{3}원/);
   });
 });
