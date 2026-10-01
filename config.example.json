@@ -30,7 +30,8 @@
     "linkChance": 0.3
   },
   "images": {
-    "style": "photo"
+    "style": "photo",
+    "styleByChannel": {}
   },
   "worker": {
     "pollSec": 5

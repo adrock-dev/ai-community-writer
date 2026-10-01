@@ -184,6 +184,7 @@ copy config.example.json config.json
 | `pacing.dailyLimit` | `10` | 하루 최대 생성 편수 |
 | `writer.linkChance` | `0.3` | 자사 사이트 링크(요금·지점 안내 등, 채널 `linkTargets`)를 넣을 수 있는 글의 비율. 글마다 무작위로 정하며 0이면 넣지 않음 |
 | `images.style` | `photo` | 생성 삽화 화풍. `photo`(사진풍) / `illustration`(일러스트) / `mixed`(글마다 둘 중 무작위, 한 글 안에서는 같은 화풍). 학원·지점 실제 사진에는 영향 없음 |
+| `images.styleByChannel` | `{}` | 채널별 삽화 화풍(채널 id → `photo` / `illustration` / `mixed`). 적지 않은 채널은 `images.style`. 예: `{ "drivingzone-blog": "illustration" }` |
 | `worker.pollSec` | `5` | 작업 큐 확인 주기(초) |
 | `keywords.minMonthlyVolume` | `30` | 30일 검색 수가 이보다 적은 키워드는 버림 |
 | `keywords.maxTopicsPerSection` | `50` | 섹션별 저장할 주제 후보 수 |

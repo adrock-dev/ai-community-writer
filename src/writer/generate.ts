@@ -1,6 +1,6 @@
 import { createArticle } from "../articles/store.ts";
 import { findChannel, findSection } from "../channels.ts";
-import type { AppConfig } from "../config.ts";
+import { type AppConfig, imageStyleFor } from "../config.ts";
 import type { Database } from "../db/database.ts";
 import { loadGuideRules, publicGuideText, renderGuideRules } from "../guides.ts";
 import { type ImageGenerator, pickImageStyle } from "../images/generator.ts";
@@ -71,8 +71,11 @@ async function prepareImages(
   const need = min - images.filter((i) => !i.sectionMustMention).length;
   if (need <= 0 || !deps.images) return images;
   const stamp = (deps.now ?? new Date()).toISOString().replace(/\D/g, "").slice(0, 14);
-  // 한 글 안의 삽화는 화풍을 맞춘다
-  const style = pickImageStyle(deps.config.images.style, deps.random ?? Math.random);
+  // 화풍은 채널 설정을 따르고, 한 글 안의 삽화는 화풍을 맞춘다
+  const style = pickImageStyle(
+    imageStyleFor(deps.config, topic.channelId),
+    deps.random ?? Math.random,
+  );
   for (const [i, scene] of scenesFor(topic.articleType, need).entries()) {
     try {
       deps.log?.(`  삽화 생성 ${i + 1}/${need} (${style}): ${scene}`);

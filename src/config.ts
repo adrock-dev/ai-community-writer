@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
+import { CHANNELS } from "./channels.ts";
 import { resolvePath } from "./paths.ts";
 
 // 모든 항목에 기본값이 있어 config.json 없이도 기동된다. 바꿀 값만 config.json에 적는다.
@@ -78,8 +79,21 @@ const configSchema = z.object({
     .object({
       /** 생성 삽화 화풍. 실제 사진(학원·지점)에는 영향이 없다. */
       style: z.enum(IMAGE_STYLES).default("photo"),
+      /** 채널별 화풍(채널 id → 화풍). 적지 않은 채널은 style 을 쓴다. */
+      styleByChannel: z.record(z.string(), z.enum(IMAGE_STYLES)).default({}),
     })
-    .prefault({}),
+    .prefault({})
+    .superRefine((images, ctx) => {
+      const known = new Set<string>(CHANNELS.map((c) => c.id));
+      for (const id of Object.keys(images.styleByChannel)) {
+        if (!known.has(id))
+          ctx.addIssue({
+            code: "custom",
+            path: ["styleByChannel", id],
+            message: `알 수 없는 채널입니다 (가능한 값: ${[...known].join(", ")})`,
+          });
+      }
+    }),
   worker: z
     .object({
       /** 작업 큐 확인 주기(초). */
@@ -156,6 +170,11 @@ const configSchema = z.object({
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
+
+/** 채널에 적용할 삽화 화풍. 채널별 값이 없으면 공통 값을 쓴다. */
+export function imageStyleFor(config: AppConfig, channelId: string): ImageStyleSetting {
+  return config.images.styleByChannel[channelId] ?? config.images.style;
+}
 
 export const DEFAULT_CONFIG_PATH = "config.json";
 

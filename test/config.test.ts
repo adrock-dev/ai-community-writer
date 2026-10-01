@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseConfig } from "../src/config.ts";
+import { imageStyleFor, parseConfig } from "../src/config.ts";
 import { resolvePath } from "../src/paths.ts";
 
 describe("parseConfig", () => {
@@ -19,6 +19,21 @@ describe("parseConfig", () => {
     expect(config.llm.timeoutSec).toBe(600);
     expect(config.pacing.dailyLimit).toBe(3);
     expect(config.pacing.minIntervalSec).toBe(300);
+  });
+
+  it("삽화 화풍은 채널별 값이 있으면 그것을, 없으면 공통 값을 쓴다", () => {
+    const config = parseConfig({
+      images: { style: "mixed", styleByChannel: { "drivingzone-blog": "illustration" } },
+    });
+    expect(imageStyleFor(config, "drivingzone-blog")).toBe("illustration");
+    expect(imageStyleFor(config, "drivingzone-cafe")).toBe("mixed");
+    expect(imageStyleFor(parseConfig({}), "drivingzone-blog")).toBe("photo");
+    expect(() => parseConfig({ images: { styleByChannel: { "no-such": "photo" } } })).toThrow(
+      /images\.styleByChannel\.no-such: 알 수 없는 채널/,
+    );
+    expect(() =>
+      parseConfig({ images: { styleByChannel: { "drivingzone-blog": "anime" } } }),
+    ).toThrow(/styleByChannel/);
   });
 
   it("잘못된 값은 경로가 담긴 오류를 낸다", () => {

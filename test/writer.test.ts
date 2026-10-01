@@ -705,6 +705,24 @@ describe("generateArticle", () => {
       topicId,
     );
     expect(styles).toEqual(["illustration", "illustration"]);
+
+    // 채널별 값이 공통 값보다 우선한다 (주제 채널: drivingplus-community)
+    styles.length = 0;
+    const byChannel = parseConfig({
+      images: { style: "photo", styleByChannel: { "drivingplus-community": "illustration" } },
+    });
+    await generateArticle(
+      {
+        db,
+        config: byChannel,
+        llm,
+        facts: { ...facts, images: [] },
+        images,
+        factCheck: false,
+      },
+      topicId,
+    );
+    expect(styles).toEqual(["illustration", "illustration"]);
   });
 
   it("LLM 한도 대기는 주제를 대기 상태로 두고, 다른 오류는 후보로 되돌린다", async () => {
