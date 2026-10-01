@@ -27,6 +27,10 @@ export type SourceProfile = keyof typeof SOURCE_PROFILES;
 export const LLM_PROVIDERS = ["codex", "claude"] as const;
 export type LlmProvider = (typeof LLM_PROVIDERS)[number];
 
+/** 생성 삽화 화풍. mixed 는 글마다 사진풍·일러스트 중 하나를 무작위로 고른다(한 글 안에서는 같은 화풍). */
+export const IMAGE_STYLES = ["photo", "illustration", "mixed"] as const;
+export type ImageStyleSetting = (typeof IMAGE_STYLES)[number];
+
 const configSchema = z.object({
   server: z
     .object({
@@ -68,6 +72,12 @@ const configSchema = z.object({
        * 들어가지 않게 글마다 무작위로 정한다. 0이면 넣지 않는다.
        */
       linkChance: z.number().min(0).max(1).default(0.3),
+    })
+    .prefault({}),
+  images: z
+    .object({
+      /** 생성 삽화 화풍. 실제 사진(학원·지점)에는 영향이 없다. */
+      style: z.enum(IMAGE_STYLES).default("photo"),
     })
     .prefault({}),
   worker: z

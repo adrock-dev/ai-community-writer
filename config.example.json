@@ -29,6 +29,9 @@
   "writer": {
     "linkChance": 0.3
   },
+  "images": {
+    "style": "photo"
+  },
   "worker": {
     "pollSec": 5
   },

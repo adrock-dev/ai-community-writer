@@ -183,6 +183,7 @@ copy config.example.json config.json
 | `pacing.minIntervalSec` / `maxIntervalSec` | `300` / `900` | 생성 사이 대기(무작위) |
 | `pacing.dailyLimit` | `10` | 하루 최대 생성 편수 |
 | `writer.linkChance` | `0.3` | 자사 사이트 링크(요금·지점 안내 등, 채널 `linkTargets`)를 넣을 수 있는 글의 비율. 글마다 무작위로 정하며 0이면 넣지 않음 |
+| `images.style` | `photo` | 생성 삽화 화풍. `photo`(사진풍) / `illustration`(일러스트) / `mixed`(글마다 둘 중 무작위, 한 글 안에서는 같은 화풍). 학원·지점 실제 사진에는 영향 없음 |
 | `worker.pollSec` | `5` | 작업 큐 확인 주기(초) |
 | `keywords.minMonthlyVolume` | `30` | 30일 검색 수가 이보다 적은 키워드는 버림 |
 | `keywords.maxTopicsPerSection` | `50` | 섹션별 저장할 주제 후보 수 |
@@ -272,7 +273,7 @@ npm run generate -- --topic=161 --dry                      # LLM 호출 없이 �
 
 - **사실만 씁니다.** 특히 학원·실내운전연습장에 대한 서술은 근거 자료(학원·지점 데이터)와 유의사항에 있는 것만 씁니다. 기계 검사를 통과한 원고는 LLM이 한 번 더 **사실 검증**을 해서 근거 없는 문장을 찾아 고쳐 쓰게 합니다.
 - **금액은 "25만원", "62만 7천원"** 처럼 만 단위로 쓰고, 금액이 나오는 문장·표에는 **부가세 포함·별도**를 반드시 적습니다. 드라이빙존 요금은 부가세 별도입니다(`src/sources/drivingzone.ts`의 `DRIVINGZONE_PRICE_VAT_INCLUDED`). 유의사항 "공단 안내" 묶음에 있는 도로교통공단 수수료·과태료만 쓴 문장·표는 부가세 표기 없이 통과합니다.
-- **이미지는 2장 이상** 넣습니다. 학원·지점의 실제 사진을 먼저 쓰고, 모자라면 Codex CLI 이미지 생성으로 삽화를 만듭니다(`data/images/`, 서버 `/images/<파일>`). 삽화에는 글자·로고·얼굴을 넣지 않고 실제 장소처럼 소개하지 않습니다.
+- **이미지는 2장 이상** 넣습니다. 학원·지점의 실제 사진을 먼저 쓰고, 모자라면 Codex CLI 이미지 생성으로 삽화를 만듭니다(`data/images/`, 서버 `/images/<파일>`, 화풍은 `images.style`). 삽화에는 글자·로고·얼굴을 넣지 않고 실제 장소처럼 소개하지 않습니다.
 
 - **검수 대기(review)**: 품질·유사도 검사를 통과한 글
 - **초안(draft)**: 3번 고쳐 써도 문제가 남은 글. 남은 문제는 글에 함께 저장됩니다(`/api/articles/<번호>`의 `qualityIssues`)

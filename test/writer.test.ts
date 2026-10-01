@@ -7,6 +7,7 @@ import { getArticle } from "../src/articles/store.ts";
 import { findChannel, findSection } from "../src/channels.ts";
 import { parseConfig } from "../src/config.ts";
 import { Database } from "../src/db/database.ts";
+import { type ImageStyle, imagePrompt, pickImageStyle } from "../src/images/generator.ts";
 import { LlmUnavailableError } from "../src/llm/client.ts";
 import { bodyChars, extractAmounts, qualityIssues } from "../src/quality/gate.ts";
 import { JobQueue } from "../src/queue/queue.ts";
@@ -615,9 +616,11 @@ describe("generateArticle", () => {
   it("실제 사진이 모자라면 삽화를 만들고, 만들지 못하면 draft로 남긴다", async () => {
     const { db, topicId, config } = setup();
     const scenes: string[] = [];
+    const styles: string[] = [];
     const images = {
-      generate: async (scene: string, base: string) => {
+      generate: async (scene: string, base: string, style: ImageStyle) => {
         scenes.push(scene);
+        styles.push(style);
         return `${base}.png`;
       },
     };
@@ -635,6 +638,8 @@ describe("generateArticle", () => {
       topicId,
     );
     expect(scenes).toHaveLength(1);
+    // 기본 화풍은 사진풍
+    expect(styles).toEqual(["photo"]);
     expect(ok.status).toBe("review");
     expect(getArticle(db, ok.articleId)?.images[1]).toMatchObject({ kind: "generated" });
     expect(getArticle(db, ok.articleId)?.images[1]?.url).toMatch(/^\/images\/t\d+-.+-1\.png$/);
@@ -659,6 +664,47 @@ describe("generateArticle", () => {
     );
     expect(bad.status).toBe("draft");
     expect(bad.issues.join("\n")).toMatch(/이미지가 1장뿐/);
+  });
+
+  it("삽화 화풍은 설정을 따르고, mixed 는 글마다 하나를 골라 한 글 안에서 맞춘다", async () => {
+    expect(imagePrompt("도로", "image.png", "illustration")).toMatch(/화풍: [^\n]*일러스트/);
+    expect(imagePrompt("도로", "image.png", "photo")).toMatch(/화풍: [^\n]*사진풍/);
+    // 화풍과 상관없이 글자·얼굴 금지 조건은 남는다
+    expect(imagePrompt("도로", "image.png", "illustration")).toMatch(/조건: 글자·숫자·로고/);
+    expect(pickImageStyle("illustration", () => 0)).toBe("illustration");
+    expect(pickImageStyle("mixed", () => 0.1)).toBe("photo");
+    expect(pickImageStyle("mixed", () => 0.9)).toBe("illustration");
+
+    const { db, topicId } = setup();
+    const config = parseConfig({ images: { style: "mixed" } });
+    const styles: string[] = [];
+    const images = {
+      generate: async (_scene: string, base: string, style: ImageStyle) => {
+        styles.push(style);
+        return `${base}.png`;
+      },
+    };
+    const llm = {
+      generate: async () => ({
+        text: output(goodBody("운전학원")),
+        provider: "codex" as const,
+        model: "m",
+        durationMs: 1,
+      }),
+    };
+    await generateArticle(
+      {
+        db,
+        config,
+        llm,
+        facts: { ...facts, images: [] },
+        images,
+        factCheck: false,
+        random: () => 0.9,
+      },
+      topicId,
+    );
+    expect(styles).toEqual(["illustration", "illustration"]);
   });
 
   it("LLM 한도 대기는 주제를 대기 상태로 두고, 다른 오류는 후보로 되돌린다", async () => {
