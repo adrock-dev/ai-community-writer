@@ -147,6 +147,7 @@ claude update                        # Claude 는 자체 업데이트 명령이 
 | 내보내기 (글 상세) | 승인한 글을 채널 형식으로 복사(필드별 복사, 본문 복사, 서식 포함 복사), **내보내기 폴더 만들기**(이미지 포함), 게시 URL 입력 → 발행 완료 |
 | 작업 `/jobs` | 작업 큐 상태, 대기 사유(생성 간격·사용량 한도), 오류, 취소 |
 | 유의사항 설정 `/settings/guides` | 작성 가이드 관리 |
+| 삽화 설정 `/settings/images` | 생성 삽화 화풍(사진풍·일러스트·섞어서)을 공통·채널별로 선택. 저장하면 재시작 없이 다음 글부터 적용, config.json 값보다 우선 |
 
 글 상태: 검수 대기(review) / 초안(draft, 문제 남음) → **승인** → 내보냄 → 발행. 어느 단계에서든 반려할 수 있고, 승인한 글을 고치면 다시 검수 대기가 됩니다.
 초안은 "남은 문제를 확인했습니다"에 체크해야 승인됩니다.
@@ -183,7 +184,7 @@ copy config.example.json config.json
 | `pacing.minIntervalSec` / `maxIntervalSec` | `300` / `900` | 생성 사이 대기(무작위) |
 | `pacing.dailyLimit` | `10` | 하루 최대 생성 편수 |
 | `writer.linkChance` | `0.3` | 자사 사이트 링크(요금·지점 안내 등, 채널 `linkTargets`)를 넣을 수 있는 글의 비율. 글마다 무작위로 정하며 0이면 넣지 않음 |
-| `images.style` | `photo` | 생성 삽화 화풍. `photo`(사진풍) / `illustration`(일러스트) / `mixed`(글마다 둘 중 무작위, 한 글 안에서는 같은 화풍). 학원·지점 실제 사진에는 영향 없음 |
+| `images.style` | `photo` | 생성 삽화 화풍(관리 화면 `/settings/images`에서 저장하면 그 값이 우선). `photo`(사진풍) / `illustration`(일러스트) / `mixed`(글마다 둘 중 무작위, 한 글 안에서는 같은 화풍). 학원·지점 실제 사진에는 영향 없음 |
 | `images.styleByChannel` | `{}` | 채널별 삽화 화풍(채널 id → `photo` / `illustration` / `mixed`). 적지 않은 채널은 `images.style`. 예: `{ "drivingzone-blog": "illustration" }` |
 | `worker.pollSec` | `5` | 작업 큐 확인 주기(초) |
 | `keywords.minMonthlyVolume` | `30` | 30일 검색 수가 이보다 적은 키워드는 버림 |

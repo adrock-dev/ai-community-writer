@@ -30,6 +30,7 @@ import {
 import { mountArticles } from "./web/articles.ts";
 import { mountDashboard } from "./web/dashboard.ts";
 import { mountGuideSettings } from "./web/guides.ts";
+import { mountImageSettings } from "./web/images.ts";
 import { mountJobs } from "./web/jobs.ts";
 import { mountTopics } from "./web/topics.ts";
 
@@ -138,6 +139,7 @@ export function createApp(ctx: AppContext): Hono {
   mountArticles(app, ctx);
   mountJobs(app, ctx);
   mountGuideSettings(app, ctx.db);
+  mountImageSettings(app, ctx.db, ctx.config);
 
   return app;
 }

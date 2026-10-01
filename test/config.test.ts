@@ -1,7 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { imageStyleFor, parseConfig } from "../src/config.ts";
+import { parseConfig } from "../src/config.ts";
+import { imageStyleFor } from "../src/images/style.ts";
 import { resolvePath } from "../src/paths.ts";
 
 describe("parseConfig", () => {
@@ -25,9 +26,9 @@ describe("parseConfig", () => {
     const config = parseConfig({
       images: { style: "mixed", styleByChannel: { "drivingzone-blog": "illustration" } },
     });
-    expect(imageStyleFor(config, "drivingzone-blog")).toBe("illustration");
-    expect(imageStyleFor(config, "drivingzone-cafe")).toBe("mixed");
-    expect(imageStyleFor(parseConfig({}), "drivingzone-blog")).toBe("photo");
+    expect(imageStyleFor(config.images, "drivingzone-blog")).toBe("illustration");
+    expect(imageStyleFor(config.images, "drivingzone-cafe")).toBe("mixed");
+    expect(imageStyleFor(parseConfig({}).images, "drivingzone-blog")).toBe("photo");
     expect(() => parseConfig({ images: { styleByChannel: { "no-such": "photo" } } })).toThrow(
       /images\.styleByChannel\.no-such: 알 수 없는 채널/,
     );

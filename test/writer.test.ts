@@ -8,6 +8,7 @@ import { findChannel, findSection } from "../src/channels.ts";
 import { parseConfig } from "../src/config.ts";
 import { Database } from "../src/db/database.ts";
 import { type ImageStyle, imagePrompt, pickImageStyle } from "../src/images/generator.ts";
+import { saveImageStyles } from "../src/images/style.ts";
 import { LlmUnavailableError } from "../src/llm/client.ts";
 import { bodyChars, extractAmounts, qualityIssues } from "../src/quality/gate.ts";
 import { JobQueue } from "../src/queue/queue.ts";
@@ -723,6 +724,22 @@ describe("generateArticle", () => {
       topicId,
     );
     expect(styles).toEqual(["illustration", "illustration"]);
+
+    // 화면(/settings/images)에서 저장한 값이 config.json 보다 우선한다
+    styles.length = 0;
+    saveImageStyles(db, { style: "photo", styleByChannel: {} });
+    await generateArticle(
+      {
+        db,
+        config: byChannel,
+        llm,
+        facts: { ...facts, images: [] },
+        images,
+        factCheck: false,
+      },
+      topicId,
+    );
+    expect(styles).toEqual(["photo", "photo"]);
   });
 
   it("LLM 한도 대기는 주제를 대기 상태로 두고, 다른 오류는 후보로 되돌린다", async () => {

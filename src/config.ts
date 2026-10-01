@@ -77,7 +77,8 @@ const configSchema = z.object({
     .prefault({}),
   images: z
     .object({
-      /** 생성 삽화 화풍. 실제 사진(학원·지점)에는 영향이 없다. */
+      /** 생성 삽화 화풍. 실제 사진(학원·지점)에는 영향이 없다.
+       *  관리 화면(/settings/images)에서 저장하면 그 값이 우선한다(src/images/style.ts). */
       style: z.enum(IMAGE_STYLES).default("photo"),
       /** 채널별 화풍(채널 id → 화풍). 적지 않은 채널은 style 을 쓴다. */
       styleByChannel: z.record(z.string(), z.enum(IMAGE_STYLES)).default({}),
@@ -170,11 +171,6 @@ const configSchema = z.object({
 });
 
 export type AppConfig = z.infer<typeof configSchema>;
-
-/** 채널에 적용할 삽화 화풍. 채널별 값이 없으면 공통 값을 쓴다. */
-export function imageStyleFor(config: AppConfig, channelId: string): ImageStyleSetting {
-  return config.images.styleByChannel[channelId] ?? config.images.style;
-}
 
 export const DEFAULT_CONFIG_PATH = "config.json";
 
