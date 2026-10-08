@@ -9,8 +9,8 @@ const NAV = [
   { href: "/topics", label: "주제" },
   { href: "/articles", label: "글 검수" },
   { href: "/jobs", label: "작업" },
-  { href: "/settings/guides", label: "유의사항 설정" },
   { href: "/settings/images", label: "삽화 설정" },
+  { href: "/settings/guides", label: "유의사항 설정" },
 ];
 
 export const ARTICLE_STATUS_LABEL: Record<string, string> = {
