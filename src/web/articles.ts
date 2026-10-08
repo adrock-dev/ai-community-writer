@@ -161,14 +161,16 @@ function reviewCard(a: Article): Html {
 }
 
 function exportCard(a: Article, origin: string): Html {
-  if (!["approved", "exported", "published"].includes(a.status)) {
-    return html`<section class="card"><header><h2>내보내기</h2></header><p class="muted">승인한 뒤 내보낼 수 있습니다.</p></section>`;
+  if (a.status === "rejected") {
+    return html`<section class="card"><header><h2>내보내기</h2></header><p class="muted">반려한 글은 내보낼 수 없습니다.</p></section>`;
   }
+  const approved = ["approved", "exported", "published"].includes(a.status);
   const out = renderExport(a);
   // 서식 복사용 HTML의 삽화 주소는 이 PC 주소로 절대 경로화한다 (붙여 넣은 뒤 직접 업로드 필요)
   const rich = out.richHtml.replace(/src="\/images\//g, `src="${origin}/images/`);
   return html`<section class="card">
   <header><h2>내보내기</h2><span class="muted">${channelLabel(a.channelId)} 형식</span></header>
+  ${approved ? "" : html`<p>${badge("승인 전 원고", "warn")} <span class="muted">확인용으로 내보낼 수 있습니다. 게시와 발행 완료 기록은 승인한 뒤에 합니다.</span></p>`}
   ${out.fields.map(
     (f, i) => html`<div class="field"><label>${f.label}</label>
       <div class="copyrow"><input type="text" id="f${i}" value="${f.value}" readonly><button type="button" class="small" data-copy="f${i}">복사</button></div></div>`,
@@ -183,10 +185,14 @@ function exportCard(a: Article, origin: string): Html {
   <div id="rich" hidden>${raw(rich)}</div>
   ${out.uploads.length ? html`<p class="muted">생성 삽화 ${out.uploads.length}장은 대상 사이트에 직접 올려야 합니다: ${out.uploads.join(", ")}</p>` : ""}
   <form method="post" action="/articles/${a.id}/export"><button>내보내기 폴더 만들기 (이미지 포함)</button></form>
-  <form method="post" action="/articles/${a.id}/publish" style="margin-top:12px">
+  ${
+    approved
+      ? html`<form method="post" action="/articles/${a.id}/publish" style="margin-top:12px">
     <div class="field"><label>실제 게시 URL (발행 후 입력)</label>
       <div class="copyrow"><input type="url" name="url" required placeholder="https://" value="${a.publishedUrl}"><button>발행 완료</button></div></div>
-  </form>
+  </form>`
+      : ""
+  }
 </section>`;
 }
 

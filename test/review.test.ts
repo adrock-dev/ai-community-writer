@@ -81,6 +81,19 @@ describe("검수 흐름", () => {
     expect(() => rejectArticle(db, id, "늦음")).toThrow(/published 상태/);
   });
 
+  it("승인 전 글도 내보낼 수 있지만 상태는 그대로여서 게시 처리는 막힌다", () => {
+    const db = new Database(":memory:");
+    for (const status of ["draft", "review"] as const) {
+      const id = createArticle(db, article({ status }));
+      expect(markExported(db, id).status).toBe(status);
+      expect(() => markPublished(db, id, "https://app.drivingplus.me/community/article/1")).toThrow(
+        ReviewError,
+      );
+    }
+    const rejected = createArticle(db, article({ status: "rejected" }));
+    expect(() => markExported(db, rejected)).toThrow(/rejected 상태/);
+  });
+
   it("문제가 남은 초안은 확인 표시 없이는 승인하지 않는다", () => {
     const db = new Database(":memory:");
     const id = createArticle(db, article({ status: "draft", qualityIssues: ["이미지 부족"] }));
@@ -232,17 +245,20 @@ describe("관리 화면", () => {
     expect(jobs).toContain(`글 #${id}`);
   });
 
-  it("승인 후 내보내기 영역이 열리고, 반려는 사유가 필요하다", async () => {
+  it("승인 전에도 내보내기는 열리지만 발행 완료 입력은 승인 후에만 보인다", async () => {
     const { db, app } = setup();
     const id = createArticle(db, article());
-    expect(await (await app.request(`/articles/${id}`)).text()).toContain(
-      "승인한 뒤 내보낼 수 있습니다",
-    );
+    const before = await (await app.request(`/articles/${id}`)).text();
+    expect(before).toContain("승인 전 원고");
+    expect(before).toContain("서식 포함 복사");
+    expect(before).not.toContain("발행 완료</button>");
     let res = await app.request(`/articles/${id}/approve`, form({}));
     expect(res.headers.get("location")).toBe(`/articles/${id}?done=approved`);
     const html = await (await app.request(`/articles/${id}`)).text();
     expect(html).toContain("본문 (Markdown, content_format=md)");
     expect(html).toContain("서식 포함 복사");
+    expect(html).toContain("발행 완료</button>");
+    expect(html).not.toContain("승인 전 원고");
 
     res = await app.request(`/articles/${id}/publish`, form({ url: "nope" }));
     expect(decodeURIComponent(res.headers.get("location") ?? "")).toMatch(/error=게시 URL/);

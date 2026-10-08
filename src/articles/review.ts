@@ -15,6 +15,7 @@ import { type Article, type ArticleStatus, getArticle } from "./store.ts";
 //   draft(문제 남음) / review(검수 대기) ──수정──▶ 기계 검사 다시 → draft/review
 //                                       ──승인──▶ approved ──내보내기──▶ exported ──발행 URL──▶ published
 //   발행 전 어느 단계에서든 반려 → rejected
+// 내보내기(복사·폴더)는 승인 전(draft/review)에도 된다. 상태는 그대로라 게시(자동 발행·발행 완료)는 여전히 승인한 글만.
 // 승인한 글을 고치면 다시 검수 대기로 돌아간다(고친 내용도 사람이 확인해야 하므로).
 
 export class ReviewError extends Error {
@@ -127,8 +128,9 @@ export function rejectArticle(db: Database, id: number, note: string): Article {
   return getArticle(db, id)!;
 }
 
+/** 내보내기 기록. 승인 전 글은 상태를 바꾸지 않는다(내보냄으로 올리면 승인 없이 게시할 수 있게 되므로). */
 export function markExported(db: Database, id: number): Article {
-  const article = require(db, id, ["approved", "exported"], "내보내기");
+  const article = require(db, id, ["draft", "review", "approved", "exported"], "내보내기");
   if (article.status === "approved") {
     db.run(
       "UPDATE articles SET status = 'exported', exported_at = ?, updated_at = ? WHERE id = ?",
