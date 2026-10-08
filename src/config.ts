@@ -37,6 +37,8 @@ const configSchema = z.object({
     .object({
       host: z.string().default("127.0.0.1"),
       port: z.number().int().min(1).max(65535).default(8787),
+      /** 관리 화면 로그인 아이디·비밀번호(WRITER_LOGIN_USER / WRITER_LOGIN_PASSWORD) 파일. 저장소 밖에 둔다. */
+      credentialsFile: z.string().default("~/.ai-community-writer.env"),
     })
     .prefault({}),
   dbPath: z.string().default("data/writer.db"),

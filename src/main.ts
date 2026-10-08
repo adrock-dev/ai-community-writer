@@ -4,8 +4,16 @@ import { loadConfig } from "./config.ts";
 import { killAllChildren } from "./llm/process.ts";
 import { Worker } from "./queue/worker.ts";
 import { createApp } from "./server.ts";
+import { loadLoginCredentials, unsafeHostError } from "./web/auth.ts";
 
-const ctx = createContext(loadConfig());
+const config = loadConfig();
+const login = loadLoginCredentials(config);
+const hostError = unsafeHostError(config, login);
+if (hostError) {
+  console.error(`[writer] ${hostError}`);
+  process.exit(1);
+}
+const ctx = createContext(config);
 const worker = new Worker({
   queue: ctx.queue,
   pacer: ctx.pacer,
@@ -15,8 +23,15 @@ const worker = new Worker({
 });
 
 const server = serve(
-  { fetch: createApp(ctx).fetch, hostname: ctx.config.server.host, port: ctx.config.server.port },
-  (info) => console.log(`[writer] http://${info.address}:${info.port} 에서 실행 중 (종료: Ctrl+C)`),
+  {
+    fetch: createApp(ctx, login).fetch,
+    hostname: ctx.config.server.host,
+    port: ctx.config.server.port,
+  },
+  (info) =>
+    console.log(
+      `[writer] http://${info.address}:${info.port} 에서 실행 중 (로그인 ${login ? "켜짐" : "꺼짐"}, 종료: Ctrl+C)`,
+    ),
 );
 worker.start();
 

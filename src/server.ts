@@ -28,14 +28,18 @@ import {
   type TopicStatus,
 } from "./topics/store.ts";
 import { mountArticles } from "./web/articles.ts";
+import { type LoginCredentials, mountAuth } from "./web/auth.ts";
 import { mountDashboard } from "./web/dashboard.ts";
 import { mountGuideSettings } from "./web/guides.ts";
 import { mountImageSettings } from "./web/images.ts";
 import { mountJobs } from "./web/jobs.ts";
 import { mountTopics } from "./web/topics.ts";
 
-export function createApp(ctx: AppContext): Hono {
+/** login 을 주면 관리 화면·API 전체에 로그인을 요구한다(main.ts 가 인증 파일에서 읽어 넘긴다). */
+export function createApp(ctx: AppContext, login?: LoginCredentials): Hono {
   const app = new Hono();
+  // 로그인 검사는 다른 경로보다 먼저 등록해야 한다
+  mountAuth(app, login);
 
   app.get("/health", (c) => {
     const pace = ctx.pacer.blockedUntil();

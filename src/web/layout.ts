@@ -13,6 +13,9 @@ const NAV = [
   { href: "/settings/guides", label: "유의사항 설정" },
 ];
 
+/** 로그인을 켜면(mountAuth) 메뉴에 로그아웃 버튼을 보인다. */
+export const navState = { logout: false };
+
 export const ARTICLE_STATUS_LABEL: Record<string, string> = {
   review: "검수 대기",
   draft: "초안(문제 남음)",
@@ -83,7 +86,7 @@ document.addEventListener('click', async (e) => {
 export function page(
   title: string,
   body: Html | Html[],
-  opts: { current?: string; notice?: string; error?: string } = {},
+  opts: { current?: string; notice?: string; error?: string; hideNav?: boolean } = {},
 ) {
   return html`<!doctype html>
 <html lang="ko">
@@ -184,7 +187,15 @@ details summary { cursor: pointer; }
 </head>
 <body>
 <header><div class="inner"><strong>AI Community Writer</strong>
-<nav>${NAV.map((n) => html`<a href="${n.href}" class="${n.href === opts.current ? "on" : ""}">${n.label}</a>`)}</nav>
+${
+  opts.hideNav
+    ? ""
+    : html`<nav>${NAV.map((n) => html`<a href="${n.href}" class="${n.href === opts.current ? "on" : ""}">${n.label}</a>`)}${
+        navState.logout
+          ? html`<form method="post" action="/logout" style="display:inline"><button class="small">로그아웃</button></form>`
+          : ""
+      }</nav>`
+}
 </div></header>
 <main>
 ${opts.notice ? html`<div class="notice">${opts.notice}</div>` : ""}
