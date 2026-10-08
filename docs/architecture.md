@@ -127,7 +127,7 @@ approved / exported ──지금 게시──▶ publish 작업(LLM 없음, 재�
 - 커뮤니티: 섹션 = `section.code`, 칸 = `resolveFilterCodes`, 지역 글(`regional` 채널만)은 `audienceAreas`(시도·시군구) → api.drive 가 광고 지구로 바꿔 `SERVICE_REGIONS` 저장.
 - 블로그: 섹션 코드 = board type(`blog` / `blog_training`), 게시 주소는 사이트 `slugify(제목, id)` 규칙.
 - 서버 계약: api.drive `docs/domains/community/api.md` §6.4, api.drivingzone `docs/writer-api.md`. 캐시 무효화는 서버가 저장 뒤 한다.
-- 키는 저장소 밖 파일(`publish.credentialsFile`). 값은 화면·로그·doctor 에 출력하지 않는다.
+- 키는 git 제외 파일(`publish.credentialsFile`, 기본 프로젝트 폴더 `.ai-community-writer.env`). 값은 화면·로그·doctor 에 출력하지 않는다.
 
 ## 6. 모듈 구성 (예정 포함)
 

@@ -51,4 +51,4 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 사람이 승인하지 않은 글은 게시하지 않는다(자동 발행·발행 완료 기록). 내보내기(복사·폴더)는 확인용으로 승인 전에도 되지만 글 상태는 바꾸지 않는다.
 - LLM 한도로 못 돈 작업은 실패가 아니라 보류(`LlmUnavailableError` → `queue.defer`)로 처리한다. 사용률 기준(`pauseAtUsagePercent`)을 우회하지 않는다.
 - 원천 API 응답은 화이트리스트 정규화(`src/sources/`)를 거친 값만 프롬프트에 넣는다. 원본 응답에는 비공개 정보가 섞여 있다.
-- 네이버 인증 파일 등 비밀값은 저장소 밖에 두고 커밋하지 않는다.
+- 네이버 인증 파일 등 비밀값은 git 제외 파일(기본 프로젝트 폴더의 `*.env`, `.gitignore`)에 두고 커밋하지 않는다.

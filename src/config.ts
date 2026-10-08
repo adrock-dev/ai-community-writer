@@ -37,8 +37,8 @@ const configSchema = z.object({
     .object({
       host: z.string().default("127.0.0.1"),
       port: z.number().int().min(1).max(65535).default(8787),
-      /** 관리 화면 로그인 아이디·비밀번호(WRITER_LOGIN_USER / WRITER_LOGIN_PASSWORD) 파일. 저장소 밖에 둔다. */
-      credentialsFile: z.string().default("~/.ai-community-writer.env"),
+      /** 관리 화면 로그인 아이디·비밀번호(WRITER_LOGIN_USER / WRITER_LOGIN_PASSWORD) 파일. 상대 경로는 프로젝트 폴더 기준(git 제외 *.env). */
+      credentialsFile: z.string().default(".ai-community-writer.env"),
     })
     .prefault({}),
   dbPath: z.string().default("data/writer.db"),
@@ -118,7 +118,7 @@ const configSchema = z.object({
   naver: z
     .object({
       /** 검색광고 API 인증 파일(KEY=VALUE 형식). 저장소 밖에 둔다. */
-      searchadEnvFile: z.string().default("~/.naver-searchad.env"),
+      searchadEnvFile: z.string().default(".naver-searchad.env"),
       datalabClientId: z.string().default(""),
       datalabClientSecret: z.string().default(""),
     })
@@ -148,7 +148,7 @@ const configSchema = z.object({
   publish: z
     .object({
       /** 발행 API 키 파일(KEY=VALUE). DRIVINGPLUS_WRITER_API_KEY / DRIVINGZONE_WRITER_API_KEY. 저장소 밖에 둔다. */
-      credentialsFile: z.string().default("~/.ai-community-writer.env"),
+      credentialsFile: z.string().default(".ai-community-writer.env"),
       /** 발행할 API 서버. 비우면 sources 의 주소(profile)를 쓴다. */
       drivingplusApi: z.string().default(""),
       drivingzoneApi: z.string().default(""),

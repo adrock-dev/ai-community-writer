@@ -2,7 +2,7 @@
   "server": {
     "host": "127.0.0.1",
     "port": 8787,
-    "credentialsFile": "~/.ai-community-writer.env"
+    "credentialsFile": ".ai-community-writer.env"
   },
   "dbPath": "data/writer.db",
   "llm": {
@@ -44,7 +44,7 @@
     "trendTopN": 30
   },
   "naver": {
-    "searchadEnvFile": "~/.naver-searchad.env",
+    "searchadEnvFile": ".naver-searchad.env",
     "datalabClientId": "",
     "datalabClientSecret": ""
   },
@@ -56,7 +56,7 @@
     "timeoutSec": 60
   },
   "publish": {
-    "credentialsFile": "~/.ai-community-writer.env",
+    "credentialsFile": ".ai-community-writer.env",
     "drivingplusApi": "",
     "drivingzoneApi": "",
     "drivingplusSiteUrl": "https://app.drivingplus.me",

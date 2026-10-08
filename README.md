@@ -13,7 +13,7 @@ Codex 또는 Claude CLI로 채널별 원고를 쓰고, 사람이 검수·승인�
 - **글 생성용 CLI 로그인** (둘 중 하나 이상)
   - Codex: `npm i -g @openai/codex` 후 `codex login`
   - Claude: `npm i -g @anthropic-ai/claude-code` 후 `claude` 실행해 로그인
-- **네이버 검색광고 API 인증 파일** (키워드 수집 단계부터 필요) — 기본 위치 `~/.naver-searchad.env`
+- **네이버 검색광고 API 인증 파일** (키워드 수집 단계부터 필요) — 기본 위치 프로젝트 폴더의 `.naver-searchad.env`
   (Windows: `C:\Users\<사용자>\.naver-searchad.env`)
 
 ## 실행 (Windows / macOS 공통)
@@ -61,19 +61,20 @@ npm install
 
 ### 4. 비밀값 파일 두기
 
-사용자 폴더(`C:\Users\<사용자>\`)에 두 파일을 둡니다. 메신저·메일 말고 USB 등으로 직접 옮깁니다.
+프로젝트 폴더(이 저장소를 받은 폴더, `package.json`이 있는 곳)에 두 파일을 둡니다. `*.env`는 git 제외라 커밋되지 않습니다. 메신저·메일 말고 USB 등으로 직접 옮깁니다.
 
 | 파일 | 내용 |
 | --- | --- |
 | `.naver-searchad.env` | 네이버 검색광고 API 키(키워드 수집) — [설정](#설정)의 `naver.searchadEnvFile` |
-| `.ai-community-writer.env` | 발행 API 키 — [자동 발행](#자동-발행). **운영 서버의 `WRITER_API_KEY`와 같은 값**이어야 합니다 |
+| `.ai-community-writer.env` | 발행 API 키 — [자동 발행](#자동-발행). **운영 서버의 `WRITER_API_KEY`와 같은 값**이어야 합니다. 관리 화면 로그인(`WRITER_LOGIN_USER`·`WRITER_LOGIN_PASSWORD`)도 여기에 적습니다 |
 
-프로젝트 폴더에 두려면 `secrets\` 폴더(git 제외)에 넣고 `config.json`에 경로를 적습니다. 상대 경로는 프로젝트 폴더 기준입니다.
+다른 곳에 두려면 `config.json`에 경로를 적습니다. 상대 경로는 프로젝트 폴더 기준이고, `~`로 시작하면 사용자 폴더(`C:\Users\<사용자>\`)입니다. 예전 기본 위치(사용자 폴더)를 계속 쓰려면 아래처럼 적습니다.
 
 ```json
 {
-  "naver": { "searchadEnvFile": "secrets/naver-searchad.env" },
-  "publish": { "credentialsFile": "secrets/ai-community-writer.env" }
+  "server": { "credentialsFile": "~/.ai-community-writer.env" },
+  "naver": { "searchadEnvFile": "~/.naver-searchad.env" },
+  "publish": { "credentialsFile": "~/.ai-community-writer.env" }
 }
 ```
 
@@ -138,7 +139,7 @@ claude update                        # Claude 는 자체 업데이트 명령이 
 
 `npm start` 후 브라우저에서 **http://127.0.0.1:8787** 을 엽니다.
 
-**로그인 (다른 PC·바깥에서 접속할 때 필수)** — 인증 파일(`server.credentialsFile`, 기본 `~/.ai-community-writer.env`, 저장소 밖)에 아래 두 줄을 적고 다시 시작하면 모든 화면·API에 로그인이 걸립니다.
+**로그인 (다른 PC·바깥에서 접속할 때 필수)** — 인증 파일(`server.credentialsFile`, 기본 프로젝트 폴더의 `.ai-community-writer.env`, git 제외)에 아래 두 줄을 적고 다시 시작하면 모든 화면·API에 로그인이 걸립니다.
 
 ```
 WRITER_LOGIN_USER=아이디
@@ -188,7 +189,7 @@ copy config.example.json config.json
 | --- | --- | --- |
 | `server.host` | `127.0.0.1` | 접속을 받을 주소. 다른 PC에서 열려면 `0.0.0.0` (로그인 정보 필수) |
 | `server.port` | `8787` | 로컬 UI·API 포트 |
-| `server.credentialsFile` | `~/.ai-community-writer.env` | 관리 화면 로그인(`WRITER_LOGIN_USER`·`WRITER_LOGIN_PASSWORD`) 파일 |
+| `server.credentialsFile` | `.ai-community-writer.env` | 관리 화면 로그인(`WRITER_LOGIN_USER`·`WRITER_LOGIN_PASSWORD`) 파일 |
 | `dbPath` | `data/writer.db` | SQLite 파일 |
 | `llm.order` | `["codex", "claude"]` | 사용 순서. 한도에 걸리면 다음으로 넘어감 |
 | `llm.timeoutSec` | `600` | 글 1편 생성 제한 시간 |
@@ -204,13 +205,13 @@ copy config.example.json config.json
 | `keywords.maxTopicsPerSection` | `50` | 섹션별 저장할 주제 후보 수 |
 | `keywords.clusterThreshold` | `0.5` | 키워드 묶기 기준 (낮출수록 크게 묶임) |
 | `keywords.trendTopN` | `30` | 추세를 조회할 상위 주제 수 |
-| `naver.searchadEnvFile` | `~/.naver-searchad.env` | 검색광고 API 인증 파일 (`NAVER_AD_API_KEY`, `NAVER_AD_SECRET_KEY`, `NAVER_AD_CUSTOMER_ID`). 같은 이름의 환경 변수가 있으면 그것을 우선 |
+| `naver.searchadEnvFile` | `.naver-searchad.env` | 검색광고 API 인증 파일 (`NAVER_AD_API_KEY`, `NAVER_AD_SECRET_KEY`, `NAVER_AD_CUSTOMER_ID`). 같은 이름의 환경 변수가 있으면 그것을 우선 |
 | `naver.datalabClientId` / `datalabClientSecret` | 빈 값 | 데이터랩 API (선택, 추세 반영용). 비우면 인증 파일의 `NAVER_DATALAB_CLIENT_ID` / `NAVER_DATALAB_CLIENT_SECRET` 사용 |
 | `sources.profile` | `prod` | 학원·연습장 데이터 API 환경 (`prod` / `dev`) |
 | `sources.drivingplusApi` / `drivingzoneApi` | 빈 값 | 비우면 profile 주소 사용. 다른 서버를 쓸 때만 지정 |
 | `sources.cacheTtlHours` | `24` | 학원·지점 데이터 캐시 유지 시간 |
 | `sources.timeoutSec` | `60` | 원천 API 요청 제한 시간 |
-| `publish.credentialsFile` | `~/.ai-community-writer.env` | 발행 API 키 파일 (`DRIVINGPLUS_WRITER_API_KEY`, `DRIVINGZONE_WRITER_API_KEY`) |
+| `publish.credentialsFile` | `.ai-community-writer.env` | 발행 API 키 파일 (`DRIVINGPLUS_WRITER_API_KEY`, `DRIVINGZONE_WRITER_API_KEY`) |
 | `publish.drivingplusApi` / `drivingzoneApi` | 빈 값 | 발행할 API 서버. 비우면 `sources` 주소 |
 | `publish.drivingplusSiteUrl` / `drivingzoneSiteUrl` / `dztrainingSiteUrl` | 운영 사이트 | 게시 주소(published URL)를 만들 사이트 |
 | `publish.indexNowKeys.drivingplus` / `drivingzone` / `dztraining` | 운전면허PLUS 공개 키 / 빈 값 | 발행 뒤 IndexNow 통보 키(사이트 루트 `{key}.txt`와 같아야 함). 비우면 통보 안 함 |
@@ -247,7 +248,7 @@ npm run collect            # 수집 후 섹션별 상위 주제 10개 출력 (--
 2. Application → 애플리케이션 등록
    - 사용 API: **데이터랩 (검색어트렌드)**
    - 비로그인 오픈 API 서비스 환경: WEB, URL `http://localhost` (서버 호출이라 형식만 맞으면 됨)
-3. 발급된 Client ID / Client Secret을 **검색광고 인증 파일(`~/.naver-searchad.env`)에 추가** (권장 — 비밀값을 저장소 밖 한곳에 둠)
+3. 발급된 Client ID / Client Secret을 **검색광고 인증 파일(`.naver-searchad.env`)에 추가** (권장 — 비밀값을 git 제외 파일 한곳에 둠)
 
 ```
 NAVER_DATALAB_CLIENT_ID=발급받은ID
@@ -315,7 +316,7 @@ npm run generate -- --topic=161 --dry                      # LLM 호출 없이 �
 
 - 생성 삽화는 이 PC에만 있으므로 대상 서버에 먼저 올리고 본문 주소를 바꿉니다. 올린 이미지는 기억해 두어 다시 보내도 또 올리지 않습니다.
 - 같은 글을 다시 보내면 대상 사이트에서는 **수정**이 됩니다(글마다 고유 식별자 `aiw-<설치 id>:<글 번호>`).
-- 발행 API 키는 저장소 밖 파일(`publish.credentialsFile`, 기본 `~/.ai-community-writer.env`)에 둡니다. 키 값은 각 서버의 `WRITER_API_KEY` 와 같아야 합니다.
+- 발행 API 키는 git 제외 파일(`publish.credentialsFile`, 기본 프로젝트 폴더의 `.ai-community-writer.env`)에 둡니다. 키 값은 각 서버의 `WRITER_API_KEY` 와 같아야 합니다.
 
   ```
   DRIVINGPLUS_WRITER_API_KEY=...
