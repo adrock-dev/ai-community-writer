@@ -37,10 +37,21 @@ export function parseEnvFile(content: string): Record<string, string> {
   return out;
 }
 
+/** 파일 내용을 글자로 읽는다. Windows 메모장의 "유니코드"(UTF-16) 저장도 받는다. */
+export function decodeTextFile(buf: Buffer): string {
+  if (buf[0] === 0xff && buf[1] === 0xfe) return buf.subarray(2).toString("utf16le");
+  if (buf[0] === 0xfe && buf[1] === 0xff) {
+    const swapped = Buffer.from(buf.subarray(2));
+    swapped.swap16();
+    return swapped.toString("utf16le");
+  }
+  return buf.toString("utf8");
+}
+
 /** 인증 파일(KEY=VALUE)을 읽는다. 없으면 빈 객체. */
 export function readEnvFile(envFile: string): Record<string, string> {
   const path = resolvePath(envFile);
-  return existsSync(path) ? parseEnvFile(readFileSync(path, "utf8")) : {};
+  return existsSync(path) ? parseEnvFile(decodeTextFile(readFileSync(path))) : {};
 }
 
 /** 인증 정보는 환경 변수가 우선이고, 없으면 설정의 인증 파일에서 읽는다. */

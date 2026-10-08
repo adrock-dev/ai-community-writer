@@ -1,10 +1,13 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { existsSync } from "node:fs";
+import { basename } from "node:path";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import type { Context, Hono } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { html } from "hono/html";
 import type { AppConfig } from "../config.ts";
 import { readEnvFile } from "../keywords/searchad.ts";
+import { resolvePath } from "../paths.ts";
 import { navState, page } from "./layout.ts";
 
 // 관리 화면 로그인. 인증 파일(server.credentialsFile)에 아이디·비밀번호가 있으면 모든 화면·API에 로그인을 요구한다.
@@ -36,13 +39,31 @@ export function loadLoginCredentials(config: AppConfig): LoginCredentials | unde
 
 const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1"];
 
+/** 로그인 정보를 못 찾은 이유. 비밀값은 내보내지 않고 파일 위치·키 이름만 알려 준다. */
+function credentialsHint(file: string): string {
+  const path = resolvePath(file);
+  if (!existsSync(path)) {
+    const txt = existsSync(`${path}.txt`)
+      ? ` 같은 폴더에 ${basename(path)}.txt 가 있습니다. 메모장이 붙인 .txt 를 지우세요.`
+      : "";
+    return `파일이 없습니다: ${path}.${txt}`;
+  }
+  const values = readEnvFile(file);
+  const keys = Object.keys(values);
+  const missing = [LOGIN_USER_KEY, LOGIN_PASSWORD_KEY].filter((k) => !values[k]);
+  return (
+    `파일(${path})에 ${missing.join(", ")} 값이 없습니다. ` +
+    `읽은 키: ${keys.length ? keys.join(", ") : "(없음)"}. 키 이름 오타와 '=' 뒤 값이 비어 있지 않은지 확인하세요.`
+  );
+}
+
 /** 로그인 없이 바깥에 열려는 설정을 막는다. 문제가 있으면 오류 문구를 돌려준다. */
 export function unsafeHostError(config: AppConfig, login: LoginCredentials | undefined): string {
   if (login || LOOPBACK_HOSTS.includes(config.server.host)) return "";
   return (
     `server.host 가 ${config.server.host} 인데 로그인 정보가 없습니다. ` +
     `${config.server.credentialsFile} 에 ${LOGIN_USER_KEY}=… 와 ${LOGIN_PASSWORD_KEY}=… 를 적거나 ` +
-    `server.host 를 127.0.0.1 로 두세요.`
+    `server.host 를 127.0.0.1 로 두세요.\n  → ${credentialsHint(config.server.credentialsFile)}`
   );
 }
 

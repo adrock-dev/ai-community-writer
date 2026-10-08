@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AppContext } from "../src/app.ts";
 import { parseConfig } from "../src/config.ts";
@@ -6,7 +9,7 @@ import { LlmClient } from "../src/llm/client.ts";
 import { Pacer } from "../src/queue/pacer.ts";
 import { JobQueue } from "../src/queue/queue.ts";
 import { createApp } from "../src/server.ts";
-import { unsafeHostError } from "../src/web/auth.ts";
+import { loadLoginCredentials, unsafeHostError } from "../src/web/auth.ts";
 
 const LOGIN = { user: "admin", password: "s3cret-pass" };
 
@@ -95,5 +98,25 @@ describe("관리 화면 로그인", () => {
     expect(unsafeHostError(open, undefined)).toMatch(/WRITER_LOGIN_PASSWORD/);
     expect(unsafeHostError(open, LOGIN)).toBe("");
     expect(unsafeHostError(parseConfig({}), undefined)).toBe("");
+  });
+
+  it("로그인 정보를 못 찾으면 파일 위치와 빠진 키를 알려 주고, 메모장 UTF-16 파일도 읽는다", () => {
+    const dir = mkdtempSync(join(tmpdir(), "auth-"));
+    const file = join(dir, "writer.env");
+    const config = parseConfig({ server: { host: "0.0.0.0", credentialsFile: file } });
+
+    writeFileSync(`${file}.txt`, "WRITER_LOGIN_USER=a\n");
+    expect(unsafeHostError(config, loadLoginCredentials(config))).toMatch(
+      /writer\.env\.txt 가 있습니다/,
+    );
+
+    writeFileSync(file, "WRITER_LOGIN_USER=a\nWRITER_LOGIN_PASSWORD=\n");
+    const error = unsafeHostError(config, loadLoginCredentials(config));
+    expect(error).toMatch(/WRITER_LOGIN_PASSWORD 값이 없습니다/);
+    expect(error).not.toContain("=a");
+
+    const utf16 = "\uFEFFWRITER_LOGIN_USER=관리자\r\nWRITER_LOGIN_PASSWORD=비밀\r\n";
+    writeFileSync(file, Buffer.from(utf16, "utf16le"));
+    expect(loadLoginCredentials(config)).toEqual({ user: "관리자", password: "비밀" });
   });
 });
