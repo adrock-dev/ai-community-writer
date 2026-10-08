@@ -18,7 +18,7 @@ import {
   listArticles,
 } from "../articles/store.ts";
 import { CHANNELS, findChannel, findSection } from "../channels.ts";
-import { renderExport, writeExportBundle } from "../export/bundle.ts";
+import { createExportZip, exportName, renderExport } from "../export/bundle.ts";
 import { bodyChars } from "../quality/gate.ts";
 import { markdownToHtml, stripTitle } from "../export/render.ts";
 import { regionLabel } from "../keywords/regions.ts";
@@ -29,7 +29,7 @@ import { ARTICLE_STATUS_LABEL, badge, type Html, page, shortTime, statusTone } f
 
 const NOTICES: Record<string, string> = {
   saved: "저장하고 기계 검사를 다시 했습니다.",
-  approved: "승인했습니다. 아래 내보내기에서 채널 형식으로 복사하거나 폴더로 내보내세요.",
+  approved: "승인했습니다. 아래 내보내기에서 채널 형식으로 복사하거나 파일로 받으세요.",
   rejected: "반려했습니다.",
   regenerate: "이 글을 반려하고 같은 주제로 다시 생성을 예약했습니다.",
   published: "발행 완료로 기록했습니다.",
@@ -184,7 +184,7 @@ function exportCard(a: Article, origin: string): Html {
   </div>
   <div id="rich" hidden>${raw(rich)}</div>
   ${out.uploads.length ? html`<p class="muted">생성 삽화 ${out.uploads.length}장은 대상 사이트에 직접 올려야 합니다: ${out.uploads.join(", ")}</p>` : ""}
-  <form method="post" action="/articles/${a.id}/export"><button>내보내기 폴더 만들기 (이미지 포함)</button></form>
+  <form method="post" action="/articles/${a.id}/export"><button>내보내기 파일 받기 (zip, 이미지 포함)</button></form>
   ${
     approved
       ? html`<form method="post" action="/articles/${a.id}/publish" style="margin-top:12px">
@@ -275,11 +275,7 @@ export function mountArticles(app: Hono, ctx: AppContext): void {
     return c.html(
       page(article.title, detailPage(article, origin, ctx), {
         current: "/articles",
-        notice:
-          NOTICES[c.req.query("done") ?? ""] ??
-          (c.req.query("exported")
-            ? `내보내기 폴더를 만들었습니다: ${c.req.query("exported")}`
-            : undefined),
+        notice: NOTICES[c.req.query("done") ?? ""],
         error: c.req.query("error"),
       }),
     );
@@ -347,16 +343,23 @@ export function mountArticles(app: Hono, ctx: AppContext): void {
     }),
   );
 
-  app.post(
-    "/articles/:id/export",
-    act(async (id) => {
+  // 내보내기 zip 을 내려받게 한다(관리 화면을 연 PC의 다운로드 폴더에 저장된다).
+  app.post("/articles/:id/export", async (c) => {
+    const id = Number(c.req.param("id"));
+    try {
       const article = getArticle(ctx.db, id);
       if (!article) throw new ReviewError("글이 없습니다");
       markExported(ctx.db, id);
-      const dir = await writeExportBundle(article);
-      return `/articles/${id}?exported=${encodeURIComponent(dir)}`;
-    }),
-  );
+      const zip = await createExportZip(article);
+      return c.body(new Uint8Array(zip), 200, {
+        "content-type": "application/zip",
+        "content-disposition": `attachment; filename="${exportName(article)}.zip"`,
+      });
+    } catch (error) {
+      if (!(error instanceof ReviewError)) throw error;
+      return c.redirect(`/articles/${id}?error=${encodeURIComponent(error.message)}`, 303);
+    }
+  });
 
   app.post(
     "/articles/:id/auto-publish",

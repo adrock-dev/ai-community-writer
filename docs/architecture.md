@@ -109,7 +109,7 @@ review / draft ──수정──▶ 기계 검사 다시(LLM 없음) → review
 - 내보내기 형식(`src/export/`): 운전면허PLUS는 Markdown(content_format=md), 드라이빙존 블로그·연수 블로그는 에디터 HTML, 카페는 텍스트 + 서식 복사용 HTML. 대상 시스템의 제목 필드와 겹치지 않게 본문의 H1은 뺀다. 원고 속 원시 HTML은 글자로 바꾸고 스크립트 주소 링크는 막는다.
 - 자사 링크: 채널 `linkTargets`(드라이빙존·연수 블로그의 요금·지점 안내 등, 열리는지 확인한 주소)를 글마다 `writer.linkChance`(기본 0.3) 확률로 프롬프트에 주고, 게이트는 그 주소만 2개까지 허용한다. 그 밖의 글은 링크를 모두 뺀다(모델이 세부 주소를 지어낼 수 있어서).
 - 강조: 원고는 `**굵게**`와 `==색 강조==`만 쓴다(원시 HTML은 게이트가 잡고, 내보낼 때도 글자로 바뀐다). 색 강조는 HTML 채널에서 채널 브랜드 색(`channels.ts` `highlightColor`: 드라이빙존 `#ff5500`, 연수 `#1474fa`)의 굵은 `<span style>`로, 운전면허PLUS(Markdown)는 `**굵게**`로, 카페 텍스트는 표시만 걷는다. 두 드라이빙존 사이트의 본문 렌더러(`SafeHtmlRenderer`)는 `<script>`만 빼므로 인라인 `style`이 유지된다(2026-09-29 확인).
-- 내보내기 폴더에는 본문의 모든 이미지를 담는다. 실제 사진은 공개 주소 그대로 두고 사본만, 생성 삽화는 `images/파일`로 바꿔 운영자가 직접 올리게 한다(P6 자동 발행에서 업로드 API로 대체).
+- 내보내기 파일은 zip(`<글 번호>-<채널>.zip`)으로 브라우저가 내려받는다(관리 화면을 연 PC에 저장, 2026-10-08). 의존성 없는 작성기(`src/export/zip.ts`)가 UTF-8 이름 표시를 켜서 한글 파일 이름을 지킨다. 본문의 모든 이미지를 담는다. 실제 사진은 공개 주소 그대로 두고 사본만, 생성 삽화는 `images/파일`로 바꿔 운영자가 직접 올리게 한다(P6 자동 발행에서 업로드 API로 대체).
 - 관리 화면은 로그인이 없으므로 `127.0.0.1`에서만 연다.
 
 ## 5-2. 자동 발행 (P6)
@@ -139,7 +139,7 @@ src/
   channels.ts     브랜드·채널·섹션 정의
   guides.ts       작성 가이드(유의사항) 저장·조회·초기값 가져오기
   web/            로컬 관리 화면 (dashboard · topics · articles(검수·내보내기) · jobs · guides · images(삽화 화풍))
-  export/         render(채널 형식 변환) · bundle(내보내기 폴더)
+  export/         render(채널 형식 변환) · bundle(내보내기 파일) · zip(zip 작성)
   publish/        payload(요청 본문) · client(발행 API) · publisher(업로드→게시→기록→IndexNow)
   articles/       store(저장·조회) · review(검수 상태 전이·재검사)
   server.ts       로컬 HTTP 서버 (Hono)

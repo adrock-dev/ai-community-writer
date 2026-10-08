@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -14,7 +15,7 @@ import {
 import { createArticle, getArticle, type NewArticle } from "../src/articles/store.ts";
 import { parseConfig } from "../src/config.ts";
 import { Database } from "../src/db/database.ts";
-import { renderExport, writeExportBundle } from "../src/export/bundle.ts";
+import { buildExportFiles, createExportZip, renderExport } from "../src/export/bundle.ts";
 import { highlightToBold, markdownToHtml, stripTitle, toCafeText } from "../src/export/render.ts";
 import { LlmClient } from "../src/llm/client.ts";
 import { Pacer } from "../src/queue/pacer.ts";
@@ -175,18 +176,28 @@ describe("내보내기 형식", () => {
     expect(zone.fields.map((f) => f.label)).toContain("부제목·설명 (sub_title)");
   });
 
-  it("내보내기 폴더에 본문·안내·이미지를 쓰고 생성 삽화 주소를 파일로 바꾼다", async () => {
+  it("내보내기 파일에 본문·안내·이미지를 담고 생성 삽화 주소를 파일로 바꾼다", async () => {
+    const db = new Database(":memory:");
+    const id = createArticle(db, article());
+    const files = await buildExportFiles(getArticle(db, id)!);
+    const read = (name: string) =>
+      String(files.find((f) => f.path === `${id}-drivingplus-community/${name}`)?.data ?? "");
+    expect(read("본문.md")).toContain("![삽화](images/t1-1.png)");
+    expect(read("본문.md")).toContain("![학원 사진](https://file.example/1.jpg)");
+    expect(read("안내.txt")).toMatch(/직접 올려야 하는 이미지.*t1-1\.png/);
+    expect(read("본문-서식.html")).not.toBe("");
+  });
+
+  // bsdtar(macOS·Windows 10 이상 기본 tar)는 UTF-8 이름 표시를 읽는다. macOS unzip 은 읽지 못해 쓰지 않는다.
+  it("내보내기 zip 은 압축 해제 도구로 풀리고 한글 파일 이름이 유지된다", async () => {
     const dir = mkdtempSync(join(tmpdir(), "export-"));
     const db = new Database(":memory:");
     const id = createArticle(db, article());
-    const out = await writeExportBundle(getArticle(db, id)!, dir);
-    const md = readFileSync(join(out, "본문.md"), "utf8");
+    const zipPath = join(dir, "out.zip");
+    writeFileSync(zipPath, await createExportZip(getArticle(db, id)!));
+    execFileSync("tar", ["-xf", zipPath, "-C", dir]);
+    const md = readFileSync(join(dir, `${id}-drivingplus-community`, "본문.md"), "utf8");
     expect(md).toContain("![삽화](images/t1-1.png)");
-    expect(md).toContain("![학원 사진](https://file.example/1.jpg)");
-    expect(readFileSync(join(out, "안내.txt"), "utf8")).toMatch(
-      /직접 올려야 하는 이미지.*t1-1\.png/,
-    );
-    expect(existsSync(join(out, "본문-서식.html"))).toBe(true);
   });
 });
 
@@ -252,6 +263,10 @@ describe("관리 화면", () => {
     expect(before).toContain("승인 전 원고");
     expect(before).toContain("서식 포함 복사");
     expect(before).not.toContain("발행 완료</button>");
+    const zip = await app.request(`/articles/${id}/export`, form({}));
+    expect(zip.headers.get("content-type")).toBe("application/zip");
+    expect(zip.headers.get("content-disposition")).toContain(`${id}-drivingplus-community.zip`);
+    expect(Buffer.from(await zip.arrayBuffer()).readUInt32LE(0)).toBe(0x04034b50);
     let res = await app.request(`/articles/${id}/approve`, form({}));
     expect(res.headers.get("location")).toBe(`/articles/${id}?done=approved`);
     const html = await (await app.request(`/articles/${id}`)).text();

@@ -1,10 +1,9 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 import type { Article } from "../articles/store.ts";
 import { findChannel, findSection, resolveFilterCodes } from "../channels.ts";
 import { IMAGES_DIR } from "../images/generator.ts";
 import { regionLabel } from "../keywords/regions.ts";
-import { PROJECT_ROOT } from "../paths.ts";
 import {
   highlightToBold,
   markdownToHtml,
@@ -12,14 +11,15 @@ import {
   stripTitle,
   toCafeText,
 } from "./render.ts";
+import { createZip, type ZipEntry } from "./zip.ts";
 
-// 승인한 글을 채널별 형식으로 내보낸다. 자동 발행(P6) 전까지는 운영자가 이 결과를 복사해 올린다.
-//   output/exports/<글 번호>-<채널>/
-//     본문.md | 본문.html | 카페원고.txt + 카페원고.html
-//     images/            본문에 쓴 모든 이미지 (생성 삽화는 반드시 업로드 필요)
-//     안내.txt           제목·설명·키워드·섹션·노출 지역·업로드할 이미지
-
-export const EXPORTS_DIR = join(PROJECT_ROOT, "output", "exports");
+// 글을 채널별 형식으로 내보낸다. 자동 발행을 쓰지 않는 채널(카페 등)은 운영자가 이 결과를 복사해 올린다.
+// 내보내기 파일은 브라우저로 내려받는 zip 이다(관리 화면을 연 PC에 저장된다).
+//   <글 번호>-<채널>.zip
+//     <글 번호>-<채널>/
+//       본문.md | 본문.html | 본문.txt(카페)   + 본문-서식.html(서식 복사용, HTML 채널 외)
+//       images/            본문에 쓴 모든 이미지 (생성 삽화는 반드시 업로드 필요)
+//       안내.txt           제목·설명·키워드·섹션·노출 지역·업로드할 이미지
 
 export interface ChannelExport {
   /** 화면에서 복사할 본문 */
@@ -96,37 +96,41 @@ export function renderExport(article: Article): ChannelExport {
   };
 }
 
-async function download(url: string, to: string): Promise<boolean> {
+async function download(url: string): Promise<Buffer | undefined> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) return false;
-    writeFileSync(to, Buffer.from(await res.arrayBuffer()));
-    return true;
+    if (!res.ok) return undefined;
+    return Buffer.from(await res.arrayBuffer());
   } catch {
-    return false;
+    return undefined;
   }
 }
 
-/** 내보내기 폴더를 만든다. 폴더 경로를 돌려준다. */
-export async function writeExportBundle(article: Article, dir = EXPORTS_DIR): Promise<string> {
-  const out = join(dir, `${article.id}-${article.channelId}`);
-  const imagesOut = join(out, "images");
-  mkdirSync(imagesOut, { recursive: true });
+/** 내보내기 이름(zip 파일·안의 폴더). */
+export function exportName(article: Article): string {
+  return `${article.id}-${article.channelId}`;
+}
 
-  // 이미지: 생성 삽화는 복사하고 본문 주소를 images/파일 로 바꾼다. 실제 사진은 공개 주소를 그대로 두고 사본만 받는다.
+/** 내보낼 파일 목록을 만든다(경로는 `<글 번호>-<채널>/…`). */
+export async function buildExportFiles(article: Article): Promise<ZipEntry[]> {
+  const root = exportName(article);
+  const files: ZipEntry[] = [];
+
+  // 이미지: 생성 삽화는 담고 본문 주소를 images/파일 로 바꾼다. 실제 사진은 공개 주소를 그대로 두고 사본만 받는다.
   const urlMap = new Map<string, string>();
   const missing: string[] = [];
   for (const [i, image] of article.images.entries()) {
     if (image.kind === "generated") {
       const file = basename(image.url);
       const src = join(IMAGES_DIR, file);
-      if (existsSync(src)) copyFileSync(src, join(imagesOut, file));
+      if (existsSync(src)) files.push({ path: `${root}/images/${file}`, data: readFileSync(src) });
       else missing.push(file);
       urlMap.set(image.url, `images/${file}`);
     } else {
       const ext = extname(new URL(image.url).pathname).toLowerCase() || ".jpg";
-      if (!(await download(image.url, join(imagesOut, `photo-${i + 1}${ext}`))))
-        missing.push(image.url);
+      const data = await download(image.url);
+      if (data) files.push({ path: `${root}/images/photo-${i + 1}${ext}`, data });
+      else missing.push(image.url);
     }
   }
   const localized = { ...article, body: replaceImageUrls(article.body, urlMap) };
@@ -134,12 +138,12 @@ export async function writeExportBundle(article: Article, dir = EXPORTS_DIR): Pr
 
   const ext =
     result.primary.kind === "markdown" ? "md" : result.primary.kind === "html" ? "html" : "txt";
-  writeFileSync(join(out, `본문.${ext}`), `${result.primary.content}\n`);
+  files.push({ path: `${root}/본문.${ext}`, data: `${result.primary.content}\n` });
   if (result.primary.kind !== "html")
-    writeFileSync(join(out, "본문-서식.html"), `${result.richHtml}\n`);
-  writeFileSync(
-    join(out, "안내.txt"),
-    [
+    files.push({ path: `${root}/본문-서식.html`, data: `${result.richHtml}\n` });
+  files.push({
+    path: `${root}/안내.txt`,
+    data: [
       `글 #${article.id} · ${findChannel(article.channelId)?.label ?? article.channelId}`,
       "",
       ...result.fields.map((f) => `${f.label}: ${f.value}`),
@@ -149,6 +153,11 @@ export async function writeExportBundle(article: Article, dir = EXPORTS_DIR): Pr
         : "생성 삽화 없음 (본문 이미지는 공개 주소)",
       missing.length ? `\n받지 못한 이미지: ${missing.join(", ")}` : "",
     ].join("\n"),
-  );
-  return out;
+  });
+  return files;
+}
+
+/** 내려받을 내보내기 zip 을 만든다. */
+export async function createExportZip(article: Article): Promise<Buffer> {
+  return createZip(await buildExportFiles(article));
 }
