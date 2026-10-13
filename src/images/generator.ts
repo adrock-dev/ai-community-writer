@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { extname, join } from "node:path";
 import type { AppConfig, ImageStyleSetting } from "../config.ts";
 import { resolveCommand } from "../llm/command.ts";
@@ -6,6 +6,7 @@ import { looksRateLimited } from "../llm/limits.ts";
 import { runProcess } from "../llm/process.ts";
 import { childEnv, LLM_WORK_DIR, parseCodexStream } from "../llm/providers.ts";
 import { PROJECT_ROOT } from "../paths.ts";
+import { saveOptimizedImage } from "./optimize.ts";
 
 // 본문 삽화 생성. Codex CLI의 내장 이미지 생성 도구를 쓴다(구독 로그인 그대로, 키 불필요).
 // 실제 사진이 부족한 글(시험·시험장 안내 등)에만 쓰고, 실제 학원·지점처럼 보이지 않게 만든다.
@@ -90,10 +91,13 @@ export function codexImageGenerator(llm: AppConfig["llm"]): ImageGenerator {
           throw new Error(`이미지 생성 ${why}: ${detail || `종료 코드 ${result.code}`}`);
         }
         mkdirSync(IMAGES_DIR, { recursive: true });
-        const name = `${fileBase}${extname(file).toLowerCase()}`;
-        // 임시 폴더와 저장소가 다른 드라이브일 수 있어(Windows) 이동 대신 복사한다
-        copyFileSync(join(work, file), join(IMAGES_DIR, name));
-        return name;
+        // 줄여서 WebP 로 저장한다. 임시 폴더와 저장소가 다른 드라이브일 수 있어(Windows) 이동하지 않는다
+        const ext = await saveOptimizedImage(
+          join(work, file),
+          join(IMAGES_DIR, fileBase),
+          extname(file).toLowerCase(),
+        );
+        return `${fileBase}${ext}`;
       } finally {
         if (existsSync(work)) rmSync(work, { recursive: true, force: true });
       }
