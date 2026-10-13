@@ -152,7 +152,7 @@ form.inline { display: inline; }
 .rule { display: grid; grid-template-columns: 150px 1fr auto auto; gap: 8px; align-items: start;
   padding: 8px 0; border-top: 1px solid var(--line); }
 .rule.off { opacity: .55; }
-input[type=text], input[type=url], textarea, select { width: 100%; font: inherit; color: var(--text); background: var(--bg);
+input[type=text], input[type=url], input[type=password], textarea, select { width: 100%; font: inherit; color: var(--text); background: var(--bg);
   border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 textarea { resize: vertical; min-height: 38px; }
 textarea.code { font: 13px/1.6 ui-monospace, Consolas, monospace; }
