@@ -64,6 +64,34 @@ export function highlightToBold(markdown: string): string {
   return markdown.replace(/==(?=\S)([^=\n]+?)(?<=\S)==/g, "**$1**");
 }
 
+// 표 서식. 대상 사이트 본문 CSS에 표 서식이 없어(테두리·여백 0) 칸이 붙어 보이므로 인라인 style 로 넣는다.
+// 두 드라이빙존 사이트의 본문 렌더러는 인라인 style 을 유지한다. 넓은 표는 모바일에서 가로로 밀어 본다.
+const CELL = "border:1px solid #d9d9d9;padding:8px 12px;line-height:1.6";
+const TABLE_STYLES: [RegExp, (align?: string) => string][] = [
+  [
+    /<table>/g,
+    () =>
+      '<div style="overflow-x:auto;margin:16px 0"><table style="width:100%;border-collapse:collapse">',
+  ],
+  [/<\/table>/g, () => "</table></div>"],
+  [
+    /<th(?: align="(left|center|right)")?>/g,
+    (align) =>
+      `<th style="${CELL};background:#f5f5f5;font-weight:700;text-align:${align ?? "center"}">`,
+  ],
+  [
+    /<td(?: align="(left|center|right)")?>/g,
+    (align) => `<td style="${CELL};text-align:${align ?? "left"};vertical-align:top">`,
+  ],
+];
+
+function styleTables(html: string): string {
+  return TABLE_STYLES.reduce(
+    (out, [pattern, tag]) => out.replace(pattern, (_m, align?: string) => tag(align)),
+    html,
+  );
+}
+
 /** Markdown → HTML. highlightColor 를 주면 `==문구==` 를 그 색의 굵은 글씨로, 없으면 굵게. */
 export function markdownToHtml(markdown: string, highlightColor = ""): string {
   let marked = markedByColor.get(highlightColor);
@@ -71,12 +99,12 @@ export function markdownToHtml(markdown: string, highlightColor = ""): string {
     marked = createMarked(highlightColor);
     markedByColor.set(highlightColor, marked);
   }
-  return (
+  return styleTables(
     marked
       .parse(markdown, { async: false })
       // 링크·이미지에 스크립트 주소가 들어오지 못하게 막는다
       .replace(/(href|src)="\s*(?:javascript|data|vbscript):[^"]*"/gi, '$1="#"')
-      .trim()
+      .trim(),
   );
 }
 

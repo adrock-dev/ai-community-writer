@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { getArticle } from "../articles/store.ts";
+import { type Article, getArticle } from "../articles/store.ts";
 import { type BrandId, findChannel, findSection } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
@@ -40,6 +40,17 @@ export interface PublishResult {
   url: string;
   created: boolean;
   warnings: string[];
+}
+
+/**
+ * 자동 발행할 수 있는 글: 승인·내보낸 글, 그리고 자동 발행을 마친 글(대상 글 번호가 있음).
+ * 발행된 글을 다시 보내면 대상에서 같은 글이 수정된다(본문 변환 규칙이 바뀌었을 때 반영용).
+ */
+export function canAutoPublish(article: Pick<Article, "status" | "externalId">): boolean {
+  return (
+    ["approved", "exported"].includes(article.status) ||
+    (article.status === "published" && Boolean(article.externalId))
+  );
 }
 
 /** 발행 키 유무(값은 돌려주지 않는다). doctor·화면 안내용 */
@@ -92,7 +103,7 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
   const article = getArticle(db, articleId);
   if (!article) throw new PublishError(`글 #${articleId}가 없습니다`);
   // 사람이 승인하지 않은 글은 내보내지 않는다
-  if (!["approved", "exported"].includes(article.status)) {
+  if (!canAutoPublish(article)) {
     throw new PublishError(`${article.status} 상태의 글은 자동 발행할 수 없습니다(승인 후 가능)`);
   }
   const channel = findChannel(article.channelId);

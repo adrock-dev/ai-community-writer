@@ -19,11 +19,11 @@ import {
 } from "../articles/store.ts";
 import { CHANNELS, findChannel, findSection } from "../channels.ts";
 import { createExportZip, exportName, renderExport } from "../export/bundle.ts";
-import { bodyChars } from "../quality/gate.ts";
 import { markdownToHtml, stripTitle } from "../export/render.ts";
 import { regionLabel } from "../keywords/regions.ts";
+import { canAutoPublish, PUBLISH_KIND, publishKeyStatus } from "../publish/publisher.ts";
+import { bodyChars } from "../quality/gate.ts";
 import { articleTypeLabel } from "../topics/intent.ts";
-import { PUBLISH_KIND, publishKeyStatus } from "../publish/publisher.ts";
 import { getTopic, setTopicProgress } from "../topics/store.ts";
 import { ARTICLE_STATUS_LABEL, badge, type Html, page, shortTime, statusTone } from "./layout.ts";
 
@@ -57,7 +57,8 @@ function autoPublishCard(a: Article, ctx: AppContext): Html {
       : `${channel.label} 게시판(${a.sectionCode})`;
   const hasKey = publishKeyStatus(ctx.config)[channel.brand];
   const pending = pendingPublish(ctx, a.id);
-  const ready = ["approved", "exported"].includes(a.status);
+  const ready = canAutoPublish(a);
+  const republish = a.status === "published";
   return html`<section class="card"><header><h2>자동 발행</h2><span class="muted">${target}</span></header>
   ${a.externalId ? html`<p>${badge("자동 발행됨", "ok")} 대상 글 #${a.externalId}</p>` : ""}
   ${a.publishError ? html`<ul class="issues"><li>마지막 발행 실패: ${a.publishError}</li></ul>` : ""}
@@ -69,13 +70,26 @@ function autoPublishCard(a: Article, ctx: AppContext): Html {
         : ready
           ? html`<form method="post" action="/articles/${a.id}/auto-publish">
       <p class="muted">생성 삽화를 올리고 본문 주소를 바꾼 뒤 게시합니다. 같은 글을 다시 보내면 대상에서 수정됩니다.${channel.regional && a.region ? ` 노출 대상: ${regionLabel(a.region)}` : ""}</p>
-      <button class="primary" onclick="return confirm('이 글을 실제 사이트에 게시할까요?')">지금 게시</button></form>`
+      ${
+        republish
+          ? html`<button onclick="return confirm('게시된 글을 지금 원고로 다시 보내 수정할까요?')">다시 게시 (수정 반영)</button>`
+          : html`<button class="primary" onclick="return confirm('이 글을 실제 사이트에 게시할까요?')">지금 게시</button>`
+      }</form>`
           : html`<p class="muted">${a.status === "published" ? "발행을 마쳤습니다." : "승인한 뒤 게시할 수 있습니다."}</p>`
   }
 </section>`;
 }
 
 const channelLabel = (id: string) => findChannel(id)?.label ?? id;
+
+/** 한글 제목이 %xx 로 인코딩된 게시 주소를 읽을 수 있게 푼다(링크 주소는 그대로 둔다). */
+function readableUrl(url: string): string {
+  try {
+    return decodeURI(url);
+  } catch {
+    return url;
+  }
+}
 
 function listPage(
   ctx: AppContext,
@@ -156,7 +170,7 @@ function reviewCard(a: Article): Html {
       : ""
   }
   ${a.reviewNote ? html`<p class="muted">메모: ${a.reviewNote}</p>` : ""}
-  ${a.publishedUrl ? html`<p>게시 URL: <a href="${a.publishedUrl}" target="_blank" rel="noopener">${a.publishedUrl}</a></p>` : ""}
+  ${a.publishedUrl ? html`<p class="url">게시 URL: <a href="${a.publishedUrl}" target="_blank" rel="noopener">${readableUrl(a.publishedUrl)}</a></p>` : ""}
 </section>`;
 }
 
@@ -366,7 +380,7 @@ export function mountArticles(app: Hono, ctx: AppContext): void {
     act((id) => {
       const article = getArticle(ctx.db, id);
       if (!article) throw new ReviewError("글이 없습니다");
-      if (!["approved", "exported"].includes(article.status)) {
+      if (!canAutoPublish(article)) {
         throw new ReviewError("승인한 글만 게시할 수 있습니다");
       }
       if (findChannel(article.channelId)?.autoPublish === "none") {

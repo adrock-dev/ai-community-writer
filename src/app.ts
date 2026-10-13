@@ -8,11 +8,11 @@ import { loadSearchadCredentials, readEnvFile, SearchadClient } from "./keywords
 import { loadKeywordFilter, loadSeeds } from "./keywords/seeds.ts";
 import { LlmClient } from "./llm/client.ts";
 import { resolvePath } from "./paths.ts";
+import { PUBLISH_KIND, publishArticle, recordPublishError } from "./publish/publisher.ts";
 import { Pacer } from "./queue/pacer.ts";
 import { JobQueue } from "./queue/queue.ts";
 import type { HandlerDef } from "./queue/worker.ts";
 import { fetchAcademies } from "./sources/drivingplus.ts";
-import { PUBLISH_KIND, publishArticle, recordPublishError } from "./publish/publisher.ts";
 import { fetchStores } from "./sources/drivingzone.ts";
 import { type CollectSummary, collectKeywords } from "./topics/planner.ts";
 import { generateArticle } from "./writer/generate.ts";

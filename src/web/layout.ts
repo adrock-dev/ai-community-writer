@@ -168,7 +168,8 @@ label.check { display: inline-flex; gap: 6px; align-items: center; white-space: 
 .copyto select { width: auto; max-width: 180px; padding: 2px 4px; font-size: 13px; }
 .targets { display: flex; gap: 4px 16px; flex-wrap: wrap; }
 .copyrow { display: flex; gap: 6px; align-items: center; }
-.copyrow input { flex: 1; }
+.copyrow input { flex: 1; min-width: 0; }
+.url { overflow-wrap: anywhere; }
 pre.preview { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px;
   white-space: pre-wrap; font: 13px/1.6 ui-monospace, Consolas, monospace; margin: 0; overflow-x: auto; }
 details summary { cursor: pointer; }
@@ -180,7 +181,7 @@ details summary { cursor: pointer; }
 .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
 .thumbs img { width: 100%; aspect-ratio: 3/2; object-fit: cover; border-radius: 6px; }
 @media (max-width: 900px) {
-  .split { grid-template-columns: 1fr; }
+  .split { grid-template-columns: minmax(0, 1fr); }
   .rule { grid-template-columns: 1fr; }
 }
 </style>

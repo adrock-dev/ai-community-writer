@@ -126,6 +126,19 @@ describe("내보내기 형식", () => {
     expect(html).not.toMatch(/href="javascript/);
   });
 
+  it("표에는 테두리·칸 여백을 인라인 서식으로 넣고, 정렬을 지키며, 가로 스크롤 상자로 감싼다", () => {
+    const html = markdownToHtml("| 구분 | 금액 |\n| --- | ---: |\n| 응시료 | 1만원 |");
+    expect(html).toMatch(
+      /^<div style="overflow-x:auto[^"]*"><table style="width:100%;border-collapse:collapse">/,
+    );
+    expect(html).toMatch(/<\/table><\/div>$/);
+    expect(html).toMatch(/<th style="border:1px solid #d9d9d9;[^"]*text-align:center">구분<\/th>/);
+    expect(html).toMatch(/<td style="[^"]*text-align:right;[^"]*">1만원<\/td>/);
+    expect(html).not.toMatch(/<t[hd]>|align="/);
+    // 원고에 섞인 표 태그는 여전히 글자로 바뀐다
+    expect(markdownToHtml("<table><td>x</td></table>")).not.toContain("<table");
+  });
+
   it("색 강조(==문구==)는 채널 색 글씨로, 색이 없거나 잘못되면 굵게로 바꾼다", () => {
     expect(markdownToHtml("시험 전 ==신분증== 확인", "#ff5500")).toContain(
       '<span style="color:#ff5500;font-weight:700">신분증</span>',

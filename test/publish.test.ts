@@ -240,6 +240,25 @@ describe("publishArticle", () => {
     );
   });
 
+  it("자동 발행한 글은 발행됨 상태에서 다시 보내 수정하고, 수동 발행 기록만 있는 글은 막는다", async () => {
+    const { db, config } = setup();
+    const id = createArticle(db, article());
+    const first = fakeFetch();
+    await publishArticle(deps(db, config, first.impl), id);
+    expect(getArticle(db, id)?.status).toBe("published");
+    const again = fakeFetch();
+    await publishArticle(deps(db, config, again.impl), id);
+    expect(again.calls.find((c) => c.method === "PUT")!.url).toBe(
+      first.calls.find((c) => c.method === "PUT")!.url,
+    );
+    expect(getArticle(db, id)).toMatchObject({ status: "published", externalId: "77" });
+
+    const manual = createArticle(db, article({ status: "published" }));
+    await expect(publishArticle(deps(db, config, fakeFetch().impl), manual)).rejects.toThrow(
+      /승인 후/,
+    );
+  });
+
   it("승인 전·원고 전용 채널·키 없음·대상 오류는 게시하지 않는다", async () => {
     const { db, config } = setup();
     const { impl } = fakeFetch();

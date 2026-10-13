@@ -108,6 +108,7 @@ review / draft ──수정──▶ 기계 검사 다시(LLM 없음) → review
 - 초안(문제 남음)은 검수자가 "남은 문제를 확인했습니다"를 체크해야 승인된다. 승인한 글을 고치면 approved_at을 지우고 검수 대기로 돌린다.
 - 내보내기 형식(`src/export/`): 운전면허PLUS는 Markdown(content_format=md), 드라이빙존 블로그·연수 블로그는 에디터 HTML, 카페는 텍스트 + 서식 복사용 HTML. 대상 시스템의 제목 필드와 겹치지 않게 본문의 H1은 뺀다. 원고 속 원시 HTML은 글자로 바꾸고 스크립트 주소 링크는 막는다.
 - 자사 링크: 채널 `linkTargets`(드라이빙존·연수 블로그의 요금·지점 안내 등, 열리는지 확인한 주소)를 글마다 `writer.linkChance`(기본 0.3) 확률로 프롬프트에 주고, 게이트는 그 주소만 2개까지 허용한다. 그 밖의 글은 링크를 모두 뺀다(모델이 세부 주소를 지어낼 수 있어서).
+- 표: 대상 사이트 본문 CSS에 표 서식이 없어(테두리·칸 여백 0, 2026-10-13 확인) HTML 변환 때 표·칸에 인라인 style(테두리·여백·머리글 배경·정렬)을 넣고 가로 스크롤 상자로 감싼다(`src/export/render.ts`).
 - 강조: 원고는 `**굵게**`와 `==색 강조==`만 쓴다(원시 HTML은 게이트가 잡고, 내보낼 때도 글자로 바뀐다). 색 강조는 HTML 채널에서 채널 브랜드 색(`channels.ts` `highlightColor`: 드라이빙존 `#ff5500`, 연수 `#1474fa`)의 굵은 `<span style>`로, 운전면허PLUS(Markdown)는 `**굵게**`로, 카페 텍스트는 표시만 걷는다. 두 드라이빙존 사이트의 본문 렌더러(`SafeHtmlRenderer`)는 `<script>`만 빼므로 인라인 `style`이 유지된다(2026-09-29 확인).
 - 내보내기 파일은 zip(`<글 번호>-<채널>.zip`)으로 브라우저가 내려받는다(관리 화면을 연 PC에 저장, 2026-10-08). 의존성 없는 작성기(`src/export/zip.ts`)가 UTF-8 이름 표시를 켜서 한글 파일 이름을 지킨다. 본문의 모든 이미지를 담는다. 실제 사진은 공개 주소 그대로 두고 사본만, 생성 삽화는 `images/파일`로 바꿔 운영자가 직접 올리게 한다(P6 자동 발행에서 업로드 API로 대체).
 - 로그인(`src/web/auth.ts`, 2026-10-08): 인증 파일(`server.credentialsFile`)에 `WRITER_LOGIN_USER`·`WRITER_LOGIN_PASSWORD`가 있으면 모든 화면·API에 로그인을 요구한다(세션 쿠키 HttpOnly·SameSite=Lax, 메모리 보관 7일, IP별 5회 실패 시 15분 잠금). 생성 삽화(`/images/*`)만 예외. 로그인 정보가 없으면 `server.host`가 loopback일 때만 기동한다(`unsafeHostError`). HTTP라 바깥 접속은 VPN을 권장한다.
@@ -124,6 +125,7 @@ approved / exported ──지금 게시──▶ publish 작업(LLM 없음, 재�
 ```
 
 - 대상: 채널 정의 `autoPublish`(`community` / `blog` / `none`). 카페는 원고만.
+- 자동 발행을 마친 글(published + external_id)은 글 상세의 "다시 게시"로 같은 sourceKey 에 다시 보내 수정한다(본문 변환 규칙이 바뀌었을 때 반영). 수동 발행 기록만 있는 글은 보내지 않는다.
 - 커뮤니티: 섹션 = `section.code`, 칸 = `resolveFilterCodes`, 지역 글(`regional` 채널만)은 `audienceAreas`(시도·시군구) → api.drive 가 광고 지구로 바꿔 `SERVICE_REGIONS` 저장.
 - 블로그: 섹션 코드 = board type(`blog` / `license_process` / `blog_training`), 게시 주소는 사이트 + 섹션 `boardPath`(`/story/blog`·`/story/license-process`·`/blog`) + `slugify(제목, id)` 규칙.
 - 드라이빙존 블로그의 `license_process`(면허 취득 과정, 2026-10-13 추가)는 절차·면허 종류·응시 준비 글을 받고, `blog`에서는 시드 제외어로 같은 키워드를 뺀다. 코스 분석 게시판(`test_course_*_analysis`)은 글을 시험장에 연결(`test_course_article`)해야 해서 두지 않는다(발행 API도 받지 않음).
