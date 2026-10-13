@@ -27,7 +27,7 @@
 | 채널 | 주제 영역 | 섹션 | 형식 |
 | --- | --- | --- | --- |
 | `drivingplus-community` | 학원 찾기·비교·추천, 시험 정보 | `drive_story`, `exam_procedure_guide`, `license_tips` | Markdown |
-| `drivingzone-blog` | 면허 취득 | `blog` | HTML |
+| `drivingzone-blog` | 면허 취득 | `blog`, `license_process` | HTML |
 | `dztraining-blog` | 장롱면허·연수 | `blog_training` | HTML |
 | `drivingzone-cafe` | 면허 취득 + 장롱면허·연수 (원고만) | `cafe` | 카페 원고 |
 
@@ -125,7 +125,8 @@ approved / exported ──지금 게시──▶ publish 작업(LLM 없음, 재�
 
 - 대상: 채널 정의 `autoPublish`(`community` / `blog` / `none`). 카페는 원고만.
 - 커뮤니티: 섹션 = `section.code`, 칸 = `resolveFilterCodes`, 지역 글(`regional` 채널만)은 `audienceAreas`(시도·시군구) → api.drive 가 광고 지구로 바꿔 `SERVICE_REGIONS` 저장.
-- 블로그: 섹션 코드 = board type(`blog` / `blog_training`), 게시 주소는 사이트 `slugify(제목, id)` 규칙.
+- 블로그: 섹션 코드 = board type(`blog` / `license_process` / `blog_training`), 게시 주소는 사이트 + 섹션 `boardPath`(`/story/blog`·`/story/license-process`·`/blog`) + `slugify(제목, id)` 규칙.
+- 드라이빙존 블로그의 `license_process`(면허 취득 과정, 2026-10-13 추가)는 절차·면허 종류·응시 준비 글을 받고, `blog`에서는 시드 제외어로 같은 키워드를 뺀다. 코스 분석 게시판(`test_course_*_analysis`)은 글을 시험장에 연결(`test_course_article`)해야 해서 두지 않는다(발행 API도 받지 않음).
 - 서버 계약: api.drive `docs/domains/community/api.md` §6.4, api.drivingzone `docs/writer-api.md`. 캐시 무효화는 서버가 저장 뒤 한다.
 - 키는 git 제외 파일(`publish.credentialsFile`, 기본 프로젝트 폴더 `.ai-community-writer.env`). 값은 화면·로그·doctor 에 출력하지 않는다.
 
@@ -205,7 +206,7 @@ TypeScript는 Node 24의 타입 스트리핑으로 **빌드 없이** 실행한�
   - api.drive `GET /v1/academy/get-all-academy` — 인증 없음, 약 4MB, 384곳(실내연습장 17곳 포함). 가격 관측치·공시 수강료·셔틀·운영시간·사진·리뷰. 학원 SEO 문구(`seo*`)는 우리가 만든 홍보 문구라 근거에서 뺀다.
   - api.drivingzone `GET /v1/store`(27곳) + `GET /v1/store/:id` — 인증 없음, 운영시간·지하철·강사·리뷰. 합격률·평균 소요일이 0이면 미집계로 본다.
   - ⚠️ 지점 API가 대표자명·사업자번호·SMS 수신 번호를 공개 응답에 포함한다. 정규화는 화이트리스트로 해당 필드를 버리지만, api.drivingzone 쪽에서도 응답에서 빼야 한다.
-- **drivingzone / dztraining 블로그**: 같은 `article` 테이블(board type `blog` / `blog_training`). 사람은 PHP 관리자로, 작성 도구는 위 발행 API로 쓴다.
+- **drivingzone / dztraining 블로그**: 같은 `article` 테이블(board type `blog` / `license_process` / `blog_training`). 사람은 PHP 관리자로, 작성 도구는 위 발행 API로 쓴다.
 
 ## 10. 단계
 

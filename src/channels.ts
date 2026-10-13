@@ -29,6 +29,8 @@ export interface SectionDef {
   focus: string[];
   /** 칸(필터) 배정 규칙. 대상 시스템에 칸이 없으면 생략. */
   filters?: readonly SectionFilterRule[];
+  /** 게시판 목록 경로(사이트 주소 뒤). 블로그 자동 발행의 게시 주소를 만든다. */
+  boardPath?: string;
 }
 
 /** 품질 게이트 기준. 본문 글자 수는 Markdown 기호를 뺀 글자 기준. */
@@ -162,7 +164,19 @@ export const CHANNELS = [
       requireTable: true,
       minImages: 2,
     },
-    sections: [{ code: "blog", label: "블로그", focus: ["운전면허 취득"] }],
+    // 섹션 코드 = api.drivingzone board type. 코스 분석 게시판은 시험장 연결이 필요해 두지 않는다.
+    sections: [
+      { code: "blog", label: "블로그", focus: ["운전면허 취득"], boardPath: "/story/blog" },
+      {
+        code: "license_process",
+        label: "면허 취득 과정",
+        focus: [
+          "운전면허 취득 절차(교통안전교육·신체검사·학과·기능·도로주행)",
+          "면허 종류와 응시 준비(응시원서·사진·준비물)",
+        ],
+        boardPath: "/story/license-process",
+      },
+    ],
   },
   {
     id: "dztraining-blog",
@@ -192,7 +206,14 @@ export const CHANNELS = [
       requireTable: false,
       minImages: 2,
     },
-    sections: [{ code: "blog_training", label: "연수 블로그", focus: ["장롱면허", "운전 연수"] }],
+    sections: [
+      {
+        code: "blog_training",
+        label: "연수 블로그",
+        focus: ["장롱면허", "운전 연수"],
+        boardPath: "/blog",
+      },
+    ],
   },
   {
     id: "drivingzone-cafe",

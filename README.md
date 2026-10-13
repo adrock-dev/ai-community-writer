@@ -311,7 +311,7 @@ npm run generate -- --topic=161 --dry                      # LLM 호출 없이 �
 | 채널 | 대상 | 비고 |
 | --- | --- | --- |
 | 운전면허PLUS 커뮤니티 | api.drive `PUT /v1/writer/community/posts/:sourceKey` | 섹션·칸(필터)은 채널 정의 규칙으로, **지역 글은 노출 대상 지역**까지 지정. 발행 뒤 IndexNow 통보 |
-| 드라이빙존 블로그 / 연수 블로그 | api.drivingzone `PUT /v1/writer/articles/:sourceKey` | 본문은 에디터 HTML, 첫 이미지를 목록 썸네일로 올림. 지역 지정 없음 |
+| 드라이빙존 블로그 / 연수 블로그 | api.drivingzone `PUT /v1/writer/articles/:sourceKey` | 섹션이 곧 게시판: 블로그 `blog`(/story/blog)·면허 취득 과정 `license_process`(/story/license-process)·연수 `blog_training`(/blog). 본문은 에디터 HTML, 첫 이미지를 목록 썸네일로 올림. 지역 지정 없음 |
 | 드라이빙존 카페 | — | 원고만 (내보내기에서 복사) |
 
 - 생성 삽화는 이 PC에만 있으므로 대상 서버에 먼저 올리고 본문 주소를 바꿉니다. 올린 이미지는 기억해 두어 다시 보내도 또 올리지 않습니다.

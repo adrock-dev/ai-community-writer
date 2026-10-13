@@ -18,6 +18,17 @@ describe("CHANNELS", () => {
     );
     expect(findSection("drivingplus-community", "unknown")).toBeUndefined();
   });
+
+  it("블로그 자동 발행 채널의 섹션은 모두 게시판 경로가 있다", () => {
+    for (const channel of CHANNELS.filter((c) => c.autoPublish === "blog")) {
+      for (const section of channel.sections) {
+        expect(section.boardPath, `${channel.id}/${section.code}`).toMatch(/^\/[a-z/-]+$/);
+      }
+    }
+    expect(findSection("drivingzone-blog", "license_process")?.boardPath).toBe(
+      "/story/license-process",
+    );
+  });
 });
 
 describe("resolveFilterCodes", () => {

@@ -205,6 +205,27 @@ describe("publishArticle", () => {
     expect(calls.some((c) => c.url.includes("indexnow"))).toBe(false);
   });
 
+  it("드라이빙존 면허 취득 과정 글은 그 게시판과 목록 경로로 게시한다", async () => {
+    const { db, config } = setup();
+    const id = createArticle(
+      db,
+      article({
+        channelId: "drivingzone-blog",
+        sectionCode: "license_process",
+        articleType: "exam",
+        region: "",
+        format: "html",
+      }),
+    );
+    const { impl, calls } = fakeFetch();
+    const result = await publishArticle(deps(db, config, impl), id);
+    expect(result.url).toBe(
+      `https://www.drivingzone.co.kr/story/license-process/${blogSlug("인천운전연수 학원 비교", 901)}`,
+    );
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toMatchObject({ boardType: "license_process", status: "enable" });
+  });
+
   it("다시 보내면 올린 이미지를 다시 올리지 않고 같은 식별자로 보낸다", async () => {
     const { db, config } = setup();
     const id = createArticle(db, article());

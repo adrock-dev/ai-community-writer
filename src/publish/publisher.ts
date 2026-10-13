@@ -192,6 +192,7 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
     url = `${config.publish.drivingplusSiteUrl.replace(/\/+$/, "")}${res.path}`;
     created = res.created;
   } else {
+    if (!section.boardPath) throw new PublishError(`${section.code} 섹션의 게시판 경로가 없습니다`);
     const res = await api.put<{ id: number; created: boolean }>(
       `/v1/writer/articles/${encodeURIComponent(sourceKey)}`,
       blogPayload({
@@ -205,7 +206,7 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
     const site = (
       training ? config.publish.dztrainingSiteUrl : config.publish.drivingzoneSiteUrl
     ).replace(/\/+$/, "");
-    url = `${site}${training ? "/blog" : "/story/blog"}/${blogSlug(article.title, res.id)}`;
+    url = `${site}${section.boardPath}/${blogSlug(article.title, res.id)}`;
     created = res.created;
   }
 
