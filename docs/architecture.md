@@ -106,6 +106,7 @@ review / draft ──수정──▶ 기계 검사 다시(LLM 없음) → review
 
 - 내보내기(복사·폴더)는 승인 전(draft/review)에도 확인용으로 할 수 있다. 이때 상태는 그대로 두므로 자동 발행·발행 완료 기록은 승인한 글만 된다(2026-10-08 결정). 반려한 글은 내보내지 않는다.
 - 초안(문제 남음)은 검수자가 "남은 문제를 확인했습니다"를 체크해야 승인된다. 승인한 글을 고치면 approved_at을 지우고 검수 대기로 돌린다.
+- 이미지 바꾸기(`src/articles/images.ts`, 2026-10-13): 초안·검수 대기·승인 글의 이미지를 장마다 파일로 교체(`kind = uploaded`, `saveUploadedImage`로 1200px WebP, 이미지가 아니면 거절) · 삽화 다시 만들기(`regenerate_image` 작업, Codex 사용, 생성 간격·일일 한도와 별개이고 Codex 한도면 보류, 만드는 사이 글이 발행·반려되면 건너뜀) · 빼기 · 썸네일 지정(첫 이미지로 옮김, 본문·상태 그대로). 교체·다시 만들기·빼기는 본문의 같은 이미지 줄도 바꾸고 글 수정처럼 기계 검사 후 검수 대기로 돌린다. 바꾼 이미지는 항상 새 파일 이름(`a<글>-<이미지>-<시각>`)으로 저장한다. 자동 발행 업로드 기록이 주소 기준이라 덮어쓰면 다시 게시해도 새 이미지가 올라가지 않기 때문이다. 이 PC에만 있는 이미지(`generated`·`uploaded`, `isLocalImage`)는 내보낼 때 담고 자동 발행 때 올린다.
 - 내보내기 형식(`src/export/`): 운전면허PLUS는 Markdown(content_format=md), 드라이빙존 블로그·연수 블로그는 에디터 HTML, 카페는 텍스트 + 서식 복사용 HTML. 대상 시스템의 제목 필드와 겹치지 않게 본문의 H1은 뺀다. 원고 속 원시 HTML은 글자로 바꾸고 스크립트 주소 링크는 막는다.
 - 자사 링크: 채널 `linkTargets`(드라이빙존·연수 블로그의 요금·지점 안내 등, 열리는지 확인한 주소)를 글마다 `writer.linkChance`(기본 0.3) 확률로 프롬프트에 주고, 게이트는 그 주소만 2개까지 허용한다. 그 밖의 글은 링크를 모두 뺀다(모델이 세부 주소를 지어낼 수 있어서).
 - 표: 대상 사이트 본문 CSS에 표 서식이 없어(테두리·칸 여백 0, 2026-10-13 확인) HTML 변환 때 표·칸에 인라인 style(테두리·여백·머리글 배경·정렬)을 넣고 가로 스크롤 상자로 감싼다(`src/export/render.ts`).
@@ -144,7 +145,7 @@ src/
   web/            로컬 관리 화면 (dashboard · topics · articles(검수·내보내기) · jobs · guides · images(삽화 화풍))
   export/         render(채널 형식 변환) · bundle(내보내기 파일) · zip(zip 작성)
   publish/        payload(요청 본문) · client(발행 API) · publisher(업로드→게시→기록→IndexNow)
-  articles/       store(저장·조회) · review(검수 상태 전이·재검사)
+  articles/       store(저장·조회) · review(검수 상태 전이·재검사) · images(이미지 교체·다시 만들기·빼기)
   server.ts       로컬 HTTP 서버 (Hono)
   app.ts          DB·큐·LLM·작업 핸들러 조립
   doctor.ts       설치·설정 점검 (npm run doctor)

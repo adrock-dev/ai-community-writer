@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
-import type { Article } from "../articles/store.ts";
+import { type Article, isLocalImage } from "../articles/store.ts";
 import { findChannel, findSection, resolveFilterCodes } from "../channels.ts";
 import { IMAGES_DIR } from "../images/generator.ts";
 import { regionLabel } from "../keywords/regions.ts";
@@ -27,7 +27,7 @@ export interface ChannelExport {
   /** 서식 복사(붙여넣기)용 HTML */
   richHtml: string;
   fields: { label: string; value: string }[];
-  /** 대상 시스템에 직접 올려야 하는 이미지 (생성 삽화) */
+  /** 대상 시스템에 직접 올려야 하는 이미지 (생성 삽화·올린 파일) */
   uploads: string[];
 }
 
@@ -37,7 +37,7 @@ export function renderExport(article: Article): ChannelExport {
   const section = findSection(article.channelId, article.sectionCode);
   const body = stripTitle(article.body);
   const html = markdownToHtml(body, channel?.highlightColor);
-  const uploads = article.images.filter((i) => i.kind === "generated").map((i) => basename(i.url));
+  const uploads = article.images.filter(isLocalImage).map((i) => basename(i.url));
   const keywords = article.keywords.join(", ");
   const region = channel?.regional && article.region ? regionLabel(article.region) : "";
 
@@ -120,7 +120,7 @@ export async function buildExportFiles(article: Article): Promise<ZipEntry[]> {
   const urlMap = new Map<string, string>();
   const missing: string[] = [];
   for (const [i, image] of article.images.entries()) {
-    if (image.kind === "generated") {
+    if (isLocalImage(image)) {
       const file = basename(image.url);
       const src = join(IMAGES_DIR, file);
       if (existsSync(src)) files.push({ path: `${root}/images/${file}`, data: readFileSync(src) });

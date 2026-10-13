@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import { type Article, getArticle } from "../articles/store.ts";
+import { type Article, getArticle, isLocalImage } from "../articles/store.ts";
 import { type BrandId, findChannel, findSection } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
@@ -134,13 +134,13 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
 
   // 1) 이미지: 생성 삽화는 이 PC에만 있으므로 올린다. 블로그는 목록 썸네일(첫 이미지)도 올린다.
   const readImage = deps.readImage ?? ((p: string) => readFile(p));
-  const upload = async (image: { url: string; kind: string }) => {
+  const upload = async (image: Pick<Article["images"][number], "url" | "kind">) => {
     const cacheKey = `upload:${channel.brand}:${image.url}`;
     const cached = db.getState(cacheKey);
     if (cached) return JSON.parse(cached) as { upfileId: number; url: string };
     let data: Uint8Array;
     let name: string;
-    if (image.kind === "generated") {
+    if (isLocalImage(image)) {
       name = basename(image.url);
       data = await readImage(join(IMAGES_DIR, name));
     } else {
@@ -159,14 +159,14 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
   };
 
   const urlMap = new Map<string, string>();
-  for (const image of article.images.filter((i) => i.kind === "generated")) {
+  for (const image of article.images.filter(isLocalImage)) {
     urlMap.set(image.url, (await upload(image)).url);
   }
   let thumbUpfileId: number | undefined;
   const first = article.images[0];
   if (first) {
     try {
-      if (first.kind === "generated" || channel.autoPublish === "blog") {
+      if (isLocalImage(first) || channel.autoPublish === "blog") {
         thumbUpfileId = (await upload(first)).upfileId;
       }
     } catch (error) {

@@ -180,6 +180,11 @@ details summary { cursor: pointer; }
 .article th, .article td { border: 1px solid var(--line); }
 .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
 .thumbs img { width: 100%; aspect-ratio: 3/2; object-fit: cover; border-radius: 6px; }
+.imgitem { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.imgitem:first-of-type { border-top: 0; }
+.imgitem img { width: 120px; aspect-ratio: 3/2; object-fit: cover; border-radius: 6px; }
+.imgitem form { margin-top: 8px; }
+input[type=file] { font: inherit; max-width: 100%; }
 @media (max-width: 900px) {
   .split { grid-template-columns: minmax(0, 1fr); }
   .rule { grid-template-columns: 1fr; }

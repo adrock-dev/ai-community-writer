@@ -31,3 +31,26 @@ export async function saveOptimizedImage(
     return srcExt;
   }
 }
+
+/** 검수자가 올린 파일의 최대 크기. 휴대폰 원본 사진도 들어가게 넉넉히 둔다. */
+export const UPLOAD_MAX_BYTES = 30 * 1024 * 1024;
+
+/**
+ * 검수자가 올린 이미지를 같은 규칙(가로 1200px·WebP)으로 줄여 `<destBase>.webp` 로 저장한다.
+ * 삽화 생성과 달리 이미지가 아니면 원본을 남기지 않고 오류를 낸다.
+ */
+export async function saveUploadedImage(data: Uint8Array, destBase: string): Promise<string> {
+  if (data.byteLength > UPLOAD_MAX_BYTES) {
+    throw new Error(`파일이 너무 큽니다(최대 ${UPLOAD_MAX_BYTES / 1024 / 1024}MB)`);
+  }
+  try {
+    await sharp(data)
+      .rotate() // 휴대폰 사진의 EXIF 방향을 반영한다
+      .resize({ width: IMAGE_MAX_WIDTH, withoutEnlargement: true })
+      .webp({ quality: IMAGE_WEBP_QUALITY })
+      .toFile(`${destBase}.webp`);
+    return ".webp";
+  } catch {
+    throw new Error("이미지 파일을 읽지 못했습니다(PNG·JPG·WebP 등 이미지 파일을 올리세요)");
+  }
+}

@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { html } from "hono/html";
 import type { AppContext } from "../app.ts";
+import { REGENERATE_IMAGE_KIND } from "../articles/images.ts";
 import { getArticle } from "../articles/store.ts";
 import { findChannel } from "../channels.ts";
 import { PUBLISH_KIND } from "../publish/publisher.ts";
@@ -13,6 +14,7 @@ const KIND_LABEL: Record<string, string> = {
   collect_keywords: "키워드 수집",
   sync_sources: "원천 자료 갱신",
   [PUBLISH_KIND]: "자동 발행",
+  [REGENERATE_IMAGE_KIND]: "삽화 다시 만들기",
 };
 
 export function mountJobs(app: Hono, ctx: AppContext): void {

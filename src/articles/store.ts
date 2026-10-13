@@ -14,10 +14,15 @@ export type ArticleStatus = (typeof ARTICLE_STATUSES)[number];
 export interface ArticleImage {
   id: string;
   url: string;
-  kind: "photo" | "generated";
+  /** photo: 원천 공개 사진 / generated: 생성 삽화 / uploaded: 검수자가 올린 파일 */
+  kind: "photo" | "generated" | "uploaded";
   subject: string;
   alt: string;
 }
+
+/** 이 PC(data/images, /images/…)에만 있는 이미지. 내보낼 때 담고 자동 발행 때 업로드한다. */
+export const isLocalImage = (image: Pick<ArticleImage, "kind">): boolean =>
+  image.kind === "generated" || image.kind === "uploaded";
 
 export interface Article {
   id: number;

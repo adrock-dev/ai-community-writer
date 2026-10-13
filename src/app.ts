@@ -1,3 +1,8 @@
+import {
+  REGENERATE_IMAGE_KIND,
+  type RegenerateImagePayload,
+  regenerateArticleImage,
+} from "./articles/images.ts";
 import type { AppConfig } from "./config.ts";
 import { Database } from "./db/database.ts";
 import { importGuideFilesIfEmpty } from "./guides.ts";
@@ -68,6 +73,22 @@ export function createContext(config: AppConfig): AppContext {
           throw error;
         }
       },
+    },
+    // 검수 중 삽화 한 장 다시 만들기. Codex 사용량을 쓰지만 운영자가 기다리는 작업이라
+    // 생성 간격·일일 한도에는 넣지 않는다(Codex 한도면 보류). 실패해도 다시 한 번만 시도한다.
+    [REGENERATE_IMAGE_KIND]: {
+      usesLlm: false,
+      run: (job) =>
+        regenerateArticleImage(
+          {
+            db,
+            config,
+            llm,
+            images: codexImageGenerator(config.llm),
+            log: (m) => console.log(`[image] ${m}`),
+          },
+          job.payload as RegenerateImagePayload,
+        ),
     },
     // 네이버 30일 검색 수 수집 → 주제 후보 갱신
     [COLLECT_KIND]: { usesLlm: false, run: () => runCollect(config, db) },

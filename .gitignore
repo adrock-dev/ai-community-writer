@@ -27,6 +27,8 @@ seed_matrix/04_seed_matrix_full.csv
 
 # === 생성 산출물 ===
 output/
+# 생성 삽화·검수 중 올린 이미지 (PC마다 다르다)
+data/images/
 
 # === 비밀/환경 ===
 .env

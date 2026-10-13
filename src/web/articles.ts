@@ -2,6 +2,13 @@ import type { Context, Hono } from "hono";
 import { html, raw } from "hono/html";
 import { type AppContext, GENERATE_KIND } from "../app.ts";
 import {
+  IMAGE_EDITABLE_STATUSES,
+  REGENERATE_IMAGE_KIND,
+  removeArticleImage,
+  setArticleThumbnail,
+  uploadArticleImage,
+} from "../articles/images.ts";
+import {
   approveArticle,
   articleCounts,
   editArticle,
@@ -20,6 +27,8 @@ import {
 import { CHANNELS, findChannel, findSection } from "../channels.ts";
 import { createExportZip, exportName, renderExport } from "../export/bundle.ts";
 import { markdownToHtml, stripTitle } from "../export/render.ts";
+import type { ImageStyle } from "../images/generator.ts";
+import { IMAGE_STYLE_LABEL, imageStyleFor, imageStyleSettings } from "../images/style.ts";
 import { regionLabel } from "../keywords/regions.ts";
 import { canAutoPublish, PUBLISH_KIND, publishKeyStatus } from "../publish/publisher.ts";
 import { bodyChars } from "../quality/gate.ts";
@@ -34,7 +43,75 @@ const NOTICES: Record<string, string> = {
   regenerate: "이 글을 반려하고 같은 주제로 다시 생성을 예약했습니다.",
   published: "발행 완료로 기록했습니다.",
   queued_publish: "자동 발행을 예약했습니다. 작업 화면에서 진행을 볼 수 있습니다.",
+  image_replaced: "이미지를 바꾸고 기계 검사를 다시 했습니다. 승인했던 글은 다시 승인해야 합니다.",
+  image_removed: "이미지를 빼고 기계 검사를 다시 했습니다. 승인했던 글은 다시 승인해야 합니다.",
+  thumbnail: "썸네일(첫 이미지)을 바꿨습니다.",
+  image_queued:
+    "삽화 다시 만들기를 예약했습니다. 몇 분 걸리며, 끝나면 이 화면을 새로 고치면 보입니다.",
 };
+
+/** 다시 만들고 있는 이미지 id */
+function pendingRegenerations(ctx: AppContext, articleId: number): Set<string> {
+  return new Set(
+    ctx.db
+      .all<{ imageId: string }>(
+        `SELECT json_extract(payload, '$.imageId') AS imageId FROM jobs
+           WHERE kind = ? AND status IN ('queued', 'running') AND json_extract(payload, '$.articleId') = ?`,
+        [REGENERATE_IMAGE_KIND, articleId],
+      )
+      .map((r) => r.imageId),
+  );
+}
+
+const IMAGE_KIND_LABEL = { photo: "실제 사진", generated: "생성 삽화", uploaded: "올린 파일" };
+const DRAW_STYLES: ImageStyle[] = ["photo", "illustration"];
+
+/** 이미지 목록. 수정할 수 있는 글이면 장마다 교체·다시 만들기·빼기·썸네일 지정을 붙인다. */
+function imageCard(a: Article, ctx: AppContext): Html {
+  const editable = IMAGE_EDITABLE_STATUSES.includes(a.status);
+  const pending = editable ? pendingRegenerations(ctx, a.id) : new Set<string>();
+  const setting = imageStyleFor(imageStyleSettings(ctx.db, ctx.config), a.channelId);
+  const defaultStyle: ImageStyle = setting === "mixed" ? "photo" : setting;
+  const blog = findChannel(a.channelId)?.autoPublish === "blog";
+  return html`<section class="card"><header><h2>이미지</h2><span class="muted">${a.images.length}장${editable ? "" : " · 발행 전(초안·검수 대기·승인) 글만 바꿀 수 있습니다"}</span></header>
+  ${a.images.map(
+    (i, n) => html`<div class="imgitem">
+    <a href="${i.url}" target="_blank" rel="noopener" title="${i.alt}"><img src="${i.url}" alt="${i.alt}"></a>
+    <div>
+      <div>${i.id} · ${IMAGE_KIND_LABEL[i.kind] ?? i.kind} ${n === 0 && blog ? badge("썸네일", "ok") : ""} ${pending.has(i.id) ? badge("다시 만드는 중", "warn") : ""}</div>
+      <div class="muted">${i.alt}</div>
+      ${
+        editable
+          ? html`<details><summary class="muted">바꾸기</summary>
+        <form method="post" action="/articles/${a.id}/images/${i.id}/upload" enctype="multipart/form-data">
+          <div class="field"><label>파일로 교체 (가로 1200px·WebP로 줄여 저장)</label><input type="file" name="file" accept="image/*" required></div>
+          <div class="field"><input type="text" name="alt" value="${i.alt}" placeholder="대체 텍스트"></div>
+          <button class="small">올려서 교체</button>
+        </form>
+        ${
+          pending.has(i.id)
+            ? ""
+            : html`<form method="post" action="/articles/${a.id}/images/${i.id}/regenerate">
+          <div class="field"><label>삽화 다시 만들기 (Codex 사용량 소모, 몇 분 걸림)</label>
+            <textarea name="scene" rows="2" required placeholder="장면 설명">${i.kind === "generated" ? i.subject : ""}</textarea></div>
+          <div class="field"><select name="style">${DRAW_STYLES.map((st) => html`<option value="${st}" ${st === defaultStyle ? "selected" : ""}>${IMAGE_STYLE_LABEL[st]}</option>`)}</select></div>
+          <div class="field"><input type="text" name="alt" value="${i.alt}" placeholder="대체 텍스트"></div>
+          <button class="small">다시 만들기</button>
+        </form>`
+        }
+        <form method="post" class="actions">
+          ${n > 0 && blog ? html`<button class="small" formaction="/articles/${a.id}/images/${i.id}/thumbnail">썸네일로 지정</button>` : ""}
+          <button class="small danger" formaction="/articles/${a.id}/images/${i.id}/remove" onclick="return confirm('이 이미지를 본문에서 뺄까요?')">빼기</button>
+        </form>
+      </details>`
+          : ""
+      }
+    </div>
+  </div>`,
+  )}
+  ${editable ? html`<p class="muted">바꾸거나 빼면 기계 검사를 다시 하고 검수 대기로 돌아갑니다(본문 이미지 최소 ${findChannel(a.channelId)?.quality.minImages ?? 2}장, 연속 배치 금지).</p>` : ""}
+</section>`;
+}
 
 /** 이 글의 자동 발행 작업이 대기·진행 중인가 */
 function pendingPublish(ctx: AppContext, articleId: number): boolean {
@@ -251,10 +328,7 @@ ${
     ${reviewCard(a)}
     ${autoPublishCard(a, ctx)}
     ${exportCard(a, origin)}
-    <section class="card"><header><h2>이미지</h2><span class="muted">${a.images.length}장</span></header>
-      <div class="thumbs">${a.images.map((i) => html`<a href="${i.url}" target="_blank" rel="noopener" title="${i.alt}"><img src="${i.url}" alt="${i.alt}"></a>`)}</div>
-      ${a.images.map((i) => html`<div class="muted">${i.id} · ${i.kind === "photo" ? "실제 사진" : "생성 삽화"} · ${i.alt}</div>`)}
-    </section>
+    ${imageCard(a, ctx)}
     <section class="card"><details><summary><b>근거 자료</b></summary><pre class="preview">${a.facts || "(없음)"}</pre></details></section>
     <section class="card"><details><summary><b>생성 기록</b></summary>
       ${attempts.map((t) => html`<div class="muted" style="margin-top:8px"><b>${t.attempt}차</b>${t.factChecked ? " · 사실 검증함" : ""} — ${t.issues.length ? t.issues.join(" / ") : "문제 없음"}</div>`)}
@@ -388,6 +462,64 @@ export function mountArticles(app: Hono, ctx: AppContext): void {
       }
       if (!pendingPublish(ctx, id)) ctx.queue.enqueue(PUBLISH_KIND, { articleId: id });
       return "queued_publish";
+    }),
+  );
+
+  app.post(
+    "/articles/:id/images/:imageId/upload",
+    act(async (id, f, c) => {
+      const file = f.file;
+      if (!(file instanceof File) || !file.size) throw new ReviewError("올릴 파일을 고르세요");
+      await uploadArticleImage(
+        ctx.db,
+        id,
+        c.req.param("imageId") ?? "",
+        { data: new Uint8Array(await file.arrayBuffer()), name: file.name },
+        String(f.alt ?? ""),
+      );
+      return "image_replaced";
+    }),
+  );
+
+  app.post(
+    "/articles/:id/images/:imageId/regenerate",
+    act((id, f, c) => {
+      const imageId = c.req.param("imageId") ?? "";
+      const article = getArticle(ctx.db, id);
+      if (!article) throw new ReviewError("글이 없습니다");
+      if (!IMAGE_EDITABLE_STATUSES.includes(article.status)) {
+        throw new ReviewError(`${article.status} 상태의 글은 이미지를 바꿀 수 없습니다`);
+      }
+      if (!article.images.some((i) => i.id === imageId)) {
+        throw new ReviewError(`이미지 ${imageId}가 없습니다`);
+      }
+      const scene = String(f.scene ?? "").trim();
+      if (!scene) throw new ReviewError("장면 설명을 적으세요");
+      const style = DRAW_STYLES.find((st) => st === f.style) ?? "photo";
+      if (!pendingRegenerations(ctx, id).has(imageId)) {
+        ctx.queue.enqueue(
+          REGENERATE_IMAGE_KIND,
+          { articleId: id, imageId, scene, style, alt: String(f.alt ?? "").trim() },
+          { maxAttempts: 2 },
+        );
+      }
+      return "image_queued";
+    }),
+  );
+
+  app.post(
+    "/articles/:id/images/:imageId/remove",
+    act((id, _f, c) => {
+      removeArticleImage(ctx.db, id, c.req.param("imageId") ?? "");
+      return "image_removed";
+    }),
+  );
+
+  app.post(
+    "/articles/:id/images/:imageId/thumbnail",
+    act((id, _f, c) => {
+      setArticleThumbnail(ctx.db, id, c.req.param("imageId") ?? "");
+      return "thumbnail";
     }),
   );
 
