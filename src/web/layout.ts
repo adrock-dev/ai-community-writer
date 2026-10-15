@@ -63,24 +63,54 @@ export function shortTime(iso: string | null | undefined): string {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+// navigator.clipboard 는 보안 컨텍스트(HTTPS·localhost)에서만 있다. 관리 화면을 다른 PC에서
+// http://<IP>:8787 로 열면 없으므로, 그때는 화면 밖 요소를 선택해 execCommand('copy')로 복사한다.
 const COPY_SCRIPT = `
+function legacyCopy(html, text) {
+  const box = document.createElement(html ? 'div' : 'textarea');
+  box.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0;white-space:pre-wrap';
+  if (html) box.innerHTML = html; else { box.value = text; box.readOnly = true; }
+  document.body.appendChild(box);
+  const sel = document.getSelection();
+  sel.removeAllRanges();
+  if (html) { const r = document.createRange(); r.selectNodeContents(box); sel.addRange(r); }
+  else box.select();
+  const ok = document.execCommand('copy');
+  sel.removeAllRanges();
+  box.remove();
+  if (!ok) throw new Error('copy failed');
+}
+async function copyContent(html, text) {
+  if (window.isSecureContext && navigator.clipboard) {
+    try {
+      if (html && window.ClipboardItem) {
+        await navigator.clipboard.write([new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([text], { type: 'text/plain' }),
+        })]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      return;
+    } catch (err) { /* 권한 거부 등은 예전 방식으로 다시 시도 */ }
+  }
+  legacyCopy(html, text);
+}
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-copy],[data-copy-html]');
   if (!b) return;
-  const done = () => { const t = b.textContent; b.textContent = '복사됨'; setTimeout(() => b.textContent = t, 1500); };
+  const label = b.dataset.label || (b.dataset.label = b.textContent);
+  const show = (t) => { b.textContent = t; setTimeout(() => b.textContent = label, 1500); };
   try {
     if (b.dataset.copy) {
       const el = document.getElementById(b.dataset.copy);
-      await navigator.clipboard.writeText(el.value ?? el.textContent);
+      await copyContent(null, el.value ?? el.textContent);
     } else {
       const el = document.getElementById(b.dataset.copyHtml);
-      await navigator.clipboard.write([new ClipboardItem({
-        'text/html': new Blob([el.innerHTML], { type: 'text/html' }),
-        'text/plain': new Blob([el.innerText], { type: 'text/plain' }),
-      })]);
+      await copyContent(el.innerHTML, el.textContent);
     }
-    done();
-  } catch (err) { b.textContent = '복사 실패'; }
+    show('복사됨');
+  } catch (err) { show('복사 실패'); }
 });`;
 
 export function page(
