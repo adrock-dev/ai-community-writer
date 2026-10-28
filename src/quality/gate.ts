@@ -30,7 +30,8 @@ export interface GateContext {
   restrictedImages?: { id: string; mustMention: string[] }[];
   /**
    * 근거 자료의 드라이빙존 가맹점 이름(franchiseStoresIn). 본문이 가맹점을 소개하면 "가맹점은 요금이
-   * 다를 수 있으니 지점에 확인" 안내가 있어야 한다. 요금제가 직영점 기준이라 가맹점과 다를 수 있다(2026-10-28).
+   * 다를 수 있으니 지점에 확인" 안내가 있어야 한다. 요금 API 는 직영점 기준이라 가맹점과 다를 수 있다
+   * (운영 확인 2026-10-28).
    */
   franchiseStores?: string[];
 }
