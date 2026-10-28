@@ -66,30 +66,28 @@ export function highlightToBold(markdown: string): string {
 
 // 표 서식. 대상 사이트 본문 CSS에 표 서식이 없어(테두리·여백 0) 칸이 붙어 보이므로 인라인 style 로 넣는다.
 // 두 드라이빙존 사이트의 본문 렌더러는 인라인 style 을 유지한다. 넓은 표는 모바일에서 가로로 밀어 본다.
-const CELL = "border:1px solid #d9d9d9;padding:8px 12px;line-height:1.6";
-const TABLE_STYLES: [RegExp, (align?: string) => string][] = [
+// 원고의 열 정렬(`---:`)은 따르지 않는다. 모델이 금액 열에 오른쪽 정렬을 붙이는데, 칸이 "25만원(정가 35만원)"
+// 같은 글이라 그 열만 어긋나 보였다(2026-10-28). 머리글은 가운데, 칸은 왼쪽으로 맞춘다.
+// keep-all: 한글은 글자마다 줄을 바꿀 수 있어 짧은 칸("무제한반")이 한 글자씩 접혔다. 띄어쓰기에서만 바꾼다.
+const CELL = "border:1px solid #d9d9d9;padding:8px 12px;line-height:1.6;word-break:keep-all";
+const TABLE_STYLES: [RegExp, string][] = [
   [
     /<table>/g,
-    () =>
-      '<div style="overflow-x:auto;margin:16px 0"><table style="width:100%;border-collapse:collapse">',
+    '<div style="overflow-x:auto;margin:16px 0"><table style="width:100%;border-collapse:collapse">',
   ],
-  [/<\/table>/g, () => "</table></div>"],
+  [/<\/table>/g, "</table></div>"],
   [
-    /<th(?: align="(left|center|right)")?>/g,
-    (align) =>
-      `<th style="${CELL};background:#f5f5f5;font-weight:700;text-align:${align ?? "center"}">`,
+    /<th(?: align="(?:left|center|right)")?>/g,
+    `<th style="${CELL};background:#f5f5f5;font-weight:700;text-align:center">`,
   ],
   [
-    /<td(?: align="(left|center|right)")?>/g,
-    (align) => `<td style="${CELL};text-align:${align ?? "left"};vertical-align:top">`,
+    /<td(?: align="(?:left|center|right)")?>/g,
+    `<td style="${CELL};text-align:left;vertical-align:top">`,
   ],
 ];
 
 function styleTables(html: string): string {
-  return TABLE_STYLES.reduce(
-    (out, [pattern, tag]) => out.replace(pattern, (_m, align?: string) => tag(align)),
-    html,
-  );
+  return TABLE_STYLES.reduce((out, [pattern, tag]) => out.replace(pattern, tag), html);
 }
 
 /** Markdown → HTML. highlightColor 를 주면 `==문구==` 를 그 색의 굵은 글씨로, 없으면 굵게. */

@@ -126,14 +126,18 @@ describe("내보내기 형식", () => {
     expect(html).not.toMatch(/href="javascript/);
   });
 
-  it("표에는 테두리·칸 여백을 인라인 서식으로 넣고, 정렬을 지키며, 가로 스크롤 상자로 감싼다", () => {
+  it("표에는 테두리·칸 여백을 인라인 서식으로 넣고, 원고 정렬 대신 칸을 왼쪽으로 맞추며, 가로 스크롤 상자로 감싼다", () => {
     const html = markdownToHtml("| 구분 | 금액 |\n| --- | ---: |\n| 응시료 | 1만원 |");
     expect(html).toMatch(
       /^<div style="overflow-x:auto[^"]*"><table style="width:100%;border-collapse:collapse">/,
     );
     expect(html).toMatch(/<\/table><\/div>$/);
     expect(html).toMatch(/<th style="border:1px solid #d9d9d9;[^"]*text-align:center">구분<\/th>/);
-    expect(html).toMatch(/<td style="[^"]*text-align:right;[^"]*">1만원<\/td>/);
+    // 금액 열의 오른쪽 정렬(---:)은 따르지 않는다
+    expect(html).toMatch(/<td style="[^"]*text-align:left;[^"]*">1만원<\/td>/);
+    expect(html).not.toMatch(/text-align:right/);
+    // 한글 칸이 글자 단위로 접히지 않게 띄어쓰기에서만 줄을 바꾼다
+    expect(html).toMatch(/<td style="[^"]*word-break:keep-all[^"]*">응시료<\/td>/);
     expect(html).not.toMatch(/<t[hd]>|align="/);
     // 원고에 섞인 표 태그는 여전히 글자로 바뀐다
     expect(markdownToHtml("<table><td>x</td></table>")).not.toContain("<table");
