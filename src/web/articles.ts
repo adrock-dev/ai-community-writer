@@ -159,7 +159,7 @@ function autoPublishCard(a: Article, ctx: AppContext): Html {
         ? html`<p>${badge("발행 대기 중", "warn")}</p>`
         : ready
           ? html`<form method="post" action="/articles/${a.id}/auto-publish">
-      <p class="muted">생성 삽화를 올리고 본문 주소를 바꾼 뒤 게시합니다. 같은 글을 다시 보내면 대상에서 수정됩니다.${channel.regional && a.region ? ` 노출 대상: ${regionLabel(a.region)}` : ""}</p>
+      <p class="muted">생성 삽화를 올리고 본문 주소를 바꾼 뒤 게시합니다. 같은 글을 다시 보내면 대상에서 수정됩니다.${channel.regional === "all" && a.region ? ` 노출 대상: ${regionLabel(a.region)}` : ""}</p>
       ${
         republish
           ? html`<button onclick="return confirm('게시된 글을 지금 원고로 다시 보내 수정할까요?')">다시 게시 (수정 반영)</button>`

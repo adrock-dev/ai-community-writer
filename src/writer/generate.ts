@@ -123,8 +123,8 @@ export async function generateArticle(
   const channel = findChannel(stored.channelId);
   const section = findSection(stored.channelId, stored.sectionCode);
   if (!channel || !section) throw new Error(`주제 #${topicId}의 채널·섹션 정의가 없습니다`);
-  // 지역 글은 regional 채널만 쓴다. 예전에 만들어진 지역 주제가 남아 있어도 전국 글로 쓴다.
-  const topic: Topic = channel.regional ? stored : { ...stored, region: "" };
+  // 지역 글을 쓰지 않는 채널(regional=none)은 예전에 만들어진 지역 주제가 남아 있어도 전국 글로 쓴다.
+  const topic: Topic = channel.regional !== "none" ? stored : { ...stored, region: "" };
 
   setTopicProgress(db, topicId, "queued");
   try {

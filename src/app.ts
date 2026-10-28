@@ -119,6 +119,13 @@ export async function runCollect(
   log?: (message: string) => void,
 ): Promise<CollectSummary> {
   const datalab = loadDatalabCredentials(config.naver, readEnvFile);
+  // 직영점 지역 판정용. 지점 자료를 못 받으면 그 판정만 미룬다.
+  const directStoreAddresses = await fetchStores(db, config.sources)
+    .then((r) => r.value.filter((s) => s.type === "direct").map((s) => s.address))
+    .catch((error: unknown) => {
+      log?.(`드라이빙존 지점 자료 조회 실패: ${(error as Error).message}`);
+      return undefined;
+    });
   return collectKeywords({
     db,
     keywords: config.keywords,
@@ -127,6 +134,7 @@ export async function runCollect(
     seeds: loadSeeds(),
     filter: loadKeywordFilter(),
     trends: datalab ? (groups) => fetchTrends(datalab, groups) : undefined,
+    directStoreAddresses,
     log,
   });
 }

@@ -91,7 +91,7 @@ describe("주제 복사", () => {
     });
     expect(() =>
       copyTopic(db, id, { channelId: "dztraining-blog", sectionCode: "blog_training" }),
-    ).toThrow("지역 글을 쓰지 않습니다");
+    ).toThrow("지역 주제를 복사할 수 없습니다");
     expect(() =>
       copyTopic(db, id, { channelId: "drivingplus-community", sectionCode: "drive_story" }),
     ).toThrow("같은 채널·섹션");
@@ -360,7 +360,7 @@ describe("주제 화면", () => {
     );
     expect(
       new URL(blocked.headers.get("location") ?? "", "http://local").searchParams.get("error"),
-    ).toContain("지역 글을 쓰지 않습니다");
+    ).toContain("지역 주제를 복사할 수 없습니다");
 
     const ok = await app.request(
       `/topics/${id}/copy`,

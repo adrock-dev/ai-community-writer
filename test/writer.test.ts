@@ -485,7 +485,37 @@ describe("근거 자료", () => {
     );
   });
 
-  it("드라이빙존: 지역 주제가 와도 지역으로 좁히지 않고 전체 지점을 준다", () => {
+  it("연수 블로그 지역 글은 그 지역 지점만 직영점 먼저 주고, 지점이 없으면 전국으로 쓴다", () => {
+    const store = (name: string, type: string, address: string) =>
+      ({
+        name,
+        type,
+        address,
+        reviews: [],
+        hours: [],
+        subways: [],
+        keywordTags: [],
+        machines: {},
+        instructors: [],
+        locationHint: "",
+        photos: [],
+      }) as unknown as Store;
+    const stores = [
+      store("홍대역점", "chain", "서울특별시 마포구 홍익로6길 34"),
+      store("서부면허시험장점", "direct", "서울특별시 마포구 월드컵로42길 14"),
+      store("강남역점", "direct", "서울특별시 강남구 강남대로78길 24"),
+    ];
+    const training = findChannel("dztraining-blog")!;
+    const mapo = drivingzoneFacts(stores, {}, topic({ region: "서울특별시 마포구" }), training);
+    expect(mapo.candidates).toEqual(["서부면허시험장점", "홍대역점"]);
+    expect(mapo.text).toMatch(/이 지역\(서울특별시 마포구\) 지점 2곳/);
+    expect(mapo.text).not.toMatch(/강남역점|전체 지점 목록/);
+    const daegu = drivingzoneFacts(stores, {}, topic({ region: "대구광역시" }), training);
+    expect(daegu.text).toMatch(/전체 지점 목록:/);
+    expect(daegu.candidates).toHaveLength(3);
+  });
+
+  it("드라이빙존: 지역 글을 쓰지 않는 채널은 지역 주제가 와도 전체 지점을 준다", () => {
     const store = {
       name: "강남역점",
       type: "direct",

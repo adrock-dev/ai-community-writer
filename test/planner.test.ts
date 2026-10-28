@@ -53,6 +53,8 @@ function deps(db: Database, extra: object = {}) {
         },
       ],
       filter: { include: ["운전", "면허", "연수"], exclude: ["대리운전"] },
+      // 직영점은 부산에만 있다고 둔다. 강남은 직영점이 없는 지역이다.
+      directStoreAddresses: ["부산광역시 사상구 사상로367번길 17"],
       now: new Date(2026, 8, 28, 10),
       ...extra,
     },
@@ -75,7 +77,7 @@ describe("collectKeywords", () => {
     const db = new Database(":memory:");
     const { deps: d } = deps(db);
     const summary = await collectKeywords(d);
-    // 드라이빙존 연수 블로그는 지역 글을 쓰지 않으므로 "강남운전연수"는 뺀다
+    // 드라이빙존 연수 블로그는 직영점이 있는 지역만 쓰므로 "강남운전연수"는 뺀다
     expect(summary.sections[0]).toMatchObject({
       fetched: 7,
       kept: 4,
@@ -112,6 +114,34 @@ describe("collectKeywords", () => {
       volume: 2000,
       competition: "낮음",
     });
+  });
+
+  it("연수 블로그는 직영점이 있는 지역의 키워드만 지역 주제로 만든다", async () => {
+    const db = new Database(":memory:");
+    const { deps: d } = deps(db, {
+      directStoreAddresses: ["서울특별시 강남구 강남대로78길 24, 청솔빌딩 6층"],
+    });
+    const summary = await collectKeywords(d);
+    expect(summary.sections[0]).toMatchObject({ regionalDropped: 0, topics: 3 });
+    expect(
+      listTopics(db, { channelId: "dztraining-blog" }).find(
+        (t) => t.primaryKeyword === "강남운전연수",
+      ),
+    ).toMatchObject({ region: "서울특별시 강남구", articleType: "training" });
+  });
+
+  it("지점 자료가 없으면 직영점 지역 주제를 만들지 않고, 있던 지역 후보도 지우지 않는다", async () => {
+    const db = new Database(":memory:");
+    const now = new Date().toISOString();
+    db.run(
+      `INSERT INTO topics (primary_keyword, channel_id, section_code, created_at, updated_at, topic_key, region)
+       VALUES ('노원운전연수', 'dztraining-blog', 'blog_training', ?, ?, '노원운전연수', '서울특별시 노원구')`,
+      [now, now],
+    );
+    const summary = await collectKeywords(deps(db, { directStoreAddresses: undefined }).deps);
+    expect(summary.sections[0]).toMatchObject({ regionalDropped: 1 });
+    expect(summary.warnings[0]).toMatch(/지점 자료/);
+    expect(listTopics(db).map((t) => t.primaryKeyword)).toContain("노원운전연수");
   });
 
   it("예전 수집이 드라이빙존 채널에 만든 지역 후보는 다음 수집 때 지운다", async () => {

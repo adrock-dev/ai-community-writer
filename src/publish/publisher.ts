@@ -190,7 +190,7 @@ export async function publishArticle(deps: PublishDeps, articleId: number): Prom
       section,
       primaryKeyword: topic?.primaryKeyword ?? article.keywords[0] ?? article.title,
       content: highlightToBold(body),
-      regional: channel.regional,
+      regional: channel.regional === "all",
       thumbUpfileId,
     });
     if (!payload.filterCodes.length)

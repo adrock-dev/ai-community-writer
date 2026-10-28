@@ -1,6 +1,7 @@
 import type { ChannelDef } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
+import { regionLabel } from "../keywords/regions.ts";
 import { type Academy, fetchAcademies } from "../sources/drivingplus.ts";
 import {
   DRIVINGZONE_PRICE_VAT_INCLUDED,
@@ -291,24 +292,41 @@ export function drivingzoneFacts(
   const parts: string[] = [
     `드라이빙존 실내운전연습장 지점 ${stores.length}곳 (직영 ${direct}곳, 가맹 ${stores.length - direct}곳)`,
   ];
-  // 드라이빙존 채널은 지역 글을 쓰지 않는다(channels.ts regional=false). 이 채널에 맞는 후기가
-  // 많은 지점을 대표로 보여 주고, 전체 지점 목록을 함께 준다.
   const relevant = (s: Store) =>
     s.reviews.filter((r) => (reviewFor === "training" ? r.forTraining : r.forLicense)).length;
-  const detailed = [...stores].sort((a, b) => relevant(b) - relevant(a)).slice(0, 3);
-  parts.push(
-    "대표 지점 상세:",
-    ...detailed.map((s) => storeLine(s, true, reviewFor)),
-    "전체 지점 목록:",
-    ...stores.map((s) => storeLine(s, false, reviewFor)),
-  );
+  // 지역 글(channels.ts regional 이 none 이 아닌 채널)은 그 지역 지점만 준다. 직영점을 먼저 둔다.
+  // 그 지역에 지점이 없으면(수집 뒤 지점이 바뀐 경우 등) 전국 글처럼 쓴다.
+  const local =
+    channel.regional !== "none" && topic.region
+      ? stores
+          .filter((s) => inRegion(s.address, topic.region))
+          .sort((a, b) => Number(b.type === "direct") - Number(a.type === "direct"))
+      : [];
+  let detailed: Store[];
+  if (local.length) {
+    detailed = local.slice(0, 3);
+    parts.push(
+      `이 지역(${regionLabel(topic.region)}) 지점 ${local.length}곳 (다른 지역 지점은 이 글에 쓰지 않는다):`,
+      ...detailed.map((s) => storeLine(s, true, reviewFor)),
+      ...local.slice(3).map((s) => storeLine(s, false, reviewFor)),
+    );
+  } else {
+    // 전국 글: 이 채널에 맞는 후기가 많은 지점을 대표로 보여 주고, 전체 지점 목록을 함께 준다.
+    detailed = [...stores].sort((a, b) => relevant(b) - relevant(a)).slice(0, 3);
+    parts.push(
+      "대표 지점 상세:",
+      ...detailed.map((s) => storeLine(s, true, reviewFor)),
+      "전체 지점 목록:",
+      ...stores.map((s) => storeLine(s, false, reviewFor)),
+    );
+  }
   parts.push(
     ...pricingLines("면허 취득 요금제", pricing.license ?? []),
     ...pricingLines("운전연수 요금제", pricing.training ?? []),
   );
   return {
     text: parts.join("\n"),
-    candidates: stores.map((s) => s.name),
+    candidates: (local.length ? local : stores).map((s) => s.name),
     images: drivingzonePhotos(detailed, topic.articleType),
   };
 }

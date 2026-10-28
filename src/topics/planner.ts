@@ -1,4 +1,4 @@
-import { CHANNELS, findChannel } from "../channels.ts";
+import { CHANNELS, findChannel, type RegionalScope } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
 import {
@@ -11,6 +11,7 @@ import {
 import { detectRegion, type RegionEntry, regionKey } from "../keywords/regions.ts";
 import type { KeywordStat } from "../keywords/searchad.ts";
 import { type KeywordFilter, passesFilter, type SectionSeeds } from "../keywords/seeds.ts";
+import { inRegion } from "../writer/facts.ts";
 import { inferArticleType } from "./intent.ts";
 
 // 키워드 수집 → 묶기 → 점수 → 주제 후보 저장.
@@ -31,6 +32,11 @@ export interface CollectDeps {
   seeds: SectionSeeds[];
   filter: KeywordFilter;
   trends?: TrendFetcher;
+  /**
+   * 드라이빙존 직영점 주소. 직영점 지역만 지역 글을 쓰는 채널(regional=direct-stores)의 판정에 쓴다.
+   * 없으면(지점 자료 조회 실패) 그 채널의 새 지역 주제는 만들지 않고, 있던 지역 후보도 지우지 않는다.
+   */
+  directStoreAddresses?: string[];
   now?: Date;
   log?: (message: string) => void;
 }
@@ -40,7 +46,7 @@ export interface SectionSummary {
   sectionCode: string;
   fetched: number;
   kept: number;
-  /** 지역 글을 쓰지 않는 채널에서 뺀 지역 키워드 수 */
+  /** 그 채널이 쓰지 않는 지역(직영점이 없는 지역 등)이라 뺀 지역 키워드 수 */
   regionalDropped: number;
   topics: number;
   error?: string;
@@ -107,6 +113,21 @@ export function sameBrandChannels(channelId: string): string[] {
   return CHANNELS.filter((c) => c.brand === brand && c.id !== channelId).map((c) => c.id);
 }
 
+/**
+ * 이 채널이 이 지역의 글을 쓰는가. 지역이 없으면(전국 글) 항상 쓴다.
+ * 직영점 주소를 모르면 undefined 를 돌려준다(판정 보류).
+ */
+export function regionAllowed(
+  scope: RegionalScope,
+  region: string,
+  directStoreAddresses?: string[],
+): boolean | undefined {
+  if (!region || scope === "all") return true;
+  if (scope === "none") return false;
+  if (!directStoreAddresses) return undefined;
+  return directStoreAddresses.some((a) => inRegion(a, region));
+}
+
 export function localDate(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
@@ -124,6 +145,14 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
   const log = deps.log ?? (() => {});
   const summary: CollectSummary = { collectedOn, sections: [], warnings: [] };
   const results: SectionClusters[] = [];
+  const needsStores = deps.seeds.some(
+    (s) => findChannel(s.channelId)?.regional === "direct-stores",
+  );
+  if (needsStores && !deps.directStoreAddresses) {
+    summary.warnings.push(
+      "드라이빙존 지점 자료가 없어 직영점 지역 글 주제를 만들지 않았습니다(있던 지역 후보는 유지)",
+    );
+  }
 
   for (const section of deps.seeds) {
     const item: SectionSummary = {
@@ -165,12 +194,12 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
         }
       });
 
-      // 지역 글은 regional 채널(운전면허PLUS)만 쓴다. 다른 채널에서는 지역 키워드를 주제로 만들지 않는다.
-      const regional = findChannel(section.channelId)?.regional ?? false;
+      // 지역 글은 채널의 regional 범위 안에서만 만든다(운전면허PLUS 전 지역, 연수 블로그 직영점 지역).
+      const scope = findChannel(section.channelId)?.regional ?? "none";
       const inputs: ClusterInput[] = [];
       for (const { stat } of kept) {
         const match = detectRegion(stat.keyword, deps.regions);
-        if (match && !regional) {
+        if (match && !regionAllowed(scope, regionKey(match), deps.directStoreAddresses)) {
           item.regionalDropped++;
           continue;
         }
@@ -214,15 +243,22 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
 
   const stamp = now.toISOString();
   db.transaction(() => {
-    // 예전 수집이 지역 글을 쓰지 않는 채널에 만든 지역 후보를 지운다(생성 예약·작성된 주제는 둔다).
-    const nonRegional = CHANNELS.filter((c) => !c.regional).map((c) => c.id);
-    if (nonRegional.length) {
-      db.run(
-        `DELETE FROM topics WHERE region != '' AND status IN ('candidate', 'skipped')
-           AND channel_id IN (${nonRegional.map(() => "?").join(", ")})
-           AND NOT EXISTS (SELECT 1 FROM articles a WHERE a.topic_id = topics.id)`,
-        nonRegional,
-      );
+    // 예전 수집이 그 채널이 쓰지 않는 지역에 만든 후보를 지운다(생성 예약·작성된 주제는 둔다).
+    // 직영점 주소를 모르면 판정을 미루고 지우지 않는다.
+    const limited = CHANNELS.filter((c) => c.regional !== "all").map((c) => c.id);
+    const stale = limited.length
+      ? db.all<{ id: number; channel_id: string; region: string }>(
+          `SELECT id, channel_id, region FROM topics WHERE region != '' AND status IN ('candidate', 'skipped')
+             AND channel_id IN (${limited.map(() => "?").join(", ")})
+             AND NOT EXISTS (SELECT 1 FROM articles a WHERE a.topic_id = topics.id)`,
+          limited,
+        )
+      : [];
+    for (const t of stale) {
+      const scope = findChannel(t.channel_id)?.regional ?? "none";
+      if (regionAllowed(scope, t.region, deps.directStoreAddresses) === false) {
+        db.run("DELETE FROM topics WHERE id = ?", [t.id]);
+      }
     }
     for (const { section, clusters } of results) {
       const item = summary.sections.find(

@@ -21,7 +21,8 @@ export function topicTargets(): (TopicTarget & { label: string; regional: boolea
       channelId: ch.id,
       sectionCode: s.code,
       label: ch.sections.length > 1 ? `${ch.label} · ${s.label}` : ch.label,
-      regional: ch.regional,
+      // 지역 주제를 복사해 받을 수 있는가. 직영점 지역만 쓰는 채널은 지점 확인이 수집 때라 받지 않는다.
+      regional: ch.regional === "all",
     })),
   );
 }
@@ -89,7 +90,7 @@ function insertTopic(db: Database, t: TopicTarget, topicKey: string, n: NewTopic
 
 /**
  * 주제를 다른 채널·섹션에서 쓰도록 복사한다. 그 채널에 같은 주제가 이미 있으면 그것을 돌려준다.
- * 지역 주제는 지역 글을 쓰는 채널(운전면허PLUS)로만 옮길 수 있다.
+ * 지역 주제는 모든 지역 글을 쓰는 채널(운전면허PLUS)로만 옮길 수 있다.
  */
 export function copyTopic(
   db: Database,
@@ -105,9 +106,9 @@ export function copyTopic(
   if (source.channelId === target.channelId && source.sectionCode === target.sectionCode) {
     throw new Error("같은 채널·섹션으로는 복사할 수 없습니다");
   }
-  if (source.region && !channel.regional) {
+  if (source.region && channel.regional !== "all") {
     throw new Error(
-      `${channel.label}에서는 지역 글을 쓰지 않습니다. 지역 주제는 운전면허PLUS 커뮤니티에서만 씁니다`,
+      `${channel.label}에는 지역 주제를 복사할 수 없습니다. 지역 주제는 운전면허PLUS 커뮤니티로만 옮깁니다`,
     );
   }
   const topicKey = source.topicKey || compactKeyword(source.primaryKeyword);

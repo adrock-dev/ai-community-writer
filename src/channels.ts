@@ -44,6 +44,8 @@ export interface ChannelQuality {
   minImages: number;
 }
 
+export type RegionalScope = "all" | "direct-stores" | "none";
+
 export interface ChannelDef {
   id: string;
   brand: BrandId;
@@ -54,11 +56,14 @@ export interface ChannelDef {
   /** 채널 전체 주제 영역. */
   focus: string[];
   /**
-   * 지역 기반 글을 쓰는 채널인가. 켜면 지역 키워드("강남운전연수")를 지역 주제로 만들고,
-   * 근거 자료를 그 지역으로 좁히고, 발행 때 노출 대상(audience)을 지역으로 지정한다.
-   * 끄면 지역 키워드는 주제 후보에서 뺀다. 운전면허PLUS 커뮤니티만 켠다(2026-09-28 결정).
+   * 지역 글("강남운전연수") 범위.
+   *   all            모든 지역. 근거 자료를 그 지역으로 좁히고, 발행 때 노출 대상(audience)을 지역으로
+   *                  지정한다. 운전면허PLUS 커뮤니티(2026-09-28 결정).
+   *   direct-stores  드라이빙존 직영점이 있는 지역만. 근거 자료를 그 지역 지점으로 좁히고, 노출 대상은
+   *                  두지 않는다. 연수 블로그(2026-10-28 결정).
+   *   none           지역 키워드는 주제 후보에서 뺀다.
    */
-  regional: boolean;
+  regional: RegionalScope;
   /**
    * 자동 발행 대상. community = api.drive 커뮤니티(섹션·칸), blog = api.drivingzone 게시판
    * (섹션 코드 = board type), none = 원고만(카페).
@@ -86,7 +91,7 @@ export const CHANNELS = [
     siteUrl: "https://app.drivingplus.me/community",
     format: "markdown",
     focus: ["운전학원 찾기·비교·추천", "학원 연수", "운전면허 시험 정보"],
-    regional: true,
+    regional: "all",
     autoPublish: "community",
     highlightColor: "",
     quality: {
@@ -140,7 +145,7 @@ export const CHANNELS = [
     siteUrl: "https://drivingzone.co.kr/story/blog",
     format: "html",
     focus: ["운전면허 취득"],
-    regional: false,
+    regional: "none",
     autoPublish: "blog",
     // web.drivingzone --color-main-orange
     highlightColor: "#ff5500",
@@ -185,7 +190,7 @@ export const CHANNELS = [
     siteUrl: "https://www.dztraining.co.kr/blog",
     format: "html",
     focus: ["장롱면허", "운전 연수"],
-    regional: false,
+    regional: "direct-stores",
     autoPublish: "blog",
     // web.dztraining --color-main-blue
     highlightColor: "#1474fa",
@@ -222,7 +227,7 @@ export const CHANNELS = [
     siteUrl: "",
     format: "cafe-text",
     focus: ["운전면허 취득", "장롱면허", "운전 연수"],
-    regional: false,
+    regional: "none",
     autoPublish: "none",
     // 서식 복사(HTML)용. 카페 텍스트 원고에서는 표시만 걷는다.
     highlightColor: "#ff5500",
