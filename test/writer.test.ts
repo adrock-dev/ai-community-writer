@@ -522,6 +522,22 @@ describe("근거 자료", () => {
     expect(cost).toHaveLength(2);
     expect(cost.every((i) => !i.sectionMustMention)).toBe(true);
   });
+
+  it("드라이빙존 요금제 근거에는 할인가만 넣고 정가는 넣지 않는다", () => {
+    const plan = {
+      group: "무제한반",
+      name: "2종 보통 (자동)",
+      options: [{ label: "", price: 250000, originPrice: 350000 }],
+    };
+    const { text } = drivingzoneFacts(
+      [],
+      { license: [plan] },
+      topic({ articleType: "cost" }),
+      cafe,
+    );
+    expect(text).toMatch(/무제한반 · 2종 보통 \(자동\): 25만원/);
+    expect(text).not.toMatch(/정가|35만원/);
+  });
 });
 
 describe("generateArticle", () => {

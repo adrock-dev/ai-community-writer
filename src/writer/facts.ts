@@ -258,17 +258,16 @@ function storeLine(s: Store, detail: boolean, reviewFor: "license" | "training")
   return lines.join("\n");
 }
 
+// 할인 전 정가(originPrice)는 근거에 넣지 않는다. 블로그 글에 할인가와 정가가 함께 실려 정가 표기를 빼기로 했다
+// (2026-10-28). 근거에 없으면 본문에 정가가 나와도 게이트의 금액 근거 검사가 잡는다.
 function pricingLines(title: string, plans: PricingPlan[]): string[] {
   if (!plans.length) return [];
   return [
-    `${title} (모든 금액 ${vatLabel(DRIVINGZONE_PRICE_VAT_INCLUDED)}, 괄호는 할인 전 정가)`,
+    `${title} (모든 금액 ${vatLabel(DRIVINGZONE_PRICE_VAT_INCLUDED)})`,
     ...plans.map(
       (p) =>
         `- ${p.group} · ${p.name}: ${p.options
-          .map(
-            (o) =>
-              `${o.label ? `${o.label} ` : ""}${won(o.price)}${o.originPrice && o.originPrice > o.price ? `(정가 ${won(o.originPrice)})` : ""}`,
-          )
+          .map((o) => `${o.label ? `${o.label} ` : ""}${won(o.price)}`)
           .join(" / ")}`,
     ),
   ];
