@@ -166,3 +166,17 @@ export function listArticles(
     )
     .map(toArticle);
 }
+
+/** 같은 유형 최근 글에 쓴 생성 삽화의 장면(최신 순). 삽화 장면이 글마다 겹치지 않게 고를 때 쓴다. */
+export function recentSceneSubjects(db: Database, articleType: string, articles = 30): string[] {
+  return db
+    .all(
+      `SELECT json_extract(j.value, '$.subject') AS subject
+         FROM (SELECT id, images FROM articles WHERE article_type = ? ORDER BY id DESC LIMIT ?) a,
+              json_each(a.images) j
+        WHERE json_extract(j.value, '$.kind') = 'generated'
+        ORDER BY a.id DESC, j.key`,
+      [articleType, articles],
+    )
+    .map((r) => String(r.subject ?? ""));
+}

@@ -1,10 +1,10 @@
-import { createArticle } from "../articles/store.ts";
+import { createArticle, recentSceneSubjects } from "../articles/store.ts";
 import { findChannel, findSection } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
 import { loadGuideRules, publicGuideText, renderGuideRules } from "../guides.ts";
 import { type ImageGenerator, pickImageStyle } from "../images/generator.ts";
-import { scenesFor } from "../images/scenes.ts";
+import { pickScenes } from "../images/scenes.ts";
 import { imageStyleFor, imageStyleSettings } from "../images/style.ts";
 import type { LlmResult } from "../llm/client.ts";
 import { factCheckIssues, factCheckPrompt, parseFactCheck } from "../quality/factcheck.ts";
@@ -73,11 +73,14 @@ async function prepareImages(
   if (need <= 0 || !deps.images) return images;
   const stamp = (deps.now ?? new Date()).toISOString().replace(/\D/g, "").slice(0, 14);
   // 화풍은 채널 설정(화면 저장 값 → config.json)을 따르고, 한 글 안의 삽화는 화풍을 맞춘다
+  const random = deps.random ?? Math.random;
   const style = pickImageStyle(
     imageStyleFor(imageStyleSettings(deps.db, deps.config), topic.channelId),
-    deps.random ?? Math.random,
+    random,
   );
-  for (const [i, scene] of scenesFor(topic.articleType, need).entries()) {
+  // 같은 유형 최근 글에 쓴 장면은 뒤로 미뤄 글마다 삽화가 겹치지 않게 한다(채널 구분 없이)
+  const recent = recentSceneSubjects(deps.db, topic.articleType);
+  for (const [i, scene] of pickScenes(topic.articleType, need, recent, random).entries()) {
     try {
       deps.log?.(`  삽화 생성 ${i + 1}/${need} (${style}): ${scene}`);
       const file = await deps.images.generate(scene, `t${topic.id}-${stamp}-${i + 1}`, style);

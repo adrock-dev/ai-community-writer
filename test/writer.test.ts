@@ -8,6 +8,7 @@ import { findChannel, findSection } from "../src/channels.ts";
 import { parseConfig } from "../src/config.ts";
 import { Database } from "../src/db/database.ts";
 import { type ImageStyle, imagePrompt, pickImageStyle } from "../src/images/generator.ts";
+import { pickScenes, scenePool } from "../src/images/scenes.ts";
 import { saveImageStyles } from "../src/images/style.ts";
 import { LlmUnavailableError } from "../src/llm/client.ts";
 import { bodyChars, extractAmounts, qualityIssues } from "../src/quality/gate.ts";
@@ -653,6 +654,18 @@ describe("generateArticle", () => {
     };
     await generateArticle({ db, config, llm, facts: storeOnly, images, factCheck: false }, topicId);
     expect(scenes).toHaveLength(2);
+    // 같은 유형의 앞 글 본문에 쓴 장면은 다음 글에서 다시 고르지 않는다
+    const prev = await generateArticle(
+      { db, config, llm, facts: storeOnly, images, factCheck: false },
+      topicId,
+    );
+    const shown = getArticle(db, prev.articleId)!
+      .images.filter((i) => i.kind === "generated")
+      .map((i) => i.subject);
+    expect(shown.length).toBeGreaterThan(0);
+    scenes.length = 0;
+    await generateArticle({ db, config, llm, facts: storeOnly, images, factCheck: false }, topicId);
+    expect(scenes.filter((s) => shown.includes(s))).toEqual([]);
 
     const failing = {
       generate: async () => {
@@ -665,6 +678,24 @@ describe("generateArticle", () => {
     );
     expect(bad.status).toBe("draft");
     expect(bad.issues.join("\n")).toMatch(/이미지가 1장뿐/);
+  });
+
+  it("삽화 장면은 최근에 안 쓴 것부터 고르고, 한 글 안에서는 분위기를 맞춘다", () => {
+    const pool = scenePool("training");
+    expect(pool.length).toBeGreaterThanOrEqual(8);
+    const fixed = () => 0;
+    const first = pickScenes("training", 2, [], fixed);
+    expect(first).toHaveLength(2);
+    expect(new Set(first.map((s) => s.split(". 분위기: ")[1])).size).toBe(1);
+    // 최근에 쓴 장면(분위기가 붙은 것도)은 뒤로 밀린다
+    const recent = pool.slice(0, pool.length - 2).map((s, i) => (i % 2 ? `${s}. 분위기: x` : s));
+    const next = pickScenes("training", 2, recent, fixed).map((s) => s.split(". 분위기: ")[0]);
+    expect(next.sort()).toEqual(pool.slice(-2).sort());
+    // 모두 썼으면 가장 오래전에 쓴 장면부터
+    const all = pickScenes("training", 1, [...pool], fixed)[0]!;
+    expect(all.startsWith(pool.at(-1)!)).toBe(true);
+    // 정의가 없는 유형은 guide 장면을 쓴다
+    expect(scenePool("unknown")).toEqual(scenePool("guide"));
   });
 
   it("삽화 화풍은 설정을 따르고, mixed 는 글마다 하나를 골라 한 글 안에서 맞춘다", async () => {
