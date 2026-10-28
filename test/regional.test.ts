@@ -8,6 +8,7 @@ import {
   type RegionalData,
   regionStoresLabel,
 } from "../src/topics/regional.ts";
+import { shortStores } from "../src/web/topics.ts";
 
 const training = findChannel("dztraining-blog")!;
 const plus = findChannel("drivingplus-community")!;
@@ -153,6 +154,18 @@ describe("regionStoresLabel", () => {
     expect(label("서울특별시 서초구")).toBe("가까운 직영 강남역점(약 2km)");
     expect(label("대구광역시 수성구")).toBe("");
     expect(regionStoresLabel(plus, "서울특별시 강남구", "local", data)).toBe("");
+  });
+});
+
+describe("주제 화면 지점 표시", () => {
+  it("지점이 여럿이면 첫 지점과 나머지 수로 줄인다", () => {
+    expect(shortStores("직영 직영본점·강남역점·강남면허시험장점")).toBe("직영 직영본점 외 2");
+    expect(shortStores("직영 미아사거리역점 · 가맹 성신여대입구역점")).toBe(
+      "직영 미아사거리역점 · 가맹 성신여대입구역점",
+    );
+    expect(shortStores("가까운 직영 잠실학원사거리점(약 10km)")).toBe(
+      "가까운 직영 잠실학원사거리점(약 10km)",
+    );
   });
 });
 

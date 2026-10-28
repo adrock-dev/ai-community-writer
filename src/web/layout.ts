@@ -173,6 +173,9 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 500; border-top: 0; white-space: nowrap; }
 td.num { text-align: right; white-space: nowrap; }
+/* 지역 칸: 지점 표시가 길어도 표가 밀리지 않게 폭을 묶는다 */
+td.region { max-width: 13em; }
+td.region .muted { font-size: 12px; }
 .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
 .tabs a { text-decoration: none; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); color: var(--text); }
 .tabs a.on { background: var(--accent); border-color: var(--accent); color: #fff; }

@@ -37,6 +37,21 @@ const NOTICES: Record<string, string> = {
 
 const ORIGIN_LABEL: Record<string, string> = { copied: "복사", manual: "직접 추가" };
 
+/**
+ * 지역 지점 표시를 목록용으로 줄인다. 지점이 여럿이면 첫 지점만 두고 "외 N"으로 쓴다
+ * ("직영 직영본점·강남역점·강남면허시험장점" → "직영 직영본점 외 2"). 전체는 title 로 보인다.
+ */
+export function shortStores(label: string): string {
+  return label
+    .split(" · ")
+    .map((part) => {
+      const m = /^(직영|가맹) (.+)$/.exec(part);
+      const names = m?.[2]?.split("·") ?? [];
+      return m && names.length > 1 ? `${m[1]} ${names[0]} 외 ${names.length - 1}` : part;
+    })
+    .join(" · ");
+}
+
 /** 이 주제를 옮겨 쓸 수 있는 채널·섹션. 지역 주제는 지역 글을 쓰는 채널로만. */
 function copyTargets(t: Topic) {
   return topicTargets().filter(
@@ -140,8 +155,8 @@ ${manualForm()}
         <td><b>${t.primaryKeyword}</b> ${ORIGIN_LABEL[t.origin] ? badge(ORIGIN_LABEL[t.origin]!) : ""}<div class="muted">${t.secondaryKeywords.slice(0, 4).join(", ")}</div>
           ${t.brief ? html`<div class="muted">글 방향: ${t.brief}</div>` : ""}</td>
         <td>${articleTypeLabel(t.articleType)}</td>
-        <td>${t.region ? regionLabel(t.region) : html`<span class="muted">전국</span>`}
-          ${t.regionStores ? html`<div class="muted">${t.regionStores}</div>` : ""}</td>
+        <td class="region">${t.region ? regionLabel(t.region) : html`<span class="muted">전국</span>`}
+          ${t.regionStores ? html`<div class="muted" title="${t.regionStores}">${shortStores(t.regionStores)}</div>` : ""}</td>
         <td class="num">${t.volume.toLocaleString()}</td>
         <td>${badge(TOPIC_STATUS_LABEL[t.status] ?? t.status, statusTone(t.status))}</td>
         <td class="actions">
