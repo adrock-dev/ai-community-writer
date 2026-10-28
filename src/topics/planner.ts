@@ -178,7 +178,7 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
           ...stat,
           region: regionKey(match),
           regionAlias: match?.alias ?? "",
-          intent: inferArticleType(stat.keyword),
+          intent: inferArticleType(stat.keyword, section.channelId),
         });
       }
       const clusters = clusterKeywords(inputs, opts.clusterThreshold)

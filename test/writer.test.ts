@@ -25,6 +25,7 @@ import {
 } from "../src/similarity/fingerprint.ts";
 import type { Academy } from "../src/sources/drivingplus.ts";
 import type { Store } from "../src/sources/drivingzone.ts";
+import { ARTICLE_TYPES } from "../src/topics/intent.ts";
 import { getTopic, type Topic } from "../src/topics/store.ts";
 import {
   academyFacts,
@@ -355,6 +356,15 @@ describe("프롬프트", () => {
     );
     expect(promptFiles("drivingzone-blog", "cost")[2]?.path).toBe("types/cost.md");
     expect(promptFiles("drivingzone-blog", "unknown_type")[2]?.path).toBe("types/guide.md");
+  });
+
+  it("채널 전용 글 유형은 그 채널의 유형 파일이 있다", () => {
+    for (const t of ARTICLE_TYPES) {
+      if (!("channels" in t)) continue;
+      for (const channelId of t.channels) {
+        expect(promptFiles(channelId, t.type)[2]?.path).toBe(`channels/${channelId}/${t.type}.md`);
+      }
+    }
   });
 
   it("주제·유의사항·근거 자료·피할 글·출력 형식을 모두 넣는다", () => {

@@ -69,6 +69,18 @@ describe("주제 복사", () => {
     expect(again).toMatchObject({ created: false, topic: { id: first.topic.id } });
   });
 
+  it("다른 채널 전용 유형이면 대상 채널 기준으로 유형을 다시 판정한다", () => {
+    const db = new Database(":memory:");
+    const id = insertTopic(db, {
+      keyword: "평행주차",
+      channel: "dztraining-blog",
+      section: "blog_training",
+    });
+    db.run("UPDATE topics SET article_type = 'parking' WHERE id = ?", [id]);
+    const target = { channelId: "drivingplus-community", sectionCode: "drive_story" };
+    expect(copyTopic(db, id, target).topic.articleType).toBe("training");
+  });
+
   it("지역 주제는 지역 글을 쓰는 채널로만, 같은 칸으로는 복사하지 않는다", () => {
     const db = new Database(":memory:");
     const id = insertTopic(db, {

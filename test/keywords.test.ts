@@ -220,6 +220,27 @@ describe("inferArticleType", () => {
   ])("%s → %s", (keyword, type) => {
     expect(inferArticleType(keyword)).toBe(type);
   });
+
+  it.each([
+    ["평행주차", "parking"],
+    ["주차잘하는법", "parking"],
+    ["고속도로운전", "road_skill"],
+    ["차선변경 요령", "road_skill"],
+    ["장롱면허탈출", "training_fear"],
+    ["운전연수 기간", "training_course"],
+    ["방문운전연수", "training_course"],
+    ["운전연수비용", "cost"],
+    ["운전연수추천", "recommend"],
+    ["장롱면허연수", "training"],
+  ])("연수 블로그: %s → %s", (keyword, type) => {
+    expect(inferArticleType(keyword, "dztraining-blog")).toBe(type);
+  });
+
+  it("연수 블로그 전용 유형은 다른 채널에서 쓰지 않는다", () => {
+    expect(inferArticleType("평행주차", "drivingplus-community")).toBe("training");
+    expect(inferArticleType("장롱면허탈출")).toBe("training");
+    expect(inferArticleType("운전연수 기간", "drivingzone-cafe")).toBe("howto");
+  });
 });
 
 describe("datalab", () => {

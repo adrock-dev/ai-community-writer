@@ -1,7 +1,7 @@
 import { CHANNELS, findChannel, findSection } from "../channels.ts";
 import type { Database } from "../db/database.ts";
 import { compactKeyword } from "../keywords/cluster.ts";
-import { ARTICLE_TYPES, inferArticleType } from "./intent.ts";
+import { inferArticleType, isTypeForChannel } from "./intent.ts";
 import { type KeywordSource, scoreTopic, writtenCounts } from "./planner.ts";
 import { getTopic, type Topic } from "./store.ts";
 
@@ -116,7 +116,10 @@ export function copyTopic(
   const topic = insertTopic(db, target, topicKey, {
     primaryKeyword: source.primaryKeyword,
     secondaryKeywords: source.secondaryKeywords,
-    articleType: source.articleType,
+    // 채널 전용 유형(연수 블로그의 주차 연습 등)은 그 채널 밖에서는 다시 판정한다.
+    articleType: isTypeForChannel(source.articleType, target.channelId)
+      ? source.articleType
+      : inferArticleType(source.primaryKeyword, target.channelId),
     region: source.region,
     volume: source.volume,
     trend: source.trend,
@@ -205,9 +208,11 @@ export function addManualTopics(
       throw new Error(`채널·섹션이 올바르지 않습니다: ${targetValue(t)}`);
     }
   }
-  const articleType = ARTICLE_TYPES.some((t) => t.type === input.articleType)
-    ? input.articleType!
-    : inferArticleType(primaryKeyword);
+  // 고른 유형이 그 채널에서 쓸 수 없는 것(다른 채널 전용)이면 채널마다 키워드로 판정한다.
+  const articleTypeFor = (channelId: string) =>
+    input.articleType && isTypeForChannel(input.articleType, channelId)
+      ? input.articleType
+      : inferArticleType(primaryKeyword, channelId);
   const topicKey = compactKeyword(primaryKeyword);
   const secondaryKeywords = [
     ...new Map(
@@ -237,7 +242,7 @@ export function addManualTopics(
       return insertTopic(db, t, topicKey, {
         primaryKeyword,
         secondaryKeywords,
-        articleType,
+        articleType: articleTypeFor(t.channelId),
         region: "",
         volume: input.volume.total,
         trend: null,
