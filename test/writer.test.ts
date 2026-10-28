@@ -28,7 +28,12 @@ import type { Academy } from "../src/sources/drivingplus.ts";
 import type { Store } from "../src/sources/drivingzone.ts";
 import { ARTICLE_TYPES } from "../src/topics/intent.ts";
 import { getTopic, type Topic } from "../src/topics/store.ts";
-import { academyFacts, drivingzoneFacts, isMeaningfulReview } from "../src/writer/facts.ts";
+import {
+  academyFacts,
+  drivingzoneFacts,
+  franchiseStoresIn,
+  isMeaningfulReview,
+} from "../src/writer/facts.ts";
 import { generateArticle } from "../src/writer/generate.ts";
 import { parseDraft } from "../src/writer/output.ts";
 import { composePrompt, promptFiles } from "../src/writer/prompt.ts";
@@ -275,6 +280,17 @@ describe("qualityIssues", () => {
     expect(issues.join("\n")).toMatch(/카페 원고에는 ## 소제목과 표/);
   });
 
+  it("가맹점을 소개하면 요금이 다를 수 있으니 지점에 확인하라는 안내가 있어야 한다", () => {
+    const ctx = gate({ franchiseStores: ["하남미사역점"] });
+    const intro = "하남에서는 드라이빙존 하남미사역점에서 연습할 수 있어요.";
+    const without = qualityIssues(draftOf(`${goodBody("운전학원")}\n\n${intro}`), ctx);
+    expect(without.join("\n")).toMatch(/가맹점\(하남미사역점\)을 소개했습니다/);
+    const notice = `${intro} 하남미사역점은 가맹점이라 요금이 직영점과 다를 수 있으니 지점에 확인하세요.`;
+    expect(qualityIssues(draftOf(`${goodBody("운전학원")}\n\n${notice}`), ctx)).toEqual([]);
+    // 가맹점을 소개하지 않으면 안내도 요구하지 않는다
+    expect(qualityIssues(draftOf(goodBody("운전학원")), ctx)).toEqual([]);
+  });
+
   it("추천 글에서 실제 후보보다 많은 곳을 주장하면 잡는다", () => {
     const body = `${goodBody("운전학원")}\n\n지역 운전학원 TOP 10을 소개합니다.`;
     const issues = qualityIssues(
@@ -506,6 +522,9 @@ describe("근거 자료", () => {
     expect(mapo.candidates).toEqual(["서부면허시험장점", "홍대역점"]);
     expect(mapo.text).toMatch(/이 지역\(서울특별시 마포구\) 지점 2곳/);
     expect(mapo.text).not.toMatch(/강남역점|전체 지점 목록/);
+    // 가맹점이 있으면 요금이 다를 수 있다는 안내를 근거 자료에 넣고, 게이트가 쓸 이름을 읽는다
+    expect(mapo.text).toMatch(/가맹점 안내: .*요금·이용 조건이 다를 수 있다/);
+    expect(franchiseStoresIn(mapo.text)).toEqual(["홍대역점"]);
     const daegu = drivingzoneFacts(stores, {}, topic({ region: "대구광역시" }), training);
     expect(daegu.text).toMatch(/전체 지점 목록:/);
     expect(daegu.candidates).toHaveLength(3);

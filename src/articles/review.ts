@@ -9,6 +9,7 @@ import {
   similarityIssues,
 } from "../similarity/fingerprint.ts";
 import { getTopic } from "../topics/store.ts";
+import { franchiseStoresIn } from "../writer/facts.ts";
 import { type Article, type ArticleStatus, getArticle } from "./store.ts";
 
 // 사람 검수 흐름.
@@ -65,6 +66,7 @@ export function recheckArticle(db: Database, article: Article): string[] {
       candidates: [],
       // 검수 중 고친 글도 채널의 자사 링크는 허용한다(생성 때 넣었거나 검수자가 넣은 것).
       allowedLinks: channel.linkTargets?.map((l) => l.url) ?? [],
+      franchiseStores: franchiseStoresIn(article.facts),
     }),
     ...similarityIssues(similar),
   ];

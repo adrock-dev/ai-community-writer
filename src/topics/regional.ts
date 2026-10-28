@@ -63,6 +63,8 @@ export function planRegion(
 
 /**
  * 지역 밖의 가까운 직영점(가까운 순). 지역 중심에서 maxKm 이내이거나, sameSido 면 같은 시도의 직영점.
+ * 단 그보다 가까운 직영점이 조건 밖(다른 시도이면서 maxKm 밖)에 있으면 거기서 끊는다. 가평처럼
+ * 서울 노원역점(약 39km)이 더 가까운데 같은 시도라는 이유로 용인(약 66km)을 안내하지 않게 한다(2026-10-28).
  * 가맹점은 먼 지역까지 안내하지 않는다(그 지역에 있을 때만 지점 안내 글에 쓴다).
  * km 은 지역 중심에서 지점까지 직선거리(좌표가 없으면 undefined).
  */
@@ -75,7 +77,7 @@ export function nearbyDirectStores<S extends StorePoint>(
   if (!rule) return [];
   const center = regionCenter(data.regionPoints, region);
   const sidos = regionSidos(region);
-  return data.stores
+  const sorted = data.stores
     .filter((s) => s.type === "direct" && !inRegion(s.address, region))
     .map((store) => ({
       store,
@@ -84,12 +86,16 @@ export function nearbyDirectStores<S extends StorePoint>(
           ? distanceKm(center, { lat: store.lat, lng: store.lng })
           : undefined,
     }))
-    .filter(
-      ({ store, km }) =>
-        (km !== undefined && km <= rule.maxKm) ||
-        (rule.sameSido && sidos.some((d) => normalizeAddress(store.address).startsWith(d))),
-    )
     .sort((a, b) => (a.km ?? Number.POSITIVE_INFINITY) - (b.km ?? Number.POSITIVE_INFINITY));
+  const out: typeof sorted = [];
+  for (const n of sorted) {
+    const near = n.km !== undefined && n.km <= rule.maxKm;
+    const sameSido =
+      rule.sameSido && sidos.some((d) => normalizeAddress(n.store.address).startsWith(d));
+    if (!near && !sameSido) break;
+    out.push(n);
+  }
+  return out;
 }
 
 /**

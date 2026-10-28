@@ -92,6 +92,32 @@ describe("planRegion", () => {
     expect(planRegion(training, "서울특별시 서초구")).toBeUndefined();
   });
 
+  it("더 가까운 직영점이 다른 시도에 있으면 같은 시도의 먼 직영점으로 대신하지 않는다", () => {
+    // 가평: 서울 노원역점(약 39km)이 경기 용인면허시험장점(약 66km)보다 가깝다
+    const gapyeong: RegionalData = {
+      stores: [
+        {
+          name: "노원역점",
+          type: "direct",
+          address: "서울특별시 노원구 상계로 59",
+          lat: 37.655,
+          lng: 127.061,
+        },
+        {
+          name: "용인면허시험장점",
+          type: "direct",
+          address: "경기도 용인시 기흥구 용구대로 2257-9",
+          lat: 37.27,
+          lng: 127.11,
+        },
+      ],
+      academies: [{ address: "경기도 가평군 1" }],
+      regionPoints: [{ region: "경기도 가평군", lat: 37.83, lng: 127.51 }],
+    };
+    expect(nearbyDirectStores(training, "경기도 가평군", gapyeong)).toEqual([]);
+    expect(planRegion(training, "경기도 가평군", gapyeong)).toBe("skip");
+  });
+
   it("같은 시도면 25km 밖이어도 가까운 직영점으로 본다", () => {
     const far = {
       stores: [

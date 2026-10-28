@@ -154,7 +154,7 @@ describe("collectKeywords", () => {
       regions: buildRegionIndex([
         "서울특별시 강남구",
         "서울특별시 서초구",
-        "경기도 파주시",
+        "경기도 여주시",
         "경기도 용인시 기흥구",
         "대구광역시 수성구",
       ]),
@@ -165,12 +165,12 @@ describe("collectKeywords", () => {
         ],
         academies: [
           { address: "서울특별시 서초구 과천대로 904-6" },
-          { address: "경기도 파주시 소리천로 1" },
+          { address: "경기도 여주시 세종로 1" },
           { address: "대구광역시 수성구 1" },
         ],
         regionPoints: [
           { region: "서울특별시 서초구", lat: 37.48, lng: 127.03 },
-          { region: "경기도 파주시", lat: 37.76, lng: 126.78 },
+          { region: "경기도 여주시", lat: 37.3, lng: 127.64 },
           { region: "대구광역시 수성구", lat: 35.86, lng: 128.63 },
         ],
       },
@@ -178,7 +178,7 @@ describe("collectKeywords", () => {
     d.searchad.relatedKeywords = async () => [
       stat("서초운전연수", 3000),
       stat("서초장롱면허연수", 500),
-      stat("파주운전연수", 800),
+      stat("여주운전연수", 800),
       stat("대구운전연수", 900),
     ];
     const summary = await collectKeywords(d);
@@ -187,7 +187,7 @@ describe("collectKeywords", () => {
     const topics = listTopics(db, { channelId: "dztraining-blog" });
     expect(topics.map((t) => [t.primaryKeyword, t.articleType, t.volume])).toEqual([
       ["서초운전연수", "pre_road", 3500],
-      ["파주운전연수", "pre_road", 800],
+      ["여주운전연수", "pre_road", 800],
     ]);
     expect(topics[0]?.secondaryKeywords).toContain("서초장롱면허연수");
     expect(topics[0]?.regionStores).toBe("가까운 직영 강남역점(약 2km)");

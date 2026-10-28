@@ -28,6 +28,20 @@ export interface GateContext {
   allowedLinks?: string[];
   /** 넣을 섹션이 제한된 이미지(글 전체 1장까지, 그 섹션에 mustMention 중 하나가 있어야 함). */
   restrictedImages?: { id: string; mustMention: string[] }[];
+  /**
+   * 근거 자료의 드라이빙존 가맹점 이름(franchiseStoresIn). 본문이 가맹점을 소개하면 "가맹점은 요금이
+   * 다를 수 있으니 지점에 확인" 안내가 있어야 한다. 요금제가 직영점 기준이라 가맹점과 다를 수 있다(2026-10-28).
+   */
+  franchiseStores?: string[];
+}
+
+/** 한 문장 안에 가맹점·요금·(다를 수 있음|확인) 안내가 있는가. */
+export function hasFranchisePriceNotice(text: string): boolean {
+  return text
+    .split(/[.!?\n]/)
+    .some(
+      (s) => s.includes("가맹") && /요금|가격|비용|수강료/.test(s) && /다를|달라|확인|문의/.test(s),
+    );
 }
 
 export interface Amount {
@@ -395,6 +409,14 @@ export function qualityIssues(draft: DraftArticle, ctx: GateContext): string[] {
   if (/(?:생성|AI)\s*(?:삽화|이미지)|삽화/.test(images.map((i) => i.alt).join(" "))) {
     issues.push(
       '이미지 대체 텍스트에 "생성·삽화·AI"를 쓰지 말고 "기능시험 코스 예시 이미지"처럼 장면을 쓰세요',
+    );
+  }
+
+  // 가맹점 요금 안내
+  const franchise = (ctx.franchiseStores ?? []).filter((name) => plain.includes(name));
+  if (franchise.length && !hasFranchisePriceNotice(plain)) {
+    issues.push(
+      `가맹점(${franchise.join(", ")})을 소개했습니다. 가맹점은 직영점과 요금이 다를 수 있으니, 그 지점 소개 가까이에 "가맹점은 요금이 다를 수 있으니 지점에 확인하세요" 같은 안내를 한 문장 넣으세요`,
     );
   }
 

@@ -263,6 +263,11 @@ function pricingLines(title: string, plans: PricingPlan[]): string[] {
  */
 const DRIVINGZONE_PHOTO_ANYWHERE_TYPES = new Set(["cost", "recommend"]);
 
+/** 근거 자료에 나온 드라이빙존 가맹점 이름(storeLine 의 "(가맹)"). 품질 게이트의 가맹점 요금 안내 검사에 쓴다. */
+export function franchiseStoresIn(factsText: string): string[] {
+  return [...factsText.matchAll(/^■ 드라이빙존 (.+?) \(가맹\)/gm)].map((m) => m[1]!);
+}
+
 /** 실차연수 전 준비 글에 넣는 지역 운전학원 수. 이름·주소만 쓴다. */
 const NEARBY_ACADEMY_LIMIT = 15;
 
@@ -339,6 +344,11 @@ export function drivingzoneFacts(
     ...pricingLines("면허 취득 요금제", pricing.license ?? []),
     ...pricingLines("운전연수 요금제", pricing.training ?? []),
   );
+  if (parts.some((p) => /^■ 드라이빙존 .+ \(가맹\)/m.test(p))) {
+    parts.push(
+      '가맹점 안내: 위 요금제는 직영점 기준이라 가맹점은 요금·이용 조건이 다를 수 있다. 가맹점을 소개하면 그 지점 소개 가까이에 "가맹점은 요금이 다를 수 있으니 지점에 확인하세요" 같은 안내를 한 문장 넣고, 가맹점 요금을 직영점 요금제 금액으로 단정하지 않는다.',
+    );
+  }
   return {
     text: parts.join("\n"),
     candidates,

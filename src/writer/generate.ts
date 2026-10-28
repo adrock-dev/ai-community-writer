@@ -18,7 +18,7 @@ import {
   similarityIssues,
 } from "../similarity/fingerprint.ts";
 import { getTopic, setTopicProgress, type Topic } from "../topics/store.ts";
-import { buildFacts, type Facts, type ImageCandidate } from "./facts.ts";
+import { buildFacts, type Facts, franchiseStoresIn, type ImageCandidate } from "./facts.ts";
 import { type DraftArticle, parseDraft } from "./output.ts";
 import { composePrompt, repairPrompt } from "./prompt.ts";
 
@@ -204,6 +204,7 @@ export async function generateArticle(
             restrictedImages: images.flatMap((i) =>
               i.sectionMustMention ? [{ id: i.id, mustMention: i.sectionMustMention }] : [],
             ),
+            franchiseStores: franchiseStoresIn(facts.text),
           }),
           ...similarityIssues(similar),
         ];
