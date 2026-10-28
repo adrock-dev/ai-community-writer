@@ -23,11 +23,13 @@ import {
   type ArticleStatus,
   getArticle,
   listArticles,
+  recentSceneSubjects,
 } from "../articles/store.ts";
 import { CHANNELS, findChannel, findSection } from "../channels.ts";
 import { createExportZip, exportName, renderExport } from "../export/bundle.ts";
 import { markdownToHtml, stripTitle } from "../export/render.ts";
 import type { ImageStyle } from "../images/generator.ts";
+import { pickScenes } from "../images/scenes.ts";
 import { IMAGE_STYLE_LABEL, imageStyleFor, imageStyleSettings } from "../images/style.ts";
 import { regionLabel } from "../keywords/regions.ts";
 import { canAutoPublish, PUBLISH_KIND, publishKeyStatus } from "../publish/publisher.ts";
@@ -73,6 +75,16 @@ function imageCard(a: Article, ctx: AppContext): Html {
   const setting = imageStyleFor(imageStyleSettings(ctx.db, ctx.config), a.channelId);
   const defaultStyle: ImageStyle = setting === "mixed" ? "photo" : setting;
   const blog = findChannel(a.channelId)?.autoPublish === "blog";
+  // 다시 만들기 칸에는 이 글과 같은 유형 최근 글에 안 쓴 장면을 미리 채운다. 기존 장면을 채워 두면
+  // 그대로 눌렀을 때 같은 그림이 다시 나왔다(2026-10-28).
+  const fresh = editable
+    ? pickScenes(
+        a.articleType,
+        a.images.length,
+        recentSceneSubjects(ctx.db, a.articleType),
+        Math.random,
+      )
+    : [];
   return html`<section class="card"><header><h2>이미지</h2><span class="muted">${a.images.length}장${editable ? "" : " · 발행 전(초안·검수 대기·승인) 글만 바꿀 수 있습니다"}</span></header>
   ${a.images.map(
     (i, n) => html`<div class="imgitem">
@@ -93,7 +105,8 @@ function imageCard(a: Article, ctx: AppContext): Html {
             ? ""
             : html`<form method="post" action="/articles/${a.id}/images/${i.id}/regenerate">
           <div class="field"><label>삽화 다시 만들기 (Codex 사용량 소모, 몇 분 걸림)</label>
-            <textarea name="scene" rows="2" required placeholder="장면 설명">${i.kind === "generated" ? i.subject : ""}</textarea></div>
+            <textarea name="scene" rows="2" required placeholder="장면 설명">${fresh[n] ?? ""}</textarea></div>
+          ${i.kind === "generated" ? html`<div class="muted">지금 장면: ${i.subject}</div>` : ""}
           <div class="field"><select name="style">${DRAW_STYLES.map((st) => html`<option value="${st}" ${st === defaultStyle ? "selected" : ""}>${IMAGE_STYLE_LABEL[st]}</option>`)}</select></div>
           <div class="field"><input type="text" name="alt" value="${i.alt}" placeholder="대체 텍스트"></div>
           <button class="small">다시 만들기</button>
