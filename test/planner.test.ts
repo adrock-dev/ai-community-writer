@@ -29,6 +29,13 @@ const RELATED: Record<string, KeywordStat[]> = {
   ],
 };
 
+const store = (name: string, address: string, lat: number, lng: number) => ({
+  name,
+  address,
+  lat,
+  lng,
+});
+
 function deps(db: Database, extra: object = {}) {
   const calls: string[][] = [];
   return {
@@ -53,8 +60,14 @@ function deps(db: Database, extra: object = {}) {
         },
       ],
       filter: { include: ["운전", "면허", "연수"], exclude: ["대리운전"] },
-      // 직영점은 부산에만 있다고 둔다. 강남은 직영점이 없는 지역이다.
-      directStoreAddresses: ["부산광역시 사상구 사상로367번길 17"],
+      // 직영점은 부산에만 있다고 둔다. 강남은 직영점이 없고 가깝지도 않은 지역이다.
+      regional: {
+        directStores: [
+          store("부산 북부면허시험장점", "부산광역시 사상구 사상로367번길 17", 35.16, 128.98),
+        ],
+        academies: [],
+        regionPoints: [],
+      },
       now: new Date(2026, 8, 28, 10),
       ...extra,
     },
@@ -119,7 +132,11 @@ describe("collectKeywords", () => {
   it("연수 블로그는 직영점이 있는 지역의 키워드만 지역 주제로 만든다", async () => {
     const db = new Database(":memory:");
     const { deps: d } = deps(db, {
-      directStoreAddresses: ["서울특별시 강남구 강남대로78길 24, 청솔빌딩 6층"],
+      regional: {
+        directStores: [store("강남역점", "서울특별시 강남구 강남대로78길 24", 37.5, 127.03)],
+        academies: [],
+        regionPoints: [],
+      },
     });
     const summary = await collectKeywords(d);
     expect(summary.sections[0]).toMatchObject({ regionalDropped: 0, topics: 3 });
@@ -130,6 +147,50 @@ describe("collectKeywords", () => {
     ).toMatchObject({ region: "서울특별시 강남구", articleType: "training" });
   });
 
+  it("직영점이 없어도 25km 안이나 같은 시도에 직영점이 있고 학원이 있으면 지역마다 실차연수 전 준비 주제 하나를 만든다", async () => {
+    const db = new Database(":memory:");
+    const { deps: d } = deps(db, {
+      regions: buildRegionIndex([
+        "서울특별시 강남구",
+        "서울특별시 서초구",
+        "경기도 파주시",
+        "경기도 용인시 기흥구",
+        "대구광역시 수성구",
+      ]),
+      regional: {
+        directStores: [
+          store("강남역점", "서울특별시 강남구 강남대로78길 24", 37.5, 127.03),
+          store("용인면허시험장점", "경기도 용인시 기흥구 용구대로 2257-9", 37.27, 127.11),
+        ],
+        academies: [
+          { address: "서울특별시 서초구 과천대로 904-6" },
+          { address: "경기도 파주시 소리천로 1" },
+          { address: "대구광역시 수성구 1" },
+        ],
+        regionPoints: [
+          { region: "서울특별시 서초구", lat: 37.48, lng: 127.03 },
+          { region: "경기도 파주시", lat: 37.76, lng: 126.78 },
+          { region: "대구광역시 수성구", lat: 35.86, lng: 128.63 },
+        ],
+      },
+    });
+    d.searchad.relatedKeywords = async () => [
+      stat("서초운전연수", 3000),
+      stat("서초장롱면허연수", 500),
+      stat("파주운전연수", 800),
+      stat("대구운전연수", 900),
+    ];
+    const summary = await collectKeywords(d);
+    // 대구는 25km 밖이고 같은 시도에 직영점이 없어 뺀다
+    expect(summary.sections[0]).toMatchObject({ regionalDropped: 1, topics: 2 });
+    const topics = listTopics(db, { channelId: "dztraining-blog" });
+    expect(topics.map((t) => [t.primaryKeyword, t.articleType, t.volume])).toEqual([
+      ["서초운전연수", "pre_road", 3500],
+      ["파주운전연수", "pre_road", 800],
+    ]);
+    expect(topics[0]?.secondaryKeywords).toContain("서초장롱면허연수");
+  });
+
   it("지점 자료가 없으면 직영점 지역 주제를 만들지 않고, 있던 지역 후보도 지우지 않는다", async () => {
     const db = new Database(":memory:");
     const now = new Date().toISOString();
@@ -138,9 +199,9 @@ describe("collectKeywords", () => {
        VALUES ('노원운전연수', 'dztraining-blog', 'blog_training', ?, ?, '노원운전연수', '서울특별시 노원구')`,
       [now, now],
     );
-    const summary = await collectKeywords(deps(db, { directStoreAddresses: undefined }).deps);
+    const summary = await collectKeywords(deps(db, { regional: undefined }).deps);
     expect(summary.sections[0]).toMatchObject({ regionalDropped: 1 });
-    expect(summary.warnings[0]).toMatch(/지점 자료/);
+    expect(summary.warnings[0]).toMatch(/지점·학원 자료/);
     expect(listTopics(db).map((t) => t.primaryKeyword)).toContain("노원운전연수");
   });
 

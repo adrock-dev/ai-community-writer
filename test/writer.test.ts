@@ -10,6 +10,7 @@ import { Database } from "../src/db/database.ts";
 import { type ImageStyle, imagePrompt, pickImageStyle } from "../src/images/generator.ts";
 import { pickScenes, subjectPool } from "../src/images/scenes.ts";
 import { saveImageStyles } from "../src/images/style.ts";
+import { inRegion } from "../src/keywords/regions.ts";
 import { LlmUnavailableError } from "../src/llm/client.ts";
 import { bodyChars, extractAmounts, qualityIssues } from "../src/quality/gate.ts";
 import { JobQueue } from "../src/queue/queue.ts";
@@ -27,12 +28,7 @@ import type { Academy } from "../src/sources/drivingplus.ts";
 import type { Store } from "../src/sources/drivingzone.ts";
 import { ARTICLE_TYPES } from "../src/topics/intent.ts";
 import { getTopic, type Topic } from "../src/topics/store.ts";
-import {
-  academyFacts,
-  drivingzoneFacts,
-  inRegion,
-  isMeaningfulReview,
-} from "../src/writer/facts.ts";
+import { academyFacts, drivingzoneFacts, isMeaningfulReview } from "../src/writer/facts.ts";
 import { generateArticle } from "../src/writer/generate.ts";
 import { parseDraft } from "../src/writer/output.ts";
 import { composePrompt, promptFiles } from "../src/writer/prompt.ts";
@@ -513,6 +509,62 @@ describe("근거 자료", () => {
     const daegu = drivingzoneFacts(stores, {}, topic({ region: "대구광역시" }), training);
     expect(daegu.text).toMatch(/전체 지점 목록:/);
     expect(daegu.candidates).toHaveLength(3);
+  });
+
+  it("실차연수 전 준비 글은 지역 운전학원 이름·주소와 가까운 직영점·거리만 준다", () => {
+    const store = (name: string, type: string, address: string, lat: number, lng: number) =>
+      ({
+        name,
+        type,
+        address,
+        lat,
+        lng,
+        reviews: [],
+        hours: ["월 10:00~22:00"],
+        subways: [],
+        keywordTags: [],
+        machines: {},
+        instructors: [],
+        locationHint: "",
+        photos: [],
+      }) as unknown as Store;
+    const academy = (name: string, type: string, address: string) =>
+      ({ name, type, address, prices: [{ amount: 300000 }], reviews: [] }) as unknown as Academy;
+    const stores = [
+      store("강남역점", "direct", "서울특별시 강남구 강남대로78길 24", 37.5, 127.03),
+      store("부산대점", "direct", "부산광역시 금정구 부산대학로 57", 35.23, 129.08),
+    ];
+    const nearby = {
+      academies: [
+        academy("사당자동차운전전문학원", "exam_academy", "서울특별시 서초구 과천대로 904-6"),
+        academy("서초 실내운전연습장", "indoor_academy", "서울특별시 서초구 1"),
+        academy("광연자동차운전전문학원", "exam_academy", "서울특별시 강남구 헌릉로 733"),
+      ],
+      regionPoints: [{ region: "서울특별시 서초구", lat: 37.48, lng: 127.03 }],
+    };
+    const training = findChannel("dztraining-blog")!;
+    const facts = drivingzoneFacts(
+      stores,
+      {},
+      topic({ region: "서울특별시 서초구", articleType: "pre_road" }),
+      training,
+      nearby,
+    );
+    expect(facts.text).toMatch(/이 지역\(서울특별시 서초구\) 운전학원 1곳/);
+    expect(facts.text).toMatch(/- 사당자동차운전전문학원 — 서울특별시 서초구 과천대로 904-6/);
+    expect(facts.text).not.toMatch(/서초 실내운전연습장|광연|30만원|부산대점/);
+    expect(facts.text).toMatch(/드라이빙존 강남역점 \(직영\)[\s\S]*거리: 약 2km/);
+    expect(facts.candidates).toEqual(["강남역점", "사당자동차운전전문학원"]);
+
+    // 지역 학원이 없으면 전국 자료로 쓴다
+    const empty = drivingzoneFacts(
+      stores,
+      {},
+      topic({ region: "서울특별시 서초구", articleType: "pre_road" }),
+      training,
+      { academies: [], regionPoints: nearby.regionPoints },
+    );
+    expect(empty.text).toMatch(/전체 지점 목록:/);
   });
 
   it("드라이빙존: 지역 글을 쓰지 않는 채널은 지역 주제가 와도 전체 지점을 준다", () => {

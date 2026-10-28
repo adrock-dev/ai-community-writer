@@ -40,6 +40,14 @@ export const ARTICLE_TYPES = [
     pattern: /방문|자차|시간제|무제한|몇시간|기간|며칠|여성|일대일|1:1/,
     channels: TRAINING_CHANNELS,
   },
+  {
+    // 키워드로는 판정하지 않는다. 수집이 "직영점은 없지만 가까운 직영점이 있는 지역"에 붙인다(regional.ts).
+    type: "pre_road",
+    label: "실차연수 전 준비(지역)",
+    pattern: /(?!)/,
+    channels: TRAINING_CHANNELS,
+    regionalOnly: true,
+  },
   { type: "test_center", label: "시험장 안내", pattern: /시험장/ },
   {
     type: "license_admin",

@@ -114,19 +114,92 @@ export function detectRegion(keyword: string, index: RegionEntry[]): RegionMatch
   return best && { alias: best.entry.alias, regions: best.entry.regions };
 }
 
-export async function loadRegionIndex(
+/** 행정구역 개편 전 이름으로 적힌 주소를 현재 이름으로 맞춘다. */
+const OLD_SIDO: [RegExp, string][] = [
+  [/^전라북도/, "전북특별자치도"],
+  [/^강원도/, "강원특별자치도"],
+  [/^제주도/, "제주특별자치도"],
+];
+
+export function normalizeAddress(address: string): string {
+  return OLD_SIDO.reduce((a, [re, now]) => a.replace(re, now), address.trim());
+}
+
+/** 지역 키("서울특별시 강남구|...")에 속한 주소인가. */
+export function inRegion(address: string, regionKey: string): boolean {
+  if (!regionKey) return true;
+  const a = normalizeAddress(address);
+  return regionKey.split("|").some((r) => a.startsWith(r));
+}
+
+/** 지역 키에 든 시도 이름들. */
+export const regionSidos = (regionKey: string) =>
+  [...new Set(regionKey.split("|").map((r) => r.split(" ")[0] ?? ""))].filter(Boolean);
+
+/** 시군구 대표 좌표 (지역 목록 API 의 latitude·longitude). 좌표가 없으면 NaN. */
+export interface RegionPoint {
+  region: string;
+  lat: number;
+  lng: number;
+}
+
+/** 지역 키의 중심 좌표. 시도 키("부산광역시")면 그 시도 시군구 좌표의 평균. 좌표가 없으면 undefined. */
+export function regionCenter(
+  points: RegionPoint[],
+  regionKey: string,
+): { lat: number; lng: number } | undefined {
+  const parts = regionKey.split("|").filter(Boolean);
+  const hit = points.filter(
+    (p) =>
+      Number.isFinite(p.lat) &&
+      Number.isFinite(p.lng) &&
+      parts.some((r) => p.region === r || p.region.startsWith(`${r} `)),
+  );
+  if (!hit.length) return undefined;
+  const sum = hit.reduce((a, p) => ({ lat: a.lat + p.lat, lng: a.lng + p.lng }), {
+    lat: 0,
+    lng: 0,
+  });
+  return { lat: sum.lat / hit.length, lng: sum.lng / hit.length };
+}
+
+/** 두 좌표의 직선거리(km, 하버사인). */
+export function distanceKm(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad;
+  const dLng = (b.lng - a.lng) * rad;
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(h));
+}
+
+/** 시군구 목록과 대표 좌표. 좌표를 같이 저장하게 바꿔 캐시 키 버전을 올렸다(v2). */
+export async function loadRegionPoints(
   db: Database,
   sources: AppConfig["sources"],
-): Promise<RegionEntry[]> {
+): Promise<RegionPoint[]> {
   const url = `${sources.drivingplusApi}/v1/zipcode/search-seo?level=2`;
   const { value } = await cached(
     db,
-    `drivingplus:regions:${sources.drivingplusApi}`,
+    `drivingplus:regions:v2:${sources.drivingplusApi}`,
     7 * 86_400_000,
     async () => {
-      const rows = await getData<{ region?: string }[]>(url, sources.timeoutSec);
-      return rows.map((r) => String(r.region ?? "")).filter(Boolean);
+      const rows = await getData<{ region?: string; latitude?: unknown; longitude?: unknown }[]>(
+        url,
+        sources.timeoutSec,
+      );
+      return rows
+        .map((r) => ({
+          region: String(r.region ?? ""),
+          lat: Number(r.latitude),
+          lng: Number(r.longitude),
+        }))
+        .filter((r) => r.region);
     },
   );
-  return buildRegionIndex(value);
+  return value;
 }

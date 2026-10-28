@@ -8,7 +8,7 @@ import { Database } from "./db/database.ts";
 import { importGuideFilesIfEmpty } from "./guides.ts";
 import { codexImageGenerator } from "./images/generator.ts";
 import { fetchTrends, loadDatalabCredentials } from "./keywords/datalab.ts";
-import { loadRegionIndex } from "./keywords/regions.ts";
+import { buildRegionIndex, loadRegionPoints } from "./keywords/regions.ts";
 import { loadSearchadCredentials, readEnvFile, SearchadClient } from "./keywords/searchad.ts";
 import { loadKeywordFilter, loadSeeds } from "./keywords/seeds.ts";
 import { LlmClient } from "./llm/client.ts";
@@ -20,6 +20,7 @@ import type { HandlerDef } from "./queue/worker.ts";
 import { fetchAcademies } from "./sources/drivingplus.ts";
 import { fetchStores } from "./sources/drivingzone.ts";
 import { type CollectSummary, collectKeywords } from "./topics/planner.ts";
+import { drivingAcademies } from "./topics/regional.ts";
 import { generateArticle } from "./writer/generate.ts";
 
 /** 글 생성 작업 종류. 생성 간격·일일 한도의 기준이다. */
@@ -119,22 +120,30 @@ export async function runCollect(
   log?: (message: string) => void,
 ): Promise<CollectSummary> {
   const datalab = loadDatalabCredentials(config.naver, readEnvFile);
-  // 직영점 지역 판정용. 지점 자료를 못 받으면 그 판정만 미룬다.
-  const directStoreAddresses = await fetchStores(db, config.sources)
-    .then((r) => r.value.filter((s) => s.type === "direct").map((s) => s.address))
+  // 직영점 지역·가까운 직영점 판정용. 원천 자료를 못 받으면 그 판정만 미룬다.
+  const regionPoints = await loadRegionPoints(db, config.sources);
+  const regional = await Promise.all([
+    fetchStores(db, config.sources),
+    fetchAcademies(db, config.sources),
+  ])
+    .then(([stores, academies]) => ({
+      directStores: stores.value.filter((s) => s.type === "direct"),
+      academies: drivingAcademies(academies.value),
+      regionPoints,
+    }))
     .catch((error: unknown) => {
-      log?.(`드라이빙존 지점 자료 조회 실패: ${(error as Error).message}`);
+      log?.(`지점·학원 자료 조회 실패: ${(error as Error).message}`);
       return undefined;
     });
   return collectKeywords({
     db,
     keywords: config.keywords,
     searchad: new SearchadClient(loadSearchadCredentials(config.naver.searchadEnvFile)),
-    regions: await loadRegionIndex(db, config.sources),
+    regions: buildRegionIndex(regionPoints.map((p) => p.region)),
     seeds: loadSeeds(),
     filter: loadKeywordFilter(),
     trends: datalab ? (groups) => fetchTrends(datalab, groups) : undefined,
-    directStoreAddresses,
+    regional,
     log,
   });
 }

@@ -1,4 +1,4 @@
-import { CHANNELS, findChannel, type RegionalScope } from "../channels.ts";
+import { CHANNELS, type ChannelDef, findChannel } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
 import {
@@ -11,8 +11,8 @@ import {
 import { detectRegion, type RegionEntry, regionKey } from "../keywords/regions.ts";
 import type { KeywordStat } from "../keywords/searchad.ts";
 import { type KeywordFilter, passesFilter, type SectionSeeds } from "../keywords/seeds.ts";
-import { inRegion } from "../writer/facts.ts";
 import { inferArticleType } from "./intent.ts";
+import { NEARBY_REGION_TYPE, planRegion, type RegionalData } from "./regional.ts";
 
 // 키워드 수집 → 묶기 → 점수 → 주제 후보 저장.
 
@@ -33,10 +33,10 @@ export interface CollectDeps {
   filter: KeywordFilter;
   trends?: TrendFetcher;
   /**
-   * 드라이빙존 직영점 주소. 직영점 지역만 지역 글을 쓰는 채널(regional=direct-stores)의 판정에 쓴다.
-   * 없으면(지점 자료 조회 실패) 그 채널의 새 지역 주제는 만들지 않고, 있던 지역 후보도 지우지 않는다.
+   * 직영점·운전학원·지역 좌표. 직영점 지역만 지역 글을 쓰는 채널(regional=direct-stores)의 판정에 쓴다.
+   * 없으면(원천 자료 조회 실패) 그 채널의 새 지역 주제는 만들지 않고, 있던 지역 후보도 지우지 않는다.
    */
-  directStoreAddresses?: string[];
+  regional?: RegionalData;
   now?: Date;
   log?: (message: string) => void;
 }
@@ -114,18 +114,33 @@ export function sameBrandChannels(channelId: string): string[] {
 }
 
 /**
- * 이 채널이 이 지역의 글을 쓰는가. 지역이 없으면(전국 글) 항상 쓴다.
- * 직영점 주소를 모르면 undefined 를 돌려준다(판정 보류).
+ * 실차연수 전 준비 글(가까운 직영점 지역)은 지역마다 하나로 합치고("파주운전연수"·"파주장롱면허연수"),
+ * 검색 수 상위 maxTopics 지역까지만 남긴다. 비슷한 지역 글이 한꺼번에 쌓이지 않게 한다.
  */
-export function regionAllowed(
-  scope: RegionalScope,
-  region: string,
-  directStoreAddresses?: string[],
-): boolean | undefined {
-  if (!region || scope === "all") return true;
-  if (scope === "none") return false;
-  if (!directStoreAddresses) return undefined;
-  return directStoreAddresses.some((a) => inRegion(a, region));
+export function limitNearbyClusters(
+  clusters: KeywordCluster[],
+  channel?: ChannelDef,
+): KeywordCluster[] {
+  const byRegion = new Map<string, KeywordCluster>();
+  const rest: KeywordCluster[] = [];
+  for (const c of clusters) {
+    if (c.head.intent !== NEARBY_REGION_TYPE) {
+      rest.push(c);
+      continue;
+    }
+    const same = byRegion.get(c.region);
+    if (!same) {
+      byRegion.set(c.region, { ...c, members: [...c.members] });
+      continue;
+    }
+    same.members.push(...c.members);
+    same.volume += c.volume;
+    if (c.head.total > same.head.total) same.head = c.head;
+  }
+  const nearby = [...byRegion.values()]
+    .sort((a, b) => b.volume - a.volume)
+    .slice(0, channel?.nearbyRegions?.maxTopics ?? 0);
+  return [...rest, ...nearby];
 }
 
 export function localDate(d: Date): string {
@@ -148,9 +163,9 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
   const needsStores = deps.seeds.some(
     (s) => findChannel(s.channelId)?.regional === "direct-stores",
   );
-  if (needsStores && !deps.directStoreAddresses) {
+  if (needsStores && !deps.regional) {
     summary.warnings.push(
-      "드라이빙존 지점 자료가 없어 직영점 지역 글 주제를 만들지 않았습니다(있던 지역 후보는 유지)",
+      "드라이빙존 지점·학원 자료가 없어 직영점 지역 글 주제를 만들지 않았습니다(있던 지역 후보는 유지)",
     );
   }
 
@@ -194,12 +209,16 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
         }
       });
 
-      // 지역 글은 채널의 regional 범위 안에서만 만든다(운전면허PLUS 전 지역, 연수 블로그 직영점 지역).
-      const scope = findChannel(section.channelId)?.regional ?? "none";
+      // 지역 글은 채널의 regional 범위 안에서만 만든다(운전면허PLUS 전 지역, 연수 블로그 직영점 지역과
+      // 가까운 직영점이 있는 지역). 가까운 직영점 지역은 키워드와 상관없이 실차연수 전 준비 글이다.
+      const channel = findChannel(section.channelId);
       const inputs: ClusterInput[] = [];
       for (const { stat } of kept) {
         const match = detectRegion(stat.keyword, deps.regions);
-        if (match && !regionAllowed(scope, regionKey(match), deps.directStoreAddresses)) {
+        const plan = !match
+          ? "national"
+          : channel && planRegion(channel, regionKey(match), deps.regional);
+        if (!plan || plan === "skip") {
           item.regionalDropped++;
           continue;
         }
@@ -207,10 +226,13 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
           ...stat,
           region: regionKey(match),
           regionAlias: match?.alias ?? "",
-          intent: inferArticleType(stat.keyword, section.channelId),
+          intent:
+            plan === "nearby"
+              ? NEARBY_REGION_TYPE
+              : inferArticleType(stat.keyword, section.channelId),
         });
       }
-      const clusters = clusterKeywords(inputs, opts.clusterThreshold)
+      const clusters = limitNearbyClusters(clusterKeywords(inputs, opts.clusterThreshold), channel)
         .sort((a, b) => b.volume - a.volume)
         .slice(0, opts.maxTopicsPerSection);
       results.push({ section, clusters });
@@ -255,8 +277,8 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
         )
       : [];
     for (const t of stale) {
-      const scope = findChannel(t.channel_id)?.regional ?? "none";
-      if (regionAllowed(scope, t.region, deps.directStoreAddresses) === false) {
+      const channel = findChannel(t.channel_id);
+      if (!channel || planRegion(channel, t.region, deps.regional) === "skip") {
         db.run("DELETE FROM topics WHERE id = ?", [t.id]);
       }
     }

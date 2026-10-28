@@ -65,6 +65,13 @@ export interface ChannelDef {
    */
   regional: RegionalScope;
   /**
+   * 직영점이 없는 지역도 가까운 직영점이 있으면 "실차연수 전 준비"(pre_road) 지역 글로 쓴다.
+   * regional = direct-stores 채널만. 가까운 직영점 = 지역 중심에서 maxKm 이내 또는(sameSido) 같은 시도.
+   * 그 지역에 운전학원(전문·일반)이 1곳 이상 있어야 하고, 지역마다 주제 하나, 수집마다 검색 수 상위
+   * maxTopics 개까지 만든다(2026-10-28 결정).
+   */
+  nearbyRegions?: { maxKm: number; sameSido: boolean; maxTopics: number };
+  /**
    * 자동 발행 대상. community = api.drive 커뮤니티(섹션·칸), blog = api.drivingzone 게시판
    * (섹션 코드 = board type), none = 원고만(카페).
    */
@@ -191,6 +198,7 @@ export const CHANNELS = [
     format: "html",
     focus: ["장롱면허", "운전 연수"],
     regional: "direct-stores",
+    nearbyRegions: { maxKm: 25, sameSido: true, maxTopics: 20 },
     autoPublish: "blog",
     // web.dztraining --color-main-blue
     highlightColor: "#1474fa",
@@ -202,6 +210,11 @@ export const CHANNELS = [
       },
       { label: "드라이빙존 운전연수 지점 안내", url: "https://www.dztraining.co.kr/branch" },
       { label: "드라이빙존 운전연수 커리큘럼", url: "https://www.dztraining.co.kr/curriculum" },
+      // 2026-10-28 확인(200)
+      {
+        label: "실차연수 가능한 지역별 운전학원 찾기",
+        url: "https://www.dztraining.co.kr/academy",
+      },
     ],
     quality: {
       minChars: 2200,

@@ -1,7 +1,7 @@
 import type { ChannelDef } from "../channels.ts";
 import type { AppConfig } from "../config.ts";
 import type { Database } from "../db/database.ts";
-import { regionLabel } from "../keywords/regions.ts";
+import { inRegion, loadRegionPoints, type RegionPoint, regionLabel } from "../keywords/regions.ts";
 import { type Academy, fetchAcademies } from "../sources/drivingplus.ts";
 import {
   DRIVINGZONE_PRICE_VAT_INCLUDED,
@@ -11,6 +11,7 @@ import {
   type PricingPlan,
   type Store,
 } from "../sources/drivingzone.ts";
+import { drivingAcademies, NEARBY_REGION_TYPE, nearbyDirectStores } from "../topics/regional.ts";
 import type { Topic } from "../topics/store.ts";
 import { vatLabel, formatWon as won } from "./money.ts";
 
@@ -62,24 +63,6 @@ function median(xs: number[]): number | undefined {
   const s = [...xs].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid] : Math.round(((s[mid - 1] ?? 0) + (s[mid] ?? 0)) / 2);
-}
-
-/** 행정구역 개편 전 이름으로 적힌 주소를 현재 이름으로 맞춘다. */
-const OLD_SIDO: [RegExp, string][] = [
-  [/^전라북도/, "전북특별자치도"],
-  [/^강원도/, "강원특별자치도"],
-  [/^제주도/, "제주특별자치도"],
-];
-
-export function normalizeAddress(address: string): string {
-  return OLD_SIDO.reduce((a, [re, now]) => a.replace(re, now), address.trim());
-}
-
-/** 지역 키("서울특별시 강남구|...")에 속한 주소인가. */
-export function inRegion(address: string, regionKey: string): boolean {
-  if (!regionKey) return true;
-  const a = normalizeAddress(address);
-  return regionKey.split("|").some((r) => a.startsWith(r));
 }
 
 /** 사진 후보를 모은다. 대상마다 perSubject장, 전체 max장까지. */
@@ -280,11 +263,15 @@ function pricingLines(title: string, plans: PricingPlan[]): string[] {
  */
 const DRIVINGZONE_PHOTO_ANYWHERE_TYPES = new Set(["cost", "recommend"]);
 
+/** 실차연수 전 준비 글에 넣는 지역 운전학원 수. 이름·주소만 쓴다. */
+const NEARBY_ACADEMY_LIMIT = 15;
+
 export function drivingzoneFacts(
   stores: Store[],
   pricing: Partial<Record<PricingCategory, PricingPlan[]>>,
   topic: Topic,
   channel: ChannelDef,
+  nearby?: { academies: Academy[]; regionPoints: RegionPoint[] },
 ): Pick<Facts, "text" | "candidates" | "images"> {
   const reviewFor =
     channel.id === "dztraining-blog" || topic.articleType === "training" ? "training" : "license";
@@ -302,9 +289,36 @@ export function drivingzoneFacts(
           .filter((s) => inRegion(s.address, topic.region))
           .sort((a, b) => Number(b.type === "direct") - Number(a.type === "direct"))
       : [];
+  // 실차연수 전 준비 글: 그 지역 운전학원(이름·주소만)과 지역 밖 가까운 직영점.
+  // 학원 요금·후기·시설은 넣지 않는다(드라이빙존 글에서 다른 학원을 평가하지 않게, 2026-10-28 결정).
+  const academies =
+    nearby && topic.articleType === NEARBY_REGION_TYPE && topic.region
+      ? drivingAcademies(nearby.academies).filter((a) => inRegion(a.address, topic.region))
+      : [];
+  const near = academies.length
+    ? nearbyDirectStores(channel, topic.region, {
+        directStores: stores.filter((s) => s.type === "direct"),
+        regionPoints: nearby?.regionPoints ?? [],
+      }).slice(0, 2)
+    : [];
   let detailed: Store[];
-  if (local.length) {
+  let candidates: string[];
+  if (near.length) {
+    detailed = near.map((n) => n.store);
+    const listed = academies.slice(0, NEARBY_ACADEMY_LIMIT);
+    candidates = [...detailed.map((s) => s.name), ...listed.map((a) => a.name)];
+    parts.push(
+      `이 지역(${regionLabel(topic.region)}) 운전학원 ${academies.length}곳 — 이름·주소만 확인된 자료다. 요금·시설·강사·후기·연수 과정 여부는 근거가 없으니 쓰지 않는다${academies.length > listed.length ? ` (아래는 ${listed.length}곳)` : ""}:`,
+      ...listed.map((a) => `- ${a.name} — ${a.address}`),
+      "가까운 드라이빙존 직영점 (이 지역에는 직영점이 없다. 거리는 지역 중심에서 지점까지 직선거리):",
+      ...near.map(
+        ({ store, km }) =>
+          `${storeLine(store, true, reviewFor)}${km === undefined ? "" : `\n  거리: 약 ${Math.round(km)}km`}`,
+      ),
+    );
+  } else if (local.length) {
     detailed = local.slice(0, 3);
+    candidates = local.map((s) => s.name);
     parts.push(
       `이 지역(${regionLabel(topic.region)}) 지점 ${local.length}곳 (다른 지역 지점은 이 글에 쓰지 않는다):`,
       ...detailed.map((s) => storeLine(s, true, reviewFor)),
@@ -313,6 +327,7 @@ export function drivingzoneFacts(
   } else {
     // 전국 글: 이 채널에 맞는 후기가 많은 지점을 대표로 보여 주고, 전체 지점 목록을 함께 준다.
     detailed = [...stores].sort((a, b) => relevant(b) - relevant(a)).slice(0, 3);
+    candidates = stores.map((s) => s.name);
     parts.push(
       "대표 지점 상세:",
       ...detailed.map((s) => storeLine(s, true, reviewFor)),
@@ -326,7 +341,7 @@ export function drivingzoneFacts(
   );
   return {
     text: parts.join("\n"),
-    candidates: (local.length ? local : stores).map((s) => s.name),
+    candidates,
     images: drivingzonePhotos(detailed, topic.articleType),
   };
 }
@@ -376,7 +391,22 @@ export async function buildFacts(
         warnings.push(`드라이빙존 자료 갱신 실패, 이전 자료 사용: ${r.staleReason}`);
     }
     const pricing = Object.fromEntries(categories.map((c, i) => [c, prices[i]?.value ?? []]));
-    body = drivingzoneFacts(stores.value, pricing, topic, channel);
+    // 실차연수 전 준비 글은 그 지역 운전학원과 지역 좌표(가까운 직영점 거리)가 더 필요하다.
+    let nearby: { academies: Academy[]; regionPoints: RegionPoint[] } | undefined;
+    if (topic.articleType === NEARBY_REGION_TYPE && topic.region) {
+      const [academies, regionPoints] = await Promise.all([
+        fetchAcademies(db, sources),
+        loadRegionPoints(db, sources),
+      ]);
+      times.push(academies.fetchedAt);
+      if (academies.staleReason)
+        warnings.push(`학원 자료 갱신 실패, 이전 자료 사용: ${academies.staleReason}`);
+      nearby = { academies: academies.value, regionPoints };
+    }
+    body = drivingzoneFacts(stores.value, pricing, topic, channel, nearby);
+    if (nearby && !body.text.includes("가까운 드라이빙존 직영점")) {
+      warnings.push("이 지역의 운전학원이나 가까운 직영점을 찾지 못해 전국 자료로 씁니다");
+    }
   }
 
   const asOf = times.sort()[0] ?? new Date().toISOString();

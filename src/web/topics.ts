@@ -69,7 +69,7 @@ function manualForm() {
       <div class="field"><label>글 유형</label>
         <select name="articleType">
           <option value="">대표 키워드로 판정</option>
-          ${ARTICLE_TYPES.map((t) => html`<option value="${t.type}">${articleTypeOptionLabel(t)}</option>`)}
+          ${ARTICLE_TYPES.filter((t) => !("regionalOnly" in t)).map((t) => html`<option value="${t.type}">${articleTypeOptionLabel(t)}</option>`)}
         </select></div>
       <div class="field"><label>글 방향 (프롬프트에 들어갑니다. 숫자·조건은 유의사항에 있는 것만 글에 씁니다)</label>
         <textarea name="brief" rows="3" placeholder="예) 학원은 시간당 단가가 높으니 기본 조작은 드라이빙존에서 익히고, 학원은 실차 감각을 익히는 용도로 가라고 안내한다"></textarea></div>
