@@ -181,4 +181,9 @@ export const MIGRATIONS: readonly string[] = [
   -- 운영자가 정한 글 방향. 프롬프트의 "이번 글"에 들어간다.
   ALTER TABLE topics ADD COLUMN brief TEXT NOT NULL DEFAULT '';
   `,
+  // v7: 지역 주제의 드라이빙존 지점 표시 (수집 때 채운다)
+  `
+  -- 예: "직영 미아사거리역점 · 가맹 성신여대입구역점", "가까운 직영 잠실학원사거리점(약 10km)"
+  ALTER TABLE topics ADD COLUMN region_stores TEXT NOT NULL DEFAULT '';
+  `,
 ];

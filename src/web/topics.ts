@@ -140,7 +140,8 @@ ${manualForm()}
         <td><b>${t.primaryKeyword}</b> ${ORIGIN_LABEL[t.origin] ? badge(ORIGIN_LABEL[t.origin]!) : ""}<div class="muted">${t.secondaryKeywords.slice(0, 4).join(", ")}</div>
           ${t.brief ? html`<div class="muted">글 방향: ${t.brief}</div>` : ""}</td>
         <td>${articleTypeLabel(t.articleType)}</td>
-        <td>${t.region ? regionLabel(t.region) : html`<span class="muted">전국</span>`}</td>
+        <td>${t.region ? regionLabel(t.region) : html`<span class="muted">전국</span>`}
+          ${t.regionStores ? html`<div class="muted">${t.regionStores}</div>` : ""}</td>
         <td class="num">${t.volume.toLocaleString()}</td>
         <td>${badge(TOPIC_STATUS_LABEL[t.status] ?? t.status, statusTone(t.status))}</td>
         <td class="actions">

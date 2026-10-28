@@ -24,6 +24,8 @@ export interface Topic {
   origin: TopicOrigin;
   /** 운영자가 정한 글 방향. 비어 있으면 키워드와 글 유형만으로 쓴다. */
   brief: string;
+  /** 지역 주제의 드라이빙존 지점(직영·가맹, 가까운 직영점). 수집 때 채운다. */
+  regionStores: string;
   topicKey: string;
   updatedAt: string;
 }
@@ -44,6 +46,7 @@ const toTopic = (r: any): Topic => ({
   note: r.note,
   origin: r.origin,
   brief: r.brief,
+  regionStores: r.region_stores,
   topicKey: r.topic_key,
   updatedAt: r.updated_at,
 });

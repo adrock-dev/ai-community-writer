@@ -29,8 +29,9 @@ const RELATED: Record<string, KeywordStat[]> = {
   ],
 };
 
-const store = (name: string, address: string, lat: number, lng: number) => ({
+const store = (name: string, address: string, lat: number, lng: number, type = "direct") => ({
   name,
+  type,
   address,
   lat,
   lng,
@@ -62,7 +63,7 @@ function deps(db: Database, extra: object = {}) {
       filter: { include: ["운전", "면허", "연수"], exclude: ["대리운전"] },
       // 직영점은 부산에만 있다고 둔다. 강남은 직영점이 없고 가깝지도 않은 지역이다.
       regional: {
-        directStores: [
+        stores: [
           store("부산 북부면허시험장점", "부산광역시 사상구 사상로367번길 17", 35.16, 128.98),
         ],
         academies: [],
@@ -133,7 +134,7 @@ describe("collectKeywords", () => {
     const db = new Database(":memory:");
     const { deps: d } = deps(db, {
       regional: {
-        directStores: [store("강남역점", "서울특별시 강남구 강남대로78길 24", 37.5, 127.03)],
+        stores: [store("강남역점", "서울특별시 강남구 강남대로78길 24", 37.5, 127.03)],
         academies: [],
         regionPoints: [],
       },
@@ -158,7 +159,7 @@ describe("collectKeywords", () => {
         "대구광역시 수성구",
       ]),
       regional: {
-        directStores: [
+        stores: [
           store("강남역점", "서울특별시 강남구 강남대로78길 24", 37.5, 127.03),
           store("용인면허시험장점", "경기도 용인시 기흥구 용구대로 2257-9", 37.27, 127.11),
         ],
@@ -189,6 +190,38 @@ describe("collectKeywords", () => {
       ["파주운전연수", "pre_road", 800],
     ]);
     expect(topics[0]?.secondaryKeywords).toContain("서초장롱면허연수");
+    expect(topics[0]?.regionStores).toBe("가까운 직영 강남역점(약 2km)");
+  });
+
+  it("가맹점만 있는 지역도 지점 안내 주제로 만들고, 주제에 직영·가맹 지점을 표시한다", async () => {
+    const db = new Database(":memory:");
+    const { deps: d } = deps(db, {
+      regions: buildRegionIndex(["서울특별시 강남구", "경기도 하남시"]),
+      regional: {
+        stores: [
+          store("강남역점", "서울특별시 강남구 강남대로78길 24", 37.5, 127.03),
+          store("직영본점", "서울특별시 강남구 테헤란로114길 26", 37.5, 127.06),
+          store("하남미사역점", "경기도 하남시 미사강변동로 72", 37.56, 127.19, "chain"),
+        ],
+        academies: [],
+        regionPoints: [],
+      },
+    });
+    d.searchad.relatedKeywords = async () => [
+      stat("강남운전연수", 2000),
+      stat("하남운전연수", 700),
+    ];
+    await collectKeywords(d);
+    expect(
+      listTopics(db, { channelId: "dztraining-blog" }).map((t) => [
+        t.primaryKeyword,
+        t.articleType,
+        t.regionStores,
+      ]),
+    ).toEqual([
+      ["강남운전연수", "training", "직영 강남역점·직영본점"],
+      ["하남운전연수", "training", "가맹 하남미사역점"],
+    ]);
   });
 
   it("지점 자료가 없으면 직영점 지역 주제를 만들지 않고, 있던 지역 후보도 지우지 않는다", async () => {

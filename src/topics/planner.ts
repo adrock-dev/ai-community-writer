@@ -12,7 +12,12 @@ import { detectRegion, type RegionEntry, regionKey } from "../keywords/regions.t
 import type { KeywordStat } from "../keywords/searchad.ts";
 import { type KeywordFilter, passesFilter, type SectionSeeds } from "../keywords/seeds.ts";
 import { inferArticleType } from "./intent.ts";
-import { NEARBY_REGION_TYPE, planRegion, type RegionalData } from "./regional.ts";
+import {
+  NEARBY_REGION_TYPE,
+  planRegion,
+  type RegionalData,
+  regionStoresLabel,
+} from "./regional.ts";
 
 // 키워드 수집 → 묶기 → 점수 → 주제 후보 저장.
 
@@ -303,15 +308,25 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
           ...counts,
         });
         const secondary = secondaryKeywords(c);
+        const channel = findChannel(section.channelId);
+        const regionStores = channel
+          ? regionStoresLabel(
+              channel,
+              c.region,
+              planRegion(channel, c.region, deps.regional),
+              deps.regional,
+            )
+          : "";
         db.run(
           `INSERT INTO topics (primary_keyword, secondary_keywords, channel_id, section_code, article_type, score,
-             status, created_at, updated_at, topic_key, region, volume, trend, competition)
-           VALUES (?, ?, ?, ?, ?, ?, 'candidate', ?, ?, ?, ?, ?, ?, ?)
+             status, created_at, updated_at, topic_key, region, volume, trend, competition, region_stores)
+           VALUES (?, ?, ?, ?, ?, ?, 'candidate', ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(channel_id, section_code, topic_key) DO UPDATE SET
              primary_keyword = excluded.primary_keyword, secondary_keywords = excluded.secondary_keywords,
              article_type = CASE WHEN topics.origin = 'manual' THEN topics.article_type ELSE excluded.article_type END,
              score = excluded.score, updated_at = excluded.updated_at,
-             region = excluded.region, volume = excluded.volume, trend = excluded.trend, competition = excluded.competition`,
+             region = excluded.region, volume = excluded.volume, trend = excluded.trend, competition = excluded.competition,
+             region_stores = excluded.region_stores`,
           [
             c.head.keyword,
             JSON.stringify(secondary),
@@ -326,6 +341,7 @@ export async function collectKeywords(deps: CollectDeps): Promise<CollectSummary
             c.volume,
             trend ?? null,
             c.head.competition,
+            regionStores,
           ],
         );
         item.topics++;

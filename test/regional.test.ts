@@ -2,22 +2,47 @@ import { describe, expect, it } from "vitest";
 import { findChannel } from "../src/channels.ts";
 import { distanceKm, regionCenter } from "../src/keywords/regions.ts";
 import { limitNearbyClusters } from "../src/topics/planner.ts";
-import { nearbyDirectStores, planRegion, type RegionalData } from "../src/topics/regional.ts";
+import {
+  nearbyDirectStores,
+  planRegion,
+  type RegionalData,
+  regionStoresLabel,
+} from "../src/topics/regional.ts";
 
 const training = findChannel("dztraining-blog")!;
 const plus = findChannel("drivingplus-community")!;
 const cafe = findChannel("drivingzone-cafe")!;
 
 const data: RegionalData = {
-  directStores: [
-    { name: "강남역점", address: "서울특별시 강남구 강남대로78길 24", lat: 37.5, lng: 127.03 },
-    { name: "부산대점", address: "부산광역시 금정구 부산대학로 57", lat: 35.23, lng: 129.08 },
+  stores: [
+    {
+      name: "강남역점",
+      type: "direct",
+      address: "서울특별시 강남구 강남대로78길 24",
+      lat: 37.5,
+      lng: 127.03,
+    },
+    {
+      name: "부산대점",
+      type: "direct",
+      address: "부산광역시 금정구 부산대학로 57",
+      lat: 35.23,
+      lng: 129.08,
+    },
+    {
+      name: "광주상무점",
+      type: "chain",
+      address: "광주광역시 서구 상무중앙로 43",
+      lat: 35.15,
+      lng: 126.85,
+    },
   ],
   academies: [
     { address: "서울특별시 서초구 과천대로 904-6" },
     { address: "부산광역시 기장군 1" },
     { address: "인천광역시 남동구 1" },
     { address: "대구광역시 수성구 1" },
+    { address: "광주광역시 남구 1" },
   ],
   regionPoints: [
     { region: "서울특별시 강남구", lat: 37.5, lng: 127.05 },
@@ -26,6 +51,8 @@ const data: RegionalData = {
     { region: "부산광역시 기장군", lat: 35.24, lng: 129.22 },
     { region: "인천광역시 남동구", lat: 37.45, lng: 126.73 },
     { region: "대구광역시 수성구", lat: 35.86, lng: 128.63 },
+    { region: "광주광역시 서구", lat: 35.15, lng: 126.89 },
+    { region: "광주광역시 남구", lat: 35.13, lng: 126.9 },
     { region: "충청북도 괴산군", lat: Number.NaN, lng: Number.NaN },
   ],
 };
@@ -56,6 +83,9 @@ describe("planRegion", () => {
     // 강남역점과 약 28km지만 같은 시도도 아니다
     expect(planRegion(training, "인천광역시 남동구", data)).toBe("skip");
     expect(planRegion(training, "대구광역시 수성구", data)).toBe("skip");
+    // 가맹점만 있는 지역은 지점 안내 글, 그 옆 지역은 가맹점이 가까워도 가까운 직영점이 아니라 뺀다
+    expect(planRegion(training, "광주광역시 서구", data)).toBe("local");
+    expect(planRegion(training, "광주광역시 남구", data)).toBe("skip");
     // 학원이 없는 지역
     expect(planRegion(training, "충청북도 괴산군", data)).toBe("skip");
     // 자료가 없으면 판정을 미룬다
@@ -64,8 +94,14 @@ describe("planRegion", () => {
 
   it("같은 시도면 25km 밖이어도 가까운 직영점으로 본다", () => {
     const far = {
-      directStores: [
-        { name: "용인면허시험장점", address: "경기도 용인시 기흥구 1", lat: 37.27, lng: 127.11 },
+      stores: [
+        {
+          name: "용인면허시험장점",
+          type: "direct",
+          address: "경기도 용인시 기흥구 1",
+          lat: 37.27,
+          lng: 127.11,
+        },
       ],
       regionPoints: [{ region: "경기도 여주시", lat: 37.3, lng: 127.64 }],
     };
@@ -79,6 +115,18 @@ describe("planRegion", () => {
         far,
       ),
     ).toEqual([]);
+  });
+});
+
+describe("regionStoresLabel", () => {
+  it("지점 지역은 직영·가맹 지점을, 가까운 직영점 지역은 지점과 거리를 보여 준다", () => {
+    const label = (region: string) =>
+      regionStoresLabel(training, region, planRegion(training, region, data), data);
+    expect(label("서울특별시 강남구")).toBe("직영 강남역점");
+    expect(label("광주광역시 서구")).toBe("가맹 광주상무점");
+    expect(label("서울특별시 서초구")).toBe("가까운 직영 강남역점(약 2km)");
+    expect(label("대구광역시 수성구")).toBe("");
+    expect(regionStoresLabel(plus, "서울특별시 강남구", "local", data)).toBe("");
   });
 });
 

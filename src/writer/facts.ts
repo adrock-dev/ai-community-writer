@@ -297,7 +297,7 @@ export function drivingzoneFacts(
       : [];
   const near = academies.length
     ? nearbyDirectStores(channel, topic.region, {
-        directStores: stores.filter((s) => s.type === "direct"),
+        stores,
         regionPoints: nearby?.regionPoints ?? [],
       }).slice(0, 2)
     : [];

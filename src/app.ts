@@ -127,7 +127,7 @@ export async function runCollect(
     fetchAcademies(db, config.sources),
   ])
     .then(([stores, academies]) => ({
-      directStores: stores.value.filter((s) => s.type === "direct"),
+      stores: stores.value,
       academies: drivingAcademies(academies.value),
       regionPoints,
     }))

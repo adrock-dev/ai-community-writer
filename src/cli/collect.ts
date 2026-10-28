@@ -27,7 +27,9 @@ try {
       if (!topics.length) continue;
       console.log(`\n■ ${channel.label} / ${section.label} (${section.code})`);
       for (const t of topics) {
-        const region = t.region ? ` [${regionLabel(t.region)}]` : "";
+        const region = t.region
+          ? ` [${regionLabel(t.region)}${t.regionStores ? ` · ${t.regionStores}` : ""}]`
+          : "";
         const trend = t.trend === null ? "" : ` 추세 ${t.trend}`;
         const more = t.secondaryKeywords.slice(0, 3).join(", ");
         console.log(
